@@ -18,7 +18,7 @@ const compiled = spawnSync(process.execPath, [
 ], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
 const serverModule = pathToFileURL(join(root, 'server/equipment-visuals.mjs')).href
-for (const name of ['equipment-models.js', 'equipment-rig.js', 'model-assets.js']) {
+for (const name of ['equipment-models.js', 'equipment-rig.js', 'equipment-shell.js', 'model-assets.js']) {
   const path = join(buildDir, name)
   const source = readFileSync(path, 'utf8')
     .replaceAll('../server/equipment-visuals.mjs', serverModule)
@@ -216,8 +216,9 @@ test('все 12 body armor GLB проходят реальный loader и мо�
     assert.ok(actor.getObjectByName('equipment-off_hand-shield-default'))
     assert.ok(actor.getObjectByName('equipment-ring-protection-ring-enchanted'))
     assert.ok(actor.getObjectByName('equipment-ring-fire-resistance-ring-enchanted'))
-    assert.ok(actor.getObjectByName('partback')?.parent?.isBone)
-    assert.ok(actor.getObjectByName('partcollar')?.parent?.isBone)
+    // Плащ — полотно от плеч до колен на кости груди, а не коробки на спине.
+    assert.ok(actor.getObjectByName('cloak-cape')?.parent?.isBone)
+    assert.equal(actor.getObjectByName('partback'), undefined)
     assert.ok(actor.getObjectByName('equipment-brooch-brooch-enchanted'))
     assert.equal(actor.getObjectByName('equipment-main_hand-longsword-flaming')?.userData.visualVariantApplied, 'flaming')
     assert.equal(actor.getObjectByName('equipment-ring-protection-ring-enchanted')?.userData.visualVariantApplied, 'protection')

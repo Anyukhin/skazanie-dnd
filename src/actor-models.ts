@@ -1259,50 +1259,114 @@ function clipPose(clip: AnimationClip): ActorPose | null {
 
 type AimBoneRest = { bone: Object3D; rotation: { x: number; y: number; z: number } }
 type GlbPoseOverlay = {
-  apply: (progress?: number, style?: string) => void
+  apply: (progress?: number, style?: string, options?: { weaponSide?: 'left' | 'right' }) => void
   reset: () => void
   available: boolean
 }
 
-/** Небольшая локальная замена отсутствующему bow-клипу у известных humanoid rig. */
+/** Направление в кадре тела фигурки: +X — её левая рука, +Y — вверх, +Z — вперёд. */
+type BodyDirection = readonly [number, number, number]
+
+function lerpDirection(from: BodyDirection, to: BodyDirection, share: number): BodyDirection {
+  return [from[0] + (to[0] - from[0]) * share, from[1] + (to[1] - from[1]) * share, from[2] + (to[2] - from[2]) * share]
+}
+
+/**
+ * Поворачивает кость так, чтобы отрезок «кость → следующий сустав» смотрел в
+ * заданную сторону мира. Работает на любом риге: оси костей Quaternius и
+ * KayKit разные, а направление руки — нет.
+ */
+function pointBoneAt(bone: Object3D, joint: Object3D, worldDirection: Vector3): void {
+  bone.updateWorldMatrix(true, true)
+  const from = bone.getWorldPosition(new Vector3())
+  const current = joint.getWorldPosition(new Vector3()).sub(from)
+  if (current.lengthSq() < 1e-10 || worldDirection.lengthSq() < 1e-10) return
+  const turn = new Quaternion().setFromUnitVectors(current.normalize(), worldDirection.clone().normalize())
+  const target = turn.multiply(bone.getWorldQuaternion(new Quaternion()))
+  const parent = bone.parent?.getWorldQuaternion(new Quaternion()) ?? new Quaternion()
+  bone.quaternion.copy(parent.invert().multiply(target))
+  bone.updateWorldMatrix(false, true)
+}
+
+/**
+ * Поза выстрела и броска для GLB без собственного клипа (герои Quaternius).
+ *
+ * Прежде к позе покоя рига добавлялись малые повороты, а покой у рига — это
+ * T-поза: на доске стрелок разводил руки в стороны. Теперь руки ставятся по
+ * направлениям в кадре тела: лучник вытягивает руку с луком вперёд и тянет
+ * тетиву к щеке, арбалетчик держит ложе у груди, метатель заносит руку.
+ */
 function createGlbAimPose(root: Group): GlbPoseOverlay {
   const find = (...names: string[]) => objectByName(root, ...names)
-  const leftUpper = find('upperarm.l', 'upperarm_l')
-  const rightUpper = find('upperarm.r', 'upperarm_r')
-  const leftLower = find('lowerarm.l', 'lowerarm_l')
-  const rightLower = find('lowerarm.r', 'lowerarm_r')
+  const arms = {
+    left: { upper: find('upperarm.l', 'upperarm_l'), lower: find('lowerarm.l', 'lowerarm_l'), hand: find('hand.l', 'hand_l', 'wrist.l') },
+    right: { upper: find('upperarm.r', 'upperarm_r'), lower: find('lowerarm.r', 'lowerarm_r'), hand: find('hand.r', 'hand_r', 'wrist.r') },
+  }
   const chest = find('chest', 'spine_03', 'spine_02')
-  const rest: AimBoneRest[] = [leftUpper, rightUpper, leftLower, rightLower, chest]
+  const rest: AimBoneRest[] = [arms.left.upper, arms.right.upper, arms.left.lower, arms.right.lower, chest]
     .filter((bone): bone is Object3D => Boolean(bone))
     .map((bone) => ({ bone, rotation: { x: bone.rotation.x, y: bone.rotation.y, z: bone.rotation.z } }))
+  // Направленная поза нужна настоящим суставам: у рига без кистей (или со
+  // слипшимися костями) остаются прежние малые поправки к позе покоя.
+  const jointed = (arm: { upper?: Object3D; lower?: Object3D; hand?: Object3D }) => Boolean(arm.upper && arm.lower && arm.hand
+    && arm.upper.getWorldPosition(new Vector3()).distanceTo(arm.lower.getWorldPosition(new Vector3())) > 1e-4
+    && arm.lower.getWorldPosition(new Vector3()).distanceTo(arm.hand.getWorldPosition(new Vector3())) > 1e-4)
+  root.updateMatrixWorld(true)
+  const complete = jointed(arms.left) && jointed(arms.right)
+  const leftUpper = arms.left.upper; const rightUpper = arms.right.upper
+  const leftLower = arms.left.lower; const rightLower = arms.right.lower
+  const legacy = (style: string, draw: number) => {
+    if (style === 'thrown') {
+      if (rightUpper) rightUpper.rotation.set(rightUpper.rotation.x - .12 - draw * .5, rightUpper.rotation.y, rightUpper.rotation.z - .38 + draw * 1.05)
+      if (leftUpper) leftUpper.rotation.set(leftUpper.rotation.x - .08 - draw * .12, leftUpper.rotation.y, leftUpper.rotation.z + .2 - draw * .12)
+      if (rightLower) rightLower.rotation.x -= .12 + draw * .35
+    } else if (style === 'crossbow') {
+      if (leftUpper) leftUpper.rotation.set(leftUpper.rotation.x - .3 - draw * .1, leftUpper.rotation.y, leftUpper.rotation.z + .2 - draw * .08)
+      if (rightUpper) rightUpper.rotation.set(rightUpper.rotation.x - .35 - draw * .08, rightUpper.rotation.y, rightUpper.rotation.z - .28 + draw * .06)
+      if (leftLower) leftLower.rotation.x -= .18 + draw * .12
+      if (rightLower) rightLower.rotation.x -= .16 + draw * .1
+    } else {
+      if (leftUpper) leftUpper.rotation.set(leftUpper.rotation.x - .28 - draw * .12, leftUpper.rotation.y, leftUpper.rotation.z + .3 - draw * .08)
+      if (rightUpper) rightUpper.rotation.set(rightUpper.rotation.x - .34 - draw * .1, rightUpper.rotation.y, rightUpper.rotation.z - .32 + draw * .08)
+      if (leftLower) leftLower.rotation.x -= .22 + draw * .15
+      if (rightLower) rightLower.rotation.x -= .18 + draw * .12
+    }
+  }
   let applied = false
   const reset = () => {
     if (!applied) return
     for (const item of rest) item.bone.rotation.set(item.rotation.x, item.rotation.y, item.rotation.z)
     applied = false
   }
-  const apply = (progress?: number, style: string = 'bow') => {
+  const pose = (side: 'left' | 'right', upper: BodyDirection, lower: BodyDirection, body: Quaternion) => {
+    const arm = arms[side]
+    if (!arm.upper || !arm.lower || !arm.hand) return
+    // Направления заданы для левой руки; правая — зеркально по X.
+    const mirror = side === 'left' ? 1 : -1
+    pointBoneAt(arm.upper, arm.lower, new Vector3(upper[0] * mirror, upper[1], upper[2]).applyQuaternion(body))
+    pointBoneAt(arm.lower, arm.hand, new Vector3(lower[0] * mirror, lower[1], lower[2]).applyQuaternion(body))
+  }
+  const apply = (progress?: number, style: string = 'bow', options: { weaponSide?: 'left' | 'right' } = {}) => {
     if (!rest.length) return
     reset()
     const p = progress == null ? 0 : MathUtils.clamp(progress, 0, 1)
     const draw = progress == null ? 1 : rangedReleaseProgress(p)
+    if (!complete) { legacy(style, draw); applied = true; return }
+    const body = root.getWorldQuaternion(new Quaternion())
+    const weapon = options.weaponSide ?? 'right'
+    const other = weapon === 'right' ? 'left' : 'right'
     if (style === 'thrown') {
-      if (rightUpper) rightUpper.rotation.set(rightUpper.rotation.x - .12 - draw * .5, rightUpper.rotation.y, rightUpper.rotation.z - .38 + draw * 1.05)
-      if (leftUpper) leftUpper.rotation.set(leftUpper.rotation.x - .08 - draw * .12, leftUpper.rotation.y, leftUpper.rotation.z + .2 - draw * .12)
-      if (rightLower) rightLower.rotation.x -= .12 + draw * .35
-      if (chest) chest.rotation.y += .05 * draw
+      pose(weapon, lerpDirection([0.25, 0.75, -0.6], [0.05, 0.35, 0.95], 1 - draw), lerpDirection([0.1, 0.95, -0.3], [0, 0.2, 1], 1 - draw), body)
+      // Свободная рука (часто со щитом) опущена перед телом, а не разведена в T-позу.
+      pose(other, [0.25, -0.8, 0.5], [0, -0.25, 1], body)
     } else if (style === 'crossbow') {
-      if (leftUpper) leftUpper.rotation.set(leftUpper.rotation.x - .3 - draw * .1, leftUpper.rotation.y, leftUpper.rotation.z + .2 - draw * .08)
-      if (rightUpper) rightUpper.rotation.set(rightUpper.rotation.x - .35 - draw * .08, rightUpper.rotation.y, rightUpper.rotation.z - .28 + draw * .06)
-      if (leftLower) leftLower.rotation.x -= .18 + draw * .12
-      if (rightLower) rightLower.rotation.x -= .16 + draw * .1
-      if (chest) chest.rotation.y += .04 * draw
+      // Ложе у груди: локоть опущен, предплечье вперёд; вторая рука — под ложем.
+      pose(weapon, [0.18, -0.6, 0.78], [-0.12, 0.08, 1], body)
+      pose(other, [0.2, -0.45, 0.86], [-0.25, 0.12, 1], body)
     } else {
-      if (leftUpper) leftUpper.rotation.set(leftUpper.rotation.x - .28 - draw * .12, leftUpper.rotation.y, leftUpper.rotation.z + .3 - draw * .08)
-      if (rightUpper) rightUpper.rotation.set(rightUpper.rotation.x - .34 - draw * .1, rightUpper.rotation.y, rightUpper.rotation.z - .32 + draw * .08)
-      if (leftLower) leftLower.rotation.x -= .22 + draw * .15
-      if (rightLower) rightLower.rotation.x -= .18 + draw * .12
-      if (chest) chest.rotation.y += .06 * draw
+      // Рука с луком вытянута к цели, вторая тянет тетиву к щеке и отпускает.
+      pose(weapon, [0.12, 0.04, 1], [0.08, 0.04, 1], body)
+      pose(other, lerpDirection([0.02, -0.05, 1], [0.45, 0.12, 0.88], draw), lerpDirection([0.05, 0, 1], [-0.78, 0.35, 0.1], draw), body)
     }
     applied = true
   }
@@ -1418,9 +1482,19 @@ function addProceduralMethods(model: ActorModel, rig: Rig) {
 /** Слоты, которые остаются видимыми поверх вылепленного костюма модели. */
 const HELD_LOADOUT_SLOTS = ['main_hand', 'off_hand', 'focus'] as const
 
+/**
+ * Металл виден и поверх встроенной одежды героя Quaternius: жрец в чешуе под
+ * мантией иначе выглядел магом. Кожа и стёганка остаются под одеждой.
+ */
+const SHELL_OVER_OUTFIT = new Set(['armor-chainshirt', 'armor-ringmail', 'armor-scalemail', 'armor-chainmail', 'armor-breastplate', 'armor-halfplate', 'armor-splint', 'armor-plate'])
+
 function visibleLoadout(loadout: PublicLoadout, entry: ActorModelManifestEntry): PublicLoadout {
   if (entry.outfit !== 'builtin') return loadout
-  return Object.fromEntries(Object.entries(loadout).filter(([slot]) => (HELD_LOADOUT_SLOTS as readonly string[]).includes(slot))) as PublicLoadout
+  // Вылепленный костюм KayKit целиком: поверх него — только вещи в руках.
+  const sculpted = /\/kaykit\//u.test(entry.url ?? '')
+  return Object.fromEntries(Object.entries(loadout).filter(([slot, value]) => (HELD_LOADOUT_SLOTS as readonly string[]).includes(slot)
+    || (!sculpted && slot === 'cloak')
+    || (!sculpted && slot === 'body' && SHELL_OVER_OUTFIT.has(String((value as { model_key?: string } | null)?.model_key ?? ''))))) as PublicLoadout
 }
 
 function decorateModel(root: Group, input: NormalizedActorModelInput, entry: ActorModelManifestEntry, source: 'glb' | 'procedural', targetHeight: number, rig?: Rig, mixer?: AnimationMixer, actions?: Map<ActorPose, AnimationAction>, equipmentController?: AccessoryController, aimPose?: GlbPoseOverlay, attackPose?: GlbPoseOverlay, loadoutController?: ReturnType<typeof createEquipmentController>, styledActions?: Map<string, AnimationAction>): ActorModel {
@@ -1453,6 +1527,11 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
   model.setEquipment = (equipment: ActorEquipment | undefined) => {
     model.setAppearance(equipment === undefined ? undefined : { version: 1, profile: entry.profile, equipment })
   }
+  const releaseAim = () => {
+    aimPose?.reset()
+    wardrobe.rig.orientHeld('left', null)
+    wardrobe.rig.orientHeld('right', null)
+  }
   const setGlbPose = (pose: ActorPose, progress?: number) => {
     if (disposed) return
     const style = pose === 'attack' ? attackClipStyle(model.appearance) : pose === 'ranged-attack' ? rangedClipStyle(model.appearance) : null
@@ -1465,17 +1544,29 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
       activeAction = null
       if (aimFallback) {
         attackPose?.reset()
-        aimPose?.apply(progress, glbRangedStyle(model.appearance))
+        const style = glbRangedStyle(model.appearance)
+        // Лук или арбалет — в той руке, где он висит: у KayKit лук в левой.
+        const weaponSide = /bow/u.test(wardrobe.rig.heldKind('left') ?? '') ? 'left' : 'right'
+        aimPose?.apply(progress, style, { weaponSide })
+        // В позе выстрела лук стоит вертикально, а арбалет смотрит на цель,
+        // как бы ни повернулась кисть: иначе оружие уходило вбок вместе с ней.
+        const body = root.getWorldQuaternion(new Quaternion())
+        if (style !== 'thrown') wardrobe.rig.orientHeld(weaponSide, body)
+        // Щит во второй руке держит лицо наружу, как в стойке, куда бы ни ушла кисть.
+        const shieldSide = weaponSide === 'left' ? 'right' : 'left'
+        if (/shield/u.test(wardrobe.rig.heldKind(shieldSide) ?? '')) {
+          wardrobe.rig.orientHeld(shieldSide, body.clone().multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), shieldSide === 'left' ? .5 : -.5)))
+        }
       } else if (attackFallback) {
-        aimPose?.reset()
+        releaseAim()
         attackPose?.apply(progress, glbAttackStyle(model.appearance))
       } else {
-        aimPose?.reset()
+        releaseAim()
         attackPose?.reset()
       }
       return
     }
-    aimPose?.reset()
+    releaseAim()
     attackPose?.reset()
     const targetTime = progress == null ? undefined : MathUtils.clamp(progress, 0, 1) * action.getClip().duration
     if (targetTime != null && activeAction === action && action.paused && Math.abs(action.time - targetTime) < 1e-8) return
@@ -1521,7 +1612,7 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
     mixer?.uncacheRoot(root)
     wardrobe.dispose()
     equipmentController?.dispose()
-    aimPose?.reset()
+    releaseAim()
     attackPose?.reset()
     disposeObject(root)
   }

@@ -333,6 +333,298 @@ const COMPANIONS = Object.freeze({
   tree_oak: [['bush', 1]],
 })
 
+/** Мебель со спинкой: стоит только у стены, лицом в комнату. */
+const BACKED_FURNITURE = new Set(['bar_shelf', 'bookshelf', 'bookcase_tall', 'wardrobe', 'cupboard', 'pantry_shelf', 'display_shelf', 'shelf_wall',
+  'fireplace', 'kitchen_stove', 'bread_oven', 'forge', 'tool_rack', 'scroll_rack', 'potion_cabinet', 'dresser', 'armor_stand',
+  'magic_mirror', 'standing_mirror', 'washbasin', 'iron_maiden', 'wall_chains', 'crypt_niche', 'reliquary'])
+
+/** Сиденья. Встают гарнитуром у своей поверхности, а не сами по себе. */
+const SEATS = new Set(['chair', 'stool', 'bench'])
+/** У чего сидят. Прилавок и разделочный стол — работа стоя, без сидений. */
+const SEATING_SURFACES = new Set(['table_round', 'table_long', 'table_royal', 'table_small', 'bar_counter', 'writing_desk', 'map_table', 'war_table', 'jailer_desk'])
+/** Доля клетки, которую модель занимает при масштабе 1 (`PROP_FOOTPRINT_FILL` клиента). */
+const FOOTPRINT_FILL = 0.84
+/** Зазор между сиденьем и краем стола, в клетках. */
+const SEAT_GAP = 0.05
+
+/**
+ * Сиденья поверхности: из `COMPANIONS`, у конторки — один стул, у
+ * королевского стола — шесть.
+ *
+ * @param {string} assetId
+ * @returns {Array<[string, number]>}
+ */
+function seatSpecFor(assetId) {
+  const fromCompanions = (COMPANIONS[assetId] ?? []).filter(([id]) => SEATS.has(id))
+  if (fromCompanions.length) return fromCompanions
+  if (assetId === 'table_royal') return [['chair', 6]]
+  return SEATING_SURFACES.has(assetId) ? [['chair', 1]] : []
+}
+
+/**
+ * Направление взгляда предмета с поворотом `rotation`: 0° — на юг (+y), 90° —
+ * на запад, 180° — на север, 270° — на восток.
+ *
+ * @param {number} rotation
+ */
+function facingVector(rotation) {
+  const quarter = Math.round(((Number(rotation) % 360) + 360) % 360 / 90) % 4
+  return [{ dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 0, dy: -1 }, { dx: 1, dy: 0 }][quarter]
+}
+
+/** С какой площади помещения его середина обязана быть обставлена. */
+const CORE_FILL_MIN_CELLS = 30
+
+/**
+ * Что ставится в середину помещения по его назначению — первое, что разрешено
+ * темой и потолком зоны и что встаёт. Ковёр плоский: он не занимает клетку,
+ * но середина спальни перестаёт быть голым полом.
+ *
+ * @type {Readonly<Record<string, string[]>>}
+ */
+const CORE_CENTERPIECES = Object.freeze({
+  gallery: ['table_round', 'table_long', 'table_small'],
+  dining: ['table_round', 'table_small'],
+  living: ['table_small', 'rug'],
+  guardroom: ['table_long', 'table_small'],
+  barracks: ['table_long', 'table_small'],
+  kitchen: ['prep_table', 'table_small'],
+  store: ['crate_stack', 'barrel_stack', 'crate'],
+  shop: ['scales_table', 'table_small', 'crate'],
+  workshop: ['workbench', 'table_long', 'crate'],
+  forge: ['anvil', 'workbench'],
+  study: ['table_small', 'rug'],
+  laboratory: ['table_small', 'rug'],
+  bedroom: ['rug', 'table_small'],
+  mill: ['grain_sacks', 'sack'],
+})
+
+/**
+ * Середина помещения без мебели: клетки не ближе двух шагов к стене, двери,
+ * окну и краю помещения. Расстановка тянет мебель к стенам, очагу и стойке,
+ * и в комнате от тридцати клеток середина оставалась голым полом: у стен
+ * занята половина клеток, в середине — ничего (обзор генератора 2026-10-10).
+ * Возвращает, что поставить и куда, или `null`, если середина уже обставлена,
+ * мала или ничего не встало, не отрезав проход.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} zoneId
+ * @param {string} purpose
+ * @param {Array<{x: number, y: number}>} cells клетки зоны
+ * @param {{allowed: Set<string>, caps: Record<string, number>, blocked: Set<string>}} options
+ * @returns {{asset: import('./asset-registry.mjs').AssetEntry, cell: {x: number, y: number}, footprint: Array<{x: number, y: number}>, rotation: number}|null}
+ */
+function coreCenterpiece(map, zoneId, purpose, cells, { allowed, caps, blocked }) {
+  const zone = map.zones.find((entry) => entry.id === zoneId)
+  const choices = CORE_CENTERPIECES[purpose] ?? []
+  if (zone?.kind !== 'interior' || cells.length < CORE_FILL_MIN_CELLS || !choices.length) return null
+  const key = (/** @type {{x: number, y: number}} */ cell) => `${cell.x},${cell.y}`
+  const own = new Set(cells.map(key))
+  const rim = cells.filter((cell) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !own.has(`${cell.x + dx},${cell.y + dy}`)
+    || edgeBetween(map, cell.x, cell.y, cell.x + dx, cell.y + dy)))
+  const distance = (/** @type {{x: number, y: number}} */ cell) => Math.min(...rim.map((edge) => Math.max(Math.abs(edge.x - cell.x), Math.abs(edge.y - cell.y))))
+  const core = cells.filter((cell) => distance(cell) >= 2)
+  if (core.length < 2) return null
+  const coreKeys = new Set(core.map(key))
+  if (map.props.some((prop) => !prop.mount && prop.footprint.some((point) => coreKeys.has(key(point))))) return null
+  // Сам предмет может выйти из середины на клетку, но не к стене: вокруг
+  // стола остаётся кольцо под стулья и проход.
+  const inner = new Set(cells.filter((cell) => distance(cell) >= 1).map(key))
+  const centerX = core.reduce((sum, cell) => sum + cell.x, 0) / core.length
+  const centerY = core.reduce((sum, cell) => sum + cell.y, 0) / core.length
+  const ordered = [...core].sort((left, right) => (Math.abs(left.x - centerX) + Math.abs(left.y - centerY)) - (Math.abs(right.x - centerX) + Math.abs(right.y - centerY))
+    || left.y - right.y || left.x - right.x)
+  const wide = Math.max(...cells.map((cell) => cell.x)) - Math.min(...cells.map((cell) => cell.x)) >= Math.max(...cells.map((cell) => cell.y)) - Math.min(...cells.map((cell) => cell.y))
+  const blockers = new Set(map.props.filter((prop) => prop.blocksMove && !prop.mount).flatMap((prop) => prop.footprint.map(key)))
+  for (const assetId of choices) {
+    const asset = assetById(assetId)
+    if (!asset || !allowed.has(assetId)) continue
+    const present = map.props.filter((prop) => prop.assetId === assetId && own.has(`${Math.floor(prop.x)},${Math.floor(prop.y)}`)).length
+    if (Number.isFinite(caps[assetId]) && present >= caps[assetId]) continue
+    if (!asset.baseFootprint.w) return { asset, cell: ordered[0], footprint: [], rotation: 0 }
+    // Длинный стол и верстак лежат вдоль длинной стороны комнаты.
+    const rotation = wide ? 0 : 90
+    for (const cell of ordered) {
+      const footprint = fittingFootprint(map, blocked, cell, asset.baseFootprint, rotation)
+      if (!footprint || !footprint.every((point) => inner.has(key(point)))) continue
+      if (asset.blocksMove) {
+        // Предмет отнимает у обхода ровно свои клетки — проход не отрезан.
+        const taken = new Set(footprint.map(key))
+        const anchor = cells.find((other) => !blockers.has(key(other)) && !taken.has(key(other)))
+        if (!anchor) continue
+        const before = reachableCells(map, anchor.x, anchor.y, { blockedCells: blockers }).size
+        const after = reachableCells(map, anchor.x, anchor.y, { blockedCells: new Set([...blockers, ...taken]) }).size
+        if (after !== before - footprint.length) continue
+      }
+      return { asset, cell, footprint, rotation }
+    }
+  }
+  return null
+}
+
+/**
+ * Места для сидений у поверхности: свободные клетки той же зоны и высоты
+ * вплотную к её сторонам — без углов и без ребра между сиденьем и столом.
+ * Прежде стул тянулся к одной опорной клетке стола, и диагональ считалась
+ * соседством: треть стульев стояла у угла, визуально отдельно от стола.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {Array<{x: number, y: number}>} footprint
+ * @param {Set<string>} blocked
+ */
+function seatSlots(map, footprint, blocked) {
+  const own = new Set(footprint.map((cell) => `${cell.x},${cell.y}`))
+  const home = cellAt(map, footprint[0].x, footprint[0].y)
+  /** @type {Map<string, {x: number, y: number, toward: {x: number, y: number}, side: string}>} */
+  const slots = new Map()
+  for (const cell of footprint) {
+    for (const [dx, dy, side] of /** @type {const} */ ([[0, -1, 'n'], [1, 0, 'e'], [0, 1, 's'], [-1, 0, 'w']])) {
+      const x = cell.x + dx, y = cell.y + dy, key = `${x},${y}`
+      if (own.has(key) || blocked.has(key) || slots.has(key)) continue
+      const target = cellAt(map, x, y)
+      if (!target?.passable || target.zone !== home?.zone || target.elevation !== home?.elevation) continue
+      if (edgeBetween(map, cell.x, cell.y, x, y)) continue
+      slots.set(key, { x, y, toward: cell, side })
+    }
+  }
+  return [...slots.values()]
+}
+
+/**
+ * Раскладка сидений вокруг поверхности. Сначала длинная сторона, затем
+ * противоположная, затем торцы; на стороне — от середины к краям. Скамья
+ * встаёт вдоль стороны на две соседние клетки. У стойки — только её
+ * передняя сторона: за стойкой работает трактирщик.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{assetId: string, footprint: Array<{x: number, y: number}>, scale?: number}} surface
+ * @param {Array<[string, number]>} spec
+ * @param {Set<string>} blocked
+ * @returns {Array<{asset: import('./asset-registry.mjs').AssetEntry, cells: Array<{x: number, y: number}>, rotation: number, x: number, y: number}>}
+ */
+function arrangeSeats(map, surface, spec, blocked) {
+  const footprint = surface.footprint
+  if (!footprint?.length || !spec.length) return []
+  const taken = new Set(blocked)
+  const slots = seatSlots(map, footprint, taken)
+  if (!slots.length) return []
+  const xs = footprint.map((cell) => cell.x), ys = footprint.map((cell) => cell.y)
+  const span = { w: Math.max(...xs) - Math.min(...xs) + 1, h: Math.max(...ys) - Math.min(...ys) + 1 }
+  const middle = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 }
+  const opposite = /** @type {Record<string, string>} */ ({ n: 's', s: 'n', e: 'w', w: 'e' })
+  const sideLength = (/** @type {string} */ side) => (side === 'n' || side === 's' ? span.w : span.h)
+  /** @type {Map<string, typeof slots>} */
+  const bySide = new Map()
+  for (const slot of slots) bySide.set(slot.side, [...(bySide.get(slot.side) ?? []), slot])
+  for (const list of bySide.values()) {
+    list.sort((a, b) => Math.hypot(a.x - middle.x, a.y - middle.y) - Math.hypot(b.x - middle.x, b.y - middle.y) || a.x - b.x || a.y - b.y)
+  }
+  // У стойки сидят только спереди: сторона, где мест больше и за спиной меньше стен.
+  const behind = (/** @type {typeof slots} */ list) => list.reduce((sum, slot) => sum + wallSidesAt(map, slot.x, slot.y).length, 0)
+  let order = [...bySide.keys()].sort((a, b) => sideLength(b) - sideLength(a)
+    || (bySide.get(b)?.length ?? 0) - (bySide.get(a)?.length ?? 0) || behind(bySide.get(a) ?? []) - behind(bySide.get(b) ?? []) || a.localeCompare(b))
+  if (order.length > 1 && bySide.has(opposite[order[0]])) order = [order[0], opposite[order[0]], ...order.slice(1).filter((side) => side !== opposite[order[0]])]
+  if (surface.assetId === 'bar_counter') order = order.slice(0, 1)
+  /** @type {ReturnType<typeof arrangeSeats>} */
+  const result = []
+  const free = (/** @type {{x: number, y: number}} */ slot) => !taken.has(`${slot.x},${slot.y}`)
+  const occupy = (/** @type {Array<{x: number, y: number}>} */ cells) => { for (const cell of cells) taken.add(`${cell.x},${cell.y}`) }
+  const tableScale = Number(surface.scale) > 0 ? Number(surface.scale) : 1
+  /**
+   * Сдвиг сиденья к столу внутри своей клетки: край модели стола не доходит
+   * до границы клеток, и стул по центру клетки стоял в половине клетки от
+   * стола. Футпринт тот же — меняется только точка рисунка (`propVisualLayout`).
+   */
+  const shiftToward = (/** @type {typeof slots[number]} */ slot, /** @type {import('./asset-registry.mjs').AssetEntry} */ asset) => {
+    const across = slot.side === 'n' || slot.side === 's' ? span.h : span.w
+    const tableInset = across / 2 * (1 - FOOTPRINT_FILL * tableScale)
+    const seatScale = (asset.scaleRange.min + asset.scaleRange.max) / 2
+    return Math.max(0, Math.min(0.4, 0.5 + tableInset - FOOTPRINT_FILL * seatScale / 2 - SEAT_GAP))
+  }
+  for (const [seatId, count] of spec) {
+    const asset = assetById(seatId)
+    if (!asset) continue
+    for (let index = 0; index < count; index += 1) {
+      if (asset.baseFootprint.w > 1 || asset.baseFootprint.h > 1) {
+        // Скамья: две соседние клетки вдоль одной стороны.
+        let bench = null
+        for (const side of order) {
+          const list = (bySide.get(side) ?? []).filter(free)
+          for (const slot of list) {
+            const along = side === 'n' || side === 's' ? { dx: 1, dy: 0 } : { dx: 0, dy: 1 }
+            const next = list.find((other) => other.x === slot.x + along.dx && other.y === slot.y + along.dy)
+            if (next) { bench = { slot, next }; break }
+          }
+          if (bench) break
+        }
+        if (!bench) continue
+        const cells = [{ x: bench.slot.x, y: bench.slot.y }, { x: bench.next.x, y: bench.next.y }]
+        occupy(cells)
+        result.push({ asset, cells, rotation: angleTowards(bench.slot, bench.slot.toward), x: bench.slot.x + 0.5, y: bench.slot.y + 0.5 })
+        continue
+      }
+      // Стул: по кругу сторон, чтобы сидели напротив друг друга, а не гурьбой с одного края.
+      let chosen = null
+      for (let turn = 0; turn < order.length && !chosen; turn += 1) {
+        const side = order[(result.length + turn) % order.length]
+        chosen = (bySide.get(side) ?? []).find(free) ?? null
+      }
+      if (!chosen) break
+      occupy([chosen])
+      const shift = shiftToward(chosen, asset)
+      const dx = Math.sign(chosen.toward.x - chosen.x), dy = Math.sign(chosen.toward.y - chosen.y)
+      result.push({
+        asset,
+        cells: [{ x: chosen.x, y: chosen.y }],
+        rotation: angleTowards(chosen, chosen.toward),
+        x: Number((chosen.x + 0.5 + dx * shift).toFixed(3)),
+        y: Number((chosen.y + 0.5 + dy * shift).toFixed(3)),
+      })
+    }
+  }
+  return result
+}
+
+/**
+ * Ставит сиденья к уже стоящей поверхности (стол, стойка, конторка).
+ * Возвращает поставленные предметы. Используется расстановкой и
+ * дообстановкой пустых четвертей зала (`building-generator`).
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {import('./tactical-map.mjs').TacticalProp} surface
+ * @param {{idPrefix: string, blocked?: Set<string>, spec?: Array<[string, number]>, random?: () => number}} options
+ */
+export function seatAroundSurface(map, surface, { idPrefix, blocked = new Set(), spec = seatSpecFor(surface.assetId), random = () => 0.5 }) {
+  const occupiedNow = new Set(blocked)
+  for (const prop of map.props) {
+    if (prop.mount) continue
+    for (const cell of prop.footprint ?? []) occupiedNow.add(`${cell.x},${cell.y}`)
+  }
+  const seats = arrangeSeats(map, surface, spec, occupiedNow)
+  /** @type {import('./tactical-map.mjs').TacticalProp[]} */
+  const added = []
+  seats.forEach((seat, index) => {
+    const span = seat.asset.scaleRange.max - seat.asset.scaleRange.min
+    added.push(addProp(map, {
+      id: `${idPrefix}-${index}-${seat.asset.id}`,
+      assetId: seat.asset.id,
+      x: seat.x,
+      y: seat.y,
+      rotation: seat.rotation,
+      scale: Number((seat.asset.scaleRange.min + random() * span).toFixed(3)),
+      footprint: seat.cells,
+      zOrder: 0,
+      blocksMove: seat.asset.blocksMove,
+      blocksSight: seat.asset.blocksSight,
+      cover: seat.asset.cover,
+      destructible: seat.asset.destructible,
+      hp: seat.asset.hp,
+      interactive: seat.asset.interactive,
+    }))
+  })
+  return added
+}
+
 /**
  * Центры шаблонов помещений: к чему тянется предмет набора. Центр ставится
  * первым (он крупнее и обязателен), остальное собирается вокруг.
@@ -362,12 +654,18 @@ const SET_ANCHORS = Object.freeze({
   mooring_bollard: ['capstan', 'dock_crane'], lobster_cage: ['fishing_crates', 'cargo_net'], sail_bundle: ['cargo_net', 'rope_coils'],
 })
 
-/** Четыре стороны в порядке n, e, s, w. Поворот 0° смотрит на север. */
+/**
+ * Четыре стороны в порядке n, e, s, w и поворот предмета, стоящего спиной к
+ * стене этой стороны. Поворот 0° смотрит на юг (+y), 90° — на запад, 180° — на
+ * север, 270° — на восток: так его читают 2D и 3D (`propVisualLayout`,
+ * `group.rotation.y = -rotation`). Прежде здесь стоял угол на саму стену, и
+ * камин, шкаф и полки смотрели лицом в кладку (обзор 2026-10-10).
+ */
 const SIDES = Object.freeze([
-  { dx: 0, dy: -1, facing: 180 },
-  { dx: 1, dy: 0, facing: 270 },
-  { dx: 0, dy: 1, facing: 0 },
-  { dx: -1, dy: 0, facing: 90 },
+  { dx: 0, dy: -1, facing: 0 },
+  { dx: 1, dy: 0, facing: 90 },
+  { dx: 0, dy: 1, facing: 180 },
+  { dx: -1, dy: 0, facing: 270 },
 ])
 
 /**
@@ -396,6 +694,10 @@ function wallSidesAt(map, x, y) {
     const edge = edgeBetween(map, x, y, x + side.dx, y + side.dy)
     if (edge && (edge.kind === 'wall' || edge.kind === 'rail')) return true
     const neighbor = cellAt(map, x + side.dx, y + side.dy)
+    // Точка появления на время расстановки закрыта (`reserveDesignSpawn` в
+    // генераторе зданий), но это пол, а не стена: к ней прислонялись камин,
+    // полка и настенный фонарь посреди зала (обзор генератора 2026-10-10).
+    if (neighbor && !neighbor.passable && map.spawnPoints.some((point) => point.x === neighbor.x && point.y === neighbor.y)) return false
     return !neighbor || !neighbor.passable
   })
 }
@@ -456,6 +758,11 @@ function fittingFootprint(map, blocked, anchor, footprint, rotation) {
   const quarter = Math.round(((rotation % 360) + 360) % 360 / 90) % 4
   const width = quarter % 2 === 0 ? footprint.w : footprint.h
   const height = quarter % 2 === 0 ? footprint.h : footprint.w
+  // Предмет целиком в одной зоне, на одной высоте и без ребра между своими
+  // клетками. После тонких стен по обе стороны стены — проходимый пол, и
+  // очаг 2×1 вставал одной клеткой в доме, другой во дворе: модель стояла
+  // сквозь стену (обзор генератора 2026-10-10, 235 предметов на 42 картах).
+  const home = cellAt(map, anchor.x, anchor.y)
   for (let offsetY = 0; offsetY < height; offsetY += 1) {
     for (let offsetX = 0; offsetX < width; offsetX += 1) {
       /** @type {Array<{x: number, y: number}>} */
@@ -467,6 +774,9 @@ function fittingFootprint(map, blocked, anchor, footprint, rotation) {
           const y = anchor.y - offsetY + dy
           const target = cellAt(map, x, y)
           if (!target || !target.passable || blocked.has(`${x},${y}`)) fits = false
+          else if (home && (target.zone !== home.zone || target.elevation !== home.elevation)) fits = false
+          else if (dx > 0 && edgeBetween(map, x - 1, y, x, y)) fits = false
+          else if (dy > 0 && edgeBetween(map, x, y - 1, x, y)) fits = false
           else cells.push({ x, y })
         }
       }
@@ -500,8 +810,13 @@ function scoreCellForAsset(map, asset, cell, placed, context = {}, random = () =
   // окном стоит, как и в жизни.
   if (asset.blocksSight && windowBeside(map, cell.x, cell.y)) return Number.NEGATIVE_INFINITY
 
-  if (asset.anchor === 'wall') score += walls * 6
-  else if (asset.anchor === 'corner') score += walls >= 2 ? 14 : walls * 2
+  if (asset.anchor === 'wall') {
+    // Мебель со спинкой и настенная вещь без стены рядом стояли посреди
+    // комнаты задом к пустоте и с поворотом наугад: обязательной полке за
+    // стойкой хватало и низкой оценки (обзор генератора 2026-10-10).
+    if (!walls && (BACKED_FURNITURE.has(asset.id) || WALL_MOUNTS.has(asset.id))) return Number.NEGATIVE_INFINITY
+    score += walls * 6
+  } else if (asset.anchor === 'corner') score += walls >= 2 ? 14 : walls * 2
   else score -= walls * 1.5
 
   // Одинаковое вплотную — штамп, а не обстановка: три урны в ряд, пять
@@ -622,7 +937,8 @@ function nearestPlaced(placed, cell, match) {
 
 /**
  * Поворот предмета. Якорь `wall` разворачивает лицом внутрь помещения; стул
- * поворачивается к ближайшему столу; остальное получает свободный угол.
+ * поворачивается к ближайшему столу, без стола — в комнату; кресло — к огню;
+ * остальное получает свободный угол.
  *
  * @param {import('./tactical-map.mjs').TacticalMap} map
  * @param {import('./asset-registry.mjs').AssetEntry} asset
@@ -630,9 +946,10 @@ function nearestPlaced(placed, cell, match) {
  * @param {Array<{assetId: string, x: number, y: number, zoneId?: string}>} placed
  * @param {string} zoneId
  * @param {() => number} random
+ * @param {{minX: number, maxX: number, minY: number, maxY: number}|null} [zoneBounds] габарит комнаты
  * @returns {number}
  */
-function rotationFor(map, asset, cell, placed, zoneId, random) {
+function rotationFor(map, asset, cell, placed, zoneId, random, zoneBounds = null) {
   if (asset.anchor === 'wall' || asset.anchor === 'corner') {
     const walls = wallSidesAt(map, cell.x, cell.y)
     if (walls.length) return walls[Math.floor(random() * walls.length) % walls.length].facing
@@ -641,6 +958,14 @@ function rotationFor(map, asset, cell, placed, zoneId, random) {
     const localPlaced = zoneId ? placed.filter((record) => record.zoneId === zoneId) : placed
     const table = closestRecord(localPlaced, cell, (id) => id.startsWith('table_') || id === 'bar_counter')
     if (table) return angleTowards(cell, table)
+    if (zoneBounds) return angleTowards(cell, { x: (zoneBounds.minX + zoneBounds.maxX) / 2, y: (zoneBounds.minY + zoneBounds.maxY) / 2 })
+  }
+  // Кресло читают у огня: к очагу комнаты, без очага — в комнату.
+  if (asset.id === 'armchair') {
+    const localPlaced = zoneId ? placed.filter((record) => record.zoneId === zoneId) : placed
+    const hearth = closestRecord(localPlaced, cell, (id) => id === 'fireplace' || id === 'hearth_fire' || id === 'brazier')
+    if (hearth) return angleTowards(cell, hearth)
+    if (zoneBounds) return angleTowards(cell, { x: (zoneBounds.minX + zoneBounds.maxX) / 2, y: (zoneBounds.minY + zoneBounds.maxY) / 2 })
   }
   if (asset.id.startsWith('tree_') || asset.id === 'bush' || asset.id === 'rock_small' || asset.id === 'boulder') {
     // У кроны нет лица, поэтому угол свободный — именно он и создаёт
@@ -895,7 +1220,7 @@ function propAccessTargets(map) {
 }
 
 /** Главная мебель комнаты: ремонт доступа снимает её последней. */
-const KEY_FURNITURE = new Set(['bed', 'bunk_bed', 'bar_counter', 'bar_shelf', 'fireplace', 'altar', 'well', 'stairs_up', 'stairs_down', 'sarcophagus', 'table_long', 'table_round', 'market_stall'])
+export const KEY_FURNITURE = new Set(['bed', 'bunk_bed', 'bar_counter', 'bar_shelf', 'fireplace', 'altar', 'well', 'stairs_up', 'stairs_down', 'sarcophagus', 'table_long', 'table_round', 'market_stall'])
 const KEY_FURNITURE_COST = 4
 
 /** Закуток меньше этого числа клеток не стоит снятой мебели. */
@@ -1067,6 +1392,16 @@ function removeBlockingProp(map, index) {
       changed = true
     }
   }
+  // Гарнитур уходит вместе со столом: стул, смотрящий в пустое место, — тот
+  // же «стул без стола».
+  if (SEATING_SURFACES.has(removed.assetId)) {
+    const own = new Set((removed.footprint ?? []).map((cell) => `${cell.x},${cell.y}`))
+    for (const prop of map.props) {
+      if (removedProps.has(prop) || !SEATS.has(prop.assetId)) continue
+      const { dx, dy } = facingVector(prop.rotation)
+      if ((prop.footprint ?? []).some((cell) => own.has(`${cell.x + dx},${cell.y + dy}`))) removedProps.add(prop)
+    }
+  }
   map.props = map.props.filter((prop) => !removedProps.has(prop))
   return true
 }
@@ -1160,6 +1495,8 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
     footprint: prop.footprint,
   }))
   let counter = map.props.length
+  // Точка появления — не место для мебели середины комнаты.
+  const spawnCells = new Set(map.spawnPoints.map((point) => `${point.x},${point.y}`))
   // Порог любой двери и клетка за ним по прямой закрыты для мебели всех зон:
   // двухклеточный прилавок площади или крона дуба во дворе иначе выступали
   // на подход к двери соседнего дома — резерв зоны их не видел.
@@ -1232,6 +1569,8 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       }
       if (withCompanions) {
         for (const [companionId, count] of COMPANIONS[asset.id] ?? []) {
+          // Сиденья приходят гарнитуром вместе с поверхностью (`arrangeSeats`).
+          if (SEATS.has(companionId)) continue
           for (let index = 0; index < count && wanted.length < budget; index += 1) {
             enqueue(assetById(companionId), false, false)
           }
@@ -1252,6 +1591,10 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
     // слоты обязательных предметов.
     for (const asset of requiredAssets) {
       for (const [companionId, count] of COMPANIONS[asset.id] ?? []) {
+        // Сиденья обязательного стола не зависят от бюджета: в ужатом зале
+        // таверны бюджет съедали стойка, очаг и три стола, и стульев не
+        // оставалось ни одного (обзор 2026-10-10).
+        if (SEATS.has(companionId)) continue
         for (let index = 0; index < count && wanted.length < budget; index += 1) {
           enqueue(assetById(companionId), false, false)
         }
@@ -1291,6 +1634,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
     const requiredRemaining = new Map(requiredCounts)
     // Обязательность принадлежит конкретному экземпляру. Дополнительный
     // сундук того же вида не должен опережать обязательный штабель бочек.
+    /** @type {Array<{asset: import('./asset-registry.mjs').AssetEntry, required: boolean, requeued?: boolean}>} */
     const order = wanted.map((asset) => {
       const required = (requiredRemaining.get(asset.id) ?? 0) > 0
       if (required) requiredRemaining.set(asset.id, /** @type {number} */ (requiredRemaining.get(asset.id)) - 1)
@@ -1303,19 +1647,100 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         // Сначала ставим поверхности, которые тянут companions (столы,
         // очаги), затем малые required: так стул получает якорь, а сундук
         // успевает занять единственную свободную клетку до штабелей.
-        const leftHasCompanions = (COMPANIONS[left.id]?.length ?? 0) > 0
-        const rightHasCompanions = (COMPANIONS[right.id]?.length ?? 0) > 0
-        if (leftHasCompanions !== rightHasCompanions) return leftHasCompanions ? -1 : 1
+        // Полка за стойкой встаёт сразу за крупным у стены (стойка, очаг) и
+        // до столов: полка без стены теперь не ставится вовсе, а столы
+        // разбирали стены зала, и в каждом третьем трактире полке не
+        // оставалось места (обзор генератора 2026-10-10).
+        const rank = (/** @type {import('./asset-registry.mjs').AssetEntry} */ asset) => {
+          const companions = (COMPANIONS[asset.id]?.length ?? 0) > 0
+          if (companions && asset.anchor === 'wall') return 0
+          if (asset.id === 'bar_shelf') return 1
+          return companions ? 2 : 3
+        }
+        const leftRank = rank(left)
+        const rightRank = rank(right)
+        if (leftRank !== rightRank) return leftRank - rightRank
         const leftArea = left.baseFootprint.w * left.baseFootprint.h
         const rightArea = right.baseFootprint.w * right.baseFootprint.h
-        return leftHasCompanions ? rightArea - leftArea : leftArea - rightArea
+        return leftRank < 3 ? rightArea - leftArea : leftArea - rightArea
       }
       return (right.baseFootprint.w * right.baseFootprint.h) - (left.baseFootprint.w * left.baseFootprint.h)
     })
 
+    /** @param {import('./asset-registry.mjs').AssetEntry} seatAsset */
+    const joinTable = (seatAsset) => {
+      const surfaces = map.props.filter((prop) => SEATING_SURFACES.has(prop.assetId) && prop.footprint.length
+        && cellAt(map, prop.footprint[0].x, prop.footprint[0].y)?.zone === plan.zoneId)
+      const blockedNow = new Set([...occupied, ...keepClear, ...thresholds])
+      for (const surface of surfaces) {
+        const [seat] = arrangeSeats(map, surface, [[seatAsset.id, 1]], blockedNow)
+        if (seat) return seat
+      }
+      return null
+    }
+    /** @param {ReturnType<typeof arrangeSeats>[number]} seat */
+    const addSeat = (seat) => {
+      const span = seat.asset.scaleRange.max - seat.asset.scaleRange.min
+      counter += 1
+      addProp(map, {
+        id: `prop-${counter}-${seat.asset.id}`,
+        assetId: seat.asset.id,
+        x: seat.x,
+        y: seat.y,
+        rotation: seat.rotation,
+        scale: Number((seat.asset.scaleRange.min + random() * span).toFixed(3)),
+        footprint: seat.cells,
+        zOrder: 0,
+        blocksMove: seat.asset.blocksMove,
+        blocksSight: seat.asset.blocksSight,
+        cover: seat.asset.cover,
+        destructible: seat.asset.destructible,
+        hp: seat.asset.hp,
+        interactive: seat.asset.interactive,
+      })
+      for (const cell of seat.cells) occupied.add(`${cell.x},${cell.y}`)
+      placed.push({ assetId: seat.asset.id, x: seat.cells[0].x, y: seat.cells[0].y, zoneId: plan.zoneId, footprint: seat.cells })
+    }
+
+    // Сиденья обязательных столов ставятся после всех обязательных предметов:
+    // иначе гарнитур занимал клетку, нужную лестнице или сундуку зала.
+    /** @type {import('./tactical-map.mjs').TacticalProp[]} */
+    const pendingSurfaces = []
+    const seatPending = () => {
+      for (const surface of pendingSurfaces.splice(0)) {
+        const spec = seatSpecFor(surface.assetId).filter(([id]) => allowed.has(id) || id === 'chair')
+        const seats = arrangeSeats(map, surface, spec, new Set([...occupied, ...keepClear, ...thresholds]))
+        for (const seat of seats) if (counter < maxProps) addSeat(seat)
+      }
+    }
+
     for (let index = 0; index < order.length && counter < maxProps; index += 1) {
       const { asset, required } = order[index]
       if (!asset) break
+      if (!required && pendingSurfaces.length) {
+        seatPending()
+        if (counter >= maxProps) break
+      }
+      // Стул из добора сначала ищет место у стола. Без стола стоит только
+      // обязательный (стул караульной, кресло кабинета): прежде добор ставил
+      // стулья посреди комнаты, в 2–10 клетках от ближайшего стола.
+      if (SEATS.has(asset.id)) {
+        const hasSurface = () => map.props.some((prop) => SEATING_SURFACES.has(prop.assetId) && prop.footprint.length
+          && cellAt(map, prop.footprint[0].x, prop.footprint[0].y)?.zone === plan.zoneId)
+        // Стул, ради которого позвали столик, уже сидит в его гарнитуре.
+        if (order[index].requeued && hasSurface()) continue
+        const seat = joinTable(asset)
+        if (seat) { addSeat(seat); continue }
+        if (!required) continue
+        // Обязательный стул: у полного стола лишний не ставится, а в комнате
+        // без стола сначала встаёт столик, и стул садится к нему.
+        if (hasSurface()) continue
+        const table = assetById('table_small')
+        if (!order[index].requeued && table && allowed.has(table.id)) {
+          order.splice(index + 1, 0, { asset: table, required: true }, { asset, required: true, requeued: true })
+          continue
+        }
+      }
       // Кандидаты по убыванию оценки, а не один лучший: широкий предмет у стены
       // часто не помещается именно в самой удачной клетке, и одна неудача
       // раньше выбрасывала его целиком — вместе со стойкой и очагом.
@@ -1358,7 +1783,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       let chosen = null
       const candidateLimit = required ? REQUIRED_PLACEMENT_ATTEMPTS : PLACEMENT_ATTEMPTS
       for (const candidate of candidates.slice(0, candidateLimit)) {
-        const rotation = rotationFor(map, asset, candidate.cell, placed, plan.zoneId, random)
+        const rotation = rotationFor(map, asset, candidate.cell, placed, plan.zoneId, random, zoneBounds)
         const blocked = new Set([...occupied, ...keepClear, ...thresholds])
         const footprint = fittingFootprint(map, blocked, candidate.cell, asset.baseFootprint, rotation)
         // Вторая клетка шкафа тоже не встаёт перед окном.
@@ -1374,7 +1799,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       // предмета. Optional props остаются на коротком пути.
       if (!chosen && required) {
         for (const candidate of candidates.slice(candidateLimit, candidateLimit + REQUIRED_RETRY_ATTEMPTS)) {
-          const rotation = rotationFor(map, asset, candidate.cell, placed, plan.zoneId, random)
+          const rotation = rotationFor(map, asset, candidate.cell, placed, plan.zoneId, random, zoneBounds)
           const blocked = new Set([...occupied, ...keepClear, ...thresholds])
           const footprint = fittingFootprint(map, blocked, candidate.cell, asset.baseFootprint, rotation)
           // Вторая клетка шкафа тоже не встаёт перед окном.
@@ -1408,6 +1833,43 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       })
       for (const cell of chosen.footprint) occupied.add(`${cell.x},${cell.y}`)
       placed.push({ assetId: asset.id, x: chosen.cell.x, y: chosen.cell.y, zoneId: plan.zoneId, footprint: chosen.footprint })
+      if (SEATING_SURFACES.has(asset.id)) {
+        pendingSurfaces.push(map.props[map.props.length - 1])
+        if (!required) seatPending()
+      }
+    }
+    seatPending()
+    const centerpiece = counter < maxProps
+      ? coreCenterpiece(map, plan.zoneId, normalizedPurpose(plan.purpose) || semantic?.purpose || '', cells, {
+        allowed, caps: profileCaps, blocked: new Set([...occupied, ...keepClear, ...thresholds, ...spawnCells]),
+      })
+      : null
+    if (centerpiece) {
+      const { asset, cell, footprint, rotation } = centerpiece
+      const span = asset.scaleRange.max - asset.scaleRange.min
+      counter += 1
+      const prop = addProp(map, {
+        id: `prop-${counter}-${asset.id}`,
+        assetId: asset.id,
+        x: cell.x + 0.5,
+        y: cell.y + 0.5,
+        rotation,
+        scale: Number((asset.scaleRange.min + random() * span).toFixed(3)),
+        footprint,
+        zOrder: asset.baseFootprint.w ? 0 : 1,
+        blocksMove: asset.blocksMove,
+        blocksSight: asset.blocksSight,
+        cover: asset.cover,
+        destructible: asset.destructible,
+        hp: asset.hp,
+        interactive: asset.interactive,
+      })
+      for (const point of footprint) occupied.add(`${point.x},${point.y}`)
+      placed.push({ assetId: asset.id, x: cell.x, y: cell.y, zoneId: plan.zoneId, footprint })
+      if (SEATING_SURFACES.has(asset.id)) {
+        pendingSurfaces.push(prop)
+        seatPending()
+      }
     }
   }
   attachPropSupports(map)

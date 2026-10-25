@@ -33,9 +33,29 @@ import {
  * Склеп устроен иначе (версия 2): камеры 225–625 фт², вырубленные в скале, и
  * ходы в клетку шириной между ними (`planChambers`). Разбиение отдавало склепу
  * всю карту: «фамильный склеп» выходил залом 180×150 футов с рядами колонн.
+ *
+ * Храм (версия 3) режется не по всей карте, а по корпусу своего размера
+ * посреди неё (`compactArea`): четыре помещения храма делили 26×26, и притвор
+ * выходил в 120–230 клеток — 3000–5800 фт² почти пустого пола (обзор
+ * генератора 2026-10-10). Остальное — порода, как вокруг камер склепа.
+ * Подземелье режется по-прежнему целиком: в ужатом корпусе второй вход в
+ * дальнее помещение находил место на одном сиде из восьми.
  */
 
-export const GRAPH_LAYOUT = Object.freeze({ id: 'graph-layout', version: '2' })
+export const GRAPH_LAYOUT = Object.freeze({ id: 'graph-layout', version: '3' })
+
+/** Соль раскладки камер склепа: версия 3 склеп не меняла. */
+const CHAMBER_RANDOM_SALT = `${GRAPH_LAYOUT.id}:2`
+
+/**
+ * Площадь корпуса на помещение, в клетках вместе с кладкой. Храм — около
+ * 1600 фт² на помещение: неф просторнее, притвор и ризница теснее, но
+ * разбиение случайно, и средняя мера держит их в пределах здания, а не
+ * площади.
+ *
+ * @type {Readonly<Record<string, number>>}
+ */
+const COMPACT_ROOM_CELLS = Object.freeze({ temple: 64 })
 
 /**
  * Соль случайности разбиения залами. Версия 2 изменила только склеп; храм и
@@ -617,6 +637,31 @@ function shuffle(items, random) {
  */
 
 /**
+ * Прямоугольник корпуса темы посреди карты: площадь по числу помещений
+ * (`COMPACT_ROOM_CELLS`), пропорции карты. Тема без меры и карта, которой
+ * корпус почти равен, режутся целиком.
+ *
+ * @param {string} theme
+ * @param {number} zoneCount
+ * @param {number} width
+ * @param {number} height
+ * @returns {LeafRect}
+ */
+export function compactArea(theme, zoneCount, width, height) {
+  const whole = { minX: 0, minY: 0, maxX: width - 1, maxY: height - 1 }
+  const perRoom = COMPACT_ROOM_CELLS[theme]
+  if (!perRoom) return whole
+  const target = perRoom * Math.max(1, zoneCount)
+  if (target >= width * height * 0.8) return whole
+  // Не уже одиннадцати: разбиение режет лист не ближе пяти клеток от края.
+  const areaWidth = Math.min(width, Math.max(11, Math.round(Math.sqrt(target * width / height))))
+  const areaHeight = Math.min(height, Math.max(11, Math.round(target / areaWidth)))
+  const minX = Math.floor((width - areaWidth) / 2)
+  const minY = Math.floor((height - areaHeight) / 2)
+  return { minX, minY, maxX: minX + areaWidth - 1, maxY: minY + areaHeight - 1 }
+}
+
+/**
  * Собирает карту по графу зон.
  *
  * @param {import('./scene-graph.mjs').SceneGraph} graph
@@ -676,14 +721,14 @@ export function layoutSceneGraph(graph, {
   // (карту заказали слишком тесной), склеп строится прежним разбиением:
   // лучше просторный склеп, чем склеп без помещения.
   const planned = theme === 'crypt'
-    ? planChambers(graph, safeWidth, safeHeight, randomFor(`${GRAPH_LAYOUT.id}:${GRAPH_LAYOUT.version}:${seed}`))
+    ? planChambers(graph, safeWidth, safeHeight, randomFor(`${CHAMBER_RANDOM_SALT}:${seed}`))
     : null
   /** @type {Map<string, LeafRect>} */
   let rooms
   if (planned) {
     rooms = planned.rooms
   } else {
-    const leaves = splitArea({ minX: 0, minY: 0, maxX: safeWidth - 1, maxY: safeHeight - 1 }, graph.zones.length, random)
+    const leaves = splitArea(compactArea(theme, graph.zones.length, safeWidth, safeHeight), graph.zones.length, random)
     if (leaves.length < graph.zones.length) {
       warnings.push(`карта вмещает ${leaves.length} помещений, а зон ${graph.zones.length}`)
     }

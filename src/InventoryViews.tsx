@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import {
-  ArrowLeft, ArrowRight, Backpack, Check, Coins, Download, FileJson, ImagePlus, LockKeyhole, Maximize2, PackageOpen,
-  Pencil, Plus, Save, Search, Shield, Sparkles, Trash2, Upload, Weight, X, ZoomIn, ZoomOut,
+  ArrowLeft, ArrowRight, Backpack, Badge, Check, Circle, Coins, Download, FileJson, Gem, ImagePlus, LockKeyhole, Maximize2, PackageOpen,
+  Pencil, Plus, Save, Search, Shield, ShieldHalf, Shirt, Sparkles, Sword, Trash2, Upload, Wind, X, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { generateItemImage } from './ai-client'
 import { ABILITY_SHORT_LABELS, HeroFaceInitials, damageTypeLabel, hasHeroPortrait, heroFaceMode, heroFaceStyle } from './app-shared'
@@ -16,7 +16,8 @@ import { CombatIcon } from './CombatIcon'
 import { PhbCharacterOptions } from './PhbCharacterOptions'
 import type { PhbCharacterOptionsCatalog, PhbCharacterOptionsValue } from './phb-character-types'
 import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
-import { EquipmentPreview } from './EquipmentPreview'
+import { EquipmentStage, itemsWithoutModel } from './EquipmentPreview'
+import './inventory-doll.css'
 import { mechanicsSupportPresentation } from './tactical-ui'
 
 // Сокращения характеристик общие с боевой хроникой: словарь один, и лист героя
@@ -726,6 +727,54 @@ function ItemModal({ item, isNew, onClose, onSave, onRemove }: { item: Inventory
   </section></div>
 }
 
+type DollSlotId = 'neck' | 'cloak' | 'body' | 'brooch' | 'ring-1' | 'ring-2' | 'main_hand' | 'off_hand'
+
+/**
+ * Места куклы героя. Слот вещи приходит с сервера (`capabilities.equip_slot`,
+ * каталог); кукла только раскладывает надетое по местам на теле. Колец два:
+ * у сервера это разные слоты по виду кольца, а у героя — две руки.
+ */
+const DOLL_SLOTS: Array<{ id: DollSlotId; label: string; accepts: (slot: string) => boolean; icon: ReactNode }> = [
+  { id: 'neck', label: 'Шея', accepts: (slot) => slot === 'focus' || slot.startsWith('neck'), icon: <Gem size={22} strokeWidth={1.4} /> },
+  { id: 'cloak', label: 'Плащ', accepts: (slot) => slot === 'cloak', icon: <Wind size={22} strokeWidth={1.4} /> },
+  { id: 'body', label: 'Доспех', accepts: (slot) => slot === 'body', icon: <Shirt size={22} strokeWidth={1.4} /> },
+  { id: 'brooch', label: 'Брошь', accepts: (slot) => slot === 'brooch', icon: <Badge size={22} strokeWidth={1.4} /> },
+  { id: 'ring-1', label: 'Кольцо', accepts: (slot) => slot.startsWith('ring'), icon: <Circle size={20} strokeWidth={1.4} /> },
+  { id: 'ring-2', label: 'Кольцо', accepts: (slot) => slot.startsWith('ring'), icon: <Circle size={20} strokeWidth={1.4} /> },
+  { id: 'main_hand', label: 'Главная рука', accepts: (slot) => slot === 'main_hand', icon: <Sword size={26} strokeWidth={1.3} /> },
+  { id: 'off_hand', label: 'Вторая рука', accepts: (slot) => slot === 'off_hand', icon: <ShieldHalf size={26} strokeWidth={1.3} /> },
+]
+const DOLL_LEFT: DollSlotId[] = ['neck', 'cloak', 'body']
+/** Тип данных перетаскивания: вещь героя по её id. */
+const ITEM_DRAG_TYPE = 'application/x-skazanie-item'
+const DOLL_RIGHT: DollSlotId[] = ['brooch', 'ring-1', 'ring-2']
+
+/** Слот вещи: серверная способность, а для старых сохранений без каталога — вид вещи. */
+function equipSlotOf(item: InventoryItem): string {
+  return item.capabilities?.equip_slot ?? (item.type === 'weapon' && item.combat ? 'main_hand' : item.type === 'armor' ? 'body' : '')
+}
+
+function rarityClass(item: InventoryItem): string {
+  return `rarity-edge-${item.rarity.replace(' ', '-')}`
+}
+
+function weaponLine(item: InventoryItem): string {
+  const combat = item.combat
+  if (!combat) return ''
+  // Модификатор удара — только из серверной сводки: число считает движок тем
+  // же путём, что и атаку, а без сводки (чужой герой) кукла его не угадывает.
+  const summary = item.attack_summary
+  if (summary) {
+    const sign = summary.attack_modifier >= 0 ? '+' : ''
+    const kind = (damageTypeLabel(summary.damage_type) || summary.damage_type).toLocaleLowerCase('ru')
+    const range = summary.kind === 'ranged' ? ` · ${summary.normal_range_feet}/${summary.range_feet} фт.` : ''
+    return `${sign}${summary.attack_modifier} · ${summary.damage_expression} ${kind}${range}`
+  }
+  const ability = combat.ability ? abilityNames[combat.ability] : ''
+  const range = combat.kind === 'melee' ? '' : ` · ${combat.normalRange}/${combat.longRange ?? combat.normalRange} фт.`
+  return `${combat.damage} ${damageTypeLabel(combat.damageType) || combat.damageType}${ability ? ` · ${ability}` : ''}${range}`
+}
+
 export function InventoryView({
   player,
   party,
@@ -743,6 +792,8 @@ export function InventoryView({
   onAttune,
   onActivate,
   onCreateHero,
+  onSelectHero,
+  selectableHeroIds,
   campaignId = '',
   appearance,
 }: {
@@ -762,12 +813,29 @@ export function InventoryView({
   onAttune: (itemId: string, attuned: boolean) => void
   onActivate: (itemId: string, activated: boolean) => void
   onCreateHero?: () => void
+  /** Переключение героя во вкладке: только герои, к которым у зрителя есть доступ. */
+  onSelectHero?: (heroId: string) => void
+  selectableHeroIds?: string[]
   campaignId?: string
   appearance?: ActorAppearance
 }) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<InventoryCategory>('all')
   const [sort, setSort] = useState<InventorySort>('default')
+  const [slotFilter, setSlotFilter] = useState<DollSlotId | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [dragItemId, setDragItemId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<DollSlotId | 'bag' | null>(null)
+  const detailRef = useRef<HTMLElement>(null)
+  const [revealTick, setRevealTick] = useState(0)
+  // Выбор в кукле или сумке подкручивает карточку вещи в поле зрения: на
+  // невысоком экране она стоит ниже сумки и иначе осталась бы за краем.
+  const choose = (itemId: string) => { setSelectedId(itemId); setRevealTick((value) => value + 1) }
+  useEffect(() => {
+    if (!revealTick) return
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    detailRef.current?.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' })
+  }, [revealTick])
   const recipients = useMemo(() => party.filter((candidate) => candidate.id !== player.id), [party, player.id])
   const [recipientId, setRecipientId] = useState(recipients[0]?.id ?? '')
   const [transferQuantities, setTransferQuantities] = useState<Record<string, number>>({})
@@ -782,21 +850,44 @@ export function InventoryView({
   const totalQuantity = useMemo(() => player.inventory.reduce((sum, item) => sum + Math.max(0, item.quantity), 0), [player.inventory])
   const equippedCount = useMemo(() => player.inventory.filter((item) => item.equipped).length, [player.inventory])
   const attunedCount = useMemo(() => player.inventory.filter((item) => item.attuned_to === player.id).length, [player.inventory, player.id])
+  const attunementLimit = player.inventoryLoad?.attunement_limit ?? 3
   const inventoryCapacity = player.inventoryLoad?.capacity ?? Math.max(0, player.abilities.str * 15)
   const inventoryOverloaded = player.inventoryLoad?.encumbered ?? totalWeight > inventoryCapacity
+  const loadShare = inventoryCapacity > 0 ? Math.min(1, totalWeight / inventoryCapacity) : 0
   const normalizedQuery = query.trim().toLocaleLowerCase('ru')
+  const missingModels = useMemo(() => itemsWithoutModel(player, appearance), [appearance, player])
+
+  // Раскладка надетого по местам куклы. Что не нашло места (вещь сюжета со
+  // своим слотом), остаётся строкой «Ещё надето», а не пропадает.
+  const { doll, extraWorn } = useMemo(() => {
+    const assigned = new Map<DollSlotId, InventoryItem>()
+    const extra: InventoryItem[] = []
+    for (const item of player.inventory.filter((entry) => entry.equipped)) {
+      const slot = item.equipped_slot === 'off_hand' ? 'off_hand' : equipSlotOf(item)
+      const place = DOLL_SLOTS.find((entry) => entry.accepts(slot) && !assigned.has(entry.id))
+      if (place) assigned.set(place.id, item)
+      else extra.push(item)
+    }
+    return { doll: assigned, extraWorn: extra }
+  }, [player.inventory])
+  const mainWeapon = doll.get('main_hand')
+  const offHandBlocked = !doll.get('off_hand') && mainWeapon?.combat?.twoHanded === true
+
   const categoryCountFor = (value: InventoryCategory) => value === 'all'
     ? player.inventory.length
     : value === 'equipped'
       ? equippedCount
       : player.inventory.filter((item) => item.type === value).length
+  const visibleCategories = inventoryCategoryOptions.filter(({ id }) => id === 'all' || categoryCountFor(id) > 0)
+  const slotSpec = slotFilter ? DOLL_SLOTS.find((entry) => entry.id === slotFilter) : undefined
   const items = useMemo(() => {
     const filtered = player.inventory.filter((item) => {
       const matchesQuery = !normalizedQuery || item.name.toLocaleLowerCase('ru').includes(normalizedQuery)
       const matchesCategory = category === 'all'
         || category === 'equipped' && item.equipped
         || item.type === category
-      return matchesQuery && matchesCategory
+      const matchesSlot = !slotSpec || (item.capabilities?.equippable !== false && slotSpec.accepts(equipSlotOf(item)))
+      return matchesQuery && matchesCategory && matchesSlot
     })
     if (sort === 'default') return filtered
     return [...filtered].sort((left, right) => {
@@ -805,21 +896,28 @@ export function InventoryView({
       if (sort === 'weight') return (right.weight * right.quantity) - (left.weight * left.quantity) || left.name.localeCompare(right.name, 'ru')
       return right.quantity - left.quantity || left.name.localeCompare(right.name, 'ru')
     })
-  }, [category, normalizedQuery, player.inventory, sort])
+  }, [category, normalizedQuery, player.inventory, slotSpec, sort])
+  // Выбранная вещь живёт, пока она есть у героя; после передачи или
+  // последнего глотка зелья карточка переходит к первой вещи списка.
+  const selected = player.inventory.find((item) => item.id === selectedId) ?? items[0] ?? null
   const activeRecipientId = recipients.some((candidate) => candidate.id === recipientId) ? recipientId : recipients[0]?.id ?? ''
   const recipientKey = recipients.map((candidate) => candidate.id).join('|')
   useEffect(() => {
     if (!recipients.some((candidate) => candidate.id === recipientId)) setRecipientId(recipients[0]?.id ?? '')
   }, [player.id, recipientId, recipientKey, recipients])
+  useEffect(() => { setSelectedId(null); setSlotFilter(null) }, [player.id])
   const setupRequired = player.characterSetupRequired === true
+  const filtersActive = Boolean(query) || category !== 'all' || sort !== 'default' || slotFilter !== null
   const emptyInventoryMessage = setupRequired
     ? { title: 'Герой ещё не создан', text: 'Сначала завершите создание героя — после этого здесь появятся его вещи.', action: 'Создать героя' }
-    : normalizedQuery || category !== 'all'
-      ? { title: 'Ничего не найдено', text: 'Попробуйте изменить запрос или очистить поиск.', action: null }
+    : filtersActive && player.inventory.length
+      ? { title: 'Ничего не найдено', text: slotSpec ? `В сумке нет вещей для места «${slotSpec.label}».` : 'Попробуйте изменить запрос или сбросить фильтры.', action: null }
       : { title: 'Сумка пуста', text: 'Предметы появятся здесь, когда герой найдёт или получит их в приключении.', action: null }
+  const heroChoices = party.filter((candidate) => !selectableHeroIds || selectableHeroIds.includes(candidate.id))
+
   const enemyTargetFor = (itemId: string) => {
-    const selected = useTargets[itemId]
-    return enemyTargets.some((candidate) => candidate.id === selected) ? selected : enemyTargets[0]?.id
+    const choice = useTargets[itemId]
+    return enemyTargets.some((candidate) => candidate.id === choice) ? choice : enemyTargets[0]?.id
   }
   const chargesToSpendFor = (item: InventoryItem) => {
     const use = item.capabilities?.use
@@ -834,13 +932,13 @@ export function InventoryView({
   const useModeFor = (item: InventoryItem) => useModes[item.id] ?? 'target'
   const pointTargetFor = (item: InventoryItem) => pointTargets[item.id] ?? { x: player.x, y: player.y }
   const partyTargetFor = (item: InventoryItem) => {
-    const selected = useTargets[item.id]
-    return useTargetOptions.some((candidate) => candidate.id === selected) ? selected : player.id
+    const choice = useTargets[item.id]
+    return useTargetOptions.some((candidate) => candidate.id === choice) ? choice : player.id
   }
   const weaponTargetFor = (item: InventoryItem) => {
-    const selected = weaponTargets[item.id]
-    return usableWeapons.some((weapon) => weapon.id === selected)
-      ? selected
+    const choice = weaponTargets[item.id]
+    return usableWeapons.some((weapon) => weapon.id === choice)
+      ? choice
       : usableWeapons.find((weapon) => weapon.equipped)?.id ?? usableWeapons[0]?.id
   }
   const useOptionsFor = (item: InventoryItem): ItemUseOptions => {
@@ -903,8 +1001,7 @@ export function InventoryView({
   const attunementDisabledReasonFor = (item: InventoryItem) => {
     if (combatActive) return 'Настройка на предмет выполняется вне боя.'
     if (item.attuned_to && item.attuned_to !== player.id) return 'Предмет уже настроен на другого героя.'
-    const limit = player.inventoryLoad?.attunement_limit ?? 3
-    if (!item.attuned_to && attunedCount >= limit) return `Достигнут лимит настроенных предметов (${limit}).`
+    if (!item.attuned_to && attunedCount >= attunementLimit) return `Достигнут лимит настроенных предметов (${attunementLimit}).`
     return ''
   }
   const transferDisabledReasonFor = (item: InventoryItem) => {
@@ -922,62 +1019,120 @@ export function InventoryView({
     setTransferQuantities((current) => ({ ...current, [item.id]: Math.max(1, Math.min(maximum, next)) }))
   }
 
-  return <section className="section-page inventory-page">
-    <div className="inventory-head"><div><span>Инвентарь</span><h1>{player.character}</h1><p>Снаряжение и находки героя.</p></div>
-      <div className="inventory-owner"><div className="mini-owner-avatar" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}</div><span><small>Герой</small><b>{player.character}</b></span></div>
-    </div>
-    <div className="inventory-summary">
-      <div><PackageOpen size={19} /><span><b>{player.inventory.length}</b><small>{totalQuantity} шт. · {equippedCount} надето</small></span></div>
-      <div className={inventoryOverloaded ? 'is-over' : ''}><Weight size={19} /><span><b>{totalWeight.toFixed(1)} / {inventoryCapacity}</b><small>{inventoryOverloaded ? 'перегруз' : `${Math.max(0, inventoryCapacity - totalWeight).toFixed(1)} фнт. свободно`}</small></span></div>
-      <div className="inventory-currency-summary"><Coins size={19} /><span><b>{player.currency.gold} зм</b><small>{player.currency.platinum} пл · {player.currency.silver} см · {player.currency.copper} мм</small></span></div>
-      <div><Shield size={19} /><span><b>{attunedCount}</b><small>настроено · лимит {player.inventoryLoad?.attunement_limit ?? 3}</small></span></div>
-    </div>
-    {campaignId && !setupRequired && <EquipmentPreview player={player} campaignId={campaignId} appearance={appearance} />}
-    <nav className="inventory-categories" aria-label="Категории инвентаря">
-      {inventoryCategoryOptions.map(({ id, label }) => {
-        const count = categoryCountFor(id)
-        return <button type="button" key={id} className={category === id ? 'active' : ''} aria-pressed={category === id} disabled={id !== 'all' && count === 0} onClick={() => setCategory(id)}><span>{label}</span><b>{count}</b></button>
-      })}
-    </nav>
-    <div className="inventory-toolbar">
-      <label className="inventory-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти предмет…" aria-label="Поиск по инвентарю" /></label>
-      <label className="inventory-sort"><span>Сортировка</span><select value={sort} aria-label="Сортировка инвентаря" disabled={busy} onChange={(event) => setSort(event.target.value as InventorySort)}>{inventorySortOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-      <button type="button" className="inventory-clear" disabled={!query && category === 'all' && sort === 'default'} onClick={() => { setQuery(''); setCategory('all'); setSort('default') }}><X size={14} />Сбросить</button>
-      {recipients.length > 0 && <label className="inventory-recipient"><span>Получатель</span><select value={activeRecipientId} disabled={busy} aria-label="Получатель передачи" onChange={(event) => setRecipientId(event.target.value)}>{recipients.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.character}</option>)}</select></label>}
-    </div>
-    <p className="inventory-result-count" aria-live="polite">Показано {items.length} из {player.inventory.length} стопок</p>
-    {error && <p className="item-error" role="alert">{error}</p>}
-    {items.length ? <div className="inventory-grid">{items.map((item) => {
-      const catalogDescription = item.capabilities?.catalog_description ?? starterItemPresentationFor(item)?.description
-      const combat = item.combat
-      const combatAbility = combat?.ability ? abilityNames[combat.ability] : ''
-      const combatRange = combat ? combat.kind === 'melee' ? `${combat.normalRange} фт.` : `${combat.normalRange}/${combat.longRange ?? combat.normalRange} фт.` : ''
-      const equipSlot = item.equipped_slot === 'off_hand' ? equipSlotNames.off_hand
-        : item.capabilities?.equip_slot ? equipSlotNames[item.capabilities.equip_slot] ?? item.capabilities.equip_slot : ''
-      const activated = item.capabilities?.activated ?? item.activated === true
-      const useDisabledReason = item.capabilities?.usable ? useDisabledReasonFor(item) : ''
-      const activationDisabledReason = item.capabilities?.activatable ? activationDisabledReasonFor(item) : ''
-      const attunementDisabledReason = item.capabilities?.requires_attunement ? attunementDisabledReasonFor(item) : ''
-      const transferDisabledReason = transferDisabledReasonFor(item)
-      return <article className={`inventory-card${item.equipped ? ' inventory-card--equipped' : ''}`} key={item.id}>
-        <div className="inventory-art"><ItemImage item={item} />{item.equipped && <span><Check size={11} />НАДЕТО</span>}{item.quantity > 1 && <b>×{item.quantity}</b>}{item.origin === 'stolen' && <i className="item-stolen-mark" title="Краденое. Это видите только вы и ведущий: за столом о находке никто не знает, пока вы не скажете сами.">КРАДЕНОЕ</i>}</div>
-        <div className="inventory-card-info">
-          <div className="item-card-heading"><small>{itemTypeNames[item.type]}</small><em className={`rarity ${item.rarity.replace(' ', '-')}`}>{item.rarity}</em></div>
-          <strong>{item.name}</strong>
-          <p className="item-card-description">{item.description || catalogDescription || 'Описание не указано.'}</p>
-          {item.properties && item.properties.trim() !== (item.description || catalogDescription || '').trim() && <p className="item-properties-inline"><Shield size={13} /><span>{item.properties}</span></p>}
-          <div className="inventory-item-facts">
-            <span><b>{item.quantity}</b><small>КОЛИЧЕСТВО</small></span>
-            <span><b>{(item.weight * item.quantity).toFixed(1)}</b><small>ФУНТОВ</small></span>
-            {combat ? <span><b>{combat.damage}</b><small>{combatAbility ? `${combatAbility} · ` : ''}{damageTypeLabel(combat.damageType) || combat.damageType}</small></span> : equipSlot ? <span><b>{equipSlot}</b><small>СЛОТ</small></span> : item.capabilities?.charges ? <span><b>{item.capabilities.charges.current}/{item.capabilities.charges.max}</b><small>ЗАРЯДЫ</small></span> : null}
-          </div>
-          {combat && <p className="item-combat-line">Дальность: {combatRange}{combat.twoHanded ? ' · двуручное' : ''}{combat.ammunition ? ' · боеприпас' : ''}</p>}
-          <div className="item-state-list">
-            {item.equipped && <span className="active">Надето</span>}
-            {item.attuned_to === player.id && <span className="active">Настроено</span>}
-            {activated && <span className="active">Активно</span>}
-          </div>
-        </div>
+  const pickSlot = (slot: DollSlotId) => {
+    const worn = doll.get(slot)
+    if (worn) { choose(worn.id); setSlotFilter(null); return }
+    // Пустое место показывает в сумке то, что можно туда надеть.
+    setSlotFilter((current) => current === slot ? null : slot)
+    setCategory('all')
+    setSelectedId(null)
+  }
+  const slotNote = (item: InventoryItem) => {
+    if (missingModels.has(item.id)) return { text: 'на фигуре не видно', tone: 'warn' }
+    if (item.capabilities?.requires_attunement && item.attuned_to !== player.id) return { text: 'нужна настройка', tone: 'warn' }
+    if (item.combat) return { text: weaponLine(item), tone: 'weapon' }
+    if (item.attuned_to === player.id) return { text: 'настроено', tone: 'good' }
+    if (item.rarity !== 'обычный') return { text: item.rarity, tone: '' }
+    // Подпись не повторяет название места: «Доспех — доспех» ничего не говорит.
+    return equipSlotOf(item) === 'off_hand' && item.type === 'armor' ? { text: 'щит', tone: '' } : null
+  }
+  // Перетаскивание — короткий путь к тем же командам, что и кнопки карточки:
+  // сервер решает, можно ли надеть, а кукла только не предлагает заведомо
+  // чужое место и в бою подчиняется тем же причинам отказа, что «Надеть».
+  const dragItem = dragItemId ? player.inventory.find((item) => item.id === dragItemId) ?? null : null
+  const dragBlockedReason = dragItem ? equipDisabledReasonFor(dragItem) : ''
+  const canDropOn = (slot: DollSlotId) => {
+    const spec = DOLL_SLOTS.find((entry) => entry.id === slot)
+    return Boolean(dragItem && spec && !busy && !dragBlockedReason && dragItem.capabilities?.equippable
+      && spec.accepts(equipSlotOf(dragItem)) && doll.get(slot)?.id !== dragItem.id)
+  }
+  const canDropInBag = Boolean(dragItem?.equipped && dragItem.capabilities?.equippable && !busy && !dragBlockedReason)
+  const startDrag = (event: DragEvent<HTMLElement>, item: InventoryItem) => {
+    if (busy || !item.capabilities?.equippable) { event.preventDefault(); return }
+    event.dataTransfer.setData(ITEM_DRAG_TYPE, item.id)
+    event.dataTransfer.setData('text/plain', item.name)
+    event.dataTransfer.effectAllowed = 'move'
+    setDragItemId(item.id)
+  }
+  const endDrag = () => { setDragItemId(null); setDropTarget(null) }
+  const draggedId = (event: DragEvent<HTMLElement>) => dragItemId ?? (event.dataTransfer.getData(ITEM_DRAG_TYPE) || null)
+  const dropOnSlot = (event: DragEvent<HTMLElement>, slot: DollSlotId) => {
+    event.preventDefault()
+    const itemId = draggedId(event)
+    const allowed = canDropOn(slot)
+    endDrag()
+    if (itemId && allowed) { onEquip(itemId, true); choose(itemId) }
+  }
+  const dropInBag = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    const itemId = draggedId(event)
+    const allowed = canDropInBag
+    endDrag()
+    if (itemId && allowed) { onEquip(itemId, false); choose(itemId) }
+  }
+  const renderSlot = (id: DollSlotId) => {
+    const spec = DOLL_SLOTS.find((entry) => entry.id === id)!
+    const item = doll.get(id)
+    const hand = id === 'main_hand' || id === 'off_hand'
+    const blocked = id === 'off_hand' && offHandBlocked
+    const note = item ? slotNote(item) : null
+    const active = item ? selected?.id === item.id : slotFilter === id
+    const droppable = canDropOn(id)
+    return <button
+      type="button"
+      key={id}
+      className={`doll-slot doll-slot--${hand ? 'hand' : 'body'}${item ? ` is-filled ${rarityClass(item)}` : ' is-empty'}${active ? ' is-active' : ''}${droppable ? ' can-drop' : ''}${dropTarget === id ? ' is-drop-target' : ''}`}
+      aria-pressed={active}
+      aria-label={item ? `${spec.label}: ${item.name}` : `${spec.label}: пусто${blocked ? ', занято двуручным оружием' : ''}`}
+      onClick={() => pickSlot(id)}
+      draggable={Boolean(item?.capabilities?.equippable) && !busy}
+      onDragStart={item ? (event) => startDrag(event, item) : undefined}
+      onDragEnd={endDrag}
+      onDragOver={(event) => { if (!droppable) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; if (dropTarget !== id) setDropTarget(id) }}
+      onDragLeave={() => setDropTarget((current) => current === id ? null : current)}
+      onDrop={(event) => dropOnSlot(event, id)}
+    >
+      <span className="doll-slot-tile">{item ? <ItemImage item={item} /> : spec.icon}</span>
+      <span className="doll-slot-text">
+        <small>{spec.label}</small>
+        <b>{item ? item.name : blocked ? 'занята' : 'пусто'}</b>
+        {note ? <em className={note.tone ? `is-${note.tone}` : undefined}>{note.text}</em> : blocked ? <em>двуручное оружие</em> : null}
+      </span>
+    </button>
+  }
+
+  const renderDetail = (item: InventoryItem) => {
+    const catalogDescription = item.capabilities?.catalog_description ?? starterItemPresentationFor(item)?.description
+    const combat = item.combat
+    const combatRange = combat ? combat.kind === 'melee' ? `${combat.normalRange} фт.` : `${combat.normalRange}/${combat.longRange ?? combat.normalRange} фт.` : ''
+    const equipSlot = item.equipped_slot === 'off_hand' ? equipSlotNames.off_hand
+      : item.capabilities?.equip_slot ? equipSlotNames[item.capabilities.equip_slot] ?? item.capabilities.equip_slot : ''
+    const activated = item.capabilities?.activated ?? item.activated === true
+    const useDisabledReason = item.capabilities?.usable ? useDisabledReasonFor(item) : ''
+    const activationDisabledReason = item.capabilities?.activatable ? activationDisabledReasonFor(item) : ''
+    const attunementDisabledReason = item.capabilities?.requires_attunement ? attunementDisabledReasonFor(item) : ''
+    const transferDisabledReason = transferDisabledReasonFor(item)
+    const description = item.description || catalogDescription || 'Описание не указано.'
+    return <article ref={detailRef} className={`inv-detail ${rarityClass(item)}`} aria-label={`Вещь: ${item.name}`}>
+      <div className="inv-detail-art"><ItemImage item={item} />{item.origin === 'stolen' && <i className="item-stolen-mark" title="Краденое. Это видите только вы и ведущий: за столом о находке никто не знает, пока вы не скажете сами.">КРАДЕНОЕ</i>}</div>
+      <div className="inv-detail-body">
+        <div className="inv-detail-meta"><span>{itemTypeNames[item.type]}</span><em className={`rarity ${item.rarity.replace(' ', '-')}`}>{item.rarity}</em></div>
+        <h3>{item.name}</h3>
+        <p className="inv-detail-description">{description}</p>
+        {item.properties && item.properties.trim() !== description.trim() && <p className="inv-detail-properties"><Shield size={13} /><span>{item.properties}</span></p>}
+        <dl className="inv-detail-facts">
+          <div><dt>в сумке</dt><dd>×{item.quantity}</dd></div>
+          <div><dt>вес</dt><dd>{(item.weight * item.quantity).toFixed(1)} фнт.</dd></div>
+          {combat && <div><dt>урон</dt><dd>{weaponLine(item)}</dd></div>}
+          {combat && combat.kind === 'melee' && <div><dt>досягаемость</dt><dd>{combatRange}{combat.twoHanded ? ' · двуручное' : ''}</dd></div>}
+          {!combat && equipSlot && <div><dt>место</dt><dd>{equipSlot}</dd></div>}
+          {item.capabilities?.charges && <div><dt>заряды</dt><dd>{item.capabilities.charges.current}/{item.capabilities.charges.max}</dd></div>}
+        </dl>
+        {(item.equipped || item.attuned_to === player.id || activated) && <div className="item-state-list">
+          {item.equipped && <span className="active">Надето</span>}
+          {item.attuned_to === player.id && <span className="active">Настроено</span>}
+          {activated && <span className="active">Активно</span>}
+        </div>}
         {catalogDescription && catalogDescription !== item.description && <details className="item-mechanics-limitation">
           <summary>Описание из каталога</summary>
           <p>{catalogDescription}</p>
@@ -986,63 +1141,132 @@ export function InventoryView({
           <summary><strong>{item.capabilities.mechanics_status === 'ruling-only' ? 'Требует решения ведущего' : 'Есть ограничение'}</strong><span>Подробнее</span></summary>
           <p>{item.capabilities.limitation}</p>
         </details>}
-        {item.capabilities?.charges && <div className="item-charge-state">Применения: <b>{item.capabilities.charges.current}/{item.capabilities.charges.max}</b></div>}
-        <div className="item-actions">
-          {item.capabilities?.equippable && <button disabled={busy || Boolean(equipDisabledReasonFor(item))} title={equipDisabledReasonFor(item) || equipCostHintFor(item) || undefined} onClick={() => onEquip(item.id, !item.equipped)}>{item.equipped ? 'Снять' : 'Экипировать'}{combatActive && !equipDisabledReasonFor(item) ? (combatObjectInteractionAvailable ? ' · бесплатно' : ' · действие') : ''}</button>}
-          {item.capabilities?.off_hand && !item.equipped && <button disabled={busy || Boolean(equipDisabledReasonFor(item))} title="Бой двумя оружиями: лёгкое оружие во второй руке, удар бонусным действием после атаки" onClick={() => onEquip(item.id, true, 'off_hand')}>Во вторую руку</button>}
-          {item.capabilities?.equippable && combatActive && <small className="item-use-hint" role="status">{equipDisabledReasonFor(item) || equipCostHintFor(item)}</small>}
-          {item.capabilities?.usable && item.capabilities.use?.use_modes && <label className="item-use-target">
-            <span>Режим</span>
-            <select value={useModeFor(item)} disabled={busy} aria-label={`Режим использования: ${item.name}`} onChange={(event) => setUseModes((current) => ({ ...current, [item.id]: event.target.value as 'target' | 'spill' }))}>
-              <option value="target">Бросить в цель</option>
-              <option value="spill">Разлить на клетку</option>
-            </select>
-          </label>}
-          {item.capabilities?.usable && ['party', 'enemy', 'creature'].includes(item.capabilities.use?.target ?? '')
-            && !(item.capabilities.use?.point_target && useModeFor(item) === 'spill') && <label className="item-use-target">
-            <span>Цель</span>
-            <select value={['enemy', 'creature'].includes(item.capabilities.use?.target ?? '') ? enemyTargetFor(item.id) ?? '' : partyTargetFor(item)} disabled={busy} aria-label={`Цель использования: ${item.name}`} onChange={(event) => setUseTargets((current) => ({ ...current, [item.id]: event.target.value }))}>
-              {(['enemy', 'creature'].includes(item.capabilities.use?.target ?? '') ? enemyTargets : useTargetOptions.map((candidate) => ({ id: candidate.id, label: candidate.character }))).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
-            </select>
-          </label>}
-          {item.capabilities?.usable && item.capabilities.use?.point_target
-            && (item.capabilities.use.kind === 'spill_zone' || useModeFor(item) === 'spill') && <fieldset className="item-point-target">
-            <legend>Клетка</legend>
-            <label><span>X</span><input type="number" value={pointTargetFor(item).x} disabled={busy} aria-label={`Координата X: ${item.name}`} onChange={(event) => setPointTargets((current) => ({ ...current, [item.id]: { ...pointTargetFor(item), x: Number(event.target.value) } }))} /></label>
-            <label><span>Y</span><input type="number" value={pointTargetFor(item).y} disabled={busy} aria-label={`Координата Y: ${item.name}`} onChange={(event) => setPointTargets((current) => ({ ...current, [item.id]: { ...pointTargetFor(item), y: Number(event.target.value) } }))} /></label>
-          </fieldset>}
-          {item.capabilities?.usable && item.capabilities.use?.requires_weapon && <label className="item-use-target">
-            <span>Оружие</span>
-            <select value={weaponTargetFor(item) ?? ''} disabled={busy || usableWeapons.length === 0} aria-label={`Оружие для покрытия: ${item.name}`} onChange={(event) => setWeaponTargets((current) => ({ ...current, [item.id]: event.target.value }))}>
-              {usableWeapons.map((weapon) => <option key={weapon.id} value={weapon.id}>{weapon.name}{weapon.equipped ? ' · в руках' : ''}</option>)}
-            </select>
-          </label>}
-          {item.capabilities?.usable && item.capabilities.use?.min_charges_to_spend != null && item.capabilities.use.max_charges_to_spend != null && <label className="item-charge-spend">
-            <span>Заряды</span>
-            <select value={chargesToSpendFor(item)} disabled={busy} aria-label={`Заряды для использования: ${item.name}`} onChange={(event) => setChargeSpends((current) => ({ ...current, [item.id]: Number(event.target.value) }))}>
-              {Array.from(
-                { length: Math.max(0, Math.min(item.capabilities.use.max_charges_to_spend, item.capabilities.charges?.current ?? 0) - item.capabilities.use.min_charges_to_spend + 1) },
-                (_, index) => item.capabilities!.use!.min_charges_to_spend! + index,
-              ).map((charges) => <option key={charges} value={charges}>{charges}</option>)}
-            </select>
-          </label>}
-          {item.capabilities?.usable && <button className="item-action-main" disabled={busy || Boolean(useDisabledReason)} title={useDisabledReason || undefined} onClick={() => onUse(item.id, useOptionsFor(item))}>
-            Использовать · {item.capabilities.use?.action_type === 'bonus_action' ? 'бонус' : item.capabilities.use?.action_type === 'action' ? 'действие' : 'вне боя'}
-          </button>}
-          {item.capabilities?.usable && useDisabledReason && <small className="item-use-hint" role="status">{useDisabledReason}</small>}
-          {item.capabilities?.activatable && <button className={activated ? 'item-action-main' : ''} disabled={busy || Boolean(activationDisabledReason)} title={activationDisabledReason || undefined} onClick={() => onActivate(item.id, !activated)}>
-            {activated ? 'Погасить' : 'Зажечь'}{combatActive ? ' · бонус' : ''}
-          </button>}
-          {item.capabilities?.activatable && activationDisabledReason && <small className="item-use-hint" role="status">{activationDisabledReason}</small>}
-          {item.capabilities?.requires_attunement && <button disabled={busy || Boolean(attunementDisabledReason)} title={attunementDisabledReason || undefined} onClick={() => onAttune(item.id, item.attuned_to !== player.id)}>{item.attuned_to === player.id ? 'Разорвать настройку' : 'Настроиться'}</button>}
-          {item.capabilities?.requires_attunement && attunementDisabledReason && <small className="item-use-hint" role="status">{attunementDisabledReason}</small>}
-          {recipients.length > 0 && <div className="item-transfer">
-            <label><span>Количество</span><input type="number" min={1} max={Math.max(1, item.quantity)} step={1} value={transferQuantityFor(item)} disabled={busy || Boolean(transferDisabledReason)} aria-label={`Количество для передачи: ${item.name}`} onChange={(event) => setTransferQuantityFor(item, Number(event.target.value))} /></label>
-            <button disabled={busy || Boolean(transferDisabledReason)} title={transferDisabledReason || undefined} onClick={() => onTransfer(item.id, activeRecipientId, transferQuantityFor(item))}>Передать</button>
-            {transferDisabledReason && <small className="item-use-hint" role="status">{transferDisabledReason}</small>}
-          </div>}
+      </div>
+      <div className="inv-detail-actions item-actions">
+        {item.capabilities?.equippable && <button className={item.equipped ? '' : 'item-action-main'} disabled={busy || Boolean(equipDisabledReasonFor(item))} title={equipDisabledReasonFor(item) || equipCostHintFor(item) || undefined} onClick={() => onEquip(item.id, !item.equipped)}>{item.equipped ? 'Снять' : 'Надеть'}{combatActive && !equipDisabledReasonFor(item) ? (combatObjectInteractionAvailable ? ' · бесплатно' : ' · действие') : ''}</button>}
+        {item.capabilities?.off_hand && !item.equipped && <button disabled={busy || Boolean(equipDisabledReasonFor(item))} title="Бой двумя оружиями: лёгкое оружие во второй руке, удар бонусным действием после атаки" onClick={() => onEquip(item.id, true, 'off_hand')}>Во вторую руку</button>}
+        {item.capabilities?.equippable && combatActive && <small className="item-use-hint" role="status">{equipDisabledReasonFor(item) || equipCostHintFor(item)}</small>}
+        {item.capabilities?.usable && item.capabilities.use?.use_modes && <label className="item-use-target">
+          <span>Режим</span>
+          <select value={useModeFor(item)} disabled={busy} aria-label={`Режим использования: ${item.name}`} onChange={(event) => setUseModes((current) => ({ ...current, [item.id]: event.target.value as 'target' | 'spill' }))}>
+            <option value="target">Бросить в цель</option>
+            <option value="spill">Разлить на клетку</option>
+          </select>
+        </label>}
+        {item.capabilities?.usable && ['party', 'enemy', 'creature'].includes(item.capabilities.use?.target ?? '')
+          && !(item.capabilities.use?.point_target && useModeFor(item) === 'spill') && <label className="item-use-target">
+          <span>Цель</span>
+          <select value={['enemy', 'creature'].includes(item.capabilities.use?.target ?? '') ? enemyTargetFor(item.id) ?? '' : partyTargetFor(item)} disabled={busy} aria-label={`Цель использования: ${item.name}`} onChange={(event) => setUseTargets((current) => ({ ...current, [item.id]: event.target.value }))}>
+            {(['enemy', 'creature'].includes(item.capabilities.use?.target ?? '') ? enemyTargets : useTargetOptions.map((candidate) => ({ id: candidate.id, label: candidate.id === player.id ? `${candidate.character} (сам)` : candidate.character }))).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
+          </select>
+        </label>}
+        {item.capabilities?.usable && item.capabilities.use?.point_target
+          && (item.capabilities.use.kind === 'spill_zone' || useModeFor(item) === 'spill') && <fieldset className="item-point-target">
+          <legend>Клетка</legend>
+          <label><span>X</span><input type="number" value={pointTargetFor(item).x} disabled={busy} aria-label={`Координата X: ${item.name}`} onChange={(event) => setPointTargets((current) => ({ ...current, [item.id]: { ...pointTargetFor(item), x: Number(event.target.value) } }))} /></label>
+          <label><span>Y</span><input type="number" value={pointTargetFor(item).y} disabled={busy} aria-label={`Координата Y: ${item.name}`} onChange={(event) => setPointTargets((current) => ({ ...current, [item.id]: { ...pointTargetFor(item), y: Number(event.target.value) } }))} /></label>
+        </fieldset>}
+        {item.capabilities?.usable && item.capabilities.use?.requires_weapon && <label className="item-use-target">
+          <span>Оружие</span>
+          <select value={weaponTargetFor(item) ?? ''} disabled={busy || usableWeapons.length === 0} aria-label={`Оружие для покрытия: ${item.name}`} onChange={(event) => setWeaponTargets((current) => ({ ...current, [item.id]: event.target.value }))}>
+            {usableWeapons.map((weapon) => <option key={weapon.id} value={weapon.id}>{weapon.name}{weapon.equipped ? ' · в руках' : ''}</option>)}
+          </select>
+        </label>}
+        {item.capabilities?.usable && item.capabilities.use?.min_charges_to_spend != null && item.capabilities.use.max_charges_to_spend != null && <label className="item-charge-spend">
+          <span>Заряды</span>
+          <select value={chargesToSpendFor(item)} disabled={busy} aria-label={`Заряды для использования: ${item.name}`} onChange={(event) => setChargeSpends((current) => ({ ...current, [item.id]: Number(event.target.value) }))}>
+            {Array.from(
+              { length: Math.max(0, Math.min(item.capabilities.use.max_charges_to_spend, item.capabilities.charges?.current ?? 0) - item.capabilities.use.min_charges_to_spend + 1) },
+              (_, index) => item.capabilities!.use!.min_charges_to_spend! + index,
+            ).map((charges) => <option key={charges} value={charges}>{charges}</option>)}
+          </select>
+        </label>}
+        {item.capabilities?.usable && <button className="item-action-main" disabled={busy || Boolean(useDisabledReason)} title={useDisabledReason || undefined} onClick={() => onUse(item.id, useOptionsFor(item))}>
+          Использовать · {item.capabilities.use?.action_type === 'bonus_action' ? 'бонус' : item.capabilities.use?.action_type === 'action' ? 'действие' : 'вне боя'}
+        </button>}
+        {item.capabilities?.usable && useDisabledReason && <small className="item-use-hint" role="status">{useDisabledReason}</small>}
+        {item.capabilities?.activatable && <button className={activated ? 'item-action-main' : ''} disabled={busy || Boolean(activationDisabledReason)} title={activationDisabledReason || undefined} onClick={() => onActivate(item.id, !activated)}>
+          {activated ? 'Погасить' : 'Зажечь'}{combatActive ? ' · бонус' : ''}
+        </button>}
+        {item.capabilities?.activatable && activationDisabledReason && <small className="item-use-hint" role="status">{activationDisabledReason}</small>}
+        {item.capabilities?.requires_attunement && <button disabled={busy || Boolean(attunementDisabledReason)} title={attunementDisabledReason || undefined} onClick={() => onAttune(item.id, item.attuned_to !== player.id)}>{item.attuned_to === player.id ? 'Разорвать настройку' : 'Настроиться'}</button>}
+        {item.capabilities?.requires_attunement && attunementDisabledReason && <small className="item-use-hint" role="status">{attunementDisabledReason}</small>}
+        {recipients.length > 0 && <div className="item-transfer">
+          <label className="item-transfer-recipient"><span>Кому</span><select value={activeRecipientId} disabled={busy || Boolean(transferDisabledReason)} aria-label="Получатель передачи" onChange={(event) => setRecipientId(event.target.value)}>{recipients.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.character}</option>)}</select></label>
+          <label><span>Сколько</span><input type="number" min={1} max={Math.max(1, item.quantity)} step={1} value={transferQuantityFor(item)} disabled={busy || Boolean(transferDisabledReason)} aria-label={`Количество для передачи: ${item.name}`} onChange={(event) => setTransferQuantityFor(item, Number(event.target.value))} /></label>
+          <button disabled={busy || Boolean(transferDisabledReason)} title={transferDisabledReason || undefined} onClick={() => onTransfer(item.id, activeRecipientId, transferQuantityFor(item))}>Передать</button>
+          {transferDisabledReason && <small className="item-use-hint" role="status">{transferDisabledReason}</small>}
+        </div>}
+      </div>
+    </article>
+  }
+
+  return <section className="section-page inventory-page inventory-page--doll">
+    <header className="inv-head">
+      <div><span>Инвентарь</span><h1>{player.character}</h1><p>{playerRoleLabel(player)}</p></div>
+      {onSelectHero && heroChoices.length > 1 && <nav className="inv-heroes" aria-label="Чьи вещи показать">
+        {heroChoices.map((hero) => <button type="button" key={hero.id} className={hero.id === player.id ? 'active' : ''} aria-pressed={hero.id === player.id} onClick={() => onSelectHero(hero.id)}>
+          <span className="inv-hero-face" data-face={heroFaceMode(hero)} style={heroFaceStyle(hero)}>{!hasHeroPortrait(hero) && <HeroFaceInitials hero={hero} />}</span>{hero.character}
+        </button>)}
+      </nav>}
+    </header>
+    {error && <p className="item-error" role="alert">{error}</p>}
+    {setupRequired ? <div className="empty-inventory empty-inventory--setup"><Backpack size={31} /><h3>{emptyInventoryMessage.title}</h3><p>{emptyInventoryMessage.text}</p>{onCreateHero && <button type="button" onClick={onCreateHero}><Sparkles size={15} />{emptyInventoryMessage.action}</button>}</div> : <div className="inv-layout">
+      <section className="inv-panel inv-equipment" aria-label="Снаряжение">
+        <header className="inv-panel-head"><h2>Снаряжение</h2><span className={dragItem && dragBlockedReason ? 'inv-drag-hint is-blocked' : dragItem ? 'inv-drag-hint' : undefined} role={dragItem ? 'status' : undefined}>{dragItem ? dragBlockedReason || (DOLL_SLOTS.some((slot) => canDropOn(slot.id)) ? 'Отпустите на подсвеченном месте' : dragItem.equipped ? 'Отпустите в сумке, чтобы снять' : 'Эту вещь на куклу не надеть') : equippedCount ? `надето ${equippedCount}` : 'ничего не надето'}</span></header>
+        <div className={`doll${dragItem ? ' is-dragging' : ''}`}>
+          <div className="doll-figure">{campaignId ? <EquipmentStage player={player} campaignId={campaignId} appearance={appearance} /> : <div className="paperdoll-stage paperdoll-stage--empty" />}</div>
+          <div className="doll-column doll-column--left">{DOLL_LEFT.map(renderSlot)}</div>
+          <div className="doll-column doll-column--right">{DOLL_RIGHT.map(renderSlot)}</div>
+          <div className="doll-hands">{renderSlot('main_hand')}{renderSlot('off_hand')}</div>
         </div>
-      </article>
-    })}</div> : <div className={`empty-inventory${setupRequired ? ' empty-inventory--setup' : ''}`}><Backpack size={31} /><h3>{emptyInventoryMessage.title}</h3><p>{emptyInventoryMessage.text}</p>{emptyInventoryMessage.action && onCreateHero && <button type="button" onClick={onCreateHero}><Sparkles size={15} />{emptyInventoryMessage.action}</button>}</div>}
+        {extraWorn.length > 0 && <p className="doll-extra">Ещё надето: {extraWorn.map((item, index) => <button type="button" key={item.id} onClick={() => choose(item.id)}>{item.name}{index < extraWorn.length - 1 ? ',' : ''}</button>)}</p>}
+        <dl className="inv-stats">
+          <div><dt>Класс доспеха</dt><dd>{player.armor}</dd><span>{doll.get('body')?.name ?? 'без доспеха'}</span></div>
+          <div><dt>Хиты</dt><dd>{player.hp}<small> / {player.maxHp}</small></dd><span>{player.hp >= player.maxHp ? 'здоров' : 'ранен'}</span></div>
+          <div><dt>Скорость</dt><dd>{player.speed}</dd><span>футов</span></div>
+          <div><dt>Настройка</dt><dd>{attunedCount}<small> / {attunementLimit}</small></dd><span>{player.inventory.some((item) => item.equipped && item.capabilities?.requires_attunement && item.attuned_to !== player.id) ? 'вещь ждёт настройки' : 'предметов'}</span></div>
+          <div className={inventoryOverloaded ? 'is-over' : ''}><dt>Нагрузка</dt><dd>{Math.round(loadShare * 100)}%</dd><span>{inventoryOverloaded ? 'перегруз' : `${totalWeight.toFixed(1)} из ${inventoryCapacity} фнт.`}</span></div>
+        </dl>
+      </section>
+      <section className="inv-panel inv-bag" aria-label="Сумка">
+        <header className="inv-panel-head">
+          <h2>Сумка</h2>
+          <div className={`inv-load${inventoryOverloaded ? ' is-over' : ''}`} title={`${totalWeight.toFixed(1)} из ${inventoryCapacity} фнт.`}>
+            <span>{totalWeight.toFixed(1)} / {inventoryCapacity} фнт.</span><i aria-hidden="true"><b style={{ width: `${Math.round(loadShare * 100)}%` }} /></i>
+          </div>
+          <span className="inv-coins"><Coins size={15} />{player.currency.gold} зм · {player.currency.silver} см · {player.currency.copper} мм{player.currency.platinum ? ` · ${player.currency.platinum} пм` : ''}</span>
+        </header>
+        <div className="inv-bag-tools">
+          <nav className="inventory-categories" aria-label="Категории инвентаря">
+            {visibleCategories.map(({ id, label }) => <button type="button" key={id} className={category === id && !slotFilter ? 'active' : ''} aria-pressed={category === id && !slotFilter} onClick={() => { setCategory(id); setSlotFilter(null) }}><span>{label}</span><b>{categoryCountFor(id)}</b></button>)}
+            {slotSpec && <button type="button" className="active inv-slot-filter" aria-pressed="true" onClick={() => setSlotFilter(null)}><span>Для места: {slotSpec.label}</span><X size={13} /></button>}
+          </nav>
+          <label className="inventory-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти в сумке…" aria-label="Поиск по инвентарю" /></label>
+          <label className="inventory-sort"><select value={sort} aria-label="Сортировка инвентаря" disabled={busy} onChange={(event) => setSort(event.target.value as InventorySort)}>{inventorySortOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+          {filtersActive && <button type="button" className="inventory-clear" onClick={() => { setQuery(''); setCategory('all'); setSort('default'); setSlotFilter(null) }}><X size={14} />Сбросить</button>}
+        </div>
+        <p className="inventory-result-count" aria-live="polite">{items.length === player.inventory.length ? `${player.inventory.length} стопок · ${totalQuantity} шт.` : `Показано ${items.length} из ${player.inventory.length} стопок`}</p>
+        {items.length ? <div className={`inv-grid${dropTarget === 'bag' ? ' is-drop-target' : ''}`} role="list" onDragOver={(event) => { if (!canDropInBag) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; if (dropTarget !== 'bag') setDropTarget('bag') }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget((current) => current === 'bag' ? null : current) }} onDrop={dropInBag}>{items.map((item) => <div role="listitem" key={item.id}><button
+          type="button"
+          className={`inv-tile ${rarityClass(item)}${selected?.id === item.id ? ' is-selected' : ''}`}
+          aria-pressed={selected?.id === item.id}
+          aria-label={`${item.name}${item.quantity > 1 ? `, ${item.quantity} шт.` : ''}${item.equipped ? ', надето' : ''}`}
+          title={item.name}
+          onClick={() => choose(item.id)}
+          draggable={Boolean(item.capabilities?.equippable) && !busy}
+          onDragStart={(event) => startDrag(event, item)}
+          onDragEnd={endDrag}
+        >
+          <span className="inv-tile-art"><ItemImage item={item} />
+            {item.equipped && <i className="inv-tile-worn" aria-hidden="true"><Check size={12} strokeWidth={3} /></i>}
+            {item.quantity > 1 && <i className="inv-tile-qty" aria-hidden="true">×{item.quantity}</i>}
+            {item.origin === 'stolen' && <i className="inv-tile-stolen" aria-hidden="true" title="Краденое" />}
+          </span>
+          <span className="inv-tile-name">{item.name}</span>
+        </button></div>)}</div> : <div className="empty-inventory"><Backpack size={31} /><h3>{emptyInventoryMessage.title}</h3><p>{emptyInventoryMessage.text}</p></div>}
+        {selected && renderDetail(selected)}
+      </section>
+    </div>}
   </section>
 }

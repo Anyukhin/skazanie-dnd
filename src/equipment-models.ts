@@ -23,6 +23,7 @@ import {
   registerCspSafeEmbeddedTextureLoader,
 } from './model-assets'
 import { createEquipmentRig, kayKitBowSide, type EquipmentRig, type EquipmentSide } from './equipment-rig'
+import { ARMOR_SHELLS, buildCapeGeometry, capeMaterial } from './equipment-shell'
 
 const DEFAULT_MANIFEST_URL = '/assets/models/equipment/manifest.json'
 const EQUIPMENT_MODEL_ROOT = '/assets/models/equipment/'
@@ -474,11 +475,33 @@ function mountPlan(rig: EquipmentRig, plan: MountPlan, offHandBusy = true): void
   const slotSide = sideForSlot(entry.slot)
   const side = slotSide ? kayKitBowSide(rig.family, entry.kind ?? entry.key, slotSide, offHandBusy) : null
   if (side) {
-    if (!rig.mountHeld(root, side, { kind: entry.kind ?? entry.key, handedness: entry.handedness })) throw new Error(`Не удалось закрепить ${entry.key} в руке`)
+    if (!rig.mountHeld(root, side, { kind: entry.kind ?? entry.key, handedness: entry.handedness, key: entry.key })) throw new Error(`Не удалось закрепить ${entry.key} в руке`)
     return
   }
+  // Доспех — оболочкой по телу: коробки, растянутые по частям, давали клетку
+  // вместо кольчуги и кубики вместо лат.
+  const shell = entry.slot === 'body' ? ARMOR_SHELLS[entry.key] : undefined
+  if (shell && rig.mountShell(shell) > 0) return
+  if (entry.slot === 'cloak' && mountCape(rig, plan)) return
+  // Кольцо — на палец в настоящем размере, брошь — у ключицы; подгонка по
+  // габариту кисти и груди делала из них браслет и блюдце.
+  if ((entry.slot === 'ring-protection' || entry.slot === 'ring-fire-resistance')
+    && rig.mountRingOnFinger(plan.loaded.root, entry.slot === 'ring-protection' ? 'right' : 'left')) return
+  if (entry.slot === 'brooch' && rig.mountBrooch(plan.loaded.root)) return
   for (const part of plan.parts) if (!rig.mountPart(part.object, part.key)) throw new Error(`Не удалось закрепить ${entry.key}/${part.key}`)
   if (entry.slot === 'body' && entry.coverage.length) rig.setCoverage(entry.coverage)
+}
+
+/** Плащ: воротник и застёжка из модели, полотно от плеч до колен — по груди фигурки. */
+function mountCape(rig: EquipmentRig, plan: MountPlan): boolean {
+  const chest = rig.getFrame('chest')
+  if (!chest) return false
+  const cape = new THREE.Mesh(buildCapeGeometry(chest, rig.diagnostics.height), capeMaterial(plan.loaded.entry.variant))
+  cape.name = 'cloak-cape'
+  cape.castShadow = true
+  cape.receiveShadow = true
+  if (!rig.attachRigid(cape, 'chest')) { cape.geometry.dispose(); (cape.material as THREE.Material).dispose(); return false }
+  return true
 }
 
 function sameLoadout(left: PublicLoadout, right: PublicLoadout): boolean {

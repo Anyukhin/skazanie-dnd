@@ -11,6 +11,7 @@ import {
   SkinnedMesh,
   Vector3,
 } from 'three'
+import { armorShellMaterial, buildArmorShellLayer, type ArmorShellSpec } from './equipment-shell'
 
 /** Части, для которых авторские модели экипировки имеют стабильный якорь. */
 export type EquipmentPartKey =
@@ -25,7 +26,7 @@ export type EquipmentPartKey =
 
 export type EquipmentSide = 'left' | 'right'
 export type EquipmentRigProfile = string
-export type HeldEquipmentOptions = { kind?: string; handedness?: string }
+export type HeldEquipmentOptions = { kind?: string; handedness?: string; key?: string }
 export type EquipmentRigFamily = 'quaternius' | 'goblin' | 'skeleton' | 'kaykit' | 'procedural' | 'unknown'
 
 export type EquipmentRigDiagnostics = Readonly<{
@@ -51,9 +52,23 @@ export type EquipmentRig = {
   getGrip: (side: EquipmentSide) => Group | null
   mountPart: <T extends Object3D>(part: T, partKey: string) => T | null
   mountHeld: (model: Group, side: EquipmentSide, options?: HeldEquipmentOptions) => Group | null
+  /** Вид вещи в руке (`kind` из каталога моделей) или null. */
+  heldKind: (side: EquipmentSide) => string | null
+  /** Временный хват в мировой ориентации (поза выстрела); null — вернуть обычный. */
+  orientHeld: (side: EquipmentSide, worldQuaternion: Quaternion | null) => void
   /** Hook после mixer/IK; матрицы креплений остаются baseline-relative. */
   refresh: () => void
   setCoverage: (parts: string[]) => void
+  /** Доспех оболочкой по телу фигурки (см. equipment-shell.ts). Возвращает число мешей. */
+  mountShell: (spec: ArmorShellSpec) => number
+  /** Кадр части тела в позе калибровки: центр, ориентация, размер. */
+  getFrame: (partKey: string) => Readonly<{ center: Vector3; quaternion: Quaternion; size: Vector3 }> | null
+  /** Крепит объект, построенный в мировых координатах позы калибровки, к кости части. */
+  attachRigid: (object: Object3D, partKey: string) => boolean
+  /** Кольцо на основной фаланге безымянного пальца в настоящем размере; false — у рига нет пальцев. */
+  mountRingOnFinger: (model: Object3D, side: EquipmentSide) => boolean
+  /** Брошь у левой ключицы, там, где застёгивают плащ; false — нет кости груди. */
+  mountBrooch: (model: Object3D) => boolean
   clear: () => void
   dispose: () => void
 }
@@ -514,13 +529,39 @@ function isBlade(kind: string): boolean {
   return /sword|blade|dagger|rapier|scimitar|sickle|axe|mace|hammer|club|flail|whip|pick|morningstar|maul/iu.test(kind)
 }
 
-function heldOrientation(kindValue: string, side: EquipmentSide, bodyQuaternion: Quaternion): Quaternion {
+function isShield(kind: string): boolean {
+  return /shield/iu.test(kind)
+}
+
+/** Короткий фокус на рукояти (сфера, кристалл, жезл, тотем, ветвь, реликварий). */
+function isHandFocus(key: string): boolean {
+  return /arcane-|druidic-|wand|reliquary/iu.test(key)
+}
+
+/**
+ * Поза предмета в опущенной руке стойки ожидания. Клинок и навершие смотрят
+ * вниз-вперёд, как у человека, который держит оружие свободно: прежде всё
+ * короткое торчало из кулака горизонтально вперёд.
+ */
+function heldOrientation(kindValue: string, side: EquipmentSide, bodyQuaternion: Quaternion, keyValue = ''): Quaternion {
   const kind = kindValue.toLocaleLowerCase('en-US')
+  const key = keyValue.toLocaleLowerCase('en-US')
   const rotation = new Quaternion()
-  // Посохи и дуга лука стоят вертикально; арбалет смотрит вдоль +Z.
-  if (isPole(kind) || isCrossbow(kind) || isBow(kind)) return bodyQuaternion.clone()
+  // Длинный лук наклонён верхним плечом вперёд, чтобы нижнее не уходило в пол.
+  if (isBow(kind)) return bodyQuaternion.clone().multiply(rotation.setFromAxisAngle(new Vector3(1, 0, 0), .42))
+  // Посохи стоят вертикально; арбалет смотрит вдоль +Z.
+  if (isPole(kind) || isCrossbow(kind)) return bodyQuaternion.clone()
+  if (isHandFocus(key) || key === 'pistol') {
+    rotation.setFromAxisAngle(new Vector3(1, 0, 0), Math.PI * .58)
+    return bodyQuaternion.clone().multiply(rotation)
+  }
+  if (isShield(kind)) {
+    // Лицевая сторона щита смотрит наружу и вперёд, от тела.
+    rotation.setFromAxisAngle(new Vector3(0, 1, 0), side === 'left' ? .5 : -.5)
+    return bodyQuaternion.clone().multiply(rotation)
+  }
   if (isBlade(kind)) {
-    rotation.setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2)
+    rotation.setFromAxisAngle(new Vector3(1, 0, 0), Math.PI * .7)
     rotation.multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), side === 'right' ? -.12 : .12))
   }
   return bodyQuaternion.clone().multiply(rotation)
@@ -599,7 +640,10 @@ export function createEquipmentRig(root: Group, options: { height: number; profi
   const grips: Record<EquipmentSide, Group | null> = { left: null, right: null }
   const mountedParts = new Map<EquipmentPartKey, Mounted>()
   const mountedHeld = new Map<EquipmentSide, Mounted>()
+  const heldKinds = new Map<EquipmentSide, string>()
+  const heldBase = new Map<EquipmentSide, { quaternion: Quaternion; position: Vector3 }>()
   const masked: MaskedMesh[] = []
+  const owned: Object3D[] = []
   let disposed = false
   let maskStats = { meshes: 0, masked: 0, skipped: 0 }
 
@@ -658,6 +702,12 @@ export function createEquipmentRig(root: Group, options: { height: number; profi
     return mountedObject as T
   }
 
+  /** Кулак держит ремень за щитом: лицевая сторона выдвинута вперёд руки. */
+  const placeShieldAhead = (model: Object3D, grip: Object3D, side: EquipmentSide, worldOrientation: Quaternion) => {
+    const outward = new Vector3(side === 'left' ? .035 : -.035, 0, .05).multiplyScalar(height / 1.4).applyQuaternion(worldOrientation)
+    model.position.copy(outward.applyQuaternion(grip.getWorldQuaternion(new Quaternion()).invert()).divide(grip.getWorldScale(new Vector3())))
+  }
+
   const mountHeld = (model: Group, side: EquipmentSide, heldOptions: HeldEquipmentOptions = {}): Group | null => {
     if (disposed || !model || (side !== 'left' && side !== 'right')) return null
     const grip = getGrip(side)
@@ -669,7 +719,7 @@ export function createEquipmentRig(root: Group, options: { height: number; profi
     model.matrixAutoUpdate = true
     model.position.set(0, 0, 0); model.quaternion.identity(); model.scale.set(1, 1, 1)
     const kind = typeof heldOptions.kind === 'string' ? heldOptions.kind : ''
-    const desiredWorldOrientation = heldOrientation(kind, side, bodyQuaternion)
+    const desiredWorldOrientation = heldOrientation(kind, side, bodyQuaternion, typeof heldOptions.key === 'string' ? heldOptions.key : kind)
     const gripWorldOrientation = baseGripQuaternion[side] ?? bodyQuaternion
     if (family === 'kaykit' && isBow(kind.toLocaleLowerCase('en-US'))) model.quaternion.copy(KAYKIT_BOW_IN_HANDSLOT)
     else model.quaternion.copy(gripWorldOrientation.clone().invert().multiply(desiredWorldOrientation))
@@ -682,9 +732,26 @@ export function createEquipmentRig(root: Group, options: { height: number; profi
       desiredWorldScale / Math.max(.0001, Math.abs(parentScale.y)),
       desiredWorldScale / Math.max(.0001, Math.abs(parentScale.z)),
     )
+    if (isShield(kind)) placeShieldAhead(model, grip, side, desiredWorldOrientation)
     model.updateMatrixWorld(true)
     mountedHeld.set(side, { key: `held:${side}`, object: model, snapshot: original })
+    heldKinds.set(side, kind)
+    heldBase.set(side, { quaternion: model.quaternion.clone(), position: model.position.clone() })
     return model
+  }
+
+  const heldKind = (side: EquipmentSide) => mountedHeld.has(side) ? heldKinds.get(side) ?? null : null
+  const orientHeld = (side: EquipmentSide, worldQuaternion: Quaternion | null) => {
+    const model = mountedHeld.get(side)?.object
+    const base = heldBase.get(side)
+    if (disposed || !model || !base) return
+    if (!worldQuaternion) { model.quaternion.copy(base.quaternion); model.position.copy(base.position); model.updateMatrixWorld(true); return }
+    const grip = model.parent
+    if (!grip) return
+    grip.updateWorldMatrix(true, false)
+    model.quaternion.copy(grip.getWorldQuaternion(new Quaternion()).invert().multiply(worldQuaternion))
+    if (isShield(heldKinds.get(side) ?? '')) placeShieldAhead(model, grip, side, worldQuaternion)
+    model.updateMatrixWorld(true)
   }
 
   const clearCoverage = () => {
@@ -719,10 +786,119 @@ export function createEquipmentRig(root: Group, options: { height: number; profi
     }
   }
 
+  const clearOwned = () => {
+    for (const object of owned.splice(0)) {
+      object.removeFromParent()
+      object.traverse((child) => {
+        const mesh = child as Mesh
+        mesh.geometry?.dispose()
+        const materials = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : []
+        for (const material of materials) material.dispose()
+      })
+    }
+  }
+
+  const mountShell = (spec: ArmorShellSpec): number => {
+    if (disposed || !spec?.layers?.length) return 0
+    root.updateMatrixWorld(true)
+    let count = 0
+    for (const layer of spec.layers) {
+      const material = armorShellMaterial(layer.kind)
+      const shells = buildArmorShellLayer(root, layer, height, material)
+      if (!shells.length) { material.dispose(); continue }
+      for (const shell of shells) {
+        const source = shell.userData.shellSource as Object3D | undefined
+        delete shell.userData.shellSource
+        ;(source?.parent ?? root).add(shell)
+        owned.push(shell)
+        count += 1
+      }
+    }
+    return count
+  }
+
+  const getFrame = (partKey: string) => {
+    const role = roleForKey(partKey)
+    const frame = role ? frames.get(role) : undefined
+    return frame ? { center: frame.center.clone(), quaternion: frame.quaternion.clone(), size: frame.size.clone() } : null
+  }
+
+  const attachRigid = (object: Object3D, partKey: string): boolean => {
+    const role = roleForKey(partKey)
+    const frame = role ? frames.get(role) : undefined
+    const target = role ? targetByRole.get(role) : undefined
+    if (disposed || !frame || !target) return false
+    object.removeFromParent()
+    object.matrixAutoUpdate = false
+    object.matrix.copy(frame.inverseBone)
+    target.add(object)
+    object.updateMatrixWorld(true)
+    owned.push(object)
+    return true
+  }
+
+  const placeOnBone = (object: Object3D, bone: Object3D, world: Matrix4) => {
+    object.removeFromParent()
+    bone.updateWorldMatrix(true, false)
+    object.matrixAutoUpdate = false
+    object.matrix.copy(bone.matrixWorld.clone().invert().multiply(world))
+    bone.add(object)
+    object.updateMatrixWorld(true)
+    owned.push(object)
+  }
+
+  const mountRingOnFinger = (model: Object3D, side: EquipmentSide): boolean => {
+    if (disposed) return false
+    const suffix = side === 'left' ? 'l' : 'r'
+    const base = nodes.find((node) => boneLike(node) && normalized(node.name) === `ring01${suffix}`)
+    const next = nodes.find((node) => boneLike(node) && normalized(node.name) === `ring02${suffix}`)
+    if (!base || !next) return false
+    root.updateMatrixWorld(true)
+    const from = base.getWorldPosition(new Vector3())
+    const direction = next.getWorldPosition(new Vector3()).sub(from)
+    if (direction.lengthSq() < 1e-10) return false
+    const bounds = sourceBounds(model)
+    if (bounds.isEmpty()) return false
+    const size = bounds.getSize(new Vector3())
+    // Ось кольца — Y модели; внешний диаметр — 2 см у фигурки 1,4: в сжатом
+    // кулаке ободок должен читаться на костяшках, а не тонуть в пальцах.
+    const scale = height * .0145 / Math.max(1e-6, Math.max(size.x, size.z))
+    const rotation = new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), direction.clone().normalize())
+    const at = from.addScaledVector(direction, .45)
+    const offset = bounds.getCenter(new Vector3()).multiplyScalar(scale).applyQuaternion(rotation)
+    placeOnBone(model, base, new Matrix4().compose(at.sub(offset), rotation, new Vector3(scale, scale, scale)))
+    return true
+  }
+
+  const mountBrooch = (model: Object3D): boolean => {
+    const chest = frames.get('chest')
+    const bone = targetByRole.get('chest')
+    if (disposed || !chest || !bone) return false
+    const bounds = sourceBounds(model)
+    if (bounds.isEmpty()) return false
+    const size = bounds.getSize(new Vector3())
+    const scale = height * .032 / Math.max(1e-6, Math.max(size.x, size.y))
+    const local = new Vector3(chest.size.x * .2, chest.size.y * .34, chest.size.z * .5 + height * .006)
+    const at = chest.center.clone().add(local.applyQuaternion(chest.quaternion))
+    const offset = bounds.getCenter(new Vector3()).multiplyScalar(scale).applyQuaternion(chest.quaternion)
+    // Кадр груди снят в позе калибровки: брошь ставится в нём и переводится в кость.
+    const world = new Matrix4().compose(at.sub(offset), chest.quaternion, new Vector3(scale, scale, scale))
+    model.removeFromParent()
+    model.matrixAutoUpdate = false
+    model.matrix.copy(chest.inverseBone.clone().multiply(world))
+    bone.add(model)
+    model.updateMatrixWorld(true)
+    owned.push(model)
+    return true
+  }
+
   const clear = () => {
     if (disposed) return
+    clearOwned()
     for (const item of mountedHeld.values()) detach(item)
     mountedHeld.clear()
+    heldKinds.clear()
+    heldBase.clear()
     for (const item of mountedParts.values()) detach(item)
     mountedParts.clear()
     clearCoverage()
@@ -740,8 +916,15 @@ export function createEquipmentRig(root: Group, options: { height: number; profi
     getGrip,
     mountPart,
     mountHeld,
+    heldKind,
+    orientHeld,
     refresh: () => { if (!disposed) root.updateMatrixWorld(true) },
     setCoverage,
+    mountShell,
+    getFrame,
+    attachRigid,
+    mountRingOnFinger,
+    mountBrooch,
     clear,
     dispose: () => { if (!disposed) { clear(); for (const grip of Object.values(grips)) grip?.removeFromParent(); disposed = true } },
   }

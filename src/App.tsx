@@ -1888,6 +1888,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onStartRest={(kind) => startRest(activePlayer.id, kind)} />}
         {view === 'inventory' && <InventoryView
           onCreateHero={accessibleHeroIds.includes(activePlayer.id) ? () => openHeroEditor(activePlayer.id) : undefined}
+          onSelectHero={setSelectedHeroId}
+          selectableHeroIds={accessibleHeroIds}
           player={activePlayer}
           party={partyPlayers}
           campaignId={state.sessionCode}

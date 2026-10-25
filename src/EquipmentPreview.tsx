@@ -121,11 +121,12 @@ function useEquipmentPreviewRuntime(
     let disposed = false
     const abort = new AbortController()
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color('#14120f')
+    // Холст прозрачный: под фигурой — свет панели куклы, а не тёмный прямоугольник.
+    scene.background = null
     const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 20)
     let renderer: THREE.WebGLRenderer
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     } catch {
       setStatus('unavailable')
       element.replaceChildren()
@@ -195,8 +196,12 @@ function useEquipmentPreviewRuntime(
       if (bounds.isEmpty()) return
       const center = bounds.getCenter(new THREE.Vector3())
       const size = bounds.getSize(new THREE.Vector3())
-      const dimension = Math.max(size.x, size.y, size.z, 0.8)
-      const distance = Math.max(1.2, dimension / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) * 1.18)
+      // Кадр подгоняется и по высоте, и по ширине холста: в узкой колонке
+      // куклы щит и древко иначе обрезались краем.
+      const verticalHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
+      const horizontalHalf = verticalHalf * Math.max(0.2, camera.aspect)
+      const width = Math.max(size.x, size.z)
+      const distance = Math.max(1.2, Math.max(Math.max(size.y, 0.8) / (2 * verticalHalf), width / (2 * horizontalHalf)) * 1.14 + width * 0.5)
       camera.position.copy(center).add(new THREE.Vector3(0.52, 0.13, 1).normalize().multiplyScalar(distance))
       camera.near = 0.05
       camera.far = Math.max(20, distance * 8)
@@ -313,7 +318,21 @@ function useEquipmentPreviewRuntime(
   return runtimeRef
 }
 
-export function EquipmentPreview({ player, campaignId = '', appearance }: { player: Player; campaignId?: string; appearance?: ActorAppearance }) {
+/**
+ * Надетые вещи, для которых у фигурки нет модели: слот куклы помечает их
+ * сам, чтобы не казалось, будто вещь не надета.
+ */
+export function itemsWithoutModel(player: Player, appearance?: ActorAppearance): Set<string> {
+  const loadout = appearance?.version === 2 ? appearance.loadout : publicLoadoutForItems(player.inventory)
+  return new Set(player.inventory.filter((item) => item.equipped && unknownLoadoutItem(item, loadout)).map((item) => item.id))
+}
+
+/**
+ * Сцена куклы героя: 3D-фигурка с надетыми вещами. Слоты, сводка и сумка
+ * живут вокруг неё во вкладке «Вещи»; здесь только холст, состояние загрузки
+ * и два зрительских переключателя — вид и основа фигурки.
+ */
+export function EquipmentStage({ player, campaignId = '', appearance }: { player: Player; campaignId?: string; appearance?: ActorAppearance }) {
   const host = useRef<HTMLDivElement>(null)
   const appearanceRef = useRef<ActorAppearance | undefined>(appearance)
   appearanceRef.current = appearance
@@ -322,10 +341,6 @@ export function EquipmentPreview({ player, campaignId = '', appearance }: { play
   const [status, setStatus] = useState<PreviewStatus>('loading')
   const [modelRevision, setModelRevision] = useState(0)
   const storageKey = `${MODEL_STORAGE_PREFIX}${campaignId}`
-  const appearanceLoadout = appearance?.version === 2 ? appearance.loadout : undefined
-  const fallbackLoadout = useMemo(() => publicLoadoutForItems(player.inventory), [player.inventory])
-  const loadout = appearanceLoadout ?? fallbackLoadout
-  const equipped = useMemo(() => player.inventory.filter((item) => item.equipped === true), [player.inventory])
   const choices = useMemo(() => modelChoices(manifest), [manifest])
   const validModelKey = choices.some((choice) => choice.key === modelKey) ? modelKey : DEFAULT_MODEL_KEY
 
@@ -372,27 +387,22 @@ export function EquipmentPreview({ player, campaignId = '', appearance }: { play
     runtimeRef.current?.controls.reset()
     host.current?.querySelector<HTMLElement>('.equipment-preview-canvas')?.focus()
   }
-  const statusLabel = status === 'loading' ? 'Загрузка модели…' : status === 'ready' ? '3D-модель' : status === 'fallback' ? 'Встроенная фигурка' : status === 'unavailable' ? '3D-просмотр недоступен' : status === 'equipment-error' ? 'Экипировка не загрузилась' : 'Модель не загрузилась'
+  const beastBase = manifest?.models.find((entry) => entry.key === validModelKey)?.profile === 'beast'
+  const overlay = status === 'loading' ? 'Загрузка фигуры…'
+    : status === 'error' ? 'Фигура не загрузилась'
+      : status === 'unavailable' ? '3D-просмотр недоступен в этом браузере'
+        : status === 'equipment-error' ? 'Часть надетых вещей не загрузилась'
+          : beastBase ? 'В звериной форме вещи на фигуре не видны'
+            : ''
 
-  return <section className="equipment-preview" aria-label="Примерка героя">
-    <div className="equipment-preview-stage">
-      <div ref={host} className="equipment-preview-canvas-host" />
-      {status === 'loading' && <div className="equipment-preview-overlay" role="status">Загрузка модели…</div>}
-      {status === 'error' && <div className="equipment-preview-overlay" role="status">Модель не загрузилась</div>}
-      {status === 'unavailable' && <div className="equipment-preview-overlay" role="status">3D-просмотр недоступен в этом браузере</div>}
-      {status === 'equipment-error' && <div className="equipment-preview-overlay" role="status">Не удалось загрузить надетые предметы</div>}
-      <div className="equipment-preview-stage-footer"><span>{statusLabel}</span><span>Вращайте мышью или пальцем</span></div>
+  return <div className="paperdoll-stage" data-status={status}>
+    <div ref={host} className="equipment-preview-canvas-host" />
+    {overlay && <div className={`paperdoll-stage-note${status === 'loading' || status === 'error' || status === 'unavailable' ? ' is-blocking' : ''}`} role="status">{overlay}</div>}
+    <div className="paperdoll-stage-tools">
+      <button type="button" onClick={resetView} aria-label="Вернуть вид на фигуру" title="Вернуть вид"><RotateCcw size={14} /></button>
+      <select value={validModelKey} onChange={(event) => selectModel(event.target.value)} aria-label="Фигура героя">
+        {choices.map((choice) => <option key={choice.key} value={choice.key}>{choice.key === DEFAULT_MODEL_KEY ? 'Фигура по классу' : choice.label}</option>)}
+      </select>
     </div>
-    <div className="equipment-preview-details">
-      <div className="equipment-preview-heading"><strong>Внешность героя</strong><span>{player.character}</span></div>
-      <label className="equipment-preview-model-choice"><span>Основа</span><select value={validModelKey} onChange={(event) => selectModel(event.target.value)} aria-label="Основа модели героя">
-        {choices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
-      </select></label>
-      {manifest?.models.find((entry) => entry.key === validModelKey)?.profile === 'beast' && <p>В звериной форме экипировка скрыта. Для примерки вещей выберите основу с руками.</p>}
-      <button type="button" className="equipment-preview-reset" onClick={resetView}><RotateCcw size={14} />Сбросить вид</button>
-      <div className="equipment-preview-equipped"><span className="equipment-preview-label">Надето сейчас</span>
-        {equipped.length === 0 ? <p>Ничего не надето.</p> : <ul>{equipped.map((item) => <li key={item.id}><span>{item.name}</span>{unknownLoadoutItem(item, loadout) && <em>модель недоступна</em>}</li>)}</ul>}
-      </div>
-    </div>
-  </section>
+  </div>
 }
