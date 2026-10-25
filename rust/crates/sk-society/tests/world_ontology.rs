@@ -43,6 +43,14 @@ fn dispatch(name: &str, args: &Args) -> Outcome {
                 .collect();
             Outcome::of(audit_ontology(&as_pairs(&files)))
         }
+        // `predicateEntryFor(predicate)`: `String(predicate ?? '')`.
+        "predicateEntryFor" => Outcome::option(predicate_entry_for(&sk_core::js::s(args.opt(0))).map(PredicateEntry::to_json)),
+        "ontologyViolation" => {
+            let write = args.val(0);
+            let text = |key: &str| write.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+            let violation = ontology_violation(&text("record"), &text("predicate"), &text("subjectKind"));
+            Outcome::option(violation.map(|violation| json!({ "code": violation.code, "message": violation.message })))
+        }
         _ => Outcome::Unknown,
     }
 }

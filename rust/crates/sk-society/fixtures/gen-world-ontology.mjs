@@ -63,4 +63,22 @@ for (let index = 0; index < 400; index += 1) {
   }
 }
 
+// Проверка записи (#189): статья словаря по имени предиката и нарушение записи
+// для каждого вида записи и подлежащего, включая семейства, голое имя
+// семейства, ключи прототипа и пустой вид.
+const names = Object.keys(ontology.PREDICATES)
+const PROBES = [
+  ...names, ...names.filter((name) => name.endsWith(':')).flatMap((name) => [`${name}x`, `${name}кража`, `${name}a:b`]),
+  'knows', '', ':', ':x', 'died:', 'died:twice', 'party_deed', 'party_deed:', 'Died', ' died', 'died ', 'constructor', '__proto__', 'toString',
+  'hasOwnProperty:', 'constructor:x', 'событие', 'lore', 'quest_progress', 'faction_offscreen_move:raid',
+]
+for (const probe of [...PROBES, null, undefined, 5]) c.call('predicateEntryFor', ontology.predicateEntryFor, [probe])
+const KINDS = ['npc', 'faction', 'location', 'item', 'event', 'concept', '', 'person']
+for (const record of ['fact', 'claim', 'other']) {
+  for (const probe of PROBES) {
+    for (const subjectKind of KINDS) c.call('ontologyViolation', ontology.ontologyViolation, [{ record, predicate: probe, subjectKind }])
+  }
+  c.call('ontologyViolation', ontology.ontologyViolation, [{ record, predicate: 'died' }])
+}
+
 write('world-ontology.json', { generator: 'gen-world-ontology.mjs', constants, sources, audit, values: c.values, cases: c.cases, skipped: c.skipped })
