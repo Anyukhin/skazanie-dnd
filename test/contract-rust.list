@@ -179,3 +179,7 @@ test/projection-postcommit-error-api.test.mjs  # сбой подтвержден
 test/reconcile-access-perf-api.test.mjs        # чужой аккаунт — 403 до сверки (комната не тронута), участник сверку запускает
 test/soak-crash-recovery-api.test.mjs          # SIGKILL посреди команд: replay, подтверждённые команды целы, аудит без блокеров
 test/legendary-action-http.test.mjs            # UseLegendaryAction не принимается по HTTP ни от кого (прежде — поиск по тексту server/index.mjs)
+# Сверка версий (2026-10-25): первая сцена — карта, обстановка, позиции — против эталонного
+# JS-процесса. Стенд горячего пути расходился 310 против 271 события из-за неперенесённого #184;
+# зелёный против Rust после слияния rs/port-main.
+test/first-scene-map-parity-api.test.mjs # 12 мест: поселение, дом с двором, граф храма и склепа, лес, пещера, авторские миры

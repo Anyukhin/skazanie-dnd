@@ -11,6 +11,8 @@
 //   * сборка встречи (один раз) и бой: MoveActor на клетку и обратно,
 //     MakeAttack арбалетом (кости — минимум, все промахиваются, бой не кончается),
 //     EndTurn с ходами NPC.
+//   * `--iterations` по умолчанию 20; итоговая state_version у JS и Rust обязана
+//     совпадать — первую сцену сторожит `test/first-scene-map-parity-api.test.mjs`.
 // Печатает медиану, p95 и среднее по каждой операции в мс и строку JSON.
 
 import { writeFileSync } from 'node:fs'
@@ -37,6 +39,11 @@ const viewers = Number(flag('viewers', '0'))
 // `--dump-state <файл>`: состояние журнала в конце боя, пользователь-игрок и его
 // герой — вход микробенча проекции зрителя (`sk-projection/tests/viewer_bench.rs`).
 const dumpState = flag('dump-state', '')
+// `--dump-journal <файл>`: коммиты журнала (ключ, версии, типы событий и сами
+// события) — сверка JS и Rust по шагам сценария. Расхождение 310 против 271
+// (2026-10-25) так свелось к сборке встречи: другая обстановка первой сцены
+// (#184 не перенесён), другие занятые клетки — другая точка появления крысы.
+const dumpJournal = flag('dump-journal', '')
 const CAMPAIGN = 'HOT-PATH'
 
 const cleanups = []
@@ -201,6 +208,12 @@ async function main() {
     const journal = await readJournal(server, CAMPAIGN)
     const me = expect(await request('/api/auth/me', { cookie: owner }))
     writeFileSync(dumpState, JSON.stringify({ state: journal.state, user: me.user ?? me, actor_id: heroId }))
+  }
+  if (dumpJournal) {
+    const journal = await readJournal(server, CAMPAIGN)
+    writeFileSync(dumpJournal, JSON.stringify(journal.commits.map((commit) => ({ key: commit.idempotency_key,
+      before: commit.state_version_before, after: commit.state_version_after,
+      events: commit.events.map((event) => event.event_type ?? event.type), payloads: commit.events })), null, 1))
   }
   const report = {
     impl, iterations, prefill, viewers, prefill_ms: Math.round(prefillMs), combat_rounds: combatRounds,
