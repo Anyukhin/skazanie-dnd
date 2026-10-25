@@ -68,6 +68,7 @@ fn run(name: &str, args: &[Option<Value>]) -> Result<Option<Value>, CharacterLif
         "resourcesAfterRest" => wrap(resources_after_rest(arg(0), arg(1), arg(2), js::truthy(option(3, "classResources2024")))),
         "characterCreationTargetLevel" => wrap(character_creation_target_level(arg(0)).map(Value::from)),
         "characterCreationChoicesComplete" => wrap(character_creation_choices_complete(arg(0), arg(1)).map(Value::Bool)),
+        "missingCharacterCreationChoice" => wrap(missing_character_creation_choice(arg(0), arg(1)).map(|missing| missing.map_or(Value::Null, Value::String))),
         "validateLevelUpCommand" => wrap(validate_level_up_command(arg(0), arg(1), arg(2))),
         "levelUpEvent" => wrap(level_up_event(arg(0))),
         "validateCharacterImportCommand" => wrap(validate_character_import_command(arg(0), arg(1), arg(2))),
@@ -439,4 +440,115 @@ fn reimport_of_downed_hero_restores_full_hp_like_js() {
     let event = character_import_event(Some(&json!({ "command_type": "ImportCharacter", "actor_id": "fighter", "patch": parsed.patch }))).unwrap();
     let after = apply_character_lifecycle_event(&state, &event).unwrap();
     assert_eq!(after["players"][0]["hp"], after["players"][0]["maxHp"]);
+}
+
+// ---------------------------------------------------------------------------
+// #190: серверный авторитет импорта (`test/character-lifecycle-engine.test.mjs`,
+// `test/character-creation-2014.test.mjs`) — на уровне модуля.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn catalog_gives_wizard_hit_die_and_saving_throws_from_sheet_tables() {
+    let expected = [
+        ("barbarian", 12, "str/con"), ("bard", 8, "dex/cha"), ("cleric", 8, "wis/cha"), ("druid", 8, "int/wis"),
+        ("fighter", 10, "str/con"), ("monk", 8, "str/dex"), ("paladin", 10, "wis/cha"), ("ranger", 10, "str/dex"),
+        ("rogue", 8, "dex/int"), ("sorcerer", 6, "con/cha"), ("warlock", 8, "wis/cha"), ("wizard", 6, "int/wis"),
+    ];
+    for ruleset_id in ["dnd_5e_2014", "srd_5_2_1"] {
+        let catalog = character_creation_catalog(ruleset_id).expect("каталог");
+        let classes = catalog["classes"].as_array().expect("классы");
+        assert_eq!(classes.len(), 12);
+        for entry in classes {
+            let id = entry["id"].as_str().unwrap_or_default();
+            let saves: Vec<&str> = entry["saving_throws"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+            let (_, die, joined) = expected.iter().find(|(class, _, _)| *class == id).expect("класс в таблице");
+            assert_eq!((entry["hit_die"].as_i64(), saves.join("/")), (Some(*die), joined.to_string()), "{ruleset_id}:{id}");
+        }
+    }
+}
+
+fn fighter_document(overrides: Value) -> Value {
+    let base_scores = json!({ "str": 15, "dex": 14, "con": 13, "int": 12, "wis": 10, "cha": 8 });
+    let mut character = json!({
+        "character": "Бранн", "characterClass": "fighter", "species": "Человек", "level": 1, "experience": 0,
+        "abilities": base_scores,
+        "abilityGeneration": {
+            "policyId": "skazanie.character-abilities.standard-array", "policyVersion": 1, "method": "standard_array", "baseScores": base_scores,
+            "originBonusProfileId": "none", "originBonuses": { "str": 0, "dex": 0, "con": 0, "int": 0, "wis": 0, "cha": 0 }, "speciesOptionId": "human",
+        },
+        "baseSpeed": 30, "hitPointIncreases": [],
+        "classSkillProficiencies": ["athletics", "perception"], "selectedFeatureIds": ["fighting-style-defense"],
+        "knownSpellIds": [], "preparedSpellIds": [],
+    });
+    js::assign(&mut character, overrides);
+    json!({ "schema": CHARACTER_IMPORT_SCHEMA, "schema_version": CHARACTER_IMPORT_SCHEMA_VERSION, "character": character })
+}
+
+fn slot_state(extra: Value) -> Value {
+    let slot = create_character_slot(Some(&json!("hero-slot-1")), None).expect("слот");
+    let mut state = json!({ "ruleset_id": "srd_5_2_1", "players": [slot], "mechanics": { "combat": { "active": false } } });
+    js::assign(&mut state, extra);
+    state
+}
+
+fn import_into(state: &Value, document: Value, context: Value) -> LifecycleResult<Value> {
+    let command = json!({ "command_type": "ImportCharacter", "actor_id": "hero-slot-1", "document": document });
+    validate_character_import_command(Some(&command), Some(state), Some(&context))
+}
+
+fn player() -> Value {
+    json!({ "allowedActorIds": ["hero-slot-1"] })
+}
+
+#[test]
+fn player_cannot_overwrite_created_hero_by_import() {
+    let created = json!({ "ruleset_id": "srd_5_2_1", "players": [fighter(json!({ "id": "hero-slot-1", "level": 1, "experience": 0, "hitPointIncreases": [] }))] });
+    let document = fighter_document(json!({ "level": 12, "experience": 100_000, "hitPointIncreases": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10] }));
+    let refused = import_into(&created, document.clone(), player()).unwrap_err();
+    assert_eq!(refused.code(), Some("CHARACTER_ALREADY_CREATED"));
+    assert_eq!(refused.message, "Герой уже создан: развивайте его повышением уровня, а заменить лист целиком может ведущий");
+    // Чужой герой отказывает раньше, и текст говорит об импорте, а не об уровне.
+    let foreign = import_into(&created, document, json!({ "allowedActorIds": ["someone-else"] })).unwrap_err();
+    assert_eq!((foreign.code(), foreign.message.as_str()), (Some("ACTOR_FORBIDDEN"), "Импортировать лист может только владелец героя"));
+    // Ведущий лист готового героя заменяет.
+    assert!(import_into(&created, fighter_document(json!({})), json!({ "isAdmin": true })).is_ok());
+}
+
+#[test]
+fn new_hero_without_required_first_level_choices_is_not_created() {
+    let validated = import_into(&slot_state(json!({})), fighter_document(json!({})), player()).expect("полный герой");
+    let after = apply_character_lifecycle_event(&slot_state(json!({})), &character_import_event(Some(&validated)).unwrap()).unwrap();
+    assert_eq!(after["players"][0]["characterSetupRequired"], false);
+    for (label, overrides, message) in [
+        ("без навыков", json!({ "classSkillProficiencies": [] }), "Герой не завершён: Выберите классовые навыки: 2"),
+        ("без боевого стиля", json!({ "selectedFeatureIds": [] }), "Герой не завершён: Боевой стиль: выберите 1"),
+        ("волшебник без заклинаний", json!({ "characterClass": "wizard", "classSkillProficiencies": ["arcana", "history"], "selectedFeatureIds": [] }), "Герой не завершён: Выберите заговоры: 3"),
+    ] {
+        let error = import_into(&slot_state(json!({})), fighter_document(overrides), player()).unwrap_err();
+        assert_eq!((error.code(), error.message.as_str()), (Some("IMPORT_CHOICES_INCOMPLETE"), message), "{label}");
+    }
+    // При стартовом уровне выше первого выборы досдаются командами подготовки.
+    assert!(import_into(&slot_state(json!({ "character_start_level": 3 })), fighter_document(json!({ "classSkillProficiencies": [] })), player()).is_ok());
+}
+
+#[test]
+fn background_bonuses_2024_require_a_background() {
+    let base_scores = json!({ "str": 15, "dex": 14, "con": 13, "int": 12, "wis": 10, "cha": 8 });
+    let forged = fighter_document(json!({
+        "abilities": { "str": 17, "dex": 14, "con": 14, "int": 12, "wis": 10, "cha": 8 },
+        "abilityGeneration": {
+            "policyId": "skazanie.character-abilities.standard-array", "policyVersion": 1, "method": "standard_array", "baseScores": base_scores,
+            "originBonusProfileId": "two_one", "originBonuses": { "str": 2, "dex": 0, "con": 1, "int": 0, "wis": 0, "cha": 0 }, "speciesOptionId": "human",
+        },
+    }));
+    let error = import_into(&slot_state(json!({})), forged, player()).unwrap_err();
+    assert_eq!((error.code(), error.message.as_str()), (Some("IMPORT_BACKGROUND_REQUIRED"), "Прибавки характеристик даёт предыстория: выберите её"));
+}
+
+// IMPORT_PHB_CREATION_REQUIRED сверяется эталоном (документы 2014 без phbCreation).
+
+#[test]
+fn missing_event_actor_names_the_event_type() {
+    let error = apply_character_lifecycle_event(&json!({ "players": [] }), &json!({ "event_type": "CharacterImported", "target_ids": ["nobody"] })).unwrap_err();
+    assert_eq!((error.code(), error.message.as_str()), (Some("ACTOR_NOT_FOUND"), "Событие CharacterImported ссылается на отсутствующего героя"));
 }
