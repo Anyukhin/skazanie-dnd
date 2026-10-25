@@ -186,6 +186,11 @@ fn main() {
     if args.first().map(String::as_str) == Some("session") {
         std::process::exit(sk_server::test_hooks::session_cli::main(&args[1..]));
     }
+    // С19.2: перенос хранилища JS-сервера — до `.env` и без отметки писателя
+    // `--to` (её ставит сама подкоманда).
+    if args.first().map(String::as_str) == Some("import-legacy") {
+        std::process::exit(sk_server::legacy_import::run(&args[1..]));
+    }
     let cwd = std::env::current_dir().unwrap_or_default();
     load_dotenv(&cwd.join(".env"));
     let root = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| cwd.clone());

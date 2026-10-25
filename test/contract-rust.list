@@ -157,3 +157,7 @@ test/combat-lab-observer-api.test.mjs  # права, справочники, о�
 test/item-images-api.test.mjs           # картинка предмета через учёт расхода: completed/failed, 429 LLM_QUOTA_EXCEEDED до провайдера
 test/npc-portraits-api.test.mjs         # права и видимость, 302 заглушки, кеш с ETag и 304, лимит генераций, restart
 test/location-illustrations-api.test.mjs # подготовка при выключенном флаге, рантайм только из кеша, перегенерация меняет ETag
+
+# С19.2 (2026-10-25): перенос JS-хранилища подкомандой import-legacy — JS-сервер
+# играет на временном storage, Rust на перенесённой базе отвечает так же; в режиме js пропускается.
+test/legacy-import-rust.test.mjs  # rooms/campaigns/settings/heroes/me как у JS, replay журнала = JS, битый хвост и seed — пропуск, отказ старта

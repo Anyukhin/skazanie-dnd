@@ -167,6 +167,11 @@ impl AppState {
     /// Собрать состояние: каталоги, база, учёт расхода, клиенты, ядро.
     pub fn open(config: Config, injected: Injected) -> Result<Self, String> {
         let storage = config.storage_dir.clone();
+        // С19.2, решение §4 п. 5 плана: файлы JS-сервера при пустой базе —
+        // отказ старта с подсказкой `import-legacy`, а не пустой мир.
+        if let Some(refusal) = crate::legacy_import::startup_refusal(&storage) {
+            return Err(refusal);
+        }
         // `mkdirSync(generatedDir, { recursive: true })` (241–242).
         std::fs::create_dir_all(storage.join("generated").join("items")).map_err(|error| format!("Не удалось создать каталог хранилища: {error}"))?;
         std::fs::create_dir_all(storage.join("engine")).map_err(|error| format!("Не удалось создать каталог хранилища: {error}"))?;

@@ -42,6 +42,7 @@ pub mod hero_hooks;
 pub mod http;
 pub mod idempotency;
 pub mod journal;
+pub mod legacy_import;
 pub mod limits;
 pub mod merchant_guard;
 pub mod orchestration;
