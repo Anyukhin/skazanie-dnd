@@ -36,8 +36,15 @@ test('ступень приручения приезжает в летопись
     event_type: 'BeastSoothingResolved',
     payload: { beast_id: 'beast:abc', success: false, stage_after: 'calmed' },
   }), null)
-  // И тот же путь в летопись, что у конверта почты, — иначе карточка не дойдёт.
-  assert.match(server, /eventsForChronicle\.map\(beastChronicleEntry\)/u)
   assert.match(views, /export function BeastChronicleEntry/u)
   assert.match(views, /message\.beast \?/u)
+})
+
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust тот же путь в летопись —
+// candidates_for в rust/crates/sk-server/src/journal.rs (beast_chronicle_entry);
+// HTTP-сценария приручения пока нет ни в одном режиме.
+test('JS-only (server/index.mjs): карточка зверя идёт в летопись тем же путём, что конверт почты', () => {
+  // Тот же путь в летопись, что у конверта почты, — иначе карточка не дойдёт.
+  assert.match(server, /eventsForChronicle\.map\(beastChronicleEntry\)/u)
 })

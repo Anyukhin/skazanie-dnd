@@ -82,10 +82,16 @@ pub fn room_key(code: &str) -> Result<String, Failure> {
 
 /// `getRoom(code)`: накладка поверх журнала; комнаты нет — пустая.
 pub fn get_room(core: &GameCore, campaign_id: &str) -> Result<Room, Failure> {
-    let key = room_key(campaign_id)?;
     let _span = sk_store::perf::span("room.get_room");
-    let Some(overlay) = core.events.room_overlay(&key)? else { return Ok(Room::empty(&key)) };
-    let state = compose(&core.events, &overlay.body)?;
+    read_room(&core.events, campaign_id)
+}
+
+/// [`get_room`] над журналом без ядра — для служебных подкоманд набора тестов
+/// (`skazanie-server room`, `audit`): то же состояние, что прочтёт сервер.
+pub fn read_room(events: &EventStore, campaign_id: &str) -> Result<Room, Failure> {
+    let key = room_key(campaign_id)?;
+    let Some(overlay) = events.room_overlay(&key)? else { return Ok(Room::empty(&key)) };
+    let state = compose(events, &overlay.body)?;
     Ok(Room { code: key, version: overlay.version, state: Some(state), updated_at: Some(overlay.updated_at) })
 }
 
@@ -172,7 +178,9 @@ fn with_base<T>(events: &EventStore, campaign_id: &str, state: &Value, operation
     done.or_else(|| run(None)).expect("операция над основой накладки исполняется ровно один раз")
 }
 
-/// Тело накладки: отличия записанного состояния от журнала.
+/// Тело накладки: отличия записанного состояния от журнала. `pub(crate)` —
+/// для записи комнаты мимо сервера подкомандой набора тестов
+/// (`test_hooks::room_cli`).
 pub(crate) fn overlay_for(events: &EventStore, key: &str, state: &Value) -> Result<Value, Failure> {
     with_base(events, key, state, |base| overlay_body(key, state, base))
 }

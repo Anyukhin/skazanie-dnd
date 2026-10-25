@@ -54,6 +54,7 @@ fn read_append_and_corrupt_follow_the_kit_contract() {
     assert!(commits[0]["command_id"].is_string());
     assert_eq!(journal["events"].as_array().unwrap().len(), 2, "события плоско");
     assert_eq!(journal["pending_projection"], Value::Null);
+    assert_eq!(journal["projection_checkpoint"], json!({ "version": 2, "hash": null }), "отметка проекции — версия и hash");
 
     let before = run(&args(&storage, Mode::Read { at_version: Some(1), use_snapshots: false }), None, Some("test"), temp.path()).unwrap().unwrap();
     assert_eq!(before["state_version"], 1);

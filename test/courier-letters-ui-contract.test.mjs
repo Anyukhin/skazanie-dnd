@@ -233,13 +233,19 @@ test('у каждого события почты есть русская стр
   assert.equal(sentEvents[0].payload.policy_id, COURIER_LETTERS_POLICY_ID, 'у механического решения обязан быть провенанс')
 })
 
-test('конверт переживает перезагрузку комнаты и собирается в одной точке коммита', () => {
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust — journal_letter и candidates_for
+// (rust/crates/sk-server/src/journal.rs).
+test('JS-only (server/index.mjs): конверт переживает перезагрузку комнаты и собирается в одной точке коммита', () => {
   assert.match(server, /function journalLetter\(letter\)/u)
   assert.match(server, /\.\.\.\(storedLetter \? \{ letter: storedLetter \} : \{\}\)/u)
   assert.match(server, /eventsForChronicle\.map\(courierLetterChronicleEntry\)/u)
 })
 
-test('черновик ответа из браузера в команду не проходит', () => {
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust — sanitize_player_letter_command
+// (COURIER_COMMAND_UNKNOWN_FIELD на reply_draft), rust/crates/sk-server/tests/command_guard.rs.
+test('JS-only (server/index.mjs): черновик ответа из браузера в команду не проходит', () => {
   // Пришедший от клиента `reply_draft` был бы ответом NPC, написанным игроком:
   // белый список полей санитайзера его не знает, а ставит его сервер сам и
   // только после санитайзера.
@@ -253,7 +259,11 @@ test('черновик ответа из браузера в команду не
   assert.match(server, /!npcSocialController\.llmClient\) return command/u)
 })
 
-test('модель зовут после отказов движка и не зовут на повторе', () => {
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). Порядок «сторож движка до модели» в Rust —
+// маршрут /commands (rust/crates/sk-server/src/routes/commands.rs); HTTP-проверки с
+// заглушкой модели пока нет ни в одном режиме.
+test('JS-only (server/index.mjs): модель зовут после отказов движка и не зовут на повторе', () => {
   // Регресс ревью: `withCourierReplyDraft` ходила в модель **до** любой
   // проверки. Бой, пустой кошелёк, четвёртое письмо, адресат в сцене — всё это
   // отлавливалось уже после completion, и каждый такой клик списывал деньги

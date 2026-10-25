@@ -3,8 +3,9 @@
 //!
 //! - без аргументов — сервер;
 //! - `--help`, `-h` — справка в stdout, код 0;
-//! - `journal …`, `session …` — служебные подкоманды набора тестов
-//!   (`test/kit/journal.mjs`, `test/kit/sessions.mjs`, фича `test-hooks`);
+//! - `journal …`, `session …`, `room …`, `audit …` — служебные подкоманды
+//!   набора тестов (`test/kit/journal.mjs`, `sessions.mjs`, `rooms.mjs`, фича
+//!   `test-hooks`);
 //! - `import-legacy …` — перенос старого storage
 //!   ([`crate::legacy_import::run`], С19.2);
 //! - иное — справка в stderr, код 2 ([`USAGE_EXIT`]).
@@ -25,6 +26,7 @@ skazanie-server — HTTP-сервер «Сказания».
   skazanie-server import-legacy …      перенести старое storage (JS) в базу
   skazanie-server journal …            журнал кампании (только сборка с test-hooks)
   skazanie-server session …            сессии входа (только сборка с test-hooks)
+  skazanie-server room | audit …       комната и сверка хранилища (только сборка с test-hooks)
 
 Окружение (также из .env в текущем каталоге):
   AGENT_HOST, AGENT_PORT     адрес и порт (по умолчанию 0.0.0.0:8787)
@@ -46,6 +48,8 @@ pub enum Invocation {
     Journal(Vec<String>),
     /// `session` с остатком аргументов.
     Session(Vec<String>),
+    /// `room` или `audit` набора тестов (`test/kit/rooms.mjs`): имя и остаток аргументов.
+    Room(String, Vec<String>),
     /// `import-legacy` с остатком аргументов.
     ImportLegacy(Vec<String>),
     /// Неизвестный аргумент.
@@ -60,6 +64,7 @@ pub fn parse(args: &[String]) -> Invocation {
         "--help" | "-h" => Invocation::Help,
         "journal" => Invocation::Journal(rest),
         "session" => Invocation::Session(rest),
+        "room" | "audit" => Invocation::Room(first.clone(), rest),
         "import-legacy" => Invocation::ImportLegacy(rest),
         other => Invocation::Unknown(other.to_string()),
     }
@@ -76,6 +81,7 @@ pub fn run_tool(invocation: &Invocation) -> Option<i32> {
         }
         Invocation::Journal(rest) => Some(crate::test_hooks::journal_cli::main(rest)),
         Invocation::Session(rest) => Some(crate::test_hooks::session_cli::main(rest)),
+        Invocation::Room(name, rest) => Some(crate::test_hooks::room_cli::main(name, rest)),
         Invocation::ImportLegacy(rest) => Some(crate::legacy_import::run(rest)),
         Invocation::Unknown(argument) => {
             eprintln!("skazanie-server: неизвестный аргумент «{argument}»\n\n{HELP}");

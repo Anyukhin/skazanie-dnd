@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { readJournal, startTestServer } from './kit/index.mjs'
+import { auditStorage, readJournal, startTestServer } from './kit/index.mjs'
 // Аудит перехода читает файловое хранилище JS напрямую: помощника кита для
 // него нет (решение ведущего), поэтому файл пока не контрактный.
-import { auditLegacyCutover } from '../server/cutover-audit.mjs'
 import { projectionHash } from '../server/projection-integrity.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
@@ -151,7 +150,8 @@ test('сервер переживает убийства посреди конк
     // Инвариант 3: поднявшись, сервер сам приводит проекцию в согласие.
     const room = await request(server.baseUrl, '/api/rooms/SOAK', { cookie })
     assert.equal(room.status, 200, room.text)
-    const report = await auditLegacyCutover({ storageRoot: server.storageDir })
+    const report = await auditStorage(server)
+    assert.ok(report.campaigns.some((entry) => entry.campaign_id === 'SOAK'), `раунд ${round}: аудит не увидел кампанию: ${JSON.stringify(report)}`)
     assert.deepEqual(
       report.blockers, [],
       `раунд ${round}: после подъёма остались блокеры целостности: ${JSON.stringify(report.blockers)}`,

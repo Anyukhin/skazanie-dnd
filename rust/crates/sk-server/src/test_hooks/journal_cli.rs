@@ -202,6 +202,9 @@ fn read(store: &EventStore, campaign: &str, at_version: Option<i64>, use_snapsho
     let commits = raw_commits(store, campaign)?;
     let loaded = store.load(campaign, &LoadOptions { at_version, use_snapshots: Some(use_snapshots), ..LoadOptions::default() })?;
     let pending = store.pending_projection(campaign, false)?;
+    let metadata = store.get_metadata(campaign)?;
+    let checkpoint_version = metadata.get("projection_checkpoint_version").filter(|value| !value.is_null()).map_or(0.0, |value| sk_core::js::number(Some(value)));
+    let checkpoint_hash = metadata.get("projection_checkpoint_hash").filter(|value| !value.is_null()).cloned().unwrap_or(Value::Null);
     let events = |commit: &Value| commit.get("events").and_then(Value::as_array).cloned().unwrap_or_default();
     Ok(json!({
         "campaign_id": loaded.campaign_id,
@@ -217,6 +220,7 @@ fn read(store: &EventStore, campaign: &str, at_version: Option<i64>, use_snapsho
         })).collect::<Vec<_>>(),
         "events": commits.iter().flat_map(events).collect::<Vec<_>>(),
         "pending_projection": pending.map(|pending| json!({ "checkpoint_version": pending.checkpoint_version, "state_version": pending.state_version })),
+        "projection_checkpoint": { "version": sk_core::js::num(checkpoint_version), "hash": checkpoint_hash },
     }))
 }
 

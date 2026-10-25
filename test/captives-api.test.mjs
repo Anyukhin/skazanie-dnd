@@ -214,7 +214,10 @@ test('сутки по HTTP: голод в том же коммите, повто
   assert.equal(deeds.length, 1, JSON.stringify(room.body.state.world_deeds ?? {}, null, 1))
 })
 
-test('часы голода живут в серверном драйвере, а не в HTTP-роуте', () => {
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). Поведение «сутки без system-tick» в обоих
+// режимах проверяет HTTP-тест выше; драйвер Rust — nudge_world_clocks в rust/crates/sk-server/src/clocks.rs.
+test('JS-only (server/index.mjs): часы голода живут в серверном драйвере, а не в HTTP-роуте', () => {
   const source = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
   const driver = source.match(/function nudgeWorldClocks\(campaignId\) \{[\s\S]*?\n\}/u)?.[0] ?? ''
   assert.match(driver, /runCaptiveClock\(/u, 'у часов голода снова нет серверного драйвера')

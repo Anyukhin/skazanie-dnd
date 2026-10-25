@@ -52,7 +52,7 @@ test('атака по возможности валит героя: реплик
   })
   const server = await startTestServer(t, {
     storagePrefix: 'skazanie-combat-journal-order-',
-    preload: 'test/fixtures/combat-journal-deterministic-dice.mjs',
+    dice: 'test/fixtures/combat-journal-order.dice.json',
     env: { ...provider.env, DND_AI_MODEL: 'test/text-model', DND_AI_FALLBACK_MODELS: '' },
   })
   const log = () => server.output()

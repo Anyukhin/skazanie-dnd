@@ -93,7 +93,11 @@ test('молитва объявлена двухфазной и на клиен�
   assert.match(orchestrator, /this\.assertShrinePrayerRollContext\(prayerCommand, prayerCheckContext\)/u)
 })
 
-test('санитайзер сервера принимает молитву кнопкой и не принимает поджог', () => {
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust санитайзер — sanitize_player_blessing_command
+// (rust/crates/sk-server/src/command_guard.rs), сверка с JS — tests/command_guard_golden.rs;
+// отказ пакета — routes/commands.rs.
+test('JS-only (server/index.mjs): санитайзер сервера принимает молитву кнопкой и не принимает поджог', () => {
   assert.match(server, /\['inspect', 'open', 'take', 'use', 'pray'\]\.includes\(intent\)/u)
   assert.match(server, /sanitizePlayerBlessingCommand/u)
   assert.match(server, /Благословение идёт отдельной атомарной командой/u)

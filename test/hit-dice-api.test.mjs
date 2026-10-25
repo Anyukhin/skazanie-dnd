@@ -272,6 +272,14 @@ test('HTTP-отдых санитизирует поля, защищает гер
   assert.equal(durableRetry.body.narration, longRest.body.narration, 'replay после restart обязан вернуть ту же запись летописи')
   assert.ok((reopened.body.state.messages ?? []).some((message) => /Бран начинает короткий отдых/u.test(String(message?.text ?? ''))))
   assert.ok((reopened.body.state.messages ?? []).some((message) => /Бран завершает продолжительный отдых/u.test(String(message?.text ?? ''))))
+  // Ход мира за сон оставил в летописи карточку «Пока вас не было…»: она
+  // хранится вместе с репликой и переживает перезапуск (прежде — проверка
+  // текста server/index.mjs в offscreen-world-ui-contract).
+  const offscreenCard = (reopened.body.state.messages ?? []).find((message) => message?.offscreen)
+  assert.ok(offscreenCard, `карточка хода мира пропала после перезапуска: ${JSON.stringify((reopened.body.state.messages ?? []).slice(-4))}`)
+  assert.ok(offscreenCard.offscreen.lines.length > 0 && offscreenCard.offscreen.lines.length <= 3)
+  assert.ok(String(offscreenCard.offscreen.title).trim(), 'у карточки есть заголовок')
+  assert.ok(offscreenCard.offscreen.day >= 1)
 
   const secondShort = await restCommand(baseUrl, ownerCookie, 'rest-start-short-two', { command_type: 'StartRest', actor_id: 'fighter', kind: 'short' })
   assert.equal(secondShort.status, 200, `${secondShort.text}\n${logs()}`)
