@@ -30,3 +30,11 @@ tools
 test
 local-ca
 compose.override.yaml
+
+# Rust (С19.3): артефакты cargo — десятки гигабайт, образам не нужны; Dockerfile.rust
+# собирает бинарь сам. JS-образу rust/ не нужен вовсе, но исходники крейтов
+# Dockerfile.rust копирует, поэтому исключается только target.
+rust/target
+# Любые локальные варианты .env (.env.local и т. п.) — секреты, как и сам .env.
+.env.*
+backups
