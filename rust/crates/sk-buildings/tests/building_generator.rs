@@ -498,7 +498,7 @@ const PRESET_USE: [(&str, &str); 4] = [("tavern", "tavern"), ("shop", "shop"), (
 
 #[test]
 fn preset_buildings_keep_room_areas_of_their_use() {
-    assert_eq!(BUILDING_GENERATOR.version, "7");
+    assert_eq!(BUILDING_GENERATOR.version, "8");
     for (preset, use_) in PRESET_USE {
         for size in ["16x14", "26x26", "36x30", "40x32"] {
             for (label, map) in pipeline_maps(&format!("preset/{preset}/{size}/")) {
@@ -679,5 +679,77 @@ fn building_and_fortress_themes_build_valid_connected_maps() {
         let (x, y) = party(&map);
         assert!(tm::reachable_cells(&map, x, y, true, None).len() > 20, "{label}");
         assert!(map.props.len() > 5, "{label}");
+    }
+}
+
+/// Клетка, на которую смотрит предмет с поворотом `rotation` (0° — юг, 90° —
+/// запад, 180° — север, 270° — восток), и шаг взгляда.
+fn facing_from(rotation: f64, x: i64, y: i64) -> (i64, i64, i64, i64) {
+    let quarter = ((((rotation % 360.0) + 360.0) % 360.0 / 90.0).round() as usize) % 4;
+    let (dx, dy) = [(0, 1), (-1, 0), (0, -1), (1, 0)][quarter];
+    (x + dx, y + dy, dx, dy)
+}
+
+/// Перенос `test/prop-placement.test.mjs` (#184): поворот карты под сторону
+/// входа сохраняет стул лицом к столу и настенную вещь спиной к стене.
+#[test]
+fn orientation_keeps_seats_facing_tables_and_wall_props_facing_away() {
+    let map = generate(json!({ "seed": "orient-seats", "width": 30, "height": 26, "design": { "building_use": "tavern" } }));
+    for side in ["west", "east", "north", "south"] {
+        let oriented = tm::orient_tactical_map(map.clone(), side).expect("поворот");
+        let surface_cells: HashSet<(i64, i64)> = oriented
+            .props
+            .iter()
+            .filter(|prop| prop.asset_id.starts_with("table_") || prop.asset_id == "bar_counter")
+            .flat_map(|prop| prop.footprint.iter().map(|cell| (cell.x, cell.y)))
+            .collect();
+        let seats: Vec<_> = oriented.props.iter().filter(|prop| ["chair", "stool", "bench"].contains(&prop.asset_id.as_str())).collect();
+        assert!(!seats.is_empty(), "{side}: в трактире нет сидений");
+        for seat in seats {
+            let (x, y, _, _) = facing_from(seat.rotation, seat.footprint[0].x, seat.footprint[0].y);
+            assert!(surface_cells.contains(&(x, y)), "{side}: {} смотрит не на стол", seat.id);
+        }
+        let mounted: Vec<_> = oriented.props.iter().filter_map(|prop| match &prop.mount {
+            Some(tm::PropMount::Wall { side: wall }) => Some((prop, *wall)),
+            _ => None,
+        }).collect();
+        assert!(!mounted.is_empty(), "{side}: нет настенных вещей");
+        for (prop, wall) in mounted {
+            let (_, _, dx, dy) = facing_from(prop.rotation, prop.x.floor() as i64, prop.y.floor() as i64);
+            let away = match wall {
+                "n" => (0, 1),
+                "e" => (-1, 0),
+                "s" => (0, -1),
+                _ => (1, 0),
+            };
+            assert_eq!((dx, dy), away, "{side}: {} смотрит не от стены {wall}", prop.id);
+        }
+    }
+}
+
+/// Перенос `test/prop-placement.test.mjs` (#184): мебель со спинкой стоит у
+/// стены, а не у закрытой на время расстановки точки появления.
+#[test]
+fn backed_furniture_stands_against_walls_not_the_reserved_spawn() {
+    let backed = ["bar_shelf", "bookshelf", "wardrobe", "cupboard", "pantry_shelf", "shelf_wall", "fireplace", "lantern_wall", "torch_wall"];
+    for seed in ["spawn-a", "spawn-b", "spawn-c", "spawn-d", "spawn-e", "spawn-f"] {
+        let map = generate(json!({ "seed": seed, "width": 30, "height": 26, "design": { "building_use": "tavern" }, "entry": "interior" }));
+        for prop in map.props.iter().filter(|prop| backed.contains(&prop.asset_id.as_str())) {
+            let cells: Vec<(i64, i64)> =
+                if prop.footprint.is_empty() { vec![(prop.x.floor() as i64, prop.y.floor() as i64)] } else { prop.footprint.iter().map(|cell| (cell.x, cell.y)).collect() };
+            let against_wall = cells.iter().any(|(x, y)| {
+                [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| {
+                    if tm::edge_between(&map, *x, *y, x + dx, y + dy)
+                        .ok()
+                        .flatten()
+                        .is_some_and(|edge| matches!(edge.kind, EdgeKind::Wall | EdgeKind::Rail | EdgeKind::Window | EdgeKind::Door))
+                    {
+                        return true;
+                    }
+                    tm::cell_at(&map, x + dx, y + dy).is_none_or(|cell| !cell.passable)
+                })
+            });
+            assert!(against_wall, "{seed}: {} на {},{} стоит не у стены", prop.asset_id, cells[0].0, cells[0].1);
+        }
     }
 }

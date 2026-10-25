@@ -229,6 +229,13 @@ for (const [branch, list] of Object.entries(SEARCHED)) {
   })
 }
 
+// Сцены тестов #184: гарнитур и поворот карты, мебель у точки появления,
+// хозяйская спальня усадьбы, фигурные корпуса с проверкой главной мебели.
+addCase('184/orient-seats', 'generate', { seed: 'orient-seats', width: 30, height: 26, design: { building_use: 'tavern' } })
+for (const seed of ['spawn-a', 'spawn-b', 'spawn-c', 'spawn-d', 'spawn-e', 'spawn-f']) addCase(`184/${seed}`, 'generate', { seed, width: 30, height: 26, design: { building_use: 'tavern' }, entry: 'interior' })
+for (const use of ['manor', 'tavern', 'dwelling', 'barracks']) for (const shape of ['L', 'cross', 'round']) for (const seed of ['a', 'b', 'c']) {
+  addCase(`184/${use}/${shape}/${seed}`, 'generate', { seed: `184-${use}-${shape}-${seed}`, width: 36, height: 30, design: { building_use: use, shape } })
+}
 // --- конвейер -------------------------------------------------------------------------
 
 /** Вызовы `ensureDeclaredTransitions` конвейером: вход — карта поселения. */
