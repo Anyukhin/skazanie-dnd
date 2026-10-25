@@ -9,3 +9,5 @@ export const placeProps = wrap('placeProps', real.placeProps)
 export const placeRequiredProps = wrap('placeRequiredProps', real.placeRequiredProps)
 export const placeColonnade = wrap('placeColonnade', real.placeColonnade)
 export const attachPropSupports = wrap('attachPropSupports', real.attachPropSupports)
+export const KEY_FURNITURE = real.KEY_FURNITURE
+export const seatAroundSurface = wrap('seatAroundSurface', real.seatAroundSurface)
