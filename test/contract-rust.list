@@ -157,3 +157,13 @@ test/combat-lab-observer-api.test.mjs  # права, справочники, о�
 test/item-images-api.test.mjs           # картинка предмета через учёт расхода: completed/failed, 429 LLM_QUOTA_EXCEEDED до провайдера
 test/npc-portraits-api.test.mjs         # права и видимость, 302 заглушки, кеш с ETag и 304, лимит генераций, restart
 test/location-illustrations-api.test.mjs # подготовка при выключенном флаге, рантайм только из кеша, перегенерация меняет ETag
+
+# С19.4 (2026-10-25): последние HTTP-тесты вне списка — через кит, зелёные в обоих режимах.
+test/test-kit.test.mjs                 # сам набор: кости и сбои данными, журнал читается и портится подкомандой бинаря
+test/campaign-dialogues-api.test.mjs   # диалог с Аресом: ответ в летописи, повтор, чужой герой, подделка ответа
+test/stream-live-access-api.test.mjs   # живой поток закрывается после logout, истечения сессии и снятия доступа
+test/stream-backpressure-api.test.mjs  # медленный читатель: комнаты схлопнуты до последней
+test/combat-critical-turn-api.test.mjs # крит врага без модели: конец хода на строке боя (кости данными)
+test/combat-journal-order-api.test.mjs # порядок хроники при атаке по возможности, restart, повтор (кости данными)
+test/shillelagh-api.test.mjs           # «Дубинка» друида через API, restart (кости данными)
+test/sneak-attack-http.test.mjs        # Скрытая атака: права, ключ, журнал через readJournal, restart

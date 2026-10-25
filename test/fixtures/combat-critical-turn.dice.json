@@ -1,0 +1,7 @@
+{
+  "format": "skazanie.test-dice/1",
+  "description": "Кости test/combat-critical-turn-api.test.mjs (прежде combat-critical-deterministic-dice.mjs): у огра каждая d20 — натуральная 20, критический удар по герою. Урон и остальные броски настоящие.",
+  "rules": [
+    { "actor": "^ogre$", "sides": 20, "value": 20 }
+  ]
+}

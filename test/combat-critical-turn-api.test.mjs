@@ -36,7 +36,7 @@ function battleState() {
 test('критический удар врага без модели: конец хода остаётся на строке боя', { timeout: runnerTimeout(60_000) }, async (t) => {
   const server = await startTestServer(t, {
     storagePrefix: 'skazanie-combat-critical-turn-',
-    preload: 'test/fixtures/combat-critical-deterministic-dice.mjs',
+    dice: 'test/fixtures/combat-critical-turn.dice.json',
   })
   const log = () => server.output()
   const { client: admin } = await setupAdmin(server, { name: 'Мастер стенда', email: 'admin@critical-turn.test', password: 'critical-turn-admin-password' })

@@ -5,8 +5,8 @@ import { expectStatus, registerUser, setupAdmin, startTestServer } from './kit/h
 
 const CAMPAIGN = 'SHILLELAGH-API'
 const HERO = 'hero-slot-1'
-// Предзагрузка проверяет имя хранилища: только skazanie-shillelagh-api-*.
-const DETERMINISTIC_DICE_PRELOAD = 'test/fixtures/shillelagh-deterministic-dice.mjs'
+// Кости данными (`dice` набора): героям — 18 и максимум, врагам — 2 и минимум.
+const DETERMINISTIC_DICE = 'test/fixtures/shillelagh-api.dice.json'
 
 function command(client, key, value) {
   return client.post(`/api/campaigns/${CAMPAIGN}/commands`, { idempotency_key: key, command: value }, { idempotencyKey: key })
@@ -66,7 +66,7 @@ function druidDocument() {
 
 test('обычный друид через API получает Shillelagh, держит клуб и сохраняет cast/attack после restart', { timeout: 120_000 }, async (t) => {
   const server = await startTestServer(t, {
-    preload: DETERMINISTIC_DICE_PRELOAD,
+    dice: DETERMINISTIC_DICE,
     storagePrefix: 'skazanie-shillelagh-api-',
   })
   const { client: admin } = await setupAdmin(server, { name: 'Ведущий', email: 'admin@shillelagh-api.test', password: 'secure-admin-password' })
