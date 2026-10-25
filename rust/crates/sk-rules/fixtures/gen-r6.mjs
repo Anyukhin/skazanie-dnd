@@ -248,8 +248,8 @@ const PATCHES = [[], [], [], [[['mechanics', 'combat', 'active'], true]], [[['me
 
 const lines = readFileSync(SOURCE_URL, 'utf8').split(/\r?\n/)
 const BLOCKS = {
-  b9: [6184, 6193], b10: [6194, 6203], b18: [6466, 6479], b19: [6480, 6502], b20: [6503, 6526], b21: [6527, 6549], b22: [6550, 6579], b23: [6580, 6619], b24: [6620, 6640],
-  b27: [6684, 6693], b33: [6764, 6776], b41: [6810, 6813], b42: [6814, 6825], b43: [6826, 6842], b44: [6843, 6862], b45: [6863, 6878], b46: [6879, 6899], b49: [6922, 6954], b63: [7064, 7156], b64: [7171, 7200],
+  b9: [6206, 6215], b10: [6216, 6225], b18: [6488, 6501], b19: [6502, 6524], b20: [6525, 6548], b21: [6549, 6571], b22: [6572, 6601], b23: [6602, 6641], b24: [6642, 6662],
+  b27: [6706, 6715], b33: [6786, 6798], b41: [6832, 6835], b42: [6836, 6847], b43: [6848, 6864], b44: [6865, 6884], b45: [6885, 6900], b46: [6901, 6921], b49: [6944, 6976], b63: [7086, 7178], b64: [7193, 7222],
 }
 const blocks = {}
 for (const [name, [from, to]] of Object.entries(BLOCKS)) {
@@ -259,8 +259,8 @@ for (const [name, [from, to]] of Object.entries(BLOCKS)) {
 
 // --- ветки разбора без хвоста -----------------------------------------------------
 
-const PREP = [13033, 13701]
-const CASES = [[19709, 19782], [20348, 20929], [22310, 22604], [22739, 22754], [22761, 22893]]
+const PREP = [13055, 13723]
+const CASES = [[19731, 19804], [20370, 20951], [22332, 22626], [22761, 22776], [22783, 22915]]
 const ANCHORS = ["if (!diceService)", "case 'UseLevelTransition'", "case 'BargainWithMerchant'", "case 'ImportLocationMap'", "case 'RevealArea'", 'case \'UpsertWorldEntity\'']
 ;[PREP, ...CASES].forEach(([from], index) => { if (!lines[from - 1].trimStart().startsWith(ANCHORS[index])) throw new Error(`строка ${from} не «${ANCHORS[index]}»`) })
 const prep = lines.slice(PREP[0] - 1, PREP[1]).join('\n')

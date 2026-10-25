@@ -249,7 +249,7 @@ const snapshots = states.map((state) => JSON.stringify(state))
 
 // --- блоки проверки 71–73 --------------------------------------------------------------
 
-const block = await blockFunction([[7586, 7801]], ["if (command.command_type === 'UseCombatAction' && (command.server_authoritative || context.serverAuthoritativeCombat)) {"], ['state', 'command', 'context'], 'return command')
+const block = await blockFunction([[7608, 7823]], ["if (command.command_type === 'UseCombatAction' && (command.server_authoritative || context.serverAuthoritativeCombat)) {"], ['state', 'command', 'context'], 'return command')
 const ACTIONS = ['dash', 'disengage', 'dodge', 'hide', 'help', 'stabilize', 'first-aid', 'shove', 'grapple', 'second-wind', 'action-surge', 'stand-up', 'break-free', 'steady-nerves', 'extinguish-self', 'extinguish-ally',
   'ready-action', 'readied-attack', 'readied-spell', 'opportunity-attack', 'decline-reaction', 'indomitable', 'use-resistance', 'roll-first-resistance', 'skip-resistance', 'cast:shield', 'cast:absorb-elements', 'cast:hellish-rebuke',
   'cast:silvery-barbs', 'cast:counterspell', 'parry', 'riposte', 'uncanny-dodge', 'rage', 'flurry-of-blows', 'martial-arts-strike', 'trip-attack', 'menacing-attack', 'hunters-mark', 'divine-spark', 'divine-smite', 'lay-on-hands',

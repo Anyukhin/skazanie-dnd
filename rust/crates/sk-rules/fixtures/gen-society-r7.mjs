@@ -158,15 +158,15 @@ for (const seedEntry of seeds) {
 // --- блоки проверки ----------------------------------------------------------------
 
 const blocks = {
-  b11: await blockFunction([[6204, 6213]], ['if (NPC_WORLD_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
-  b12: await blockFunction([[6214, 6243]], ['if (CAPTIVE_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
-  b13: await blockFunction([[6244, 6251]], ['if (LOOT_CONTAINER_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
-  b14: await blockFunction([[6252, 6260]], ['if (BEAST_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
-  b15: await blockFunction([[6261, 6287]], ['if (PARLEY_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
-  b16: await blockFunction([[6288, 6352]], ['if (LAW_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
-  b17: await blockFunction([[6353, 6465]], ['if (TAVERN_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
-  b25: await blockFunction([[6641, 6679]], ['if (BLESSING_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
-  b26: await blockFunction([[6683, 6683]], ['if (COURIER_LETTER_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
+  b11: await blockFunction([[6226, 6235]], ['if (NPC_WORLD_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
+  b12: await blockFunction([[6236, 6265]], ['if (CAPTIVE_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
+  b13: await blockFunction([[6266, 6273]], ['if (LOOT_CONTAINER_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
+  b14: await blockFunction([[6274, 6282]], ['if (BEAST_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
+  b15: await blockFunction([[6283, 6309]], ['if (PARLEY_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
+  b16: await blockFunction([[6310, 6374]], ['if (LAW_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
+  b17: await blockFunction([[6375, 6487]], ['if (TAVERN_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
+  b25: await blockFunction([[6663, 6701]], ['if (BLESSING_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
+  b26: await blockFunction([[6705, 6705]], ['if (COURIER_LETTER_COMMAND_TYPES.has(command.command_type))'], ['state', 'command', 'context'], 'return command'),
 }
 const normalizedCommands = []
 const blockCases = []
