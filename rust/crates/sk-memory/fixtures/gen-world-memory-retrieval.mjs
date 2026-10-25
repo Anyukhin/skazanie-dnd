@@ -64,6 +64,8 @@ function graphMemory() {
   }
 }
 
+// Команды — как в test/world-memory-engine.test.mjs после #189: предикаты
+// утверждений сняты (их нет в онтологии), факт — `lore`.
 function bridgeMemory() {
   let memory = M.normalizeWorldMemory({})
   const state = { partyMemberIds: ['hero'], mechanics: { world_time: { elapsed_minutes: 0 } } }
@@ -72,11 +74,11 @@ function bridgeMemory() {
     { command_type: 'UpsertWorldEntity', entity: { id: 'faction:watch', kind: 'faction', name: 'Watch', visibility: 'party' } },
     { command_type: 'RecordWorldRelationship', relationship: { id: 'relationship:vela-watch', from_entity_id: 'npc:vela', relation: 'serves', to_entity_id: 'faction:watch', summary: 'Vela serves the Watch.', visibility: 'party', source_event_ids: ['event:appointment'] } },
     { command_type: 'UpsertNarrativeThread', thread: { id: 'thread:missing-key', title: 'The missing key', summary: 'The vault key is missing.', visibility: 'party', entity_ids: ['npc:vela'], clock: { current: 1, max: 4, label: 'Rivals close in' }, source_event_ids: ['event:key-lost'] } },
-    { command_type: 'RecordNpcBelief', claim: { id: 'belief:vela-thief', holder_entity_id: 'npc:vela', subject_entity_id: 'faction:watch', predicate: 'suspects', claim: 'Vela suspects a Watch officer.', summary: 'Vela suspects an officer.', visibility: 'gm_only', source_event_ids: ['event:suspicion'] } },
-    { command_type: 'RecordRumor', claim: { id: 'rumor:market-key', holder_entity_id: 'npc:vela', predicate: 'heard', claim: 'The key was sold in the market.', summary: 'A market rumor.', visibility: 'party', source_event_ids: ['event:gossip'] } },
+    { command_type: 'RecordNpcBelief', claim: { id: 'belief:vela-thief', holder_entity_id: 'npc:vela', subject_entity_id: 'faction:watch', claim: 'Vela suspects a Watch officer.', summary: 'Vela suspects an officer.', visibility: 'gm_only', source_event_ids: ['event:suspicion'] } },
+    { command_type: 'RecordRumor', claim: { id: 'rumor:market-key', holder_entity_id: 'npc:vela', claim: 'The key was sold in the market.', summary: 'A market rumor.', visibility: 'party', source_event_ids: ['event:gossip'] } },
     { command_type: 'RecordNarrativeSummary', summary: { id: 'summary:session-1', kind: 'session', title: 'Session one', summary: 'The party learned that the vault key is missing.', visibility: 'party', entity_ids: ['npc:vela'], thread_ids: ['thread:missing-key'], source_event_ids: ['event:key-lost'] } },
     { command_type: 'UpsertWorldEntity', entity: { id: 'npc:ashen-fox', kind: 'npc', name: 'Ashen Fox', summary: 'A masked courier.', visibility: 'gm_only' } },
-    { command_type: 'RecordWorldFact', fact: { id: 'fact:fox-route', subject_id: 'npc:ashen-fox', predicate: 'uses_route', object: 'The courier uses the old aqueduct.', summary: 'Ashen Fox uses the old aqueduct.', visibility: 'gm_only' } },
+    { command_type: 'RecordWorldFact', fact: { id: 'fact:fox-route', subject_id: 'npc:ashen-fox', predicate: 'lore', object: 'The courier uses the old aqueduct.', summary: 'Ashen Fox uses the old aqueduct.', visibility: 'gm_only' } },
     { command_type: 'RevealWorldFact', fact_id: 'fact:fox-route', target_ids: ['hero'] },
   ]
   for (const [index, raw] of commands.entries()) {
