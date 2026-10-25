@@ -1,5 +1,8 @@
-//! Запуск сервера «Сказания»: `skazanie-server [корень-проекта]` — перенос
-//! верхушки и хвоста `server/index.mjs` (1, 202–240, 287–310, 6481–6505).
+//! Запуск сервера «Сказания»: `skazanie-server` — перенос верхушки и хвоста
+//! `server/index.mjs` (1, 202–240, 287–310, 6481–6505). Аргументы разбирает
+//! [`sk_server::cli`]: справка, неизвестный аргумент и подкоманды порт не
+//! открывают. Корень данных и раздачи клиента — `sk_core::data_root`
+//! (`DND_DATA_DIR`, каталог бинаря или дерево сборки).
 //!
 //! Порядок как в JS:
 //!
@@ -32,7 +35,7 @@
 //! Цикл соединений (тайм-ауты 6485–6488, `ConnectInfo`, ошибки `accept`) —
 //! в библиотеке, [`sk_server::serve`]: тем же путём идут тесты.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -176,20 +179,33 @@ fn fail(message: String) -> ! {
 }
 
 fn main() {
-    // Служебные подкоманды набора тестов (`test/kit/journal.mjs`,
-    // `test/kit/sessions.mjs`): до `.env`
-    // и без отметки писателя storage.
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("journal") {
-        std::process::exit(sk_server::test_hooks::journal_cli::main(&args[1..]));
-    }
-    if args.first().map(String::as_str) == Some("session") {
-        std::process::exit(sk_server::test_hooks::session_cli::main(&args[1..]));
+    // Разбор аргументов (С19.1): справка, отказ разбора и служебные
+    // подкоманды (`journal`, `session` набора тестов, `import-legacy`) — до
+    // `.env`, без отметки писателя storage и без порта. Сервер — только без
+    // аргументов.
+    let args: Vec<String> = std::env::args_os().skip(1).map(|arg| arg.to_string_lossy().into_owned()).collect();
+    if let Some(code) = sk_server::cli::run_tool(&sk_server::cli::parse(&args)) {
+        std::process::exit(code);
     }
     let cwd = std::env::current_dir().unwrap_or_default();
     load_dotenv(&cwd.join(".env"));
-    let root = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| cwd.clone());
-    let config = Config::from_env(&root);
+    // Корень данных (`DND_DATA_DIR` может стоять в `.env`) — до первого
+    // чтения `data/`, `public/`, `dist/`; без пакетов правил — отказ старта
+    // своим текстом, а не сбой хранилища.
+    let data_root = sk_core::data_root::resolve();
+    let missing = sk_core::data_root::missing_entries(&data_root);
+    if !missing.is_empty() {
+        fail(format!(
+            "Корень данных {} ({}) не содержит {}: задайте DND_DATA_DIR — каталог с data/, prompts/, public/ и dist/",
+            data_root.path.display(),
+            data_root.source.label(),
+            missing.join(", ")
+        ));
+    }
+    let data_root = match sk_core::data_root::init(data_root) {
+        Ok(root) | Err(root) => root,
+    };
+    let config = Config::from_env(&data_root.path);
     let port = listen_port(config.port).unwrap_or_else(|error| fail(error));
     // Кости и сбои из данных (`DND_TEST_DICE_RULES`, `DND_COMMIT_FAULTS`):
     // вне `NODE_ENV=test` и хранилища `skazanie-*` во временном каталоге — отказ старта.

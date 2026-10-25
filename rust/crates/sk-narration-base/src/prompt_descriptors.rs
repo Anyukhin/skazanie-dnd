@@ -47,8 +47,10 @@ pub const PROMPT_DESCRIPTORS: &[PromptDescriptor] = &[
 ];
 
 /// Корень репозитория (где лежат `server/` и `prompts/`), известный при сборке.
+/// Сверка привязок промптов читает исходники `server/*.mjs` — дерево сборки,
+/// а не корень данных процесса.
 pub fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
+    sk_core::data_root::build_root()
 }
 
 /// `loadedPromptIds()`: что модули `server/*.mjs` **на самом деле** читают —
