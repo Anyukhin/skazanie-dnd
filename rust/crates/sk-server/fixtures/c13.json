@@ -8597,7 +8597,7 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:770cd96b089f49ac52ee86caff8386053d92a0e454f35da26316f320e71970a2:199004>",
+            "cells": "<sha256:265f67e718548abd9b8d54bd111fae12ff4a03898778cbf34f498cbcffb7b4a5:199330>",
             "level": {
               "index": 0,
               "label": "Первый этаж"
@@ -8608,8 +8608,8 @@
                 "label": "Первый этаж"
               }
             ],
-            "map": "<sha256:efd95bd85a728c02e56359030446d209a2b28af930f9ad4ca116ca7c436ede69:89051>",
-            "map_hash": "efd95bd85a728c02e56359030446d209a2b28af930f9ad4ca116ca7c436ede69"
+            "map": "<sha256:b7bc94c790b9b04a56816c6805697c093bd69e3bddbcfaac15a09b1b2cab0074:95835>",
+            "map_hash": "b7bc94c790b9b04a56816c6805697c093bd69e3bddbcfaac15a09b1b2cab0074"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -8774,9 +8774,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-холм",
-              "x": 25,
-              "y": 39,
-              "anchor_prop_id": "prop-256-table_long",
+              "x": 37,
+              "y": 26,
+              "anchor_prop_id": "prop-263-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -8789,7 +8789,7 @@
               "location_id": "location-1-холм",
               "x": 22,
               "y": 21,
-              "anchor_prop_id": "prop-108-market_stall",
+              "anchor_prop_id": "prop-109-market_stall",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -9576,7 +9576,7 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:770cd96b089f49ac52ee86caff8386053d92a0e454f35da26316f320e71970a2:199004>",
+            "cells": "<sha256:265f67e718548abd9b8d54bd111fae12ff4a03898778cbf34f498cbcffb7b4a5:199330>",
             "level": {
               "index": 0,
               "label": "Первый этаж"
@@ -9587,8 +9587,8 @@
                 "label": "Первый этаж"
               }
             ],
-            "map": "<sha256:efd95bd85a728c02e56359030446d209a2b28af930f9ad4ca116ca7c436ede69:89051>",
-            "map_hash": "efd95bd85a728c02e56359030446d209a2b28af930f9ad4ca116ca7c436ede69"
+            "map": "<sha256:b7bc94c790b9b04a56816c6805697c093bd69e3bddbcfaac15a09b1b2cab0074:95835>",
+            "map_hash": "b7bc94c790b9b04a56816c6805697c093bd69e3bddbcfaac15a09b1b2cab0074"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -9753,9 +9753,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-холм",
-              "x": 25,
-              "y": 39,
-              "anchor_prop_id": "prop-256-table_long",
+              "x": 37,
+              "y": 26,
+              "anchor_prop_id": "prop-263-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -9768,7 +9768,7 @@
               "location_id": "location-1-холм",
               "x": 22,
               "y": 21,
-              "anchor_prop_id": "prop-108-market_stall",
+              "anchor_prop_id": "prop-109-market_stall",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -10764,8 +10764,8 @@
                 "label": "Второй этаж"
               }
             ],
-            "map": "<sha256:b80ca50e43898801bc80e9eb02a0a3439d1188c5a67267a5744fa3f486e6ad28:84519>",
-            "cells": "<sha256:4a214b4cebf533bd74566eb6ce68bfea384f22597d87da9671a9fb59f4159868:203480>",
+            "map": "<sha256:947efd5fd288f25ca6f809c05dfeff95e821c2cf780989ec6e44179c4bbd1ea2:92722>",
+            "cells": "<sha256:f61fb15e73c4ce7889696b6813e9c5640cca729dc7245e6077e8e7c8237914a2:203777>",
             "level": {
               "index": 0,
               "label": "Первый этаж"
@@ -10801,9 +10801,9 @@
               {
                 "npc_id": "npc-59170ffd1890-1",
                 "location_id": "location-1-холм",
-                "x": 12,
-                "y": 24,
-                "anchor_prop_id": "prop-202-table_long",
+                "x": 31,
+                "y": 4,
+                "anchor_prop_id": "prop-188-table_long",
                 "placement_reason": "role-suitable-post",
                 "policy_id": "skazanie:npc-world-v1",
                 "source_event_id": "<uuid>"
@@ -10849,7 +10849,7 @@
           "ruleset_selection_locked": false,
           "actors": [],
           "economyLog": [],
-          "locationMaps": "<sha256:f979d83eacb3098bf72e57413ce774ca820f9ff40c2152003c521afc1888d8d8:290039>",
+          "locationMaps": "<sha256:7c6cce41064a6381d7a8192c00addf167f5ae3e80fcc48ee064d52f779af0462:295386>",
           "world_deeds": {
             "schema_version": 1,
             "deeds": []
@@ -11033,9 +11033,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-холм",
-              "x": 12,
-              "y": 24,
-              "anchor_prop_id": "prop-202-table_long",
+              "x": 31,
+              "y": 4,
+              "anchor_prop_id": "prop-188-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -15274,7 +15274,7 @@
             {
               "index": 0,
               "label": "Первый этаж",
-              "map": "<sha256:56dac21d63eda2c460a09cbdc2e59357e6eddf2d9594e9da0b8b1177863d014e:74450>"
+              "map": "<sha256:88bff5c920494e33873f90d70af073ce274988b51e8adefc10a7e2d2647cad37:78704>"
             }
           ],
           "applied_to_scene": true,
@@ -15327,9 +15327,9 @@
           "npc_name": "Мира Ветрокрыл",
           "npc_role": "проводница и очевидец",
           "location_id": "location-1-холм",
-          "x": 25,
-          "y": 39,
-          "anchor_prop_id": "prop-256-table_long",
+          "x": 37,
+          "y": 26,
+          "anchor_prop_id": "prop-263-table_long",
           "placement_reason": "role-suitable-post",
           "policy_id": "skazanie:npc-world-v1",
           "vitality": {
@@ -15350,7 +15350,7 @@
           "location_id": "location-1-холм",
           "x": 22,
           "y": 21,
-          "anchor_prop_id": "prop-108-market_stall",
+          "anchor_prop_id": "prop-109-market_stall",
           "placement_reason": "role-suitable-post",
           "policy_id": "skazanie:npc-world-v1",
           "vitality": {
@@ -15379,7 +15379,7 @@
             {
               "index": 0,
               "label": "Первый этаж",
-              "map": "<sha256:7e92a3359d465948ce69f15eaf8600c7f133cf165380f3b01d6499448ba4fc5c:72298>"
+              "map": "<sha256:9141c2c3de743b047b0d6584156f8ec946f46645f023bccd5905951bdf63875f:77348>"
             }
           ],
           "applied_to_scene": true,
@@ -15432,9 +15432,9 @@
           "npc_name": "Мира Ветрокрыл",
           "npc_role": "проводница и очевидец",
           "location_id": "location-1-холм",
-          "x": 12,
-          "y": 24,
-          "anchor_prop_id": "prop-202-table_long",
+          "x": 31,
+          "y": 4,
+          "anchor_prop_id": "prop-188-table_long",
           "placement_reason": "role-suitable-post",
           "policy_id": "skazanie:npc-world-v1",
           "vitality": {

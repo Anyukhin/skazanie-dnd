@@ -62,7 +62,7 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/encounters\/assemble$/` и `POST` (5306–5307).
-    vec![Route::post(5307, Matcher::path_template("/api/campaigns/{id}/encounters/assemble"), assemble)]
+    vec![Route::post(5308, Matcher::path_template("/api/campaigns/{id}/encounters/assemble"), assemble)]
 }
 
 /// Коды 409 (5444).

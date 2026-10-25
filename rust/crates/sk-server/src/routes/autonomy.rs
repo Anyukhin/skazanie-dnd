@@ -56,9 +56,9 @@ use crate::state::AppState;
 pub fn routes() -> Vec<Route> {
     vec![
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/intents$/` и `POST` (5039–5040).
-        Route::post(5039, Matcher::path_template("/api/campaigns/{id}/autonomy/intents"), intents),
+        Route::post(5040, Matcher::path_template("/api/campaigns/{id}/autonomy/intents"), intents),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/advance$/` и `POST` (5069–5070).
-        Route::post(5069, Matcher::path_template("/api/campaigns/{id}/autonomy/advance"), advance),
+        Route::post(5070, Matcher::path_template("/api/campaigns/{id}/autonomy/advance"), advance),
     ]
 }
 

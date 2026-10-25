@@ -42,11 +42,11 @@ use crate::routes::campaigns::Caught;
 pub fn routes() -> Vec<Route> {
     vec![
         // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/quests\/(abandon|accept)$/)` и `POST` (4283–4284).
-        Route::post(4283, Matcher::path_template("/api/campaigns/{id}/quests/{abandon|accept}"), quest_decision),
+        Route::post(4284, Matcher::path_template("/api/campaigns/{id}/quests/{abandon|accept}"), quest_decision),
         // `…\/party-decisions\/([A-Za-z0-9._:-]+)\/votes$/` и `POST` (4312–4313).
-        Route::post(4312, Matcher::path_template("/api/campaigns/{id}/party-decisions/{decision}/votes"), party_vote),
+        Route::post(4313, Matcher::path_template("/api/campaigns/{id}/party-decisions/{decision}/votes"), party_vote),
         // `…\/party-decisions\/([A-Za-z0-9._:-]+)\/roll$/` и `POST` (4374–4375).
-        Route::post(4374, Matcher::path_template("/api/campaigns/{id}/party-decisions/{decision}/roll"), party_roll),
+        Route::post(4375, Matcher::path_template("/api/campaigns/{id}/party-decisions/{decision}/roll"), party_roll),
     ]
 }
 
