@@ -114,7 +114,14 @@ function randomOp(map) {
   if (roll < 0.92) return { op: 'dropSpawn' }
   if (roll < 0.95) return { op: 'prop', prop: { id: `nan-${int(1000)}`, assetId: 'barrel', y: y + 0.5, footprint: [], blocksMove: true } }
   if (roll < 0.97) return { op: 'prop', prop: { id: `float-${int(1000)}`, assetId: pick(['barrel', 'chair']), x: x + 0.75, y: y - 0.25, footprint: [], blocksMove: chance(0.5) } }
-  return { op: 'prop', prop: { id: `stairs-${int(1000)}`, assetId: 'stairs_up', x: x + 0.5, y: y + 0.5, footprint: [{ x, y }], transition: { toLevel: 1 }, blocksMove: true } }
+  if (roll < 0.985) return { op: 'prop', prop: { id: `stairs-${int(1000)}`, assetId: 'stairs_up', x: x + 0.5, y: y + 0.5, footprint: [{ x, y }], transition: { toLevel: 1 }, blocksMove: true } }
+  // Предмет в несколько клеток — сквозь стену, окно, дверь или границу дома и
+  // двора (`PROP_CROSSES_WALL`, #184); изредка с опорой или переходом.
+  const w = 1 + int(2)
+  const h = w === 1 ? 2 : 1 + int(2)
+  const footprint = []
+  for (let dy = 0; dy < h; dy += 1) for (let dx = 0; dx < w; dx += 1) footprint.push({ x: x + dx, y: y + dy })
+  return { op: 'prop', prop: { id: `wide-${int(1000)}`, assetId: pick(['fireplace', 'table_long', 'bed', 'bar_counter']), x: x + w / 2, y: y + h / 2, footprint, blocksMove: chance(0.8), ...(chance(0.1) ? { mount: { kind: 'wall', side: 'n' } } : {}), ...(chance(0.05) ? { transition: { toLevel: 1 } } : {}) } }
 }
 
 function applyOp(map, op) {
