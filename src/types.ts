@@ -3235,6 +3235,10 @@ export type CharacterCreationCatalog = {
     label: string
     source_url: string
     subclass_level: number
+    /** Кость хитов класса; на 1 уровне хиты — её максимум плюс модификатор Телосложения. */
+    hit_die?: number
+    /** Спасброски, которыми класс владеет с 1 уровня. */
+    saving_throws?: Array<keyof CharacterAbilityScores>
     subclasses: Array<{ id: string; name: string; sourceUrl?: string }>
     class_skills: {
       choice_count: number

@@ -116,6 +116,7 @@ test('каждый игрок заполняет свой серверный с�
     backgroundId: 'soldier',
     backgroundChoices: { tools: ['dice_set'], languages: [] },
     speciesChoices: { 'artisan-tool': ['smiths_tools'] },
+    phbCreation: { schema_version: 1, classChoices: {} },
     starterEquipmentChoices: {
       armor: ['chain-mail'], 'melee-loadout': ['longsword-shield'],
       secondary: ['light-crossbow'], pack: ['explorers-pack'],
