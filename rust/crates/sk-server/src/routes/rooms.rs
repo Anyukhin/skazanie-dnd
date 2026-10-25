@@ -159,7 +159,7 @@ async fn read_room(ctx: &mut RouteCtx) -> ApiResult {
                 let normalize_span = sk_store::perf::span("rooms.normalize");
                 let normalized = normalize(&room_state)?;
                 drop(normalize_span);
-                let present = crate::streams::state_with_live_presence(&core, &normalized, &code)?;
+                let present = crate::streams::normalized_state_with_live_presence(&core, &normalized, &code)?;
                 let viewer_span = sk_store::perf::span("rooms.viewer_state_for");
                 let projected = viewer_state_for(&present, &user, Some(&Value::String(actor_id)))?.unwrap_or(Value::Null);
                 drop(viewer_span);

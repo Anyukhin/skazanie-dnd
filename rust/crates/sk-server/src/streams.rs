@@ -186,8 +186,13 @@ fn render_error(message: impl Into<String>) -> RenderError {
 /// `campaignStreamFrame(event, payload)` (2643–2645): общий счётчик кадров и
 /// соединений процесса.
 fn frame(sequence: &AtomicU64, event: &str, payload: &Value) -> String {
+    frame_with_data(sequence, event, &js::stringify(payload))
+}
+
+/// [`frame`] с уже сериализованным содержимым.
+fn frame_with_data(sequence: &AtomicU64, event: &str, data: &str) -> String {
     let id = sequence.fetch_add(1, Ordering::SeqCst) + 1;
-    format!("id: {id}\nevent: {event}\ndata: {}\n\n", js::stringify(payload))
+    format!("id: {id}\nevent: {event}\ndata: {data}\n\n")
 }
 
 // --- связь соединения с телом ответа ----------------------------------------
@@ -803,6 +808,16 @@ impl StreamRegistry for LiveStreams {
 /// потоков по этому состоянию, затем присутствие — только по соединениям с
 /// живой сессией и доступом. С заглушкой реестра потоков нет: герои не в сети.
 pub fn state_with_live_presence(core: &GameCore, state: &Value, campaign_id: &str) -> Result<Value, Failure> {
+    live_presence(core, state, campaign_id, false)
+}
+
+/// [`state_with_live_presence`] для уже нормализованного состояния (Ск3):
+/// часы хода сверяются с ним без повторной нормализации (она идемпотентна).
+pub fn normalized_state_with_live_presence(core: &GameCore, state: &Value, campaign_id: &str) -> Result<Value, Failure> {
+    live_presence(core, state, campaign_id, true)
+}
+
+fn live_presence(core: &GameCore, state: &Value, campaign_id: &str, normalized: bool) -> Result<Value, Failure> {
     let Value::Object(object) = state else { return Ok(state.clone()) };
     let live = core.streams.live();
     if let Some(live) = live {
@@ -812,7 +827,11 @@ pub fn state_with_live_presence(core: &GameCore, state: &Value, campaign_id: &st
     let mut online = core.streams.connected_hero_ids(campaign_id);
     let typing = live.map(|live| live.typing_actor_ids(campaign_id)).unwrap_or_default();
     let clock = live.and_then(|live| live.turn_clock_for(campaign_id));
-    let turn_clock = sk_turns::combat_turn_coordinator::combat_turn_clock_for_state(state, clock.as_ref())?;
+    let turn_clock = if normalized {
+        sk_turns::combat_turn_coordinator::combat_turn_clock_for_normalized_state(state, clock.as_ref())
+    } else {
+        sk_turns::combat_turn_coordinator::combat_turn_clock_for_state(state, clock.as_ref())?
+    };
     let players = state.get("players").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
     if connections.iter().any(|connection| connection.view().controls_party) {
         for player in players {
@@ -849,6 +868,15 @@ pub fn state_with_live_presence(core: &GameCore, state: &Value, campaign_id: &st
     Ok(Value::Object(next))
 }
 
+/// Собранный кадр комнаты одной рассылки: для кого и с какой картой.
+struct RenderedRoom {
+    user: String,
+    actor_id: String,
+    map_hash_before: String,
+    map_hash_after: String,
+    data: Arc<str>,
+}
+
 /// `broadcastCampaignRoom(campaignId, suppliedRoom)` (2671–2706): каждому
 /// соединению — его проекция, сжатая относительно карты, которую оно
 /// действительно отправило. Кадр собирается в момент записи в сокет: пока
@@ -862,31 +890,56 @@ pub fn broadcast_campaign_room(core: &Rc<GameCore>, campaign_id: &str, supplied:
     if !live.has_connections(&normalized) {
         return Ok(());
     }
+    let room_span = sk_store::perf::span("broadcast.get_room");
     let room = match supplied {
         Some(room) => room,
         None => crate::room::get_room(core, &normalized)?,
     };
+    drop(room_span);
     let Some(raw) = room.state.as_ref() else { return Ok(()) };
     let _span = sk_store::perf::span("broadcast.prepare");
-    let normalized_state = sk_rules::normalize::normalize_campaign_state(raw)?;
+    let norm_span = sk_store::perf::span("broadcast.normalize");
+    let normalized_state = sk_rules::normalize::normalize_campaign_state_cow(raw)?;
+    drop(norm_span);
+    let presence_span = sk_store::perf::span("broadcast.presence");
     // Внутри — сверка сессий и прав: отозванные соединения закрываются до
     // цикла, остальные получают актуальные права.
-    let state = Arc::new(state_with_live_presence(core, &normalized_state, &normalized)?);
+    let state = Arc::new(normalized_state_with_live_presence(core, &normalized_state, &normalized)?);
+    // Кадры одной рассылки для одинаковых зрителей (тот же пользователь, герой
+    // и карта, которую соединение уже отправило) совпадают байт в байт, кроме
+    // номера кадра: проекция и сжатие считаются один раз (Ск3). Кадр
+    // по-прежнему собирается в момент записи, номер — свой у каждого.
+    let rendered: Arc<Mutex<Vec<RenderedRoom>>> = Arc::default();
+    drop(presence_span);
     for connection in live.connections(&normalized) {
         let view = connection.view.clone();
         let state = state.clone();
         let sequence = live.sequence.clone();
         let version = room.version;
         let updated_at = room.updated_at.clone();
+        let rendered = rendered.clone();
         let render: FrameRender = Box::new(move || {
             let _span = sk_store::perf::span("broadcast.render");
             let mut view = lock(&view);
+            let user_key = js::stringify(&view.user);
+            let reused = lock(&rendered).iter().find(|done| done.user == user_key && done.actor_id == view.actor_id && done.map_hash_before == view.map_hash).map(|done| (done.data.clone(), done.map_hash_after.clone()));
+            if let Some((data, hash)) = reused {
+                view.map_hash = hash;
+                return Ok(Some(frame_with_data(&sequence, "room", &data)));
+            }
             let actor = Value::String(view.actor_id.clone());
+            let vs = sk_store::perf::span("broadcast.viewer_state");
             let projected = crate::access::viewer_state_for(&state, &view.user, Some(&actor)).map_err(|error| render_error(error.message))?.unwrap_or(Value::Null);
+            drop(vs);
+            let cs = sk_store::perf::span("broadcast.compact");
             let (compacted, hash) = sk_tactical::reveal_transport::compact_state_for_transport(&projected, &view.map_hash);
-            view.map_hash = hash;
+            drop(cs);
             let payload = json!({ "version": version, "updatedAt": updated_at, "state": compacted.unwrap_or(projected) });
-            Ok(Some(frame(&sequence, "room", &payload)))
+            let fs = sk_store::perf::span("broadcast.frame");
+            let data: Arc<str> = Arc::from(js::stringify(&payload));
+            drop(fs);
+            lock(&rendered).push(RenderedRoom { user: user_key, actor_id: view.actor_id.clone(), map_hash_before: std::mem::replace(&mut view.map_hash, hash.clone()), map_hash_after: hash, data: data.clone() });
+            Ok(Some(frame_with_data(&sequence, "room", &data)))
         });
         live.write(&connection, campaign_stream_frame_key("room", &Value::Null), render).map_err(|error| Failure::new(error.to_string(), None))?;
     }
