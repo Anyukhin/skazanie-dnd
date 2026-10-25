@@ -148,7 +148,9 @@ fn temple() -> Value {
         "require": ["altar", "pillar", "statue", "brazier"],
         "prefer": ["pillar", "statue", "brazier", "prayer_bench", "reliquary", "mosaic", "temple_banner"],
         "propPlans": [
-            { "density": 8, "colonnade": false, "extraThemes": ["interior"], "require": ["statue", "brazier", "font_basin"],
+            // Притвор: плотность — как у алтарной (#184): в ужатом храме притвор
+            // в 50–85 клеток с восемью предметами на сотню клеток стоял голым.
+            { "density": 14, "colonnade": false, "extraThemes": ["interior"], "require": ["statue", "brazier", "font_basin"],
               "prefer": ["mosaic", "temple_banner", "offering_bowl", "candelabra", "rug", "bell_frame", "statue_plinth"],
               "caps": merge(&[&json!({ "altar": 0, "statue": 2, "pillar": 2, "prayer_bench": 0, "reliquary": 0, "candelabra": 2, "rug": 1, "brazier": 2, "offering_bowl": 2, "font_basin": 1, "bell_frame": 1, "idol": 0, "holy_pool": 0 }), decor, &json!({ "kneeling_cushions": 0 }), interior]) },
             { "density": 10, "colonnade": true, "purpose": "nave", "extraThemes": ["interior"], "require": ["prayer_bench", "prayer_bench", "brazier"],
