@@ -120,6 +120,8 @@ const WORLD_CLOCK_CONSUMERS = Object.freeze([
     title: 'пополнение склада торговца',
     code: () => source('server/merchant-economy.mjs').includes('export function planMerchantEconomyClock')
       && source('server/merchant-economy.mjs').includes('state?.mechanics?.world_time?.elapsed_minutes')
+      // JS-only: текст server/index.mjs; в Rust драйвер — run_merchant_economy_clock
+      // (rust/crates/sk-server/src/clocks.rs). Заменить ссылкой на него при переключении (С19).
       && source('server/index.mjs').includes('async function runMerchantEconomyClock'),
     markers: ['planMerchantEconomyClock', 'runMerchantEconomyClock', 'RestockMerchant'],
   },

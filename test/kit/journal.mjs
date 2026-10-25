@@ -41,6 +41,8 @@ import { runRustTool } from './http.mjs'
  * @property {any[]} events все события по порядку (плоско)
  * @property {{ checkpoint_version: number, state_version: number } | null} pending_projection
  *   проекция отстаёт от журнала (сбой между commit и подтверждением) или `null`
+ * @property {{ version: number, hash: string | null }} projection_checkpoint
+ *   отметка подтверждённой проекции: до какой версии и с каким `projectionHash` комнаты
  */
 
 /** @typedef {{ impl: 'js' | 'rust', storageDir: string, running?: () => boolean }} JournalTarget */
@@ -107,6 +109,7 @@ export async function readJournal(server, campaignCode, { atVersion, useSnapshot
   const commits = sortedJson(layout.events).map((name) => JSON.parse(readFileSync(join(layout.events, name), 'utf8')))
   const loaded = await store.replay(campaignCode, { atVersion, useSnapshots })
   const pending = await store.pendingProjection(campaignCode, { withState: false })
+  const metadata = await store.getMetadata(campaignCode)
   return {
     campaign_id: loaded.campaign_id,
     state_version: loaded.state_version,
@@ -121,6 +124,10 @@ export async function readJournal(server, campaignCode, { atVersion, useSnapshot
     })),
     events: commits.flatMap((commit) => commit.events ?? []),
     pending_projection: pending ? { checkpoint_version: pending.checkpoint_version, state_version: pending.state_version } : null,
+    projection_checkpoint: {
+      version: Number(metadata?.projection_checkpoint_version ?? 0),
+      hash: metadata?.projection_checkpoint_hash ?? null,
+    },
   }
 }
 

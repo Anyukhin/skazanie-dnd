@@ -111,7 +111,12 @@ test('лента ходов мира живёт в админке рядом с 
   assert.doesNotMatch(views, /offscreen_world\?\.steps[^\n]*\.sort\(/u)
 })
 
-test('карточка летописи переживает перезагрузку комнаты', () => {
+// Карточка переживает перезапуск сервера — поведение в обоих режимах:
+// test/hit-dice-api.test.mjs (долгий отдых → «Пока вас не было…» → restart).
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). Сборка в одной точке коммита в Rust —
+// candidates_for в rust/crates/sk-server/src/journal.rs.
+test('JS-only (server/index.mjs): карточка летописи хранится с репликой и собирается в одной точке коммита', () => {
   // Врезка хранится вместе с репликой, как бросок и ставки: иначе после
   // перезагрузки от ночи остался бы серый текст без карточки.
   assert.match(server, /function journalOffscreen\(offscreen\)/u)

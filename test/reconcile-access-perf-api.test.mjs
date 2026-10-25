@@ -1,16 +1,14 @@
 import assert from 'node:assert/strict'
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import test from 'node:test'
-import { startTestServer } from './kit/http.mjs'
+import { addPlayer, createClient, readRoom, startTestServer, writeRoom } from './kit/index.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 // Сверка проекции (`reconcileCampaignProjection`) читает журнал, истекает
 // голосования и может перезаписать комнату. Чужой аккаунт не должен её
 // запускать: окончательный отказ — до сверки, с тем же 403, что и раньше.
 //
-// Запуск — через кит, но `auth.json` и `rooms/*.json` тест правит и читает
-// напрямую: это раскладка хранилища JS, контрактом файл пока не становится.
+// Членство — штатным приглашением, дрейф комнаты — `writeRoom` набора, а
+// «сверка не запускалась» — `readRoom`: записанная комната не изменилась.
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -51,28 +49,19 @@ function campaignState(code) {
   }
 }
 
-/** Членство пишется прямо в хранилище авторизации: сервер перечитывает его на каждом запросе. */
-function addMembership(storage, campaignId, userId, heroIds) {
-  const file = join(storage, 'auth.json')
-  const auth = JSON.parse(readFileSync(file, 'utf8'))
-  auth.memberships = [...(auth.memberships ?? []), { campaignId, userId, role: 'player', heroIds, status: 'active', joinedAt: Date.now() }]
-  const temporary = `${file}.${process.pid}.tmp`
-  writeFileSync(temporary, JSON.stringify(auth, null, 2), 'utf8')
-  renameSync(temporary, file)
-}
-
 /** Канонический дрейф комнаты при той же версии: сверка обязана его исправить. */
-function driftRoom(storage, code) {
-  const file = join(storage, 'rooms', `${code}.json`)
-  const room = JSON.parse(readFileSync(file, 'utf8'))
-  room.state.enemies = room.state.enemies.map((enemy) => (enemy.id === 'goblin' ? { ...enemy, hp: 1 } : enemy))
-  writeFileSync(file, JSON.stringify(room, null, 2), 'utf8')
-  return readFileSync(file, 'utf8')
+async function driftRoom(server, code) {
+  const room = await readRoom(server, code)
+  const drifted = await writeRoom(server, code, {
+    ...room.state,
+    enemies: room.state.enemies.map((enemy) => (enemy.id === 'goblin' ? { ...enemy, hp: 1 } : enemy)),
+  })
+  assert.equal(drifted.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 1, 'дрейф записан')
+  return drifted
 }
 
 test('чужой аккаунт получает прежний 403 и не запускает сверку проекции', { timeout: runnerTimeout(90_000) }, async (t) => {
   const server = await startTestServer(t, { setupToken: 'reconcile-access-setup', storagePrefix: 'skazanie-reconcile-access-' })
-  const storage = server.storageDir
   const baseUrl = server.baseUrl
 
   const admin = await login(baseUrl, '/api/auth/setup-admin', {
@@ -82,12 +71,16 @@ test('чужой аккаунт получает прежний 403 и не за
     const created = await request(baseUrl, '/api/campaigns', { method: 'POST', cookie: admin.cookie, body: { code, name: 'Reconcile access', state: campaignState(code) } })
     assert.equal(created.status, 201, created.text)
   }
-  const member = await login(baseUrl, '/api/auth/register', { name: 'Участник', email: 'reconcile-member@test.local', password: 'reconcile-player-password' })
+  // Участник — по приглашению ведущего на героя «hero»: запись о членстве есть
+  // только у RECACC, у RECLEG их нет вовсе.
+  const member = await addPlayer(server, createClient(server, { cookie: admin.cookie }), 'RECACC', {
+    heroIds: ['hero'], name: 'Участник', email: 'reconcile-member@test.local', password: 'reconcile-player-password',
+  })
+  assert.deepEqual(member.heroIds, ['hero'])
+  const memberCookie = member.client.cookie
   const outsider = await login(baseUrl, '/api/auth/register', { name: 'Чужой', email: 'reconcile-outsider@test.local', password: 'reconcile-player-password' })
-  addMembership(storage, 'RECACC', member.userId, ['hero'])
 
-  const roomFile = join(storage, 'rooms', 'RECACC.json')
-  const drifted = driftRoom(storage, 'RECACC')
+  const drifted = await driftRoom(server, 'RECACC')
 
   const denied = await request(baseUrl, '/api/rooms/RECACC', { cookie: outsider.cookie })
   assert.equal(denied.status, 403, denied.text)
@@ -97,18 +90,20 @@ test('чужой аккаунт получает прежний 403 и не за
   assert.deepEqual(deniedStream.body, { error: 'Нет доступа к этой кампании' })
   const deniedDialogue = await request(baseUrl, '/api/campaigns/RECACC/dialogue', { cookie: outsider.cookie })
   assert.equal(deniedDialogue.status, 403, deniedDialogue.text)
-  assert.equal(readFileSync(roomFile, 'utf8'), drifted, 'запрос чужого аккаунта не дошёл до сверки и не переписал комнату')
+  assert.deepEqual(await readRoom(server, 'RECACC'), drifted, 'запрос чужого аккаунта не дошёл до сверки и не переписал комнату')
 
-  const allowed = await request(baseUrl, '/api/rooms/RECACC', { cookie: member.cookie })
+  const allowed = await request(baseUrl, '/api/rooms/RECACC', { cookie: memberCookie })
   assert.equal(allowed.status, 200, allowed.text)
-  const repaired = JSON.parse(readFileSync(roomFile, 'utf8'))
+  const repaired = await readRoom(server, 'RECACC')
   assert.equal(repaired.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 8, 'участник по-прежнему запускает сверку, и она чинит комнату')
 
   // Кампания без записей о членстве: доступ решают герои комнаты, которые
   // сверка может восстановить, — отказ приходит после сверки, как раньше.
-  const legacyDrifted = driftRoom(storage, 'RECLEG')
+  const legacyDrifted = await driftRoom(server, 'RECLEG')
   const legacyDenied = await request(baseUrl, '/api/rooms/RECLEG', { cookie: outsider.cookie })
   assert.equal(legacyDenied.status, 403, legacyDenied.text)
   assert.deepEqual(legacyDenied.body, { error: 'Нет доступа к этой комнате' })
-  assert.notEqual(readFileSync(join(storage, 'rooms', 'RECLEG.json'), 'utf8'), legacyDrifted, 'в наследственной кампании отказ по-прежнему после сверки')
+  const legacyAfter = await readRoom(server, 'RECLEG')
+  assert.notDeepEqual(legacyAfter, legacyDrifted, 'в наследственной кампании отказ по-прежнему после сверки')
+  assert.equal(legacyAfter.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 8, 'сверка до отказа починила комнату')
 })

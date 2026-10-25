@@ -72,8 +72,8 @@ test/map-import-api.test.mjs  # тело не объект и граница 500
 # С18.1 (2026-10-23): POST /api/campaigns/:id/commands. Остальные файлы группы /commands
 # упираются в чужие маршруты (/api/narrate, encounters/assemble, autonomy, merchants,
 # explanation), в координатор автохода боя (turn_clock, С17), в preload/args или в чтение
-# файлов журнала JS — таблица в отчёте С18.1. soak-crash-recovery-api проходит, но его
-# сверка auditLegacyCutover читает только JS-файлы storage — вне списка до С19.
+# файлов журнала JS — таблица в отчёте С18.1. soak-crash-recovery-api — в разделе С19.4
+# (сверка хранилища через auditStorage набора).
 test/authored-map-movement.test.mjs        # перемещение по нарисованной карте через /commands
 test/chain-lightning-api.test.mjs          # «Цепная молния»: цели, ячейка, повтор
 test/character-creation-api.test.mjs       # импорт листа и выбор при создании героя
@@ -89,7 +89,7 @@ test/make-attack-idempotency.test.mjs      # повтор атаки после 
 test/npc-combat-entry-api.test.mjs         # вход в бой с NPC — отдельной командой
 test/npc-item-transfer-api.test.mjs        # передача вещи NPC
 test/protection-from-energy-http.test.mjs  # «Защита от энергии»: цель и повтор
-test/restore-rehearsal-api.test.mjs        # бэкап и восстановление storage с командами
+test/restore-rehearsal-api.test.mjs        # бэкап и восстановление storage с командами; аудит восстановленного — auditStorage (С19.4)
 test/room-projection-equivalence.test.mjs  # комната после команд совпадает с журналом
 test/scene-interactions.test.mjs           # предметы сцены через /commands (и модульные проверки)
 test/spell-components-api.test.mjs         # компоненты заклинаний
@@ -100,9 +100,10 @@ test/stream-viewer-isolation-api.test.mjs  # поток не выдаёт чуж
 test/summon-expiry-api.test.mjs            # истечение призыва
 test/thrown-flask-http.test.mjs            # бросок флакона: эффект, права, повтор, replay
 test/wand-of-magic-missiles-api.test.mjs   # жезл «Волшебных стрел»: заряды и повтор
-# Ведущий (2026-10-23): после С18.1 + С18.5 целиком зелёные против Rust. С19: проверить, что
-# command-retry-intent-api (читает turn-traces) и persistent-campaign-api (пишет журнал мимо
-# executor) в режиме rust не проверяют пустоту.
+# Ведущий (2026-10-23): после С18.1 + С18.5 целиком зелёные против Rust. С19.4 (2026-10-25)
+# проверено: command-retry-intent-api правит настоящую трассу хода (раскладка turn-traces у
+# Rust та же, FileTraceStore), persistent-campaign-api видит в ответах сервера задание,
+# дописанное appendJournal мимо него (статус offered), — пустых проверок нет.
 test/command-retry-intent-api.test.mjs
 test/director-shop-api.test.mjs
 test/law-api.test.mjs
@@ -167,3 +168,11 @@ test/combat-critical-turn-api.test.mjs # крит врага без модели
 test/combat-journal-order-api.test.mjs # порядок хроники при атаке по возможности, restart, повтор (кости данными)
 test/shillelagh-api.test.mjs           # «Дубинка» друида через API, restart (кости данными)
 test/sneak-attack-http.test.mjs        # Скрытая атака: права, ключ, журнал через readJournal, restart
+test/mass-cure-wounds-api.test.mjs     # «Множественное лечение ран»: два владельца, права, повтор, restart
+# Дрейф комнаты мимо сервера и сверка хранилища — test/kit/rooms.mjs (readRoom, writeRoom,
+# auditStorage; подкоманды skazanie-server room и audit). В Rust комната — проекция журнала
+# плюс накладка, но накладка может держать канонические поля, и сверка их находит так же.
+test/projection-postcommit-error-api.test.mjs  # сбой подтверждения проекции: 500 и повтор; дрейф при той же версии чинится, hash подтверждён
+test/reconcile-access-perf-api.test.mjs        # чужой аккаунт — 403 до сверки (комната не тронута), участник сверку запускает
+test/soak-crash-recovery-api.test.mjs          # SIGKILL посреди команд: replay, подтверждённые команды целы, аудит без блокеров
+test/legendary-action-http.test.mjs            # UseLegendaryAction не принимается по HTTP ни от кого (прежде — поиск по тексту server/index.mjs)

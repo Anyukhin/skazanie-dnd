@@ -496,13 +496,13 @@ test('weapon cantrip primary damage keeps the weapon source for Booming Blade an
   }
 })
 
-test('HTTP and UI preserve the selected held Shillelagh instance', () => {
+// HTTP-половина — поведением в обоих режимах: test/shillelagh-api.test.mjs
+// (CastSpell с item_id дубинки → source_item_id условия, атака тем же предметом
+// после restart). Здесь остаётся клиент.
+test('UI preserves the selected held Shillelagh instance', () => {
   const source = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8')
-  const index = source('server/index.mjs')
   const session = source('src/useGameSession.ts')
   const map = source('src/DungeonMap.tsx')
-  assert.match(index, /input\?\.item_id != null \|\| input\?\.itemId != null/u)
-  assert.match(index, /item_id: String\(input\.item_id \?\? input\.itemId\)/u)
   assert.match(session, /itemId\?: string/u)
   assert.match(session, /target\.itemId \? \{ item_id: target\.itemId \}/u)
   assert.match(map, /selectedSpellItemId/u)
