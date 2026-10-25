@@ -29,7 +29,7 @@ use crate::geometry::footprint::{actor_footprint_fits, distance_between_actor_po
 use crate::geometry::forced::has_clear_actor_trajectory;
 use crate::geometry::movement::{assert_voluntary_movement_path, long_jump_movement_for, movement_for_actor, LongJump};
 use crate::geometry::terrain::movement_step_cost_for;
-use crate::normalize::normalize_campaign_state;
+use crate::normalize::normalize_campaign_state_cow;
 use crate::pause::{rule, Halt};
 use crate::tactical_geometry::{actor_point, cover_between, high_ground_between, key, key_of, occupied_positions, point_json, points_json, scene_tactical_map, shortest_tactical_path, tactical_cell_map, PathOptions};
 
@@ -329,7 +329,7 @@ fn attack_continuation(state: &Value, actor_id: &str) -> bool {
 /// `defaultAttackItemIdFor(rawState, actorId, targetId)`: надетое оружие героя
 /// для атаки без `item_id` — ближнее, иначе первое, которым цель достаётся.
 pub fn default_attack_item_id_for(raw_state: &Value, actor_id: &str, target_id: &str) -> Result<Option<String>, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
+    let state = normalize_campaign_state_cow(raw_state)?;
     let actor = game::find_actor(&state, actor_id);
     if actor.is_none() || game::find_actor(&state, target_id).is_none() {
         return Ok(None);
@@ -348,7 +348,7 @@ pub fn default_attack_item_id_for(raw_state: &Value, actor_id: &str, target_id: 
 /// `previewApproachAttack(rawState, actorId, targetId)`: маршрут составной
 /// ближней атаки — подход по самому дешёвому пути и удар.
 pub fn preview_approach_attack(raw_state: &Value, actor_id: &str, target_id: &str) -> Result<Value, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
+    let state = normalize_campaign_state_cow(raw_state)?;
     let actor = game::find_actor(&state, actor_id);
     let target = game::find_actor(&state, target_id);
     if !game::combat_active(&state) {
@@ -459,7 +459,7 @@ fn public_anchor(prop: &sk_tactical::tactical_map::TacticalProp) -> Point {
 /// `swingPropForText(rawState, text)`: люстра, к которой просит прыгнуть
 /// свободная заявка; несколько подходящих — отказ с перечнем.
 pub fn swing_prop_for_text(raw_state: &Value, text_value: Option<&Value>) -> Result<Option<Value>, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
+    let state = normalize_campaign_state_cow(raw_state)?;
     let text_raw = match text_value {
         None => String::new(),
         Some(value) => js::string(Some(value)),
@@ -526,7 +526,7 @@ fn jump_target(state: &Value, target_id: &str) -> Result<(), Halt> {
 /// `previewSwingAttack(rawState, actorId, targetId, propId, { runningStart })`:
 /// прыжок на опоре сцены и обычная ближняя атака.
 pub fn preview_swing_attack(raw_state: &Value, actor_id: &str, target_id: &str, prop_id: Option<&Value>, running_start: bool) -> Result<Value, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
+    let state = normalize_campaign_state_cow(raw_state)?;
     let details = swing_details_for(&state, actor_id, prop_id, running_start)?;
     if !game::combat_active(&state) {
         return Err(rule("Такой манёвр доступен после начала боя", "COMBAT_REQUIRED"));
@@ -615,7 +615,7 @@ pub fn preview_swing_attack(raw_state: &Value, actor_id: &str, target_id: &str, 
 /// `previewLongJumpAttack(rawState, actorId, targetId, { runningStart })`:
 /// горизонтальный прыжок в длину и одна ближняя атака.
 pub fn preview_long_jump_attack(raw_state: &Value, actor_id: &str, target_id: &str, running_start: bool) -> Result<Value, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
+    let state = normalize_campaign_state_cow(raw_state)?;
     let actor = game::find_actor(&state, actor_id);
     if !game::combat_active(&state) {
         return Err(rule("Такой манёвр доступен после начала боя", "COMBAT_REQUIRED"));
@@ -723,7 +723,7 @@ impl MonsterActionPreview {
 /// `previewMonsterAction(rawState, id, actionId, toward)`: формализованная
 /// область особого действия и задетые ею существа.
 pub fn preview_monster_action(raw_state: &Value, id: &str, action_id: Option<&Value>, toward: Option<&Value>) -> Result<MonsterActionPreview, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
+    let state = normalize_campaign_state_cow(raw_state)?;
     let actor = game::find_actor(&state, id);
     let Some(actor) = server_owned_monster_actor(actor, &state).filter(|actor| game::is_living_actor(actor)) else {
         return Err(rule("Приём доступен только действующему существу из каталога 2014", "MONSTER_ACTION_NOT_AVAILABLE"));

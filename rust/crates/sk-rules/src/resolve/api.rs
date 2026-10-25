@@ -345,7 +345,7 @@ impl RulesEngine {
 
     /// `authorizeDirectorIntent(intent, state)`.
     pub fn authorize_director_intent(&self, intent: &Value, state: &Value) -> Result<Value, Halt> {
-        let normalized = crate::normalize::normalize_campaign_state(state)?;
+        let normalized = crate::normalize::normalize_campaign_state_cow(state)?;
         sk_story::campaign_loop_policy::authorize_director_intent(&normalized, Some(intent), None).map_err(|error| {
             Halt::Fault(crate::pause::Fault::new(sk_world_story::autonomous_campaign::DirectorIntentError::NAME, error.message).with_code(error.code))
         })

@@ -56,7 +56,7 @@ pub fn opening_strike_for(input: &Value, raw_state: &Value, context: &Context) -
     if js::is_true(at(at(raw_state.get("mechanics"), "combat"), "active")) {
         return Ok(None);
     }
-    let state = crate::normalize::normalize_campaign_state(raw_state)?;
+    let state = crate::normalize::normalize_campaign_state_cow(raw_state)?;
     if sk_core::game::combat_active(&state) {
         return Ok(None);
     }
@@ -133,7 +133,7 @@ pub fn resolve_opening_strike(input: &Value, raw_state: &Value, opening: &Openin
         None => uuid(),
     };
     let strike = command_with(input, "command_id", Value::String(command_id.clone()));
-    let state = crate::normalize::normalize_campaign_state(raw_state)?;
+    let state = crate::normalize::normalize_campaign_state_cow(raw_state)?;
     let rule_id = sk_ruleset::ruleset_config::BG3_OPENING_STRIKE_HOUSE_RULE_ID;
     let free_strike = state.get("enabled_house_rules").and_then(Value::as_array).is_some_and(|rules| rules.iter().any(|rule| rule.as_str() == Some(rule_id)));
     let mut opening_action = Map::new();
@@ -168,7 +168,7 @@ pub fn resolve_opening_strike(input: &Value, raw_state: &Value, opening: &Openin
     }
     let start_context = context.with("serverAuthoritativeCombat", Value::Bool(true)).with("openingAction", Value::Object(opening_action));
     let start = resolve_internal(&Value::Object(entry), &state, dice, &start_context, &mut *uuid)?;
-    let mut started = state.clone();
+    let mut started: Value = (*state).clone();
     for event in &start.events {
         started = apply_game_event(&started, event)?;
     }

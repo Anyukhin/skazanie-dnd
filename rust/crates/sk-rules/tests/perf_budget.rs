@@ -22,7 +22,7 @@ use std::sync::LazyLock;
 use std::time::Instant;
 
 use serde_json::Value;
-use sk_rules::normalize::normalize_campaign_state;
+use sk_rules::normalize::{normalize_campaign_state, normalize_campaign_state_cow, without_fixed_point_memory};
 use sk_rules::replay::apply_game_event;
 
 thread_local! {
@@ -115,16 +115,27 @@ fn rules_core_within_budget() {
         [("large", 7, BUDGET_LARGE_MS, ALLOCATIONS_LARGE), ("caster", 15, BUDGET_CASTER_MS, ALLOCATIONS_CASTER), ("plain", 15, BUDGET_PLAIN_MS, ALLOCATIONS_PLAIN)]
     {
         let state = &FIXTURE[key];
-        let measured = measure(repeats, || drop(normalize_campaign_state(state).expect("нормализация")));
+        // Настоящая нормализация: память итогов (Ск3) на повторах отдала бы
+        // готовое.
+        let measured = without_fixed_point_memory(|| measure(repeats, || drop(normalize_campaign_state(state).expect("нормализация"))));
         check_budget(&mut failures, &format!("normalizeCampaignState({key})"), measured, budget_ms, max_allocations);
     }
+    // Ск3: повторная нормализация уже нормализованного состояния — сверка с
+    // памятью итогов и копия, без прохода нормализации.
+    let normalized = normalize_campaign_state(&FIXTURE["large"]).expect("нормализация");
+    let measured = measure(7, || drop(normalize_campaign_state(&normalized).expect("нормализация")));
+    check_budget(&mut failures, "normalizeCampaignState(normalizeCampaignState(large))", measured, BUDGET_KNOWN_MS, ALLOCATIONS_KNOWN);
+    let measured = measure(7, || drop(normalize_campaign_state_cow(&normalized).expect("нормализация")));
+    check_budget(&mut failures, "normalizeCampaignState(normalized large), без копии", measured, BUDGET_KNOWN_COW_MS, ALLOCATIONS_KNOWN_COW);
     let replay = &FIXTURE["replay"];
     let events = replay["events"].as_array().expect("события");
-    let measured = measure(7, || {
-        let mut state = normalize_campaign_state(&replay["state"]).expect("нормализация");
-        for event in events {
-            state = apply_game_event(&state, event).expect("событие");
-        }
+    let measured = without_fixed_point_memory(|| {
+        measure(7, || {
+            let mut state = normalize_campaign_state(&replay["state"]).expect("нормализация");
+            for event in events {
+                state = apply_game_event(&state, event).expect("событие");
+            }
+        })
     });
     check_budget(&mut failures, &format!("normalize + applyGameEvent × {}", events.len()), measured, BUDGET_REPLAY_MS, ALLOCATIONS_REPLAY);
     assert!(failures.is_empty(), "бюджет скорости ядра правил нарушен:\n{}", failures.join("\n"));
@@ -141,4 +152,11 @@ const ALLOCATIONS_CASTER: u64 = 61_600;
 const BUDGET_PLAIN_MS: f64 = 1.0;
 const ALLOCATIONS_PLAIN: u64 = 8_600;
 const BUDGET_REPLAY_MS: f64 = 17.0;
+// Ск3, память итогов нормализации: уже нормализованное крупное — сверка и
+// копия (замер 41 мс / 473 696 выделений — копия), без копии — 5 мс и ни
+// одного выделения.
+const BUDGET_KNOWN_MS: f64 = 62.0;
+const ALLOCATIONS_KNOWN: u64 = 521_000;
+const BUDGET_KNOWN_COW_MS: f64 = 8.0;
+const ALLOCATIONS_KNOWN_COW: u64 = 0;
 const ALLOCATIONS_REPLAY: u64 = 165_000;

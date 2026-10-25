@@ -35,7 +35,7 @@ use serde_json::Value;
 
 use crate::command::normalize::normalize_command;
 use crate::context::{Context, Uuid};
-use crate::normalize::normalize_campaign_state;
+use crate::normalize::normalize_campaign_state_cow;
 use crate::pause::{Halt, Step};
 
 /// Состояние прохода по блокам.
@@ -133,7 +133,7 @@ pub const BLOCKS: &[Block] = &[
 
 /// `validateCommand(input, rawState, context)`.
 pub fn validate_command(input: &Value, raw_state: &Value, context: &Context, uuid: Uuid<'_>) -> Result<Value, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
+    let state = normalize_campaign_state_cow(raw_state)?;
     validate_normalized(input, &state, context, uuid)
 }
 

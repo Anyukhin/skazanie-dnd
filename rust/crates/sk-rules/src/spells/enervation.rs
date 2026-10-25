@@ -144,7 +144,7 @@ pub fn close_enervation_after_other_action(result: Resolved, raw_state: &Value) 
     if !has_enervation_continuation(raw_state) {
         return Ok(result);
     }
-    let state = crate::normalize::normalize_campaign_state(raw_state)?;
+    let state = crate::normalize::normalize_campaign_state_cow(raw_state)?;
     let Some(link) = enervation_link_for(&state, command.get("actor_id")) else { return Ok(result) };
     let actor = js::string(command.get("actor_id"));
     let ended = result.events.iter().any(|event| {
@@ -188,7 +188,7 @@ pub fn close_enervation_after_triggers(result: Resolved, raw_state: &Value) -> R
     if !has_enervation_continuation(raw_state) && !creates_link {
         return Ok(result);
     }
-    let before = crate::normalize::normalize_campaign_state(raw_state)?;
+    let before = crate::normalize::normalize_campaign_state_cow(raw_state)?;
     let mut projected = replay_events(&before, &result.events)?;
     let mut ended: IndexSet<String> = result
         .events
