@@ -8,7 +8,6 @@
 //! строка в строку как в JS: первым срабатывает тот же отказ с тем же текстом.
 
 use std::collections::HashSet;
-use std::path::Path;
 use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
@@ -261,10 +260,11 @@ fn js_less(left: Option<&Value>, right: Option<&Value>) -> bool {
 /// Есть ли файл картинки в `public/` (`existsSync(join(PROJECT_ROOT, 'public', …))`).
 pub type ImageExists<'a> = &'a dyn Fn(&str) -> bool;
 
-/// Проверка по умолчанию: корень проекта — тот, где собран крейт.
+/// Проверка по умолчанию: `public/` корня данных процесса
+/// (`sk_core::data_root`, С19.1).
 pub fn image_exists_in_project(image: &str) -> bool {
     let relative = image.strip_prefix('/').unwrap_or(image);
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../public").join(relative).exists()
+    sk_core::data_root::join("public").join(relative).exists()
 }
 
 struct Checker<'a> {

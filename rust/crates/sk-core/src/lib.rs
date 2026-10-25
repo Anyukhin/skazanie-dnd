@@ -9,6 +9,7 @@
 
 pub mod clock;
 pub mod command;
+pub mod data_root;
 pub mod error;
 pub mod event;
 pub mod game;
