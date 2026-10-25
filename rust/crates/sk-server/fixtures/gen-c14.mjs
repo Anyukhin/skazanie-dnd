@@ -5,7 +5,7 @@
 // Пишет два файла, сверка — `tests/c14_golden.rs`:
 //
 // * `fixtures/c14-guard.json` — санитайзер lifecycle-команды и сверки
-//   отпечатков (`index.mjs` 634, 638–661, 1023–1246). Функции не
+//   отпечатков (`index.mjs` 635, 639–662, 1024–1247). Функции не
 //   экспортированы, а импорт `index.mjs` поднимает сервер, поэтому исходники
 //   вырезаются по диапазонам строк (`RANGES`) и собираются через
 //   `new Function` с заглушкой журнала (`eventStore`), как в `gen-c16.mjs`.
@@ -30,8 +30,8 @@ import { MAX_CURRENCY_CP } from '../../../../server/merchant-economy.mjs'
 import { FIXTURES_DIR, GOLDEN_FORMAT, recorder, startGoldenServer } from './golden.mjs'
 
 const root = new URL('../../../../', import.meta.url)
-const SOURCE_SHA256 = '38a9beb4c29f2385b63e97a076affb4d4d3690c24d5f72e9033fce7422f51552'
-const RANGES = [[634, 634], [638, 661], [1023, 1246]]
+const SOURCE_SHA256 = '25b17d527001ef64da9882baf4b5fbb34285b078aa2841443cd44354d2563397'
+const RANGES = [[635, 635], [639, 662], [1024, 1247]]
 
 const sha = (text) => createHash('sha256').update(text).digest('hex')
 const source = readFileSync(new URL('server/index.mjs', root), 'utf8').replace(/\r\n/gu, '\n')

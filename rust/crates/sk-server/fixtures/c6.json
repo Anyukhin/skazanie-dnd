@@ -504,7 +504,7 @@
       "status": 201,
       "body_norm": {
         "version": 1,
-        "state": "<sha256:cce933156d1c36cc84f91801aa74f0d29ce64f7f2a974f3a7d8e77f14b1fbe0d:598522>",
+        "state": "<sha256:3bf9acab2e935747b7e4d74e38283126570fe6bb352ccb94c6408b2a88254615:609716>",
         "updatedAt": "<time>",
         "user": {
           "id": "<uuid>",
@@ -3962,7 +3962,7 @@
       "status": 201,
       "body_norm": {
         "version": 1,
-        "state": "<sha256:78dda9cec48f013fb139bcf1eca61f22f20c2c7c7023e535116e41fe51ace60d:179597>",
+        "state": "<sha256:fa5d97f1aa64c40daa2e7ed071de8cb935c75f615776627f44bd1ec673ee34c2:183941>",
         "updatedAt": "<time>",
         "user": {
           "id": "<uuid>",

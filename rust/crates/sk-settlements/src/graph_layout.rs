@@ -28,12 +28,40 @@ use sk_tactical::tactical_map::{
 use crate::{random_for, shuffle, GeneratorStamp};
 
 /// `GRAPH_LAYOUT`.
-pub const GRAPH_LAYOUT: GeneratorStamp = GeneratorStamp { id: "graph-layout", version: "2" };
+pub const GRAPH_LAYOUT: GeneratorStamp = GeneratorStamp { id: "graph-layout", version: "3" };
 
 /// Соль случайности разбиения залами. Версия 2 изменила только склеп; храм и
 /// подземелье с тем же сидом обязаны выйти прежними, поэтому их поток
 /// случайности по-прежнему от версии 1.
 const SPLIT_RANDOM_SALT: &str = "graph-layout:1";
+
+/// Соль раскладки камер склепа: версия 3 склеп не меняла.
+const CHAMBER_RANDOM_SALT: &str = "graph-layout:2";
+
+/// Площадь корпуса на помещение, в клетках вместе с кладкой
+/// (`COMPACT_ROOM_CELLS`). Храм — около 1600 фт² на помещение.
+const COMPACT_ROOM_CELLS: &[(&str, f64)] = &[("temple", 64.0)];
+
+/// `compactArea(theme, zoneCount, width, height)`: прямоугольник корпуса темы
+/// посреди карты — площадь по числу помещений, пропорции карты. Тема без меры
+/// и карта, которой корпус почти равен, режутся целиком (#184). Ключи
+/// прототипа (`constructor`) в JS дают NaN-корпус (`docs/rust-port-js-findings.md`),
+/// здесь — тема без меры.
+pub fn compact_area(theme: &str, zone_count: usize, width: i64, height: i64) -> LeafRect {
+    let whole = LeafRect::new(0, 0, width - 1, height - 1);
+    let Some(per_room) = COMPACT_ROOM_CELLS.iter().find(|(key, _)| *key == theme).map(|(_, cells)| *cells) else { return whole };
+    let target = per_room * (zone_count.max(1) as f64);
+    let (w, h) = (width as f64, height as f64);
+    if target >= w * h * 0.8 {
+        return whole;
+    }
+    // Не уже одиннадцати: разбиение режет лист не ближе пяти клеток от края.
+    let area_width = w.min(js::round((target * w / h).sqrt()).max(11.0));
+    let area_height = h.min(js::round(target / area_width).max(11.0));
+    let min_x = ((w - area_width) / 2.0).floor();
+    let min_y = ((h - area_height) / 2.0).floor();
+    LeafRect::new(min_x as i64, min_y as i64, (min_x + area_width - 1.0) as i64, (min_y + area_height - 1.0) as i64)
+}
 
 // --- прямоугольники -----------------------------------------------------------
 
@@ -853,7 +881,7 @@ pub fn layout_scene_graph(graph: &SceneGraph, options: &GraphLayoutOptions<'_>) 
     // Склеп — камеры в скале и ходы между ними. Не уместились — прежнее
     // разбиение: лучше просторный склеп, чем склеп без помещения.
     let planned = if options.theme == "crypt" {
-        let mut crypt_random = random_for(&format!("{}:{}:{seed}", GRAPH_LAYOUT.id, GRAPH_LAYOUT.version));
+        let mut crypt_random = random_for(&format!("{CHAMBER_RANDOM_SALT}:{seed}"));
         plan_chambers(graph, safe_width, safe_height, &mut crypt_random)?
     } else {
         None
@@ -861,7 +889,7 @@ pub fn layout_scene_graph(graph: &SceneGraph, options: &GraphLayoutOptions<'_>) 
     let rooms = match &planned {
         Some(plan) => plan.rooms.clone(),
         None => {
-            let leaves = split_area(LeafRect::new(0, 0, safe_width - 1, safe_height - 1), graph.zones.len(), &mut random, 5);
+            let leaves = split_area(compact_area(&options.theme, graph.zones.len(), safe_width, safe_height), graph.zones.len(), &mut random, 5);
             if leaves.len() < graph.zones.len() {
                 warnings.push(format!("карта вмещает {} помещений, а зон {}", leaves.len(), graph.zones.len()));
             }

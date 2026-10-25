@@ -83,7 +83,7 @@ fn every_case_matches_js() {
         .filter(|id| !placed.contains(id))
         .collect();
     assert!(missing.is_empty(), "не встали: {missing:?}");
-    for op in ["placeProps", "ensurePropAccess", "attachPropSupports", "placeColonnade", "placeRequiredProps"] {
+    for op in ["placeProps", "ensurePropAccess", "attachPropSupports", "placeColonnade", "placeRequiredProps", "seatAroundSurface"] {
         assert!(ops.get(op).copied().unwrap_or(0) > 50, "операция {op} покрыта слабо: {:?}", ops.get(op));
     }
 }
@@ -165,33 +165,19 @@ fn chairs_stand_by_tables_and_face_them() {
     let tables: Vec<_> = map.props.iter().filter(|prop| prop.asset_id.starts_with("table_") || prop.asset_id == "bar_counter").collect();
     let chairs: Vec<_> = map.props.iter().filter(|prop| prop.asset_id == "chair" || prop.asset_id == "stool").collect();
     assert!(!tables.is_empty() && !chairs.is_empty());
+    // Стул — вплотную к стороне стола и лицом к нему: клетка перед ним —
+    // клетка стола. Поворот 0 смотрит на юг, 90 — на запад, 180 — на север,
+    // 270 — на восток (#184).
+    let table_cells: std::collections::HashSet<(i64, i64)> = tables.iter().flat_map(|table| table.footprint.iter().map(|cell| (cell.x, cell.y))).collect();
     for chair in chairs {
-        let distance = tables
-            .iter()
-            .map(|table| ((table.x.floor() - chair.x.floor()).abs()).max((table.y.floor() - chair.y.floor()).abs()))
-            .fold(f64::INFINITY, f64::min);
-        assert!(distance <= 2.0, "стул {} в {distance} клетках от стола", chair.id);
-        let measure = |prop: &&sk_tactical::tactical_map::TacticalProp| (prop.x - chair.x).abs().max((prop.y - chair.y).abs());
-        let mut table = tables[0];
-        for candidate in &tables {
-            if measure(candidate) < measure(&table) {
-                table = candidate;
-            }
-        }
-        let dx = table.x.floor() - chair.x.floor();
-        let dy = table.y.floor() - chair.y.floor();
-        let expected = if dx.abs() >= dy.abs() {
-            if dx >= 0.0 {
-                270.0
-            } else {
-                90.0
-            }
-        } else if dy >= 0.0 {
-            0.0
-        } else {
-            180.0
-        };
-        assert_eq!(chair.rotation, expected, "стул {} повёрнут не к столу", chair.id);
+        let cell = chair.footprint[0];
+        let quarter = ((((chair.rotation % 360.0) + 360.0) % 360.0 / 90.0).round() as i64) % 4;
+        let (dx, dy) = [(0, 1), (-1, 0), (0, -1), (1, 0)][quarter as usize];
+        assert!(table_cells.contains(&(cell.x + dx, cell.y + dy)), "стул {} на {},{} смотрит не на стол", chair.id, cell.x, cell.y);
+        // Точка рисунка придвинута к столу, но не выходит из своей клетки.
+        let (cx, cy) = (cell.x as f64, cell.y as f64);
+        assert!(chair.x > cx && chair.x < cx + 1.0 && chair.y > cy && chair.y < cy + 1.0, "стул {} вне своей клетки", chair.id);
+        assert!((chair.x - cx - 0.5) * dx as f64 + (chair.y - cy - 0.5) * dy as f64 > 0.0, "стул {} не придвинут к столу", chair.id);
     }
 }
 
@@ -202,7 +188,7 @@ fn wall_anchored_props_face_into_the_room() {
     assert!(!anchored.is_empty());
     for prop in anchored {
         let (x, y) = (prop.x.floor() as i64, prop.y.floor() as i64);
-        let walls: Vec<f64> = [(0, -1, 180.0), (1, 0, 270.0), (0, 1, 0.0), (-1, 0, 90.0)]
+        let walls: Vec<f64> = [(0, -1, 0.0), (1, 0, 90.0), (0, 1, 180.0), (-1, 0, 270.0)]
             .into_iter()
             .filter(|(dx, dy, _)| !cell_at(&map, x + dx, y + dy).is_some_and(|cell| cell.passable))
             .map(|(_, _, facing)| facing)

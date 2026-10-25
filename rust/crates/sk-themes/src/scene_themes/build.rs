@@ -15,7 +15,7 @@ use sk_settlements::settlement_generator::{build_settlement_scene, LARGE_HOUSE_F
 use sk_tactical::tactical_map::{self as tm, TacticalMap};
 
 use super::catalog::{theme_by_id, theme_for, theme_min_size, SceneTheme, CAMP_INTERIOR_OFF};
-use super::cave::{layout_organic_cave, LayoutOptions};
+use super::cave::{layout_organic_cave, outline_impassable_cells, LayoutOptions};
 use super::graph::{add_shortcut_loops, partition_prison_cells, pierce_walls, scene_graph_for_theme, ShortcutLock, ShortcutOptions};
 use super::open::{dress_water_edges, layout_open, place_grave_rows, place_nature_cover, place_ruin_fragments, roughen_open_terrain};
 use super::{Result, ThemeError};
@@ -346,6 +346,12 @@ fn build_graph_scene(definition: &'static SceneTheme, input: &GraphInput<'_>) ->
         }
     }
     thin_walls(&mut built.map, &ThinWallsOptions::default())?;
+    // Корпус храма стоит посреди породы (`compactArea`), а тонкие стены рёбер
+    // к породе не ставят: без них у храма не было наружного контура, и 3D не
+    // давало ему крыши (#184).
+    if definition.id == "temple" {
+        outline_impassable_cells(&mut built.map)?;
+    }
     if definition.id == "dungeon" {
         if let Some(cells_zone) = built.map.zones.iter().find(|zone| zone.label == "Камеры").map(|zone| zone.id.clone()) {
             partition_prison_cells(&mut built.map, &cells_zone)?;

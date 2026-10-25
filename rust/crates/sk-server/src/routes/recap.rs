@@ -31,7 +31,7 @@ use crate::room::{self, Room};
 
 pub fn routes() -> Vec<Route> {
     // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/recap$/` и `GET`.
-    vec![Route::get(4599, Matcher::path_template("/api/campaigns/{id}/recap"), campaign_recap)]
+    vec![Route::get(4600, Matcher::path_template("/api/campaigns/{id}/recap"), campaign_recap)]
 }
 
 fn unavailable() -> Value {

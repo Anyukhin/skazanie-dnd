@@ -331,6 +331,24 @@ pub fn audit_tactical_map(map: &TacticalMap) -> MapReport {
                 }
             }
         }
+        // Предмет в несколько клеток не стоит сквозь стену и не стоит одной
+        // частью в доме, другой на улице (#184): модель рисуется по центру
+        // футпринта, и стена проходила через очаг или печь.
+        if prop.transition.is_none() && prop.mount.is_none() && prop.footprint.len() > 1 {
+            let own: HashSet<(i64, i64)> = prop.footprint.iter().map(|point| (point.x, point.y)).collect();
+            let crossed = prop.footprint.iter().any(|point| {
+                [(1, 0), (0, 1)].iter().any(|(dx, dy)| {
+                    own.contains(&(point.x + dx, point.y + dy))
+                        && edge_at(map, point.x, point.y, point.x + dx, point.y + dy)
+                            .is_some_and(|edge| matches!(edge.kind, EdgeKind::Wall | EdgeKind::Window | EdgeKind::Door))
+                })
+            });
+            let kinds: HashSet<&str> = prop.footprint.iter().filter_map(|point| kind_at(point.x, point.y)).filter(|kind| !kind.is_empty()).collect();
+            if crossed || kinds.len() > 1 {
+                let first = prop.footprint[0];
+                problems.push(MapProblem::new("PROP_CROSSES_WALL", format!("{}@{},{}", prop.asset_id, first.x, first.y)));
+            }
+        }
     }
 
     // --- рёбра: двери и окна ---

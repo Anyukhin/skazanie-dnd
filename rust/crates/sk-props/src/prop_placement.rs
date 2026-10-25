@@ -185,6 +185,84 @@ fn companions(id: &str) -> &'static [(&'static str, usize)] {
     COMPANIONS.iter().find(|(key, _)| *key == id).map_or(&[], |(_, list)| list)
 }
 
+/// Мебель со спинкой: стоит только у стены, лицом в комнату (`BACKED_FURNITURE`).
+#[rustfmt::skip]
+const BACKED_FURNITURE: &[&str] = &["bar_shelf", "bookshelf", "bookcase_tall", "wardrobe", "cupboard", "pantry_shelf", "display_shelf", "shelf_wall",
+    "fireplace", "kitchen_stove", "bread_oven", "forge", "tool_rack", "scroll_rack", "potion_cabinet", "dresser", "armor_stand",
+    "magic_mirror", "standing_mirror", "washbasin", "iron_maiden", "wall_chains", "crypt_niche", "reliquary"];
+
+/// Сиденья. Встают гарнитуром у своей поверхности, а не сами по себе.
+const SEATS: [&str; 3] = ["chair", "stool", "bench"];
+/// У чего сидят. Прилавок и разделочный стол — работа стоя, без сидений.
+#[rustfmt::skip]
+const SEATING_SURFACES: [&str; 9] = ["table_round", "table_long", "table_royal", "table_small", "bar_counter", "writing_desk", "map_table", "war_table", "jailer_desk"];
+/// Доля клетки, которую модель занимает при масштабе 1 (`PROP_FOOTPRINT_FILL` клиента).
+const FOOTPRINT_FILL: f64 = 0.84;
+/// Зазор между сиденьем и краем стола, в клетках.
+const SEAT_GAP: f64 = 0.05;
+
+fn is_seat(id: &str) -> bool {
+    SEATS.contains(&id)
+}
+
+fn is_seating_surface(id: &str) -> bool {
+    SEATING_SURFACES.contains(&id)
+}
+
+/// Сиденья поверхности (`seatSpecFor`): из `COMPANIONS`, у конторки — один
+/// стул, у королевского стола — шесть.
+pub fn seat_spec_for(asset_id: &str) -> Vec<(String, usize)> {
+    let from_companions: Vec<(String, usize)> =
+        companions(asset_id).iter().filter(|(id, _)| is_seat(id)).map(|(id, count)| ((*id).to_string(), *count)).collect();
+    if !from_companions.is_empty() {
+        return from_companions;
+    }
+    if asset_id == "table_royal" {
+        return vec![("chair".to_string(), 6)];
+    }
+    if is_seating_surface(asset_id) {
+        vec![("chair".to_string(), 1)]
+    } else {
+        Vec::new()
+    }
+}
+
+/// Направление взгляда предмета с поворотом `rotation` (`facingVector`): 0° —
+/// на юг (+y), 90° — на запад, 180° — на север, 270° — на восток.
+fn facing_vector(rotation: f64) -> (i64, i64) {
+    let quarter = js::round((((rotation % 360.0) + 360.0) % 360.0) / 90.0) % 4.0;
+    match quarter as i64 {
+        1 => (-1, 0),
+        2 => (0, -1),
+        3 => (1, 0),
+        _ => (0, 1),
+    }
+}
+
+/// С какой площади помещения его середина обязана быть обставлена.
+const CORE_FILL_MIN_CELLS: usize = 30;
+
+/// Что ставится в середину помещения по его назначению (`CORE_CENTERPIECES`) —
+/// первое, что разрешено темой и потолком зоны и что встаёт. Ковёр плоский:
+/// он не занимает клетку, но середина спальни перестаёт быть голым полом.
+#[rustfmt::skip]
+const CORE_CENTERPIECES: &[(&str, &[&str])] = &[
+    ("gallery", &["table_round", "table_long", "table_small"]),
+    ("dining", &["table_round", "table_small"]),
+    ("living", &["table_small", "rug"]),
+    ("guardroom", &["table_long", "table_small"]),
+    ("barracks", &["table_long", "table_small"]),
+    ("kitchen", &["prep_table", "table_small"]),
+    ("store", &["crate_stack", "barrel_stack", "crate"]),
+    ("shop", &["scales_table", "table_small", "crate"]),
+    ("workshop", &["workbench", "table_long", "crate"]),
+    ("forge", &["anvil", "workbench"]),
+    ("study", &["table_small", "rug"]),
+    ("laboratory", &["table_small", "rug"]),
+    ("bedroom", &["rug", "table_small"]),
+    ("mill", &["grain_sacks", "sack"]),
+];
+
 /// Центры шаблонов помещений: к чему тянется предмет набора.
 #[rustfmt::skip]
 const SET_ANCHORS: &[(&str, &[&str])] = &[
@@ -214,7 +292,7 @@ fn set_anchors(id: &str) -> Option<&'static [&'static str]> {
     SET_ANCHORS.iter().find(|(key, _)| *key == id).map(|(_, list)| *list)
 }
 
-/// Сторона клетки; поворот 0° смотрит на север.
+/// Сторона клетки и поворот предмета, стоящего спиной к стене этой стороны.
 #[derive(Clone, Copy, Debug)]
 struct Side {
     dx: i64,
@@ -222,16 +300,20 @@ struct Side {
     facing: f64,
 }
 
-/// Четыре стороны в порядке n, e, s, w.
+/// Четыре стороны в порядке n, e, s, w. Поворот 0° смотрит на юг (+y), 90° —
+/// на запад, 180° — на север, 270° — на восток: так его читают 2D и 3D
+/// (`propVisualLayout`). Прежде здесь стоял угол на саму стену (#184).
 const SIDES: [Side; 4] = [
-    Side { dx: 0, dy: -1, facing: 180.0 },
-    Side { dx: 1, dy: 0, facing: 270.0 },
-    Side { dx: 0, dy: 1, facing: 0.0 },
-    Side { dx: -1, dy: 0, facing: 90.0 },
+    Side { dx: 0, dy: -1, facing: 0.0 },
+    Side { dx: 1, dy: 0, facing: 90.0 },
+    Side { dx: 0, dy: 1, facing: 180.0 },
+    Side { dx: -1, dy: 0, facing: 270.0 },
 ];
 
 /// Стены вокруг клетки. Стена — это ребро, а не соседняя клетка: низкая
 /// ограда между двумя проходимыми клетками тоже держит якорь `wall`.
+/// Закрытая на время расстановки точка появления (`reserveDesignSpawn`) —
+/// пол, а не стена.
 fn wall_sides_at(map: &TacticalMap, x: i64, y: i64) -> Vec<Side> {
     SIDES
         .iter()
@@ -242,7 +324,13 @@ fn wall_sides_at(map: &TacticalMap, x: i64, y: i64) -> Vec<Side> {
                     return true;
                 }
             }
-            !cell_passable(map, x + side.dx, y + side.dy)
+            let neighbor = cell_at(map, x + side.dx, y + side.dy);
+            if let Some(neighbor) = &neighbor {
+                if !neighbor.passable && map.spawn_points.iter().any(|point| point.x == neighbor.x && point.y == neighbor.y) {
+                    return false;
+                }
+            }
+            neighbor.is_none_or(|neighbor| !neighbor.passable)
         })
         .collect()
 }
@@ -341,7 +429,7 @@ const SURFACE_SLOTS: [(f64, f64); 8] = [(-0.2, -0.2), (0.2, 0.2), (-0.2, 0.2), (
 
 /// Главная мебель комнаты: ремонт доступа снимает её последней.
 #[rustfmt::skip]
-const KEY_FURNITURE: [&str; 13] = ["bed", "bunk_bed", "bar_counter", "bar_shelf", "fireplace", "altar", "well", "stairs_up", "stairs_down", "sarcophagus", "table_long", "table_round", "market_stall"];
+pub const KEY_FURNITURE: [&str; 13] = ["bed", "bunk_bed", "bar_counter", "bar_shelf", "fireplace", "altar", "well", "stairs_up", "stairs_down", "sarcophagus", "table_long", "table_round", "market_stall"];
 const KEY_FURNITURE_COST: usize = 4;
 /// Закуток меньше этого числа клеток не стоит снятой мебели.
 const MIN_POCKET_CELLS: usize = 1;
@@ -535,6 +623,10 @@ fn score_cell_for_asset(map: &TacticalMap, asset: &AssetEntry, cell: Point, cont
     }
 
     if asset.anchor == "wall" {
+        // Мебель со спинкой и настенная вещь без стены рядом не ставятся.
+        if walls == 0.0 && (BACKED_FURNITURE.contains(&id) || WALL_MOUNTS.contains(&id)) {
+            return f64::NEG_INFINITY;
+        }
         score += walls * 6.0;
     } else if asset.anchor == "corner" {
         score += if walls >= 2.0 { 14.0 } else { walls * 2.0 };
@@ -647,10 +739,10 @@ fn score_cell_for_asset(map: &TacticalMap, asset: &AssetEntry, cell: Point, cont
     score
 }
 
-/// Угол от клетки к цели, кратный 90°, где 0 смотрит на север.
-fn angle_towards(from: Point, to: &Placed) -> f64 {
-    let dx = to.x - from.x as f64;
-    let dy = to.y - from.y as f64;
+/// Угол от клетки к цели, кратный 90° (`angleTowards`).
+fn angle_towards(from: Point, to_x: f64, to_y: f64) -> f64 {
+    let dx = to_x - from.x as f64;
+    let dy = to_y - from.y as f64;
     if dx.abs() >= dy.abs() {
         if dx >= 0.0 {
             270.0
@@ -665,9 +757,9 @@ fn angle_towards(from: Point, to: &Placed) -> f64 {
 }
 
 /// Поворот предмета (`rotationFor`). Якорь `wall` разворачивает лицом внутрь
-/// помещения; стул поворачивается к ближайшему столу; остальное получает
-/// свободный угол.
-fn rotation_for(map: &TacticalMap, asset: &AssetEntry, cell: Point, placed: &[Placed], zone_id: &str, random: &mut SeedRandom) -> f64 {
+/// помещения; стул поворачивается к ближайшему столу, без стола — в комнату;
+/// кресло — к огню; остальное получает свободный угол.
+fn rotation_for(map: &TacticalMap, asset: &AssetEntry, cell: Point, placed: &[Placed], zone_id: &str, random: &mut SeedRandom, zone_bounds: Option<ZoneBounds>) -> f64 {
     let id = asset.id.as_str();
     if asset.anchor == "wall" || asset.anchor == "corner" {
         let walls = wall_sides_at(map, cell.x, cell.y);
@@ -676,11 +768,31 @@ fn rotation_for(map: &TacticalMap, asset: &AssetEntry, cell: Point, placed: &[Pl
             return walls[index].facing;
         }
     }
+    let local = || -> Vec<&Placed> {
+        if zone_id.is_empty() {
+            placed.iter().collect()
+        } else {
+            placed.iter().filter(|record| record.zone_id.as_deref() == Some(zone_id)).collect()
+        }
+    };
+    let toward_middle = |bounds: ZoneBounds| {
+        angle_towards(cell, (bounds.min_x + bounds.max_x) as f64 / 2.0, (bounds.min_y + bounds.max_y) as f64 / 2.0)
+    };
     if id == "chair" || id == "stool" || id == "bench" {
-        let local: Vec<&Placed> =
-            if zone_id.is_empty() { placed.iter().collect() } else { placed.iter().filter(|record| record.zone_id.as_deref() == Some(zone_id)).collect() };
-        if let Some(table) = closest_record(&local, cell, |other| other.starts_with("table_") || other == "bar_counter") {
-            return angle_towards(cell, table);
+        if let Some(table) = closest_record(&local(), cell, |other| other.starts_with("table_") || other == "bar_counter") {
+            return angle_towards(cell, table.x, table.y);
+        }
+        if let Some(bounds) = zone_bounds {
+            return toward_middle(bounds);
+        }
+    }
+    // Кресло читают у огня: к очагу комнаты, без очага — в комнату.
+    if id == "armchair" {
+        if let Some(hearth) = closest_record(&local(), cell, |other| other == "fireplace" || other == "hearth_fire" || other == "brazier") {
+            return angle_towards(cell, hearth.x, hearth.y);
+        }
+        if let Some(bounds) = zone_bounds {
+            return toward_middle(bounds);
         }
     }
     if id.starts_with("tree_") || id == "bush" || id == "rock_small" || id == "boulder" {
@@ -700,6 +812,9 @@ fn fitting_footprint(map: &TacticalMap, blocked: &dyn Fn(Cell) -> bool, anchor: 
     // Поворот на 90° меняет ширину и высоту местами.
     let quarter = js::round((((rotation % 360.0) + 360.0) % 360.0) / 90.0) % 4.0;
     let (width, height) = if quarter % 2.0 == 0.0 { (w, h) } else { (h, w) };
+    // Предмет целиком в одной зоне, на одной высоте и без ребра между своими
+    // клетками: после тонких стен по обе стороны стены — проходимый пол.
+    let home = cell_at(map, anchor.x, anchor.y);
     let mut offset_y = 0_i64;
     while (offset_y as f64) < height {
         let mut offset_x = 0_i64;
@@ -712,7 +827,14 @@ fn fitting_footprint(map: &TacticalMap, blocked: &dyn Fn(Cell) -> bool, anchor: 
                 while (dx as f64) < width && fits {
                     let x = anchor.x - offset_x + dx;
                     let y = anchor.y - offset_y + dy;
-                    if !cell_passable(map, x, y) || blocked((x, y)) {
+                    let target = cell_at(map, x, y);
+                    if target.as_ref().is_none_or(|target| !target.passable) || blocked((x, y)) {
+                        fits = false;
+                    } else if home.as_ref().is_some_and(|home| {
+                        target.as_ref().is_some_and(|target| target.zone != home.zone || target.elevation != home.elevation)
+                    }) {
+                        fits = false;
+                    } else if (dx > 0 && edge_at(map, x - 1, y, x, y).is_some()) || (dy > 0 && edge_at(map, x, y - 1, x, y).is_some()) {
                         fits = false;
                     } else {
                         cells.push(Point::new(x, y));
@@ -729,6 +851,365 @@ fn fitting_footprint(map: &TacticalMap, blocked: &dyn Fn(Cell) -> bool, anchor: 
         offset_y += 1;
     }
     None
+}
+
+// --- середина помещения и гарнитур ----------------------------------------------------
+
+/// Что поставить в середину помещения и куда (`coreCenterpiece`).
+struct Centerpiece {
+    asset: &'static AssetEntry,
+    cell: Point,
+    footprint: Vec<Point>,
+    rotation: f64,
+}
+
+/// Середина помещения без мебели (`coreCenterpiece`): клетки не ближе двух
+/// шагов к стене, двери, окну и краю помещения. `None` — середина уже
+/// обставлена, мала или ничего не встало, не отрезав проход. Назначение —
+/// собственный ключ `CORE_CENTERPIECES`; ключи прототипа (`constructor`) в JS
+/// роняют расстановку (`docs/rust-port-js-findings.md`), здесь — назначение
+/// без середины.
+fn core_centerpiece(
+    map: &TacticalMap,
+    zone_id: &str,
+    purpose: &str,
+    cells: &[Point],
+    allowed: &HashSet<&str>,
+    caps: &IndexMap<String, Option<f64>>,
+    blocked: &HashSet<Cell>,
+) -> Option<Centerpiece> {
+    let zone = map.zones.iter().find(|entry| entry.id == zone_id);
+    let choices: &[&str] = CORE_CENTERPIECES.iter().find(|(key, _)| *key == purpose).map_or(&[], |(_, list)| list);
+    if zone.is_none_or(|zone| zone.kind != "interior") || cells.len() < CORE_FILL_MIN_CELLS || choices.is_empty() {
+        return None;
+    }
+    let own: HashSet<Cell> = cells.iter().map(|cell| (cell.x, cell.y)).collect();
+    let rim: Vec<Point> = cells
+        .iter()
+        .copied()
+        .filter(|cell| {
+            [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| {
+                !own.contains(&(cell.x + dx, cell.y + dy)) || edge_at(map, cell.x, cell.y, cell.x + dx, cell.y + dy).is_some()
+            })
+        })
+        .collect();
+    // `Math.min(...rim.map(…))`: пустая кромка — бесконечность.
+    let distance = |cell: &Point| rim.iter().map(|edge| (edge.x - cell.x).abs().max((edge.y - cell.y).abs())).min().map_or(f64::INFINITY, |d| d as f64);
+    let core: Vec<Point> = cells.iter().copied().filter(|cell| distance(cell) >= 2.0).collect();
+    if core.len() < 2 {
+        return None;
+    }
+    let core_keys: HashSet<Cell> = core.iter().map(|cell| (cell.x, cell.y)).collect();
+    if map.props.iter().any(|prop| prop.mount.is_none() && prop.footprint.iter().any(|point| core_keys.contains(&(point.x, point.y)))) {
+        return None;
+    }
+    // Сам предмет может выйти из середины на клетку, но не к стене.
+    let inner: HashSet<Cell> = cells.iter().filter(|cell| distance(cell) >= 1.0).map(|cell| (cell.x, cell.y)).collect();
+    let center_x = core.iter().fold(0.0, |sum, cell| sum + cell.x as f64) / core.len() as f64;
+    let center_y = core.iter().fold(0.0, |sum, cell| sum + cell.y as f64) / core.len() as f64;
+    let key = |cell: &Point| (cell.x as f64 - center_x).abs() + (cell.y as f64 - center_y).abs();
+    let mut ordered = core.clone();
+    ordered.sort_by(|left, right| {
+        key(left).partial_cmp(&key(right)).unwrap_or(Ordering::Equal).then(left.y.cmp(&right.y)).then(left.x.cmp(&right.x))
+    });
+    let min_x = cells.iter().map(|cell| cell.x).min().unwrap_or(0);
+    let max_x = cells.iter().map(|cell| cell.x).max().unwrap_or(0);
+    let min_y = cells.iter().map(|cell| cell.y).min().unwrap_or(0);
+    let max_y = cells.iter().map(|cell| cell.y).max().unwrap_or(0);
+    let wide = max_x - min_x >= max_y - min_y;
+    let blockers: HashSet<Cell> =
+        map.props.iter().filter(|prop| prop.blocks_move && prop.mount.is_none()).flat_map(|prop| prop.footprint.iter().map(|cell| (cell.x, cell.y))).collect();
+    for asset_id in choices {
+        let Some(asset) = asset_by_id(asset_id) else { continue };
+        if !allowed.contains(asset_id) {
+            continue;
+        }
+        let present = map.props.iter().filter(|prop| prop.asset_id == *asset_id && floor_key(prop.x, prop.y).is_some_and(|key| own.contains(&key))).count();
+        if let Some(Some(cap)) = caps.get(*asset_id) {
+            if cap.is_finite() && present as f64 >= *cap {
+                continue;
+            }
+        }
+        if falsy_number(asset.base_footprint.w) {
+            return Some(Centerpiece { asset, cell: ordered[0], footprint: Vec::new(), rotation: 0.0 });
+        }
+        // Длинный стол и верстак лежат вдоль длинной стороны комнаты.
+        let rotation = if wide { 0.0 } else { 90.0 };
+        for cell in &ordered {
+            let blocked_fn = |key: Cell| blocked.contains(&key);
+            let Some(footprint) = fitting_footprint(map, &blocked_fn, *cell, asset.base_footprint.w, asset.base_footprint.h, rotation) else { continue };
+            if !footprint.iter().all(|point| inner.contains(&(point.x, point.y))) {
+                continue;
+            }
+            if asset.blocks_move {
+                // Предмет отнимает у обхода ровно свои клетки — проход не отрезан.
+                let taken: HashSet<Cell> = footprint.iter().map(|point| (point.x, point.y)).collect();
+                let Some(anchor) = cells.iter().find(|other| !blockers.contains(&(other.x, other.y)) && !taken.contains(&(other.x, other.y))) else { continue };
+                let before = reachable_cells(map, anchor.x, anchor.y, true, Some(&blockers)).len();
+                let mut with_taken = blockers.clone();
+                with_taken.extend(taken.iter().copied());
+                let after = reachable_cells(map, anchor.x, anchor.y, true, Some(&with_taken)).len();
+                if after as i64 != before as i64 - footprint.len() as i64 {
+                    continue;
+                }
+            }
+            return Some(Centerpiece { asset, cell: *cell, footprint, rotation });
+        }
+    }
+    None
+}
+
+/// `` `${Math.floor(x)},${Math.floor(y)}` `` как ключ клетки; `None` — у
+/// координаты нет клетки (NaN, бесконечность): такого ключа нет ни в одном
+/// множестве клеток.
+fn floor_key(x: f64, y: f64) -> Option<Cell> {
+    Some((floor_cell(x)?, floor_cell(y)?))
+}
+
+/// Поверхность, к которой садятся: вид, след и масштаб предмета.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SeatSurface {
+    pub asset_id: String,
+    pub footprint: Vec<Point>,
+    pub scale: f64,
+}
+
+impl SeatSurface {
+    pub fn from_prop(prop: &TacticalProp) -> Self {
+        Self { asset_id: prop.asset_id.clone(), footprint: prop.footprint.clone(), scale: prop.scale }
+    }
+
+    /// Поверхность из объекта JS (`{ assetId, footprint, scale }`).
+    pub fn from_json(value: &Value) -> Self {
+        let footprint = match value.get("footprint") {
+            Some(Value::Array(cells)) => cells
+                .iter()
+                .filter_map(|cell| Some(Point::new(cell.get("x")?.as_f64()? as i64, cell.get("y")?.as_f64()? as i64)))
+                .collect(),
+            _ => Vec::new(),
+        };
+        Self { asset_id: js::s(value.get("assetId")), footprint, scale: js::number(value.get("scale")) }
+    }
+}
+
+/// Место для сиденья у стороны поверхности (`seatSlots`).
+#[derive(Clone, Copy, Debug)]
+struct SeatSlot {
+    x: i64,
+    y: i64,
+    toward: Point,
+    side: char,
+}
+
+/// Места для сидений у поверхности: свободные клетки той же зоны и высоты
+/// вплотную к её сторонам — без углов и без ребра между сиденьем и столом.
+fn seat_slots(map: &TacticalMap, footprint: &[Point], blocked: &HashSet<Cell>) -> Vec<SeatSlot> {
+    let own: HashSet<Cell> = footprint.iter().map(|cell| (cell.x, cell.y)).collect();
+    let home = cell_at(map, footprint[0].x, footprint[0].y);
+    let mut slots: IndexMap<Cell, SeatSlot> = IndexMap::new();
+    for cell in footprint {
+        for (dx, dy, side) in [(0, -1, 'n'), (1, 0, 'e'), (0, 1, 's'), (-1, 0, 'w')] {
+            let (x, y) = (cell.x + dx, cell.y + dy);
+            if own.contains(&(x, y)) || blocked.contains(&(x, y)) || slots.contains_key(&(x, y)) {
+                continue;
+            }
+            let Some(target) = cell_at(map, x, y) else { continue };
+            let Some(home) = &home else { continue };
+            if !target.passable || target.zone != home.zone || target.elevation != home.elevation {
+                continue;
+            }
+            if edge_at(map, cell.x, cell.y, x, y).is_some() {
+                continue;
+            }
+            slots.insert((x, y), SeatSlot { x, y, toward: *cell, side });
+        }
+    }
+    slots.into_values().collect()
+}
+
+/// Сиденье, найденное раскладкой (`arrangeSeats`).
+#[derive(Clone, Debug)]
+struct Seat {
+    asset: &'static AssetEntry,
+    cells: Vec<Point>,
+    rotation: f64,
+    x: f64,
+    y: f64,
+}
+
+/// Раскладка сидений вокруг поверхности (`arrangeSeats`). Сначала длинная
+/// сторона, затем противоположная, затем торцы; на стороне — от середины к
+/// краям. Скамья встаёт вдоль стороны на две соседние клетки. У стойки —
+/// только её передняя сторона.
+fn arrange_seats(map: &TacticalMap, surface: &SeatSurface, spec: &[(String, usize)], blocked: &HashSet<Cell>) -> Vec<Seat> {
+    let footprint = &surface.footprint;
+    if footprint.is_empty() || spec.is_empty() {
+        return Vec::new();
+    }
+    let mut taken = blocked.clone();
+    let slots = seat_slots(map, footprint, &taken);
+    if slots.is_empty() {
+        return Vec::new();
+    }
+    let min_x = footprint.iter().map(|cell| cell.x).min().unwrap_or(0);
+    let max_x = footprint.iter().map(|cell| cell.x).max().unwrap_or(0);
+    let min_y = footprint.iter().map(|cell| cell.y).min().unwrap_or(0);
+    let max_y = footprint.iter().map(|cell| cell.y).max().unwrap_or(0);
+    let span_w = max_x - min_x + 1;
+    let span_h = max_y - min_y + 1;
+    let middle_x = (min_x + max_x) as f64 / 2.0;
+    let middle_y = (min_y + max_y) as f64 / 2.0;
+    let opposite = |side: char| match side {
+        'n' => 's',
+        's' => 'n',
+        'e' => 'w',
+        _ => 'e',
+    };
+    let side_length = |side: char| if side == 'n' || side == 's' { span_w } else { span_h };
+    let mut by_side: IndexMap<char, Vec<SeatSlot>> = IndexMap::new();
+    for slot in &slots {
+        by_side.entry(slot.side).or_default().push(*slot);
+    }
+    for list in by_side.values_mut() {
+        let distance = |slot: &SeatSlot| js_hypot(slot.x as f64 - middle_x, slot.y as f64 - middle_y);
+        list.sort_by(|a, b| distance(a).partial_cmp(&distance(b)).unwrap_or(Ordering::Equal).then(a.x.cmp(&b.x)).then(a.y.cmp(&b.y)));
+    }
+    // У стойки сидят только спереди: сторона, где мест больше и за спиной меньше стен.
+    let behind = |list: &[SeatSlot]| list.iter().map(|slot| wall_sides_at(map, slot.x, slot.y).len()).sum::<usize>();
+    let count = |side: &char| by_side.get(side).map_or(0, Vec::len);
+    let mut order: Vec<char> = by_side.keys().copied().collect();
+    order.sort_by(|a, b| {
+        side_length(*b)
+            .cmp(&side_length(*a))
+            .then(count(b).cmp(&count(a)))
+            .then(behind(by_side.get(a).map_or(&[][..], Vec::as_slice)).cmp(&behind(by_side.get(b).map_or(&[][..], Vec::as_slice))))
+            .then_with(|| text::locale_compare(&a.to_string(), &b.to_string()))
+    });
+    if order.len() > 1 && by_side.contains_key(&opposite(order[0])) {
+        let first = order[0];
+        let mut reordered = vec![first, opposite(first)];
+        reordered.extend(order[1..].iter().copied().filter(|side| *side != opposite(first)));
+        order = reordered;
+    }
+    if surface.asset_id == "bar_counter" {
+        order.truncate(1);
+    }
+    let mut result: Vec<Seat> = Vec::new();
+    let table_scale = if surface.scale > 0.0 { surface.scale } else { 1.0 };
+    // Сдвиг сиденья к столу внутри своей клетки: футпринт тот же — меняется
+    // только точка рисунка (`propVisualLayout`).
+    let shift_toward = |slot: &SeatSlot, asset: &AssetEntry| {
+        let across = (if slot.side == 'n' || slot.side == 's' { span_h } else { span_w }) as f64;
+        let table_inset = across / 2.0 * (1.0 - FOOTPRINT_FILL * table_scale);
+        let seat_scale = (asset.scale_range.min + asset.scale_range.max) / 2.0;
+        js_max(0.0, (0.5 + table_inset - FOOTPRINT_FILL * seat_scale / 2.0 - SEAT_GAP).min(0.4))
+    };
+    for (seat_id, seat_count) in spec {
+        let Some(asset) = asset_by_id(seat_id) else { continue };
+        for _ in 0..*seat_count {
+            if asset.base_footprint.w > 1.0 || asset.base_footprint.h > 1.0 {
+                // Скамья: две соседние клетки вдоль одной стороны.
+                let mut bench: Option<(SeatSlot, SeatSlot)> = None;
+                for side in &order {
+                    let list: Vec<SeatSlot> = by_side.get(side).map_or(&[][..], Vec::as_slice).iter().copied().filter(|slot| !taken.contains(&(slot.x, slot.y))).collect();
+                    let (along_dx, along_dy) = if *side == 'n' || *side == 's' { (1, 0) } else { (0, 1) };
+                    for slot in &list {
+                        if let Some(next) = list.iter().find(|other| other.x == slot.x + along_dx && other.y == slot.y + along_dy) {
+                            bench = Some((*slot, *next));
+                            break;
+                        }
+                    }
+                    if bench.is_some() {
+                        break;
+                    }
+                }
+                let Some((slot, next)) = bench else { continue };
+                let cells = vec![Point::new(slot.x, slot.y), Point::new(next.x, next.y)];
+                for cell in &cells {
+                    taken.insert((cell.x, cell.y));
+                }
+                let from = Point::new(slot.x, slot.y);
+                result.push(Seat {
+                    asset,
+                    cells,
+                    rotation: angle_towards(from, slot.toward.x as f64, slot.toward.y as f64),
+                    x: slot.x as f64 + 0.5,
+                    y: slot.y as f64 + 0.5,
+                });
+                continue;
+            }
+            // Стул: по кругу сторон, чтобы сидели напротив друг друга.
+            let mut chosen: Option<SeatSlot> = None;
+            let mut turn = 0;
+            while turn < order.len() && chosen.is_none() {
+                let side = order[(result.len() + turn) % order.len()];
+                chosen = by_side.get(&side).and_then(|list| list.iter().find(|slot| !taken.contains(&(slot.x, slot.y))).copied());
+                turn += 1;
+            }
+            let Some(chosen) = chosen else { break };
+            taken.insert((chosen.x, chosen.y));
+            let shift = shift_toward(&chosen, asset);
+            let dx = (chosen.toward.x - chosen.x).signum() as f64;
+            let dy = (chosen.toward.y - chosen.y).signum() as f64;
+            let from = Point::new(chosen.x, chosen.y);
+            result.push(Seat {
+                asset,
+                cells: vec![from],
+                rotation: angle_towards(from, chosen.toward.x as f64, chosen.toward.y as f64),
+                x: js::parse_float(&js::to_fixed(chosen.x as f64 + 0.5 + dx * shift, 3)),
+                y: js::parse_float(&js::to_fixed(chosen.y as f64 + 0.5 + dy * shift, 3)),
+            });
+        }
+    }
+    result
+}
+
+/// Предмет сиденья для `addProp`.
+fn seat_prop_value(id: String, seat: &Seat, scale: f64) -> Value {
+    prop_value(id, seat.asset, seat.x, seat.y, seat.rotation, scale, &seat.cells, 0)
+}
+
+/// Параметры [`seat_around_surface`] (`{ idPrefix, blocked, spec, random }`).
+pub struct SeatOptions<'a> {
+    pub id_prefix: &'a str,
+    pub blocked: HashSet<Cell>,
+    /// `None` — `seatSpecFor(surface.assetId)`.
+    pub spec: Option<Vec<(String, usize)>>,
+    /// `None` — `() => 0.5`.
+    pub random: Option<&'a mut dyn FnMut() -> f64>,
+}
+
+/// `seatAroundSurface(map, surface, options)`: ставит сиденья к уже стоящей
+/// поверхности (стол, стойка, конторка). Возвращает поставленные предметы.
+/// Используется расстановкой и дообстановкой пустых четвертей зала
+/// (`building-generator`).
+pub fn seat_around_surface(map: &mut TacticalMap, surface: &SeatSurface, options: SeatOptions<'_>) -> Vec<TacticalProp> {
+    let SeatOptions { id_prefix, blocked, spec, mut random } = options;
+    let spec = spec.unwrap_or_else(|| seat_spec_for(&surface.asset_id));
+    let mut occupied_now = blocked;
+    for prop in &map.props {
+        if prop.mount.is_some() {
+            continue;
+        }
+        for cell in &prop.footprint {
+            occupied_now.insert((cell.x, cell.y));
+        }
+    }
+    let seats = arrange_seats(map, surface, &spec, &occupied_now);
+    let mut added = Vec::new();
+    for (index, seat) in seats.iter().enumerate() {
+        let span = seat.asset.scale_range.max - seat.asset.scale_range.min;
+        let roll = match random.as_mut() {
+            Some(random) => random(),
+            None => 0.5,
+        };
+        let scale = js::parse_float(&js::to_fixed(seat.asset.scale_range.min + roll * span, 3));
+        let prop = seat_prop_value(format!("{id_prefix}-{index}-{}", seat.asset.id), seat, scale);
+        if let Ok(prop) = add_prop(map, &prop) {
+            added.push(prop.clone());
+        }
+    }
+    added
 }
 
 // --- проходы у дверей ------------------------------------------------------------
@@ -1098,6 +1579,21 @@ fn remove_blocking_prop(props: &mut Vec<TacticalProp>, index: usize) -> bool {
             changed = true;
         }
     }
+    // Гарнитур уходит вместе со столом: стул, смотрящий в пустое место, — тот
+    // же «стул без стола».
+    let removed = &props[index];
+    if is_seating_surface(&removed.asset_id) {
+        let own: HashSet<Cell> = removed.footprint.iter().map(|cell| (cell.x, cell.y)).collect();
+        for (position, prop) in props.iter().enumerate() {
+            if removed_props[position] || !is_seat(&prop.asset_id) {
+                continue;
+            }
+            let (dx, dy) = facing_vector(prop.rotation);
+            if prop.footprint.iter().any(|cell| own.contains(&(cell.x + dx, cell.y + dy))) {
+                removed_props[position] = true;
+            }
+        }
+    }
     let mut position = 0;
     props.retain(|_| {
         let keep = !removed_props[position];
@@ -1234,6 +1730,10 @@ impl ZoneQueue<'_> {
 
     fn enqueue_companions(&mut self, id: &str) {
         for (companion, count) in companions(id) {
+            // Сиденья приходят гарнитуром вместе с поверхностью (`arrangeSeats`).
+            if is_seat(companion) {
+                continue;
+            }
             let mut index = 0;
             while index < *count && self.below_budget() {
                 self.enqueue(asset_by_id(companion), false, false);
@@ -1255,6 +1755,99 @@ fn number_order(value: f64) -> Ordering {
     } else {
         Ordering::Equal
     }
+}
+
+/// Элемент очереди расстановки: предмет, обязательность экземпляра и
+/// «стул, ради которого позвали столик» (`requeued`).
+#[derive(Clone, Copy)]
+struct OrderEntry {
+    asset: &'static AssetEntry,
+    required: bool,
+    requeued: bool,
+}
+
+/// Стоит ли в зоне поверхность, у которой сидят (`hasSurface`).
+fn zone_has_seating_surface(map: &TacticalMap, zone_id: &str) -> bool {
+    map.props.iter().any(|prop| {
+        is_seating_surface(&prop.asset_id) && !prop.footprint.is_empty() && cell_at(map, prop.footprint[0].x, prop.footprint[0].y).is_some_and(|cell| cell.zone == zone_id)
+    })
+}
+
+/// Место у стола зоны для одного сиденья (`joinTable`).
+fn join_table(map: &TacticalMap, zone_id: &str, seat_asset: &AssetEntry, blocked_now: &HashSet<Cell>) -> Option<Seat> {
+    let spec = [(seat_asset.id.clone(), 1)];
+    for prop in &map.props {
+        if !is_seating_surface(&prop.asset_id) || prop.footprint.is_empty() || !cell_at(map, prop.footprint[0].x, prop.footprint[0].y).is_some_and(|cell| cell.zone == zone_id) {
+            continue;
+        }
+        if let Some(seat) = arrange_seats(map, &SeatSurface::from_prop(prop), &spec, blocked_now).into_iter().next() {
+            return Some(seat);
+        }
+    }
+    None
+}
+
+/// Общее для `addSeat` и `seatPending` расстановки одной зоны.
+struct SeatContext<'a> {
+    zone_id: &'a str,
+    max_props: i64,
+    allowed: &'a HashSet<&'a str>,
+    keep_clear: &'a HashSet<Cell>,
+    thresholds: &'a HashSet<Cell>,
+}
+
+impl SeatContext<'_> {
+    /// `addSeat`: сиденье на карту, в занятые клетки и в поставленное.
+    fn add_seat(&self, map: &mut TacticalMap, seat: &Seat, counter: &mut i64, random: &mut SeedRandom, occupied: &mut HashSet<Cell>, placed: &mut Vec<Placed>) {
+        let span = seat.asset.scale_range.max - seat.asset.scale_range.min;
+        *counter += 1;
+        let scale = js::parse_float(&js::to_fixed(seat.asset.scale_range.min + random.next() * span, 3));
+        let prop = seat_prop_value(format!("prop-{counter}-{}", seat.asset.id), seat, scale);
+        add_registry_prop(map, &prop);
+        for cell in &seat.cells {
+            occupied.insert((cell.x, cell.y));
+        }
+        placed.push(Placed { asset_id: seat.asset.id.clone(), x: seat.cells[0].x as f64, y: seat.cells[0].y as f64, zone_id: Some(self.zone_id.to_string()), footprint: seat.cells.clone() });
+    }
+
+    /// `seatPending`: гарнитур ожидающих поверхностей.
+    #[allow(clippy::too_many_arguments)] // те же замыкания JS, что держат состояние зоны
+    fn seat_pending(&self, map: &mut TacticalMap, pending: &mut Vec<SeatSurface>, counter: &mut i64, random: &mut SeedRandom, occupied: &mut HashSet<Cell>, placed: &mut Vec<Placed>) {
+        for surface in std::mem::take(pending) {
+            let spec: Vec<(String, usize)> = seat_spec_for(&surface.asset_id).into_iter().filter(|(id, _)| self.allowed.contains(id.as_str()) || id == "chair").collect();
+            let mut blocked: HashSet<Cell> = occupied.clone();
+            blocked.extend(self.keep_clear.iter().copied());
+            blocked.extend(self.thresholds.iter().copied());
+            let seats = arrange_seats(map, &surface, &spec, &blocked);
+            for seat in &seats {
+                if *counter < self.max_props {
+                    self.add_seat(map, seat, counter, random, occupied, placed);
+                }
+            }
+        }
+    }
+}
+
+/// `normalizedPurpose`: псевдоним назначения или сам ключ.
+fn normalized_purpose(value: &str) -> String {
+    let key = purpose_key(value);
+    table_lookup(&PURPOSE_ALIASES, &key).map_or(key.clone(), str::to_string)
+}
+
+/// Назначение, по которому `semanticProfileFor` нашёл профиль (`semantic?.purpose`).
+fn semantic_purpose_for(plan: &ZonePlacementPlan) -> Option<String> {
+    let explicit = normalized_purpose(&plan.purpose);
+    if semantic_profile(&explicit).is_some() {
+        return Some(explicit);
+    }
+    for tag in &plan.tags {
+        if let Some(purpose) = table_lookup(&TAG_PURPOSES, &purpose_key(tag)) {
+            if semantic_profile(purpose).is_some() {
+                return Some(purpose.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// `placeProps(map, { seed, zones, maxProps })`: раскладывает предметы по
@@ -1281,6 +1874,8 @@ pub fn place_props(map: &mut TacticalMap, seed: &str, zones: &[ZonePlacementPlan
         })
         .collect();
     let mut counter = map.props.len() as i64;
+    // Точка появления — не место для мебели середины комнаты.
+    let spawn_cells: HashSet<Cell> = map.spawn_points.iter().map(|point| (point.x, point.y)).collect();
     // Порог любой двери и клетка за ним по прямой закрыты для мебели всех зон;
     // тропа к двери дома (`path`) и крайние клетки карты — тоже.
     let mut thresholds = door_thresholds(map);
@@ -1403,7 +1998,7 @@ pub fn place_props(map: &mut TacticalMap, seed: &str, zones: &[ZonePlacementPlan
         // Крупные предметы ставятся первыми, мелкая утварь — поверх и рядом.
         // Обязательность принадлежит конкретному экземпляру.
         let mut required_remaining = queue.required_counts.clone();
-        let mut order: Vec<(&'static AssetEntry, bool)> = queue
+        let mut order: Vec<OrderEntry> = queue
             .wanted
             .iter()
             .map(|asset| {
@@ -1412,30 +2007,89 @@ pub fn place_props(map: &mut TacticalMap, seed: &str, zones: &[ZonePlacementPlan
                 if required {
                     required_remaining.insert(asset.id.as_str(), remaining - 1);
                 }
-                (*asset, required)
+                OrderEntry { asset, required, requeued: false }
             })
             .collect();
-        order.sort_by(|(left, left_required), (right, right_required)| {
+        order.sort_by(|left_entry, right_entry| {
+            let (left, left_required) = (left_entry.asset, left_entry.required);
+            let (right, right_required) = (right_entry.asset, right_entry.required);
             if left_required != right_required {
-                return if *left_required { Ordering::Less } else { Ordering::Greater };
+                return if left_required { Ordering::Less } else { Ordering::Greater };
             }
-            if *left_required {
-                // Сначала поверхности, которые тянут спутников, затем малые
-                // обязательные.
-                let left_has = !companions(&left.id).is_empty();
-                let right_has = !companions(&right.id).is_empty();
-                if left_has != right_has {
-                    return if left_has { Ordering::Less } else { Ordering::Greater };
+            if left_required {
+                // Сначала крупное у стены со спутниками (стойка, очаг), затем
+                // полка за стойкой, затем прочие поверхности со спутниками,
+                // затем малые обязательные.
+                let rank = |asset: &AssetEntry| {
+                    let has = !companions(&asset.id).is_empty();
+                    if has && asset.anchor == "wall" {
+                        0
+                    } else if asset.id == "bar_shelf" {
+                        1
+                    } else if has {
+                        2
+                    } else {
+                        3
+                    }
+                };
+                let (left_rank, right_rank) = (rank(left), rank(right));
+                if left_rank != right_rank {
+                    return left_rank.cmp(&right_rank);
                 }
-                return number_order(if left_has { area(right) - area(left) } else { area(left) - area(right) });
+                return number_order(if left_rank < 3 { area(right) - area(left) } else { area(left) - area(right) });
             }
             number_order(area(right) - area(left))
         });
 
+        let blocked_now = |occupied: &HashSet<Cell>| -> HashSet<Cell> {
+            let mut blocked: HashSet<Cell> = occupied.clone();
+            blocked.extend(keep_clear.iter().copied());
+            blocked.extend(thresholds.iter().copied());
+            blocked
+        };
+        // Сиденья обязательных столов ставятся после всех обязательных
+        // предметов: иначе гарнитур занимал клетку, нужную лестнице или сундуку.
+        let mut pending_surfaces: Vec<SeatSurface> = Vec::new();
+        let seats_ctx = SeatContext { zone_id: &plan.zone_id, max_props, allowed: &queue.allowed, keep_clear: &keep_clear, thresholds: &thresholds };
+
         let mut index = 0;
         while index < order.len() && counter < max_props {
-            let (asset, required) = order[index];
+            let OrderEntry { asset, required, requeued } = order[index];
             let id = asset.id.as_str();
+            if !required && !pending_surfaces.is_empty() {
+                seats_ctx.seat_pending(map, &mut pending_surfaces, &mut counter, &mut random, &mut occupied, &mut placed);
+                if counter >= max_props {
+                    break;
+                }
+            }
+            // Стул из добора сначала ищет место у стола. Без стола стоит только
+            // обязательный (стул караульной, кресло кабинета).
+            if is_seat(id) {
+                let has_surface = |map: &TacticalMap| zone_has_seating_surface(map, &plan.zone_id);
+                // Стул, ради которого позвали столик, уже сидит в его гарнитуре.
+                if requeued && has_surface(map) {
+                    index += 1;
+                    continue;
+                }
+                if let Some(seat) = join_table(map, &plan.zone_id, asset, &blocked_now(&occupied)) {
+                    seats_ctx.add_seat(map, &seat, &mut counter, &mut random, &mut occupied, &mut placed);
+                    index += 1;
+                    continue;
+                }
+                if !required || has_surface(map) {
+                    index += 1;
+                    continue;
+                }
+                // Обязательный стул в комнате без стола: сначала столик, и стул садится к нему.
+                if let Some(table) = asset_by_id("table_small") {
+                    if !requeued && queue.allowed.contains(table.id.as_str()) {
+                        order.insert(index + 1, OrderEntry { asset: table, required: true, requeued: false });
+                        order.insert(index + 2, OrderEntry { asset, required: true, requeued: true });
+                        index += 1;
+                        continue;
+                    }
+                }
+            }
             // Просматривается ограниченная выборка клеток со сдвигом от номера
             // предмета: разные предметы видят разные клетки.
             let stride = if cells.len() > CANDIDATE_SCAN_LIMIT { (cells.len() as f64 / CANDIDATE_SCAN_LIMIT as f64).ceil() as usize } else { 1 };
@@ -1489,7 +2143,7 @@ pub fn place_props(map: &mut TacticalMap, seed: &str, zones: &[ZonePlacementPlan
                 let candidate_limit = if required { REQUIRED_PLACEMENT_ATTEMPTS } else { PLACEMENT_ATTEMPTS };
                 let try_candidates = |slice: &[(Point, f64)], random: &mut SeedRandom| {
                     for (cell, _) in slice {
-                        let rotation = rotation_for(map, asset, *cell, &placed, &plan.zone_id, random);
+                        let rotation = rotation_for(map, asset, *cell, &placed, &plan.zone_id, random, Some(zone_bounds));
                         let Some(footprint) = fitting_footprint(map, &blocked, *cell, asset.base_footprint.w, asset.base_footprint.h, rotation) else {
                             continue;
                         };
@@ -1529,7 +2183,43 @@ pub fn place_props(map: &mut TacticalMap, seed: &str, zones: &[ZonePlacementPlan
                 occupied.insert((point.x, point.y));
             }
             placed.push(Placed { asset_id: id.to_string(), x: cell.x as f64, y: cell.y as f64, zone_id: Some(plan.zone_id.clone()), footprint });
+            if is_seating_surface(id) {
+                if let Some(last) = map.props.last() {
+                    pending_surfaces.push(SeatSurface::from_prop(last));
+                }
+                if !required {
+                    seats_ctx.seat_pending(map, &mut pending_surfaces, &mut counter, &mut random, &mut occupied, &mut placed);
+                }
+            }
             index += 1;
+        }
+        seats_ctx.seat_pending(map, &mut pending_surfaces, &mut counter, &mut random, &mut occupied, &mut placed);
+        let centerpiece = if counter < max_props {
+            let explicit = normalized_purpose(&plan.purpose);
+            let purpose = if explicit.is_empty() { semantic_purpose_for(plan).unwrap_or_default() } else { explicit };
+            let mut blocked = blocked_now(&occupied);
+            blocked.extend(spawn_cells.iter().copied());
+            core_centerpiece(map, &plan.zone_id, &purpose, &cells, &queue.allowed, &queue.caps, &blocked)
+        } else {
+            None
+        };
+        if let Some(Centerpiece { asset, cell, footprint, rotation }) = centerpiece {
+            let span = asset.scale_range.max - asset.scale_range.min;
+            counter += 1;
+            let scale = js::parse_float(&js::to_fixed(asset.scale_range.min + random.next() * span, 3));
+            let z_order = if falsy_number(asset.base_footprint.w) { 1 } else { 0 };
+            let prop = prop_value(format!("prop-{counter}-{}", asset.id), asset, cell.x as f64 + 0.5, cell.y as f64 + 0.5, rotation, scale, &footprint, z_order);
+            add_registry_prop(map, &prop);
+            for point in &footprint {
+                occupied.insert((point.x, point.y));
+            }
+            placed.push(Placed { asset_id: asset.id.clone(), x: cell.x as f64, y: cell.y as f64, zone_id: Some(plan.zone_id.clone()), footprint });
+            if is_seating_surface(&asset.id) {
+                if let Some(last) = map.props.last() {
+                    pending_surfaces.push(SeatSurface::from_prop(last));
+                }
+                seats_ctx.seat_pending(map, &mut pending_surfaces, &mut counter, &mut random, &mut occupied, &mut placed);
+            }
         }
     }
     attach_prop_supports(map)

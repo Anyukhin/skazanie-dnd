@@ -489,11 +489,11 @@ for (let s = 0; s < states.length; s += 1) {
 // --- блоки проверки ----------------------------------------------------------------
 
 const blocks = {
-  b57: await blockFunction([[6981, 6981], [6985, 6992]], ['const actorFate', "if (command.command_type === 'ResolveHeroDeath')"], ['state', 'command', 'context'], 'return command'),
-  b58: await blockFunction([[6994, 7042]], ["if (['StartRest', 'SpendHitPointDie', 'CompleteRest']"], ['state', 'command', 'context'], 'return command'),
-  b61: await blockFunction([[7058, 7060]], ["if (command.command_type === 'ApplyHealing'"], ['state', 'command', 'context'], 'return command'),
-  b62: await blockFunction([[7061, 7063]], ["if (command.command_type === 'ReduceHitPointMaximum'"], ['state', 'command', 'context'], 'return command'),
-  b70: await blockFunction([[7569, 7585]], ["if (command.command_type === 'IdentifyEnemy')"], ['state', 'command', 'context'], 'return command'),
+  b57: await blockFunction([[7003, 7003], [7007, 7014]], ['const actorFate', "if (command.command_type === 'ResolveHeroDeath')"], ['state', 'command', 'context'], 'return command'),
+  b58: await blockFunction([[7016, 7064]], ["if (['StartRest', 'SpendHitPointDie', 'CompleteRest']"], ['state', 'command', 'context'], 'return command'),
+  b61: await blockFunction([[7080, 7082]], ["if (command.command_type === 'ApplyHealing'"], ['state', 'command', 'context'], 'return command'),
+  b62: await blockFunction([[7083, 7085]], ["if (command.command_type === 'ReduceHitPointMaximum'"], ['state', 'command', 'context'], 'return command'),
+  b70: await blockFunction([[7591, 7607]], ["if (command.command_type === 'IdentifyEnemy')"], ['state', 'command', 'context'], 'return command'),
 }
 const TYPES = ['ResolveHeroDeath', 'StartRest', 'SpendHitPointDie', 'SpendHitPointDie', 'CompleteRest', 'CompleteRest', 'ApplyHealing', 'ReduceHitPointMaximum', 'IdentifyEnemy', 'IdentifyEnemy', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition']
 const contexts = [{}, { isAdmin: true }, { serverAuthoritativeCombat: 1 }, { isNpcScheduler: true, isAdmin: true }, { isAdmin: 'yes' }]
@@ -541,7 +541,7 @@ for (let n = 0; n < 1500; n += 1) {
 // --- ветки разбора ------------------------------------------------------------------
 
 const engineLines = readFileSync(SOURCE_URL, 'utf8').split(/\r?\n/)
-const RANGES = [[15167, 15237], [15241, 15283], [15295, 15313], [15341, 15343], [22605, 22738]]
+const RANGES = [[15189, 15259], [15263, 15305], [15317, 15335], [15363, 15365], [22627, 22760]]
 const ANCHORS = ["case 'ReduceHitPointMaximum'", "case 'IdentifyEnemy'", "case 'AddCondition'", "case 'RemoveCondition'", "case 'StartRest'"]
 RANGES.forEach(([from], index) => { if (!engineLines[from - 1].trimStart().startsWith(ANCHORS[index])) throw new Error(`строка ${from} не «${ANCHORS[index]}»`) })
 const body = RANGES.map(([from, to]) => engineLines.slice(from - 1, to).join('\n')).join('\n')

@@ -235,6 +235,16 @@ for (let index = 0; index < 500; index += 1) {
   split.push({ area, count, ...(minimum === undefined ? {} : { minimum }), randomSeed, leaves: leaves.map(rectJson) })
 }
 
+
+// `compactArea` (#184): корпус храма посреди карты, прочие темы — вся карта.
+const compact = []
+for (let index = 0; index < 400; index += 1) {
+  const theme = pick(['temple', 'temple', 'dungeon', 'crypt', 'cave', '', 'temple'])
+  const zoneCount = int(9)
+  const width = 6 + int(60)
+  const height = 6 + int(60)
+  compact.push({ theme, zoneCount, width, height, area: rectJson(gl.compactArea(theme, zoneCount, width, height)) })
+}
 const walls = []
 for (let index = 0; index < 500; index += 1) {
   const a = { minX: int(20), minY: int(20) }
@@ -311,5 +321,5 @@ if (dump > 0) {
   }
   const pipelineCount = cases.filter((entry) => entry.label.startsWith('pipeline:')).length
   console.log(`  конвейер: ${pipelineCount} вызовов, склепов ${cases.filter((entry) => entry.label.startsWith('pipeline:') && entry.options.theme === 'crypt').length}`)
-  writeFixture(new URL('./graph-layout.json', import.meta.url), { cases, split, walls, assign, chambers })
+  writeFixture(new URL('./graph-layout.json', import.meta.url), { cases, split, compact, walls, assign, chambers })
 }

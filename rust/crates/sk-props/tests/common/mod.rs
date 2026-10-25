@@ -12,7 +12,8 @@ use std::io::Read;
 use serde_json::{json, Value};
 use sk_core::js;
 use sk_props::prop_placement::{
-    attach_prop_supports, ensure_prop_access, place_colonnade, place_props, place_required_props, RequiredProps, ZonePlacementPlan, DEFAULT_MAX_PROPS,
+    attach_prop_supports, ensure_prop_access, place_colonnade, place_props, place_required_props, seat_around_surface, RequiredProps, SeatOptions, SeatSurface,
+    ZonePlacementPlan, DEFAULT_MAX_PROPS,
 };
 use sk_props::scene_dressing::{
     mark_low_furniture, place_ruins, place_ruins_field, place_vignettes, roughen_ground, RoughKind, RoughOptions, RuinsFieldOptions, RuinsOptions, VignetteOptions,
@@ -127,6 +128,31 @@ pub fn run_placement(map: &mut TacticalMap, op: &str, args: &Value) -> Result<Va
             let asset_id = options.get("assetId").and_then(Value::as_str).unwrap_or("pillar");
             let prefix = options.get("idPrefix").and_then(Value::as_str).unwrap_or("colonnade");
             Ok(json!(place_colonnade(map, &zone_id, asset_id, prefix)))
+        }
+        "seatAroundSurface" => {
+            let options = &args[1];
+            let surface = SeatSurface::from_json(&args[0]);
+            let items: Vec<Value> = match options.get("blocked") {
+                Some(Value::Array(items)) => items.clone(),
+                Some(set) => set.get("items").and_then(Value::as_array).cloned().unwrap_or_default(),
+                None => Vec::new(),
+            };
+            let blocked = items
+                .iter()
+                .filter_map(|item| {
+                    let (x, y) = item.as_str()?.split_once(',')?;
+                    Some((x.parse().ok()?, y.parse().ok()?))
+                })
+                .collect();
+            let spec = options.get("spec").and_then(Value::as_array).map(|spec| {
+                spec.iter().map(|entry| (js::s(entry.get(0)), entry.get(1).and_then(Value::as_f64).unwrap_or(0.0) as usize)).collect()
+            });
+            let prefix = js::s(options.get("idPrefix"));
+            let fixed = options.get("randomValue").and_then(Value::as_f64);
+            let mut constant = move || fixed.unwrap_or(0.5);
+            let random: Option<&mut dyn FnMut() -> f64> = if fixed.is_some() { Some(&mut constant) } else { None };
+            let added = seat_around_surface(map, &surface, SeatOptions { id_prefix: &prefix, blocked, spec, random });
+            Ok(Value::Array(added.iter().map(|prop| prop.to_json()).collect()))
         }
         "placeRequiredProps" => {
             let seed = js::s(args[1].get("seed"));
