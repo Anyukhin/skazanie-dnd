@@ -30,7 +30,7 @@ use std::rc::Rc;
 
 use serde_json::{json, Map, Value};
 use sk_core::js;
-use sk_store::{LoadOptions, RoomOverlaySave, RoomOverlayWrite, RoomProjectionAck, StoreResult};
+use sk_store::{EventStore, LoadOptions, RoomOverlaySave, RoomOverlayWrite, RoomProjectionAck, StoreResult};
 
 use crate::core::GameCore;
 use crate::error::Failure;
@@ -85,7 +85,7 @@ pub fn get_room(core: &GameCore, campaign_id: &str) -> Result<Room, Failure> {
     let key = room_key(campaign_id)?;
     let _span = sk_store::perf::span("room.get_room");
     let Some(overlay) = core.events.room_overlay(&key)? else { return Ok(Room::empty(&key)) };
-    let state = compose(core, &overlay.body)?;
+    let state = compose(&core.events, &overlay.body)?;
     Ok(Room { code: key, version: overlay.version, state: Some(state), updated_at: Some(overlay.updated_at) })
 }
 
@@ -115,7 +115,7 @@ pub(crate) fn save_room_with_ack(core: &Rc<GameCore>, code: &str, state: &Value,
     let persistent = js::spread(state, json!({ "isNarrating": false }));
     let body = {
         let _span = sk_store::perf::span("room.overlay_for");
-        overlay_for(core, &key, &persistent)?
+        overlay_for(&core.events, &key, &persistent)?
     };
     // Сбой подтверждения из данных (`DND_COMMIT_FAULTS`, С2): подтверждение не
     // идёт в транзакцию, комната пишется — как отказ обещания в JS.
@@ -153,18 +153,18 @@ pub(crate) fn save_room_with_ack(core: &Rc<GameCore>, code: &str, state: &Value,
 /// она есть в журнале, иначе голова; журнала нет или он не читается — `None`
 /// (комната хранится целиком). Состояние читается по ссылке из кэша журнала
 /// (`EventStore::inspect`), без копии (Ск2).
-fn with_base<T>(core: &GameCore, campaign_id: &str, state: &Value, operation: impl FnOnce(Option<(i64, &Value)>) -> T) -> T {
+fn with_base<T>(events: &EventStore, campaign_id: &str, state: &Value, operation: impl FnOnce(Option<(i64, &Value)>) -> T) -> T {
     let mut operation = Some(operation);
     let mut run = |base: Option<(i64, &Value)>| operation.take().map(|operation| operation(base));
     let wanted = state.get("state_version").filter(|value| js::is_safe_integer(Some(value))).and_then(Value::as_i64);
-    let head = core.events.inspect(campaign_id, &LoadOptions::default(), |head, head_version| match wanted {
+    let head = events.inspect(campaign_id, &LoadOptions::default(), |head, head_version| match wanted {
         Some(version) if (0..head_version).contains(&version) => Err(version),
         _ => Ok(run(Some((head_version, head)))),
     });
     let done = match head {
         Err(_) => run(None),
         Ok(Ok(done)) => done,
-        Ok(Err(version)) => match core.events.inspect(campaign_id, &LoadOptions { at_version: Some(version), ..LoadOptions::default() }, |loaded, _| run(Some((version, loaded)))) {
+        Ok(Err(version)) => match events.inspect(campaign_id, &LoadOptions { at_version: Some(version), ..LoadOptions::default() }, |loaded, _| run(Some((version, loaded)))) {
             Ok(done) => done,
             Err(_) => run(None),
         },
@@ -173,8 +173,8 @@ fn with_base<T>(core: &GameCore, campaign_id: &str, state: &Value, operation: im
 }
 
 /// Тело накладки: отличия записанного состояния от журнала.
-fn overlay_for(core: &GameCore, key: &str, state: &Value) -> Result<Value, Failure> {
-    with_base(core, key, state, |base| overlay_body(key, state, base))
+pub(crate) fn overlay_for(events: &EventStore, key: &str, state: &Value) -> Result<Value, Failure> {
+    with_base(events, key, state, |base| overlay_body(key, state, base))
 }
 
 fn overlay_body(key: &str, state: &Value, base: Option<(i64, &Value)>) -> Result<Value, Failure> {
@@ -243,12 +243,12 @@ fn with_online(players: &[Value], online: &Map<String, Value>) -> Vec<Value> {
 }
 
 /// Состояние комнаты из журнала и накладки.
-fn compose(core: &GameCore, body: &Value) -> Result<Value, Failure> {
+pub(crate) fn compose(events: &EventStore, body: &Value) -> Result<Value, Failure> {
     let mut state = match body.get("base") {
         Some(Value::Object(base)) => {
             let campaign_id = js::s(base.get("campaign_id"));
             let version = js::safe_int(base.get("state_version"), 0);
-            core.events.load(&campaign_id, &LoadOptions { at_version: Some(version), ..LoadOptions::default() })?.state
+            events.load(&campaign_id, &LoadOptions { at_version: Some(version), ..LoadOptions::default() })?.state
         }
         _ => Value::Object(Map::new()),
     };
