@@ -250,7 +250,7 @@ fn every_settlement_door_has_a_road() {
 
 #[test]
 fn market_has_stall_rows_with_aisles_carts_and_doors_on_roads() {
-    assert_eq!(SETTLEMENT_GENERATOR.version, "6", "торговые ряды — новая версия генератора");
+    assert_eq!(SETTLEMENT_GENERATOR.version, "7", "мебель не сквозь стену и гарнитуры — новая версия генератора");
     for scale in ["village", "town", "city"] {
         for seed in ["a", "b", "c", "d"] {
             let label = format!("{scale}/{seed}");

@@ -32,7 +32,7 @@ use crate::{random_for, shuffle, GeneratorStamp};
 /// `SETTLEMENT_GENERATOR`. v5 (2026-10-03): дверь дома в глубине — по тропе
 /// до улицы, и тропа проложена. v6 (2026-10-08): рыночная площадь шире, на
 /// ней ряды лотков с проходами.
-pub const SETTLEMENT_GENERATOR: GeneratorStamp = GeneratorStamp { id: "settlement-layout", version: "6" };
+pub const SETTLEMENT_GENERATOR: GeneratorStamp = GeneratorStamp { id: "settlement-layout", version: "7" };
 
 /// С какой площади пола (клеток внутри стен) дом считается крупным: такой дом
 /// делится на три комнаты, а не на две.

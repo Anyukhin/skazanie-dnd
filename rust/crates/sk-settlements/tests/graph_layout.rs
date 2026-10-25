@@ -12,7 +12,7 @@ use common::{array, dump, error_json, hash, map_hash, mulberry32, parse, seriali
 use serde_json::{json, Value};
 use sk_geometry::scene_graph::{create_scene_graph, reachable_zones, SceneGraph};
 use sk_settlements::graph_layout::{
-    assign_zones_to_leaves, build_scene_from_graph, layout_scene_graph, plan_chambers, rooms_json, shared_wall, split_area, GraphLayoutOptions, LeafRect,
+    assign_zones_to_leaves, build_scene_from_graph, compact_area, layout_scene_graph, plan_chambers, rooms_json, shared_wall, split_area, GraphLayoutOptions, LeafRect,
     WallAxis, GRAPH_LAYOUT,
 };
 use sk_tactical::tactical_map::{self as tm, EdgeKind};
@@ -131,6 +131,19 @@ fn split_area_matches_js() {
     }
 }
 
+
+#[test]
+fn compact_area_matches_js() {
+    let cases = array(&FIXTURE["compact"]);
+    assert!(cases.len() >= 400);
+    for case in cases {
+        let theme = case["theme"].as_str().expect("theme");
+        let zones = case["zoneCount"].as_u64().expect("zoneCount") as usize;
+        let (width, height) = (case["width"].as_i64().expect("width"), case["height"].as_i64().expect("height"));
+        let area = compact_area(theme, zones, width, height);
+        assert_eq!(stringify(&area.to_json()), stringify(&case["area"]), "compactArea {}", stringify(case));
+    }
+}
 #[test]
 fn shared_wall_matches_js() {
     for case in array(&FIXTURE["walls"]) {
@@ -380,7 +393,8 @@ fn crypt_chambers_keep_graph_topology_and_stay_apart() {
         assert!(built.errors.is_empty(), "{seed}: {:?}", built.errors);
         assert!(built.warnings.is_empty(), "{seed}: {:?}", built.warnings);
         assert_eq!(built.map.generator.id, GRAPH_LAYOUT.id);
-        assert_eq!(built.map.generator.version, "2", "{seed}: склеп собран прежней версией");
+        // Версия 3 ужала храм; раскрой склепа — прежний (соль версии 2).
+        assert_eq!(built.map.generator.version, "3", "{seed}: склеп собран текущей версией");
         // Ходы, а не общие стены: камеры склепа не соприкасаются.
         let rooms: Vec<LeafRect> = layout_scene_graph(&graph, &GraphLayoutOptions { seed, width: 26.0, height: 26.0, theme: "crypt", ..GraphLayoutOptions::default() })
             .expect("карта")
@@ -420,7 +434,7 @@ fn crypt_corridors_are_one_cell_wide() {
         }
         let owned = OwnedOptions::from_json(&case["options"]);
         let built = layout_scene_graph(&graph(&case["graph"]), &owned.options()).expect("карта");
-        if built.map.generator.version != "2" || built.map.width < 16 {
+        if built.map.generator.version != "3" || built.map.width < 16 {
             continue;
         }
         let passage: HashSet<(i64, i64)> = tm::cells(&built.map).filter(|cell| cell.passable && cell.zone.is_empty()).map(|cell| (cell.x, cell.y)).collect();
