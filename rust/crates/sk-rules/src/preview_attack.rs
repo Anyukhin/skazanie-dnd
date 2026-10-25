@@ -278,6 +278,30 @@ pub fn attack_forecast(state: &Value, attacker_id: &str, target_id: &str, option
     Ok(Some(Value::Object(result)))
 }
 
+/// `weaponAttackSummary(state, actorId, itemId)` (`rules-engine.mjs`, #188):
+/// сводка удара оружием для куклы героя — модификатор атаки и урон тем же
+/// `itemAttackProfile`, что и настоящий удар, плюс постоянные бонусы
+/// состояний. Цель не нужна. `None` — героя или профиля оружия нет. Поля
+/// профиля, которых нет (`undefined` в JS), в ответ не попадают.
+pub fn weapon_attack_summary(state: &Value, actor_id: &str, item_id: &str) -> Option<Value> {
+    let actor = game::find_actor(state, actor_id)?;
+    let item = Value::String(item_id.to_string());
+    let profile = item_attack_profile(state, Some(actor), Some(&item), AttackOptions::default())?;
+    let mut result = Map::new();
+    result.insert("attack_modifier".into(), Value::from(js::safe_int(profile.get("modifier"), 0) + condition_numeric_bonus(state, actor_id, "attackBonus")));
+    result.insert("damage_expression".into(), Value::String(js::s(profile.get("damage_expression"))));
+    if let Some(value) = profile.get("damage_type") {
+        result.insert("damage_type".into(), value.clone());
+    }
+    result.insert("ability".into(), profile.get("ability").filter(|value| !value.is_null()).cloned().unwrap_or(Value::Null));
+    for key in ["kind", "normal_range_feet", "range_feet"] {
+        if let Some(value) = profile.get(key) {
+            result.insert(key.into(), value.clone());
+        }
+    }
+    Some(Value::Object(result))
+}
+
 // --- составные манёвры (3929–4211) --------------------------------------------------
 
 /// `{ ...state, mechanics: { ...mechanics, positions: { ...positions, [id]: to } } }`.

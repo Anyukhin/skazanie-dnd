@@ -23,3 +23,4 @@ pub mod combat_lab_setup;
 pub mod cutover_audit;
 pub mod party_tactics;
 pub mod security;
+pub mod weapon_attack_view;
