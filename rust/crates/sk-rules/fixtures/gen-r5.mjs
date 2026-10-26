@@ -404,7 +404,7 @@ for (let s = 0; s < states.length; s += 1) {
 
 // --- замыкания resolveCommandInternal --------------------------------------------------
 
-const prologue = await blockFunction([[13033, 13700]], ["if (!diceService) throw new TypeError('RulesEngine требует DiceService')"], ['input', 'rawState', 'diceService', 'context', '__probe'],
+const prologue = await blockFunction([[13055, 13722]], ["if (!diceService) throw new TypeError('RulesEngine требует DiceService')"], ['input', 'rawState', 'diceService', 'context', '__probe'],
   'return __probe({ state, command, events, rolls, diceTranscript, diceService, spendBardicInspiration, damageTurnKey, consumeResistanceBonus, resistanceSaveState, rollSavingThrow, areaSaveModifierFor, legendaryResistanceFor, resolveDamagePayload, prepareElementalReactionDamage, resolveDamageWithReactions, appendMagicMissileResolution, rollAmount })')
 const probes = []
 const PROBE_CONTEXTS = [
@@ -561,7 +561,7 @@ for (let n = 0; n < 400; n += 1) {
 
 // --- блок проверки 8 -------------------------------------------------------------------
 
-const block8 = await blockFunction([[6152, 6183]], ["if (command.command_type === 'MakeAbilityCheck' && command.social_check != null)"], ['state', 'command', 'context'], 'return command')
+const block8 = await blockFunction([[6174, 6205]], ["if (command.command_type === 'MakeAbilityCheck' && command.social_check != null)"], ['state', 'command', 'context'], 'return command')
 const blocks = []
 for (let n = 0; n < 500; n += 1) {
   const s = int(states.length)

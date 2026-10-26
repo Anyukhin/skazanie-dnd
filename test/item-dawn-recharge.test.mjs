@@ -302,7 +302,10 @@ test('все producer-path TimeAdvanced используют один resolver �
   assert.equal(producers.length, 1, 'только общий appendTimeAdvance создаёт событие времени')
 })
 
-test('проекция комнаты больше не зависит от списка типов событий', () => {
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). Инвариант «комната равна полной проекции» в
+// обоих режимах держит test/room-projection-equivalence.test.mjs.
+test('JS-only (server/index.mjs): проекция комнаты больше не зависит от списка типов событий', () => {
   // Раньше здесь проверялось, что `ItemDawnRechargeResolved` не забыт в
   // allowlist `refreshInventory`. Сам allowlist удалён (шаг 1
   // `docs/agent-architecture-plan.md`): проекция берёт авторитетное состояние

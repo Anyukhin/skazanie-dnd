@@ -236,11 +236,13 @@ pub fn campaign_voter_count(accounts: &Accounts, campaign_id: &str, state: &Valu
     Ok(array(snapshot.get("eligibleVoterIds")).len())
 }
 
-/// `viewerStateFor(state, user, actorId)` (2544–2546): проекция зрителя с
-/// прогнозом удара (закрытая КД не раскрывается процентом попадания).
+/// `viewerStateFor(state, user, actorId)` (2545–2547): проекция зрителя с
+/// прогнозом удара (закрытая КД не раскрывается процентом попадания) и
+/// сводкой удара надетым оружием своего героя (#188).
 pub fn viewer_state_for(state: &Value, user: &Value, actor_id: Option<&Value>) -> Result<Option<Value>, Failure> {
     let projected = sk_projection::viewer_projection::campaign_state_for_viewer(Some(state), Some(user), actor_id)?;
-    Ok(sk_tactics::combat_forecast_view::with_combat_forecast(projected.as_ref(), Some(state), actor_id)?)
+    let forecast = sk_tactics::combat_forecast_view::with_combat_forecast(projected.as_ref(), Some(state), actor_id)?;
+    Ok(sk_tactics::weapon_attack_view::with_weapon_attack_summaries(forecast.as_ref(), Some(state), actor_id))
 }
 
 /// `ownedViewerActorId(state, user, campaignId)` (2548–2552).

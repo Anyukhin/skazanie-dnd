@@ -189,15 +189,11 @@ pub(crate) fn js_index_truthy(container: &Value, key: &str) -> bool {
     }
 }
 
-/// Корень репозитория — аналог путей JS от `import.meta.url` модуля
-/// (`new URL('../public/…', import.meta.url)`): каталог сборки крейта на три
-/// уровня выше (`rust/crates/sk-scene-base` → корень).
+/// Корень проекта — аналог путей JS от `import.meta.url` модуля
+/// (`new URL('../public/…', import.meta.url)`): корень данных процесса
+/// (`sk_core::data_root`, С19.1), в дереве сборки — корень репозитория.
 pub(crate) fn repo_root() -> std::path::PathBuf {
-    let mut root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    for _ in 0..3 {
-        root.pop();
-    }
-    root
+    sk_core::data_root::path().to_path_buf()
 }
 
 /// Число в JSON так, как его записал бы `JSON.stringify` (для `serialize_with`).

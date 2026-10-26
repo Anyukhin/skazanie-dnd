@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict'
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import test from 'node:test'
 import { projectionHash } from '../server/projection-integrity.mjs'
-import { startTestServer } from './kit/http.mjs'
+import { readJournal, readRoom, startTestServer, writeRoom } from './kit/index.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /** Подтверждение проекции версии 1 кампании PROJECTION-FAULT падает один раз за процесс. */
@@ -99,8 +97,8 @@ test('ошибка проекции после commit возвращает 500, 
 test('подтверждение проекции при той же версии сверяет содержимое комнаты', { timeout: runnerTimeout(60_000) }, async (t) => {
   const server = await startServer(t)
   const baseUrl = server.baseUrl
-  // Файлы комнаты и metadata.json — раскладка хранилища JS (см. отчёт С3).
-  const storage = server.storageDir
+  // Комната и отметка проекции — через набор: у JS это файл комнаты и
+  // metadata.json, у Rust — накладка и метаданные журнала в SQLite.
   const logs = server.output
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
@@ -128,34 +126,34 @@ test('подтверждение проекции при той же верси�
   const paused = await request(baseUrl, '/api/campaigns/PROJECTION-FAULT/lifecycle', { method: 'POST', cookie: adminCookie, body: pause })
   assert.equal(paused.status, 200, `${paused.text}\n${logs()}`)
 
-  const campaignsRoot = join(storage, 'engine', 'campaigns')
-  const campaignDir = join(campaignsRoot, readdirSync(campaignsRoot).find((name) => name.toUpperCase().includes('PROJECTION-FAULT')))
-  const metadata = () => JSON.parse(readFileSync(join(campaignDir, 'metadata.json'), 'utf8'))
-  assert.equal(metadata().projection_checkpoint_version, 0, 'после сбоя подтверждения проекция ждёт сверки')
+  const metadata = async () => (await readJournal(server, 'PROJECTION-FAULT')).projection_checkpoint
+  assert.equal((await metadata()).version, 0, 'после сбоя подтверждения проекция ждёт сверки')
 
   // Внешний дрейф при той же версии: каноническое поле комнаты испорчено, и в
   // ней появилось каноническое поле, которого движок не держит вовсе.
-  const roomFile = join(storage, 'rooms', 'PROJECTION-FAULT.json')
-  const room = JSON.parse(readFileSync(roomFile, 'utf8'))
+  const room = await readRoom(server, 'PROJECTION-FAULT')
   assert.equal(room.state.state_version, 1)
   assert.equal(room.state.tacticalTurn, undefined)
-  room.state.enemies = room.state.enemies.map((enemy) => (enemy.id === 'goblin' ? { ...enemy, hp: 1 } : enemy))
-  room.state.tacticalTurn = { actorId: 'hero', round: 3, actionUsed: true }
-  writeFileSync(roomFile, JSON.stringify(room, null, 2), 'utf8')
+  const drifted = await writeRoom(server, 'PROJECTION-FAULT', {
+    ...room.state,
+    enemies: room.state.enemies.map((enemy) => (enemy.id === 'goblin' ? { ...enemy, hp: 1 } : enemy)),
+    tacticalTurn: { actorId: 'hero', round: 3, actionUsed: true },
+  })
+  assert.equal(drifted.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 1, 'дрейф записан')
 
   const replay = await request(baseUrl, '/api/campaigns/PROJECTION-FAULT/lifecycle', { method: 'POST', cookie: adminCookie, body: pause })
   assert.equal(replay.status, 200, `${replay.text}\n${logs()}`)
 
   // Подтверждение фоновое: ждём, пока checkpoint догонит журнал.
-  let checkpoint = metadata()
-  for (let attempt = 0; attempt < 40 && checkpoint.projection_checkpoint_version !== 1; attempt += 1) {
+  let checkpoint = await metadata()
+  for (let attempt = 0; attempt < 40 && checkpoint.version !== 1; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 50))
-    checkpoint = metadata()
+    checkpoint = await metadata()
   }
-  const repaired = JSON.parse(readFileSync(roomFile, 'utf8'))
+  const repaired = await readRoom(server, 'PROJECTION-FAULT')
   assert.equal(repaired.state.state_version, 1)
   assert.equal(repaired.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 8, 'комната восстановлена из журнала')
   assert.equal(repaired.state.tacticalTurn, undefined, 'поле, которого движок не держит, из комнаты снято')
-  assert.equal(checkpoint.projection_checkpoint_version, 1)
-  assert.equal(checkpoint.projection_checkpoint_hash, projectionHash(repaired.state), 'подтверждён hash восстановленной комнаты')
+  assert.equal(checkpoint.version, 1)
+  assert.equal(checkpoint.hash, projectionHash(repaired.state), 'подтверждён hash восстановленной комнаты')
 })

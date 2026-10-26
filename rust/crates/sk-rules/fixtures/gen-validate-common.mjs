@@ -26,12 +26,12 @@ const pick = (list) => list[Math.floor(random() * list.length)]
 const chance = (p) => random() < p
 
 const groups = {
-  g1: await blockFunction([[6135, 6151]], ['if (!ALLOWED_COMMAND_TYPES'], ['state', 'command', 'context']),
-  g2: await blockFunction([[6777, 6809]], ['const setupActor'], ['state', 'command', 'context']),
-  g3: await blockFunction([[6981, 6984]], ['const actorFate'], ['state', 'command', 'context'], 'return actorFate ?? null'),
-  g4: await blockFunction([[7819, 7832]], ['if (!command.source_rule_ids.length'], ['state', 'command', 'context']),
+  g1: await blockFunction([[6157, 6173]], ['if (!ALLOWED_COMMAND_TYPES'], ['state', 'command', 'context']),
+  g2: await blockFunction([[6799, 6831]], ['const setupActor'], ['state', 'command', 'context']),
+  g3: await blockFunction([[7003, 7006]], ['const actorFate'], ['state', 'command', 'context'], 'return actorFate ?? null'),
+  g4: await blockFunction([[7841, 7854]], ['if (!command.source_rule_ids.length'], ['state', 'command', 'context']),
 }
-const truce = await blockFunction([[13100, 13117]], ['const truceBeforeCommand'], ['state', 'command', 'targetId', 'events'], 'return events')
+const truce = await blockFunction([[13122, 13139]], ['const truceBeforeCommand'], ['state', 'command', 'targetId', 'events'], 'return events')
 
 const windows = [
   null, { id: 'w', pending_command: { command_type: 'MakeAttack' }, action_ids: ['cast:shield', 'decline-reaction'] },

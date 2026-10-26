@@ -2987,11 +2987,15 @@ pub fn orient_tactical_map(map: TacticalMap, side: &str) -> MapResult<TacticalMa
         "north" => (y, x),
         _ => (y, width as f64 - x),
     };
+    // Поворот предмета: 0° смотрит на юг (+y), 90° — на запад, 180° — на
+    // север, 270° — на восток. Зеркало по горизонтали — −θ, транспонирование —
+    // 270° − θ, транспонирование с зеркалом по вертикали — 270° + θ (#184;
+    // прежде восток и север давали 180° − θ и 90° − θ — на 180° мимо).
     let turn = |degrees: f64| {
         let angle = if degrees.is_nan() { 0.0 } else { degrees };
         let mirrored = match side {
-            "east" => 180.0 - angle,
-            "north" => 90.0 - angle,
+            "east" => -angle,
+            "north" => 270.0 - angle,
             _ => 270.0 + angle,
         };
         ((js::round(mirrored) % 360.0) + 360.0) % 360.0

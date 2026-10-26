@@ -308,6 +308,39 @@ for (const asset of listAssets()) {
   }
 }
 
+// Гарнитур к стоящей поверхности (`seatAroundSurface`, #184): выходы расстановки,
+// столы и прочие предметы с клетками, разные наборы сидений, занятые клетки и
+// случайность масштаба. `blocked` в эталоне — массив ключей (Set в JSON не пишется).
+ops.seatAroundSurface = (args) => (map) => pp.seatAroundSurface(map, args[0], {
+  ...args[1],
+  blocked: new Set(args[1].blocked ?? []),
+  ...(args[1].randomValue !== undefined ? { random: () => args[1].randomValue } : {}),
+})
+const SEAT_SPECS = [undefined, undefined, [['chair', 2]], [['bench', 2]], [['stool', 3], ['chair', 1]], [['chair', 6]], [['bench', 1], ['chair', 4]], [['nope', 1]], []]
+const SEATING = /^(table_round|table_long|table_royal|table_small|bar_counter|writing_desk|map_table|war_table|jailer_desk)$/u
+let seatCases = 0
+for (let index = 0, total = cases.length; index < total && seatCases < 900; index += 1) {
+  if (cases[index].op !== 'placeProps' || cases[index].error || !chance(0.3)) continue
+  const map = restore(outputs[index])
+  const surfaces = map.props.filter((prop) => prop.footprint.length && (SEATING.test(prop.assetId) || chance(0.05)))
+  for (const surface of surfaces.slice(0, 3)) {
+    const spec = pick(SEAT_SPECS)
+    const blocked = chance(0.3)
+      ? surface.footprint.flatMap((cell) => [[cell.x + 1, cell.y], [cell.x, cell.y - 1], [cell.x - 1, cell.y]]).filter(() => chance(0.5)).map(([x, y]) => `${x},${y}`)
+      : null
+    const options = {
+      idPrefix: `seat-${index}`,
+      ...(spec !== undefined ? { spec } : {}),
+      ...(blocked ? { blocked } : {}),
+      ...(chance(0.3) ? { randomValue: pick([0, 0.25, 0.99]) } : {}),
+    }
+    const seated = call({ from: index }, 'seatAroundSurface', [surface, options])
+    if (chance(0.3)) call({ from: seated }, 'ensurePropAccess', [])
+    seatCases += 1
+  }
+}
+console.log('случаев гарнитура', seatCases)
+
 writeFixture(new URL('./prop-placement.json', import.meta.url), {
   version: pp.PROP_PLACEMENT_VERSION,
   indoorThemes: [...pp.INDOOR_THEMES],

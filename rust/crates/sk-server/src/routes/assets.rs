@@ -52,15 +52,15 @@ const ASSET_METHODS: &[Method] = &[Method::GET, Method::POST];
 pub fn routes() -> Vec<Route> {
     vec![
         // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/npcs\/([^/]+)\/portrait$/)` и `GET` (4028–4029).
-        Route::get(4029, Matcher::path_template("/api/campaigns/{id}/npcs/{seg}/portrait"), npc_portrait),
+        Route::get(4030, Matcher::path_template("/api/campaigns/{id}/npcs/{seg}/portrait"), npc_portrait),
         // `.../locations/([^/]+)/illustration$/` и `GET` (4067–4068).
-        Route::get(4068, Matcher::path_template("/api/campaigns/{id}/locations/{seg}/illustration"), location_illustration),
+        Route::get(4069, Matcher::path_template("/api/campaigns/{id}/locations/{seg}/illustration"), location_illustration),
         // `.../asset-preparation$/` и `GET || POST` (4102–4103).
-        Route::new(4103, Methods::Set(ASSET_METHODS), Matcher::path_template("/api/campaigns/{id}/asset-preparation"), asset_preparation),
+        Route::new(4104, Methods::Set(ASSET_METHODS), Matcher::path_template("/api/campaigns/{id}/asset-preparation"), asset_preparation),
         // `req.url?.startsWith('/generated/items/') && req.method === 'GET'` (6114).
-        Route::get(6114, Matcher::raw_prefix("/generated/items/"), generated_item_file),
+        Route::get(6115, Matcher::raw_prefix("/generated/items/"), generated_item_file),
         // `req.url === '/api/items/generate-image' && req.method === 'POST'` (6118).
-        Route::post(6118, Matcher::raw("/api/items/generate-image"), generate_item_image_route),
+        Route::post(6119, Matcher::raw("/api/items/generate-image"), generate_item_image_route),
     ]
 }
 

@@ -105,8 +105,10 @@ fn scenario_triples(list: &[Value]) -> Vec<(String, String, String)> {
 }
 
 /// Корень репозитория, из которого собран крейт (`new URL('../', import.meta.url)`).
+/// Аудит читает исходники `server/` и `test/`, а не данные, поэтому корень —
+/// дерево сборки, а не корень данных процесса.
 pub fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("..")
+    sk_core::data_root::build_root()
 }
 
 /// Ошибка чтения файла репозитория.

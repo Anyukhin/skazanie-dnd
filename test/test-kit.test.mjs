@@ -34,9 +34,12 @@ import {
   appendJournal,
   corruptCampaign,
   hookEnv,
+  auditStorage,
   readJournal,
+  readRoom,
   serverImpl,
   stopChild,
+  writeRoom,
 } from './kit/index.mjs'
 import { DICE_ENV, FAULTS_ENV, createDicePicker, parseDiceSpec, parseFaultsSpec } from './kit/hooks-format.mjs'
 import { contractFiles } from './kit/run-contract.mjs'
@@ -307,4 +310,40 @@ test('HTTP: кости и сбои данными доходят до серве
   // Сбои из данных живут один процесс: после start без них тот же ключ проходит.
   await server.start({ faults: null })
   assert.equal(server.running(), true)
+})
+
+test('HTTP: комната и аудит хранилища через набор — дрейф записывается, аудит его видит, сверка чинит', { timeout: runnerTimeout(60_000) }, async (t) => {
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-kit-rooms-' })
+  const admin = await setupAdmin(server)
+  await createCampaign(admin.client, { code: 'KIT-ROOM', state: campaignState('KIT-ROOM') })
+  assert.equal(await readRoom(server, 'KIT-NONE'), null, 'комнаты нет — null')
+
+  const stored = await readRoom(server, 'KIT-ROOM')
+  const journal = await readJournal(server, 'KIT-ROOM')
+  assert.equal(stored.state.state_version, journal.current_state_version, 'записанная комната — на голове журнала')
+  assert.equal(stored.state.players.find((entry) => entry.id === 'hero-1').hp, 20)
+  assert.equal(journal.projection_checkpoint.version, journal.current_state_version, 'проекция подтверждена')
+
+  await server.stop()
+  const clean = await auditStorage(server)
+  assert.ok(clean.campaigns.some((entry) => entry.campaign_id === 'KIT-ROOM'), JSON.stringify(clean))
+  assert.deepEqual(clean.blockers, [])
+
+  // Дрейф мимо сервера: каноническое поле комнаты разошлось с журналом.
+  await assert.rejects(writeRoom(server, 'KIT-NONE', stored.state), /KIT-NONE/u, 'чужой комнаты набор не создаёт')
+  const drifted = await writeRoom(server, 'KIT-ROOM', {
+    ...stored.state,
+    players: stored.state.players.map((entry) => (entry.id === 'hero-1' ? { ...entry, hp: 3 } : entry)),
+  })
+  assert.equal(drifted.state.players.find((entry) => entry.id === 'hero-1').hp, 3)
+  assert.deepEqual(await readRoom(server, 'KIT-ROOM'), drifted, 'чтение видит записанный дрейф')
+  const audited = await auditStorage(server)
+  assert.deepEqual(audited.blockers.map((blocker) => blocker.code), ['PROJECTION_DIVERGENCE'], JSON.stringify(audited.blockers))
+
+  // Сервер чинит комнату сверкой — при старте или на ближайшем чтении.
+  await server.start()
+  expectStatus(await admin.client.get('/api/rooms/KIT-ROOM'))
+  assert.equal((await readRoom(server, 'KIT-ROOM')).state.players.find((entry) => entry.id === 'hero-1').hp, 20, 'комната восстановлена из журнала')
+  await server.stop()
+  assert.deepEqual((await auditStorage(server)).blockers, [])
 })

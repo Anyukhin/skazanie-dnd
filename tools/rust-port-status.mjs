@@ -50,7 +50,7 @@ const PLAN = [
   [10, 'sk-story', ['campaign-dialogues', 'campaign-loop-policy', 'intent-parser', 'llm-json-schemas', 'map-library']],
   [11, 'sk-director', ['adventure-director', 'campaign-lifecycle', 'scene-memory', 'director-scene-transition', 'loot-containers']],
   [13, 'sk-rules', ['rules-engine', 'rules/tactical-geometry']],
-  [14, 'sk-tactics', ['adjudicator', 'combat-forecast-view', 'party-tactics', 'security', 'cutover-audit', 'combat-lab-setup', 'combat-lab']],
+  [14, 'sk-tactics', ['adjudicator', 'combat-forecast-view', 'weapon-attack-view', 'party-tactics', 'security', 'cutover-audit', 'combat-lab-setup', 'combat-lab']],
   [15, 'sk-projection', ['viewer-projection', 'trace-store']],
   [15, 'sk-agents', ['campaign-bootstrap', 'campaign-recap', 'creative-director', 'hero-hooks', 'lore-author', 'lore-voice', 'npc-controller', 'scene-architect', 'director-agent', 'free-action-adjudication', 'npc-social-controller', 'player-request-router', 'action-adjudicator', 'narrator']],
   [16, 'sk-turns', ['npc-turn-scheduler', 'combat-turn-coordinator']],
@@ -64,7 +64,7 @@ const PLAN = [
  * перенесены целиком и проходят свои тесты.
  */
 const PARTIAL = {
-  'sk-server': 'все маршруты С0–С18 перенесены, контрактный список 160/160 в режимах rust и js; остался финальный этап С19 (пути данных, перенос старого storage, аргументы бинаря, Docker)',
+  'sk-server': 'все маршруты С0–С18 перенесены, контрактный список 161/161 в режимах rust и js; остался финальный этап С19 (пути данных, перенос старого storage, аргументы бинаря, Docker)',
 }
 
 /** Модули, которые сознательно не переносятся (решение D4 плана). */

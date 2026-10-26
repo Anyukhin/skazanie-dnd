@@ -94,6 +94,21 @@ impl EventStore {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    /// Перенос комнаты прежнего сервера (`import-legacy`, С19.2): строка
+    /// пишется с версией и временем файла `rooms/<код>.json`, как есть. Уже
+    /// существующая строка не трогается — `false`.
+    pub fn import_room_overlay(&self, overlay: &RoomOverlay) -> StoreResult<bool> {
+        let room_id = safe_id(&overlay.room_id, "room_id")?;
+        let version = safe_version(overlay.version, "version")?;
+        let body = serde_json::to_string(&overlay.body)?;
+        let inner = self.lock();
+        let written = inner.conn.execute(
+            "INSERT OR IGNORE INTO room_overlays (room_id, version, body, updated_at) VALUES (?1, ?2, ?3, ?4)",
+            params![room_id, version, body, overlay.updated_at],
+        )?;
+        Ok(written > 0)
+    }
+
     /// Записать накладку с проверкой версии; подтверждение проекции — в той же
     /// транзакции (см. шапку модуля).
     pub fn save_room_overlay(&self, request: RoomOverlayWrite<'_>) -> StoreResult<RoomOverlaySave> {

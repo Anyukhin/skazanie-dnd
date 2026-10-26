@@ -25,14 +25,14 @@ const TOO_MANY: &str = "Слишком много попыток. Попробу
 
 pub fn routes() -> Vec<Route> {
     vec![
-        Route::get(3970, Matcher::raw("/api/auth/me"), me),
-        Route::post(3974, Matcher::raw("/api/auth/setup-admin"), setup_admin),
-        Route::post(3984, Matcher::raw("/api/auth/register"), register),
-        Route::post(3993, Matcher::raw("/api/auth/login"), login),
-        Route::post(4002, Matcher::raw("/api/auth/logout"), logout),
-        Route::get(4011, Matcher::raw("/api/admin/users"), admin_users),
+        Route::get(3971, Matcher::raw("/api/auth/me"), me),
+        Route::post(3975, Matcher::raw("/api/auth/setup-admin"), setup_admin),
+        Route::post(3985, Matcher::raw("/api/auth/register"), register),
+        Route::post(3994, Matcher::raw("/api/auth/login"), login),
+        Route::post(4003, Matcher::raw("/api/auth/logout"), logout),
+        Route::get(4012, Matcher::raw("/api/admin/users"), admin_users),
         // `req.url?.match(/^\/api\/admin\/users\/([a-f0-9-]+)$/i)` — сырой адрес, флаг `i`, без предела длины.
-        Route::new(4015, Methods::One(Method::PATCH), Matcher::raw_template("/api/admin/users/{hex}").ignore_case(), admin_update_user),
+        Route::new(4016, Methods::One(Method::PATCH), Matcher::raw_template("/api/admin/users/{hex}").ignore_case(), admin_update_user),
     ]
 }
 

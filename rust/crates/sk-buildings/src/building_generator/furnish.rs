@@ -6,9 +6,9 @@ use std::collections::HashSet;
 use serde_json::{json, Map, Value};
 use sk_core::indexmap::IndexSet;
 use sk_core::{js, re, text, Point};
-use sk_props::prop_placement::ZonePlacementPlan;
+use sk_props::prop_placement::{seat_around_surface, SeatOptions, SeatSurface, ZonePlacementPlan, KEY_FURNITURE};
 use sk_scene_base::asset_registry::{asset_by_id, AssetEntry};
-use sk_tactical::tactical_map::{self as tm, TacticalMap};
+use sk_tactical::tactical_map::{self as tm, TacticalMap, TacticalProp};
 
 use super::plan::{seed_hash, Design};
 use super::{Result, RoomPlan, DIRS};
@@ -124,6 +124,9 @@ pub(crate) fn design_prop_plans_json(design: &Design, rooms: &[RoomPlan], includ
             }
             add("kitchen", "kitchen", &["fireplace", "cupboard", "crate"], &["fireplace", "cupboard", "cauldron", "crate", "shelf_wall"], interior, 25.0, None);
             add("store", "store", &["crate_stack", "barrel_stack", "chest"], &["crate_stack", "barrel_stack", "sack", "chest"], interior, 28.0, None);
+            // Хозяйская спальня (#184): плана у неё не было вовсе — только у
+            // `bedroom-2` и дальше, и спальня усадьбы стояла голой.
+            add("bedroom", "bedroom", &["bed", "wardrobe", "night_table", "chest"], &["bed", "wardrobe", "night_table", "chest", "rug", "candle"], interior, 28.0, None);
         }
     }
     for room in rooms {
@@ -267,9 +270,16 @@ pub(crate) fn furnish_empty_quarters(map: &mut TacticalMap, zone_id: &str, use_:
                     continue;
                 }
             }
-            add_furniture(map, asset, *cell, &format!("quarter-{zone_id}-{index}"))?;
+            let surface = add_furniture(map, asset, *cell, &format!("quarter-{zone_id}-{index}"))?;
             placed += 1;
             let companion = asset_by_id(companion_id);
+            if let Some(companion) = companion.filter(|companion| ["chair", "stool", "bench"].contains(&companion.id.as_str())) {
+                // Стол четверти — с гарнитуром: два сиденья по сторонам, лицом к столу.
+                let prefix = format!("quarter-{zone_id}-{index}-seat");
+                let options = SeatOptions { id_prefix: &prefix, blocked: near_doors.clone(), spec: Some(vec![(companion.id.clone(), 2)]), random: None };
+                placed += seat_around_surface(map, &SeatSurface::from_prop(&surface), options).len();
+                break;
+            }
             let occupied = footprints(map, false);
             let besides = DIRS.iter().map(|(dx, dy)| (cell.0 + dx, cell.1 + dy)).find(|point| {
                 tm::cell_at(map, point.0, point.1).is_some_and(|near| near.passable && near.zone == zone_id) && !occupied.contains(point) && !near_doors.contains(point)
@@ -287,8 +297,9 @@ pub(crate) fn furnish_empty_quarters(map: &mut TacticalMap, zone_id: &str, use_:
 }
 
 /// `addFurniture(map, asset, cell, id)`: предмет каталога в одну клетку —
-/// масштаб посредине разброса, укрытие и прочность из реестра.
-fn add_furniture(map: &mut TacticalMap, asset: &AssetEntry, cell: (i64, i64), id: &str) -> Result<()> {
+/// масштаб посредине разброса, укрытие и прочность из реестра. Возвращает
+/// поставленный предмет.
+fn add_furniture(map: &mut TacticalMap, asset: &AssetEntry, cell: (i64, i64), id: &str) -> Result<TacticalProp> {
     let span = asset.scale_range.max - asset.scale_range.min;
     let scale = js::parse_number(&js::to_fixed(asset.scale_range.min + span / 2.0, 3));
     let prop = json!({
@@ -297,6 +308,40 @@ fn add_furniture(map: &mut TacticalMap, asset: &AssetEntry, cell: (i64, i64), id
         "blocksMove": asset.blocks_move, "blocksSight": asset.blocks_sight, "cover": asset.cover,
         "destructible": asset.destructible, "hp": js::num(asset.hp), "interactive": asset.interactive,
     });
-    tm::add_prop(map, &prop)?;
-    Ok(())
+    Ok(tm::add_prop(map, &prop)?.clone())
+}
+
+/// `lostKeyFurniture(map, design, zones)`: главная мебель, которую план
+/// помещения требовал, а корпус не вместил (стойка и очаг трактира, кровать
+/// спальни). Лестница не в счёт — её ставит `ensureDeclaredTransitions`;
+/// двор и внутренний двор — не помещения.
+pub(crate) fn lost_key_furniture(map: &TacticalMap, design: &Design) -> Vec<String> {
+    let rooms: Vec<RoomPlan> = map.zones.iter().map(|zone| RoomPlan::new(&zone.id, 0, 0, 0, 0)).collect();
+    let interior: HashSet<&str> = map.zones.iter().filter(|zone| zone.kind == "interior").map(|zone| zone.id.as_str()).collect();
+    let mut lost = Vec::new();
+    for plan in design_prop_plans(design, &rooms, true) {
+        if !interior.contains(plan.zone_id.as_str()) {
+            continue;
+        }
+        let mut seen: HashSet<&str> = HashSet::new();
+        for asset_id in &plan.require {
+            if !seen.insert(asset_id.as_str()) || !KEY_FURNITURE.contains(&asset_id.as_str()) || asset_id.starts_with("stairs_") {
+                continue;
+            }
+            let present = map.props.iter().any(|prop| prop.asset_id == *asset_id && floor_zone(map, prop.x, prop.y).is_some_and(|zone| zone == plan.zone_id));
+            if !present {
+                lost.push(format!("LOST_FURNITURE:{}:{asset_id}", plan.zone_id));
+            }
+        }
+    }
+    lost
+}
+
+/// `cellAt(map, Math.floor(x), Math.floor(y))?.zone`.
+fn floor_zone(map: &TacticalMap, x: f64, y: f64) -> Option<String> {
+    let (fx, fy) = (x.floor(), y.floor());
+    if !fx.is_finite() || !fy.is_finite() {
+        return None;
+    }
+    tm::cell_at(map, fx as i64, fy as i64).map(|cell| cell.zone.to_string())
 }

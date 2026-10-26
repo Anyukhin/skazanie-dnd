@@ -136,7 +136,8 @@ const server = await startTestServer(t, {
 
 ```js
 const journal = await readJournal(server, 'CODE')          // { state, state_version, current_state_version,
-                                                            //   commits, events, pending_projection }
+                                                            //   commits, events, pending_projection,
+                                                            //   projection_checkpoint: { version, hash } }
 await readJournal(server, 'CODE', { atVersion: 3, useSnapshots: false })   // состояние на версии, повтором с нуля
 await server.stop()
 await corruptCampaign(server, 'CODE', 'tail')               // потерять последний коммит → EVENT_LOG_TAIL_MISSING
@@ -150,6 +151,27 @@ state_version_after, events }`. `readJournal` повреждённой камп�
 той же ошибкой `CAMPAIGN_RECOVERY_REQUIRED`, что и сервер. `corruptCampaign`
 требует остановленного сервера. В режиме `rust` помощники зовут подкоманду
 `skazanie-server journal` (контракт описан в шапке `test/kit/journal.mjs`).
+
+### Комната и аудит хранилища глазами теста
+
+Комната JS — файл `rooms/<КОД>.json`, комната Rust — проекция журнала плюс
+накладка в SQLite. Помощники `test/kit/rooms.mjs` дают одно и то же в обоих
+режимах:
+
+```js
+const room = await readRoom(server, 'CODE')            // { version, state, updatedAt } или null
+await writeRoom(server, 'CODE', { ...room.state, … })  // дрейф комнаты мимо сервера (журнал не тронут)
+await server.stop()
+const report = await auditStorage(server)              // как pnpm cutover:audit: blockers, warnings, campaigns
+```
+
+`writeRoom` нужен тестам сверки проекции (SEC-02): сервер обязан найти и
+исправить расхождение комнаты с журналом. Версия комнаты после записи не
+гарантируется — сравнивается результат `readRoom`. `auditStorage` в режиме
+`rust` — аудит `sk_tactics::cutover_audit` плюс сверка накладки с головой
+журнала (`PROJECTION_DIVERGENCE`, `PROJECTION_VERSION_DIVERGENCE`,
+`ROOM_PROJECTION_MISSING`). Подкоманды бинаря — `skazanie-server room` и
+`skazanie-server audit` (контракт в шапке `test/kit/rooms.mjs`).
 
 ### Сессия глазами теста
 
@@ -208,15 +230,18 @@ pnpm test:contract:js      # тот же список против JS-этало
 Хелпер `request` с трассой или особыми заголовками можно оставить, передавая
 `server.baseUrl` при каждом вызове (образец — `mvp-player-cycle-api`).
 
-Контрактом пока не становятся проверки, привязанные к файловому хранилищу JS:
-`storage/rooms/*.json` и `metadata.json` кампании
-(`projection-postcommit-error-api`, `reconcile-access-perf-api`), правка
-`auth.json` мимо `expireSession` (членство в `reconcile-access-perf-api`),
-`storage/turn-traces/*` (`command-retry-intent-api`), `auditLegacyCutover`
-(`soak-crash-recovery-api`, `restore-rehearsal-api`) и CLI хранилища
-(`storage-backup-cli`). Запуск и HTTP в них идут через набор, а такие проверки
-остаются как есть, пока не появится помощник набора с реализацией для обоих
-серверов (по образцу `test/kit/journal.mjs`).
+Прямого чтения файлов хранилища в контрактных тестах больше нет: комнаты,
+отметка проекции и аудит — помощники выше, членство — штатным приглашением
+(`addPlayer`). Исключение — трассы ходов `storage/turn-traces/<КОД>/<ход>.json`
+(`command-retry-intent-api`): их раскладку Rust сохранил файловой
+(`FileTraceStore`, `rust/crates/sk-server/src/orchestration.rs`), поэтому
+тест правит один и тот же файл в обоих режимах.
+
+Проверки текста `server/index.mjs` (`readFileSync` исходника сервера) в
+юнит-тестах помечены `JS-only (server/index.mjs)` в названии теста и комментарием
+со ссылкой на сторожа того же поведения в обоих режимах или в Rust. После
+переключения на Rust они проверяли бы мёртвый код и удаляются вместе с
+`server/index.mjs`.
 
 ## Модель
 

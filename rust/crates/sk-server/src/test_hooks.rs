@@ -41,7 +41,9 @@
 //!
 //! Служебная подкоманда `skazanie-server journal …` (журнал глазами теста,
 //! `test/kit/journal.mjs`) — [`journal_cli`], тоже только с фичей; истечение
-//! сессии `skazanie-server session …` (`test/kit/sessions.mjs`) — [`session_cli`].
+//! сессии `skazanie-server session …` (`test/kit/sessions.mjs`) — [`session_cli`];
+//! комната и аудит хранилища `skazanie-server room|audit …`
+//! (`test/kit/rooms.mjs`) — [`room_cli`].
 
 use std::path::Path;
 
@@ -52,6 +54,7 @@ use sk_store::{CommitRequest, CommitResult, EventStore, StoreResult};
 use crate::core::{CoreError, CoreHandle};
 
 pub mod journal_cli;
+pub mod room_cli;
 pub mod session_cli;
 
 /// Переменная правил костей.

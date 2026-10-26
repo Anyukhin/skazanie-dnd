@@ -49,7 +49,7 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/settings$/`; метод — в обработчике.
-    vec![Route::pass(4622, Methods::Any, Matcher::path_template("/api/campaigns/{id}/settings"), campaign_settings)]
+    vec![Route::pass(4623, Methods::Any, Matcher::path_template("/api/campaigns/{id}/settings"), campaign_settings)]
 }
 
 fn campaign_settings(ctx: &mut RouteCtx) -> PassFuture<'_> {

@@ -1035,9 +1035,9 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:38f0ef2ec368f89187dff13683782b9efdb26b123115d746b3d083f244cc0cca:198874>",
-            "map": "<sha256:30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501:85237>",
-            "map_hash": "30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501"
+            "cells": "<sha256:329384172276c2d8a083b3250aab34854343aa7912ab891c11ac9ed6249af99f:199357>",
+            "map": "<sha256:5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a:94896>",
+            "map_hash": "5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -1202,9 +1202,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -1731,9 +1731,9 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:38f0ef2ec368f89187dff13683782b9efdb26b123115d746b3d083f244cc0cca:198874>",
-            "map": "<sha256:30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501:85237>",
-            "map_hash": "30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501"
+            "cells": "<sha256:329384172276c2d8a083b3250aab34854343aa7912ab891c11ac9ed6249af99f:199357>",
+            "map": "<sha256:5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a:94896>",
+            "map_hash": "5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -1898,9 +1898,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -2443,9 +2443,9 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:38f0ef2ec368f89187dff13683782b9efdb26b123115d746b3d083f244cc0cca:198874>",
-            "map": "<sha256:30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501:85237>",
-            "map_hash": "30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501"
+            "cells": "<sha256:329384172276c2d8a083b3250aab34854343aa7912ab891c11ac9ed6249af99f:199357>",
+            "map": "<sha256:5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a:94896>",
+            "map_hash": "5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -2610,9 +2610,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -3762,8 +3762,8 @@
                 "label": "Второй этаж"
               }
             ],
-            "map": "<sha256:e87502ef0f1f10739b920404c1a6188390904604e324b70792da9165eadabcc0:85237>",
-            "cells": "<sha256:667d56bdc67e5c8d1189c2e4c5e6203125f3efc25e1f8d1796195e657b761c48:203514>"
+            "map": "<sha256:a0d422e3663501621fa7cefcbb1a88e5273a07dfb566159fb7d9a9500a170e8c:94896>",
+            "cells": "<sha256:71a13713c0eef47507e2a038c7fa5b1a3789f1a1f02aab77d88d948d200cbdbe:203997>"
           },
           "npc_world": {
             "schema_version": 3,
@@ -3771,9 +3771,9 @@
               {
                 "npc_id": "npc-ff3e0e80b2f5-1",
                 "location_id": "location-1-переправа",
-                "x": 3,
-                "y": 27,
-                "anchor_prop_id": "prop-178-table_long",
+                "x": 32,
+                "y": 7,
+                "anchor_prop_id": "prop-161-table_long",
                 "placement_reason": "role-suitable-post",
                 "policy_id": "skazanie:npc-world-v1",
                 "source_event_id": "bootstrap-npc-ff3e0e80b2f527d786af6af9-1"
@@ -3807,8 +3807,8 @@
           "locationMaps": {
             "location-1-переправа": {
               "version": 1,
-              "cells": "<sha256:667d56bdc67e5c8d1189c2e4c5e6203125f3efc25e1f8d1796195e657b761c48:203514>",
-              "map": "<sha256:3ebafabe6c01409ef353ea652cb5ed6abcd8f0213a7f9a56b31063c042f8376f:72733>"
+              "cells": "<sha256:71a13713c0eef47507e2a038c7fa5b1a3789f1a1f02aab77d88d948d200cbdbe:203997>",
+              "map": "<sha256:ec4a4461c32c85b5c8d06871f927735f7e69f32882771776d7124b826d1c3cfc:78285>"
             }
           },
           "world_deeds": {
@@ -3980,9 +3980,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -4620,8 +4620,8 @@
                 "label": "Второй этаж"
               }
             ],
-            "map": "<sha256:e87502ef0f1f10739b920404c1a6188390904604e324b70792da9165eadabcc0:85237>",
-            "cells": "<sha256:667d56bdc67e5c8d1189c2e4c5e6203125f3efc25e1f8d1796195e657b761c48:203514>"
+            "map": "<sha256:a0d422e3663501621fa7cefcbb1a88e5273a07dfb566159fb7d9a9500a170e8c:94896>",
+            "cells": "<sha256:71a13713c0eef47507e2a038c7fa5b1a3789f1a1f02aab77d88d948d200cbdbe:203997>"
           },
           "npc_world": {
             "schema_version": 3,
@@ -4629,9 +4629,9 @@
               {
                 "npc_id": "npc-ff3e0e80b2f5-1",
                 "location_id": "location-1-переправа",
-                "x": 3,
-                "y": 27,
-                "anchor_prop_id": "prop-178-table_long",
+                "x": 32,
+                "y": 7,
+                "anchor_prop_id": "prop-161-table_long",
                 "placement_reason": "role-suitable-post",
                 "policy_id": "skazanie:npc-world-v1",
                 "source_event_id": "bootstrap-npc-ff3e0e80b2f527d786af6af9-1"
@@ -4665,8 +4665,8 @@
           "locationMaps": {
             "location-1-переправа": {
               "version": 1,
-              "cells": "<sha256:667d56bdc67e5c8d1189c2e4c5e6203125f3efc25e1f8d1796195e657b761c48:203514>",
-              "map": "<sha256:3ebafabe6c01409ef353ea652cb5ed6abcd8f0213a7f9a56b31063c042f8376f:72733>"
+              "cells": "<sha256:71a13713c0eef47507e2a038c7fa5b1a3789f1a1f02aab77d88d948d200cbdbe:203997>",
+              "map": "<sha256:ec4a4461c32c85b5c8d06871f927735f7e69f32882771776d7124b826d1c3cfc:78285>"
             }
           },
           "world_deeds": {
@@ -4838,9 +4838,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -5464,9 +5464,9 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:38f0ef2ec368f89187dff13683782b9efdb26b123115d746b3d083f244cc0cca:198874>",
-            "map": "<sha256:30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501:85237>",
-            "map_hash": "30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501"
+            "cells": "<sha256:329384172276c2d8a083b3250aab34854343aa7912ab891c11ac9ed6249af99f:199357>",
+            "map": "<sha256:5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a:94896>",
+            "map_hash": "5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -5631,9 +5631,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -6214,9 +6214,9 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:38f0ef2ec368f89187dff13683782b9efdb26b123115d746b3d083f244cc0cca:198874>",
-            "map": "<sha256:30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501:85237>",
-            "map_hash": "30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501"
+            "cells": "<sha256:329384172276c2d8a083b3250aab34854343aa7912ab891c11ac9ed6249af99f:199357>",
+            "map": "<sha256:5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a:94896>",
+            "map_hash": "5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -6381,9 +6381,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -6920,9 +6920,9 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:38f0ef2ec368f89187dff13683782b9efdb26b123115d746b3d083f244cc0cca:198874>",
-            "map": "<sha256:30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501:85237>",
-            "map_hash": "30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501"
+            "cells": "<sha256:329384172276c2d8a083b3250aab34854343aa7912ab891c11ac9ed6249af99f:199357>",
+            "map": "<sha256:5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a:94896>",
+            "map_hash": "5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -7087,9 +7087,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -7639,9 +7639,9 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:38f0ef2ec368f89187dff13683782b9efdb26b123115d746b3d083f244cc0cca:198874>",
-            "map": "<sha256:30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501:85237>",
-            "map_hash": "30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501"
+            "cells": "<sha256:329384172276c2d8a083b3250aab34854343aa7912ab891c11ac9ed6249af99f:199357>",
+            "map": "<sha256:5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a:94896>",
+            "map_hash": "5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -7821,9 +7821,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -8601,9 +8601,9 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:38f0ef2ec368f89187dff13683782b9efdb26b123115d746b3d083f244cc0cca:198874>",
-            "map": "<sha256:30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501:85237>",
-            "map_hash": "30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501"
+            "cells": "<sha256:329384172276c2d8a083b3250aab34854343aa7912ab891c11ac9ed6249af99f:199357>",
+            "map": "<sha256:5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a:94896>",
+            "map_hash": "5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -8783,9 +8783,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -9365,9 +9365,9 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:38f0ef2ec368f89187dff13683782b9efdb26b123115d746b3d083f244cc0cca:198874>",
-            "map": "<sha256:30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501:85237>",
-            "map_hash": "30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501"
+            "cells": "<sha256:329384172276c2d8a083b3250aab34854343aa7912ab891c11ac9ed6249af99f:199357>",
+            "map": "<sha256:5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a:94896>",
+            "map_hash": "5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -9547,9 +9547,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",
@@ -10099,9 +10099,9 @@
             "mood": "Атмосфера полна тайн и обещает открытия",
             "objective": "Разобраться в происходящем и решить, кому можно доверять",
             "turn": 1,
-            "cells": "<sha256:38f0ef2ec368f89187dff13683782b9efdb26b123115d746b3d083f244cc0cca:198874>",
-            "map": "<sha256:30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501:85237>",
-            "map_hash": "30565ace61d833ce33f614afd0375186e4efcb8c762e0dac97085fab10ce0501"
+            "cells": "<sha256:329384172276c2d8a083b3250aab34854343aa7912ab891c11ac9ed6249af99f:199357>",
+            "map": "<sha256:5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a:94896>",
+            "map_hash": "5be6884731461e85be4d661a378d903eb9bc41ab2953d275ecec0353c194250a"
           },
           "worldMemory": {
             "schema_version": 2,
@@ -10281,9 +10281,9 @@
               "name": "Мира Ветрокрыл",
               "role": "проводница и очевидец",
               "location_id": "location-1-переправа",
-              "x": 3,
-              "y": 27,
-              "anchor_prop_id": "prop-178-table_long",
+              "x": 32,
+              "y": 7,
+              "anchor_prop_id": "prop-161-table_long",
               "stance": "neutral",
               "alive": true,
               "health_status": "unharmed",

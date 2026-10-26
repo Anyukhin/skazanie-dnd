@@ -272,14 +272,20 @@ test('«обчищаю карманы» разбирается в ту же ко
 
 test('кнопка кражи идёт тем же каналом, что и свободная фраза, и не судит сама', () => {
   const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
-  const server = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
 
   assert.match(board, /Обчистить карманы<\/button>/u)
   assert.match(board, /onNpcAction\(`Незаметно обчищаю карманы: \$\{sceneNpc\.name\}`, sceneNpc\.id\)/u)
   // Доска не выдумывает своих правил: ни СЛ, ни кармана, ни списка ролей у неё
   // нет — она только называет причину отказа до нажатия.
   assert.doesNotMatch(board, /purse_cp|pickpocketDifficulty|pocket-picked/u)
+})
 
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust белый список — sanitize_player_pickpocket_command
+// (PICKPOCKET_COMMAND_UNKNOWN_FIELD) в rust/crates/sk-server/src/command_guard.rs,
+// сверка с JS — tests/command_guard_golden.rs.
+test('JS-only (server/index.mjs): дверь HTTP закрыта белым списком полей кражи', () => {
+  const server = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
   // Дверь HTTP закрыта белым списком полей: клиент называет вора и жертву, и
   // ничего больше.
   assert.match(server, /PLAYER_PICKPOCKET_COMMANDS = new Set\(\['PickpocketNpc'\]\)/u)

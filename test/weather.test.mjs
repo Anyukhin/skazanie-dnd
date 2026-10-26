@@ -690,7 +690,12 @@ test('небо дописывается к запасному тексту ро�
   const withTurn = tacticalNarrationOr([knockout, dusk], state, () => { calls += 1; return 'запасной' })
   assert.equal(calls, 0, 'запасной рассказчик вызван зря')
   assert.equal(withTurn, combatNarration([knockout, dusk], state), 'на описанном ходу текст прежний')
+})
 
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust та же
+// проводка — tactical_narration_or в rust/crates/sk-server/src/routes/autonomy.rs.
+test('JS-only (server/index.mjs): маршрут Режиссёра кормит рассказчика очищенным списком событий', () => {
   // Сторож проводки: маршрут Режиссёра обязан кормить очищенным списком и
   // текст шага (`directorStepNarration`), и бриф запасного рассказчика.
   assert.match(

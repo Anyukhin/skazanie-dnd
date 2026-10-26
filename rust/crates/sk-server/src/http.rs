@@ -62,26 +62,84 @@ pub const INVALID_JSON_BODY: BodyError = BodyError { message: "Тело запр
 /// `REQUEST_BODY_ERROR_CODES` у неё нет, поэтому граница отвечает 500.
 pub const BODY_ABORTED: BodyError = BodyError { message: "aborted", code: "ECONNRESET" };
 
+/// Сколько недочитанного тела дочитывается после ответа ([`LeftoverBody`]).
+/// Node дочитывает без предела (`req._dump()`); здесь — с потолком, больше —
+/// соединение закрывается, как раньше.
+pub const DRAIN_LIMIT_BYTES: usize = 16 * MAX_BODY_BYTES;
+/// Сколько ждать недочитанное тело: `server.requestTimeout` Node (300 с).
+pub const DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+type BodySlot = std::sync::Arc<std::sync::Mutex<Option<Body>>>;
+
+fn take_slot(slot: &BodySlot) -> Option<Body> {
+    slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
+}
+
 /// Тело запроса: читается лениво, один раз, как поток `req` в Node.
 /// Повторное чтение даёт пустое тело (`'{}'` для JSON).
 ///
 /// Тело лежит под замком только ради `Sync` контекста запроса (обработчики
 /// держат `&RouteCtx` через `await`); замок берётся на миг, чтобы забрать тело.
 pub struct RequestBody {
-    body: std::sync::Mutex<Option<Body>>,
+    body: BodySlot,
+}
+
+/// Тело, которое обработчик не прочитал (404, отказ до разбора тела).
+///
+/// Node после ответа дочитывает и выбрасывает такое тело (`req._dump()`), и
+/// соединение живёт дальше. hyper же, когда тело брошено недочитанным,
+/// закрывает соединение сразу после ответа, а непрочитанные байты в сокете
+/// превращают закрытие в RST — клиент вместо ответа получает ECONNRESET
+/// (С9, долг к С19). Поэтому после ответа тело дочитывается в фоне
+/// ([`Self::drain`]): ответ уходит сразу, как в Node, а hyper читает остаток
+/// и сохраняет соединение.
+pub struct LeftoverBody {
+    body: BodySlot,
+}
+
+impl LeftoverBody {
+    /// Дочитать и выбросить остаток тела в фоне — не больше
+    /// [`DRAIN_LIMIT_BYTES`] и [`DRAIN_TIMEOUT`]; за пределом тело бросается и
+    /// соединение закрывается.
+    pub fn drain(self) {
+        use axum::body::HttpBody;
+        let Some(body) = take_slot(&self.body) else { return };
+        if body.is_end_stream() {
+            return;
+        }
+        tokio::spawn(async move {
+            let discard = async move {
+                let mut stream = body.into_data_stream();
+                let mut total = 0usize;
+                while let Some(Ok(chunk)) = stream.next().await {
+                    total += chunk.len();
+                    if total > DRAIN_LIMIT_BYTES {
+                        break;
+                    }
+                }
+            };
+            let _ = tokio::time::timeout(DRAIN_TIMEOUT, discard).await;
+        });
+    }
 }
 
 impl RequestBody {
     pub fn new(body: Body) -> Self {
-        Self { body: std::sync::Mutex::new(Some(body)) }
+        Self { body: std::sync::Arc::new(std::sync::Mutex::new(Some(body))) }
     }
 
     pub fn empty() -> Self {
-        Self { body: std::sync::Mutex::new(None) }
+        Self { body: std::sync::Arc::new(std::sync::Mutex::new(None)) }
+    }
+
+    /// Доступ к телу после обработчика: что он не забрал, дочитывается
+    /// ([`LeftoverBody::drain`]).
+    pub fn leftover(&self) -> LeftoverBody {
+        LeftoverBody { body: self.body.clone() }
     }
 
     fn take(&self) -> Option<Body> {
-        self.body.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
+        take_slot(&self.body)
     }
 
     /// Сырые байты до `limit` (не больше [`MAX_BODY_BYTES`]); больше —

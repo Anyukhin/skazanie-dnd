@@ -61,7 +61,7 @@ use crate::state::AppState;
 pub fn routes() -> Vec<Route> {
     // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/map-import$/u` по `requestPath`;
     // метод — в обработчике (405 на любой, кроме POST).
-    vec![Route::new(3959, Methods::Any, Matcher::path_template("/api/campaigns/{id}/map-import"), map_import)]
+    vec![Route::new(3960, Methods::Any, Matcher::path_template("/api/campaigns/{id}/map-import"), map_import)]
 }
 
 /// `CONFLICT_CODES` (`map-import-routes.mjs:27`): эти коды — 409, прочие — 400.

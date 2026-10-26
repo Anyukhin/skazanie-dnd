@@ -1,0 +1,8 @@
+{
+  "format": "skazanie.test-dice/1",
+  "description": "Кости test/combat-journal-order-api.test.mjs (прежде combat-journal-deterministic-dice.mjs): огр бросает d20 на 18 и прочие кости максимумом, чтобы атака по возможности наверняка валила героя. Остальные броски настоящие.",
+  "rules": [
+    { "actor": "^ogre$", "sides": 20, "value": 18 },
+    { "actor": "^ogre$", "value": "max" }
+  ]
+}

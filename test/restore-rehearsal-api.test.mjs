@@ -10,8 +10,7 @@ import {
   restoreStorageBackup,
   verifyStorageBackup,
 } from '../server/backup-service.mjs'
-import { startTestServer } from './kit/http.mjs'
-import { auditLegacyCutover } from '../server/cutover-audit.mjs'
+import { auditStorage, startTestServer } from './kit/index.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
@@ -142,6 +141,8 @@ test('из архива поднимается та же играбельная 
   assert.equal(continued.status, 200, continued.text)
 
   // 5. Целостность восстановленного хранилища — без блокеров.
-  const report = await auditLegacyCutover({ storageRoot: restored })
+  await restoredServer.stop()
+  const report = await auditStorage(restoredServer)
+  assert.ok(report.campaigns.some((entry) => entry.campaign_id === 'VAULT'), `аудит не увидел восстановленную кампанию: ${JSON.stringify(report)}`)
   assert.deepEqual(report.blockers, [], `восстановленное хранилище не прошло аудит: ${JSON.stringify(report.blockers)}`)
 })

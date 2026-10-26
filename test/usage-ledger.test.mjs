@@ -226,7 +226,11 @@ test('COST-01: каскад моделей сохраняет расход ка�
 // server/index.mjs создаётся внутри MeteredLLMClient — летописец больше не
 // получает голый RouterAIClient, — а картинки идут через общий проверяющий
 // генератор, без собственного fetch к поставщику.
-test('AI-02: server/index.mjs не держит неучтённых путей к поставщику', () => {
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust тот же сторож проводки —
+// rust/crates/sk-server/tests/server_guards.rs (model_and_image_clients_are_built_only_at_the_entry_point,
+// app_state_holds_models_only_as_metered).
+test('JS-only (server/index.mjs): AI-02: server/index.mjs не держит неучтённых путей к поставщику', () => {
   const source = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
   const providerClients = source.match(/new RouterAIClient\(/gu) ?? []
   const meteredClients = source.match(/new MeteredLLMClient\(\{\s*client: new RouterAIClient\(/gu) ?? []

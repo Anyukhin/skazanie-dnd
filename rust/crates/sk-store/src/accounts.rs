@@ -664,28 +664,56 @@ impl Accounts {
     }
 
     /// Перенести `storage/auth.json` и `storage/campaign-settings/*.json`
-    /// прежнего сервера. Уже перенесённые записи не дублируются.
+    /// прежнего сервера. Уже перенесённые записи не дублируются. Ответ —
+    /// (пользователи, настройки).
     pub fn import_legacy(&self, storage_dir: impl AsRef<Path>) -> AccountResult<(usize, usize)> {
+        let report = self.import_legacy_report(storage_dir)?;
+        Ok((report.users, report.settings))
+    }
+
+    /// [`Accounts::import_legacy`] с полным отчётом (подкоманда `import-legacy`,
+    /// С19.2). Одна транзакция: либо перенесено всё, либо ничего.
+    ///
+    /// Сессии переносятся (хеш токена тот же sha256, cookie игроков остаются
+    /// годными), но только живые: `readAuth` JS истёкшие отбрасывает при
+    /// каждом чтении. Повреждённый `auth.json` — отказ с тем же текстом, что
+    /// `StorageCorruptionError` JS; повреждённый файл настроек кампании
+    /// пропускается и считается в `settings_rejected`.
+    pub fn import_legacy_report(&self, storage_dir: impl AsRef<Path>) -> AccountResult<LegacyAccountsReport> {
         let storage_dir = storage_dir.as_ref();
         let auth_path = storage_dir.join("auth.json");
-        let mut users = 0;
-        let conn = self.lock();
+        let mut report = LegacyAccountsReport::default();
+        let now = self.now();
+        let mut conn = self.lock();
+        let transaction = conn.transaction()?;
         if auth_path.exists() {
-            let auth: Value = serde_json::from_str(&std::fs::read_to_string(&auth_path).map_err(|error| AccountError::new(format!("auth.json: {error}")))?)?;
-            for user in auth.get("users").and_then(Value::as_array).into_iter().flatten() {
-                if Self::user_by(&conn, "id", &sk_core::js::s(user.get("id")))?.is_none() {
-                    Self::save_user(&conn, user)?;
-                    users += 1;
+            let corrupt = |_| AccountError::new(format!("Хранилище повреждено и не будет перезаписано автоматически: {}", auth_path.display()));
+            let text = std::fs::read_to_string(&auth_path).map_err(|error| AccountError::new(format!("auth.json: {error}")))?;
+            let auth: Value = serde_json::from_str(&text).map_err(corrupt)?;
+            let list = |field: &str| auth.get(field).and_then(Value::as_array).cloned().unwrap_or_default();
+            for user in list("users") {
+                if Self::user_by(&transaction, "id", &sk_core::js::s(user.get("id")))?.is_none() {
+                    Self::save_user(&transaction, &user)?;
+                    report.users += 1;
+                }
+                if user.get("role").and_then(Value::as_str) == Some("admin") {
+                    report.admins += 1;
                 }
             }
-            for session in auth.get("sessions").and_then(Value::as_array).into_iter().flatten() {
-                conn.execute(
+            for session in list("sessions") {
+                let hash = sk_core::js::s(session.get("tokenHash"));
+                let expires_at = sk_core::js::safe_int(session.get("expiresAt"), 0);
+                if hash.is_empty() || expires_at <= now {
+                    report.sessions_expired += 1;
+                    continue;
+                }
+                report.sessions += transaction.execute(
                     "INSERT OR IGNORE INTO sessions (token_hash, user_id, expires_at) VALUES (?1, ?2, ?3)",
-                    params![sk_core::js::s(session.get("tokenHash")), sk_core::js::s(session.get("userId")), sk_core::js::safe_int(session.get("expiresAt"), 0)],
+                    params![hash, sk_core::js::s(session.get("userId")), expires_at],
                 )?;
             }
-            for membership in auth.get("memberships").and_then(Value::as_array).into_iter().flatten() {
-                let exists: Option<i64> = conn
+            for membership in list("memberships") {
+                let exists: Option<i64> = transaction
                     .query_row(
                         "SELECT 1 FROM memberships WHERE campaign_id = ?1 AND user_id = ?2",
                         params![sk_core::js::s(membership.get("campaignId")), sk_core::js::s(membership.get("userId"))],
@@ -693,29 +721,52 @@ impl Accounts {
                     )
                     .optional()?;
                 if exists.is_none() {
-                    Self::save_membership(&conn, membership)?;
+                    Self::save_membership(&transaction, &membership)?;
+                    report.memberships += 1;
                 }
             }
-            for invite in auth.get("invites").and_then(Value::as_array).into_iter().flatten() {
-                let exists: Option<i64> = conn.query_row("SELECT 1 FROM invites WHERE id = ?1", params![sk_core::js::s(invite.get("id"))], |row| row.get(0)).optional()?;
+            for invite in list("invites") {
+                let exists: Option<i64> = transaction.query_row("SELECT 1 FROM invites WHERE id = ?1", params![sk_core::js::s(invite.get("id"))], |row| row.get(0)).optional()?;
                 if exists.is_none() {
-                    Self::save_invite(&conn, invite)?;
+                    Self::save_invite(&transaction, &invite)?;
+                    report.invites += 1;
                 }
             }
         }
-        let mut settings = 0;
-        for entry in std::fs::read_dir(storage_dir.join("campaign-settings")).into_iter().flatten().filter_map(Result::ok) {
-            let path = entry.path();
+        let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(storage_dir.join("campaign-settings")).into_iter().flatten().filter_map(Result::ok).map(|entry| entry.path()).collect();
+        entries.sort();
+        for path in entries {
             let Some(stem) = path.file_stem().map(|stem| stem.to_string_lossy().to_string()) else { continue };
-            if path.extension().is_none_or(|ext| ext != "json") {
+            if path.extension().is_none_or(|ext| ext != "json") || !path.is_file() {
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(&path) else { continue };
-            let Ok(value) = serde_json::from_str::<Value>(&text) else { continue };
-            settings += conn.execute("INSERT OR IGNORE INTO campaign_settings (campaign_id, body) VALUES (?1, ?2)", params![stem, serde_json::to_string(&value)?])?;
+            let parsed = std::fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok());
+            // Ключ — как `campaignSettingsFile(code)`: файл под другим именем JS не читал.
+            let key = Self::settings_key(&stem).ok().filter(|key| *key == stem);
+            match (parsed, key) {
+                (Some(value), Some(key)) if value.is_object() => {
+                    report.settings += transaction.execute("INSERT OR IGNORE INTO campaign_settings (campaign_id, body) VALUES (?1, ?2)", params![key, serde_json::to_string(&value)?])?;
+                }
+                _ => report.settings_rejected += 1,
+            }
         }
-        Ok((users, settings))
+        transaction.commit()?;
+        Ok(report)
     }
+}
+
+/// Итог переноса аккаунтов (`import_legacy_report`): только счётчики —
+/// ни почты, ни хешей паролей и токенов в отчёте нет.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LegacyAccountsReport {
+    pub users: usize,
+    pub admins: usize,
+    pub sessions: usize,
+    pub sessions_expired: usize,
+    pub memberships: usize,
+    pub invites: usize,
+    pub settings: usize,
+    pub settings_rejected: usize,
 }
 
 fn decode_hex(text: &str) -> Vec<u8> {

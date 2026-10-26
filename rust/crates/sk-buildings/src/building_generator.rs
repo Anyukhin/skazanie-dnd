@@ -53,7 +53,7 @@ pub struct GeneratorStamp {
 }
 
 /// `BUILDING_GENERATOR`. v7: размер корпуса — по назначению здания.
-pub const BUILDING_GENERATOR: GeneratorStamp = GeneratorStamp { id: "building-with-yard", version: "7" };
+pub const BUILDING_GENERATOR: GeneratorStamp = GeneratorStamp { id: "building-with-yard", version: "8" };
 
 /// `ARES_FORTRESS_GENERATOR`: геометрия одна на все столы, сид меняет отделку.
 pub const ARES_FORTRESS_GENERATOR: GeneratorStamp = GeneratorStamp { id: "ares-fortress", version: "1" };
@@ -501,7 +501,15 @@ fn generate_designed_building_scene(options: &Value, design: &Map<String, Value>
                 attempt_design.insert("scheme".into(), Value::String(scheme.into()));
             }
             if let Ok(shaped) = designed_building_attempt(options, &attempt_design) {
-                if audit_tactical_map(&shaped).problems.is_empty() && empty_rooms(&shaped).is_empty() {
+                // Так же и форма, в чей зал не встала его главная мебель (#184):
+                // Г-образный трактир отдавал залу 32 клетки, и стойка
+                // помещалась, только протыкая стену.
+                let mut lost_design = design.clone();
+                lost_design.insert("shape".into(), Value::String(shape.into()));
+                if audit_tactical_map(&shaped).problems.is_empty()
+                    && empty_rooms(&shaped).is_empty()
+                    && furnish::lost_key_furniture(&shaped, &normalize_design(&lost_design)).is_empty()
+                {
                     return Ok(shaped);
                 }
             }

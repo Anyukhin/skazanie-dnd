@@ -25,19 +25,20 @@ use crate::http::json;
 pub fn routes() -> Vec<Route> {
     vec![
         // `requestPath.match(/^\/api\/rulesets\/([a-z0-9_]+)\/character-creation$/u)`.
-        Route::get(3931, Matcher::path_template("/api/rulesets/{ruleset}/character-creation"), character_creation),
-        Route::get(4425, Matcher::path("/api/rules/search"), rules_search),
-        Route::get(4439, Matcher::path("/api/world-templates"), world_templates),
+        Route::get(3932, Matcher::path_template("/api/rulesets/{ruleset}/character-creation"), character_creation),
+        Route::get(4426, Matcher::path("/api/rules/search"), rules_search),
+        Route::get(4440, Matcher::path("/api/world-templates"), world_templates),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/engine-mode$/` и `PATCH`.
-        Route::new(5216, Methods::One(Method::PATCH), Matcher::path_template("/api/campaigns/{id}/engine-mode"), engine_mode),
+        Route::new(5217, Methods::One(Method::PATCH), Matcher::path_template("/api/campaigns/{id}/engine-mode"), engine_mode),
     ]
 }
 
 /// Каталог пакетов правил. В JS `rule-pack.mjs` берёт `data/rule_packs`
-/// рядом со своим исходником; здесь корень проекта — тот, где собран крейт
-/// (как у `world_template_catalog::image_exists_in_project`).
+/// рядом со своим исходником; здесь — `data/rule_packs` корня данных процесса
+/// (`sk_core::data_root`, С19.1: `DND_DATA_DIR`, каталог бинаря или дерево
+/// сборки).
 pub fn rule_packs_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../data/rule_packs")
+    sk_core::data_root::join("data").join("rule_packs")
 }
 
 /// Пакеты правил процесса: `rulePack` редакции по умолчанию, поиск по всем

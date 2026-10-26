@@ -15,7 +15,7 @@ pub mod stable;
 pub mod store;
 
 pub use error::{StoreError, StoreResult};
-pub use legacy::{import_file_store, ImportReport, ImportedCampaign};
+pub use legacy::{import_file_store, import_file_store_verified, ImportReport, ImportedCampaign, LegacyInventory};
 pub use maps::{MapCells, NoMapCells};
 pub use store::{
     CommitRequest, CommitResult, EventStore, InitializeRequest, LegacyImportRequest, LoadOptions, Loaded, PendingProjection, Reducer, RetentionMode, RoomOverlay, RoomOverlaySave,

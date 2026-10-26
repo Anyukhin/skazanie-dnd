@@ -56,7 +56,7 @@ pub fn table(extra: Vec<Route>) -> Vec<Route> {
         autonomy::routes(),
         merchants_admin::routes(),
         encounters::routes(),
-        vec![Route::pass(5449, Methods::Any, Matcher::path_template(MERCHANT_PATH), merchant_id_guard)],
+        vec![Route::pass(5450, Methods::Any, Matcher::path_template(MERCHANT_PATH), merchant_id_guard)],
         merchant_trade::routes(),
         commands::routes(),
         system_tick::routes(),
@@ -113,15 +113,15 @@ mod tests {
         for route in &routes {
             let at = |line: u32| lines.get(line as usize - 1).copied().unwrap_or("");
             let mut window = vec![at(route.line - 1), at(route.line), at(route.line + 1)];
-            // Обработчики торговца (С14 — 5455, С18.2 — 5472) проверяют общую
-            // регулярку `merchantMatch` строки 5449 (правка С14).
-            if matches!(route.line, 5455 | 5472) {
-                window.push(at(5449));
+            // Обработчики торговца (С14 — 5456, С18.2 — 5473) проверяют общую
+            // регулярку `merchantMatch` строки 5450 (правка С14).
+            if matches!(route.line, 5456 | 5473) {
+                window.push(at(5450));
             }
             let here = window[1];
-            // Модули, вынесенные из `index.mjs` (combat-lab 3958, map-import
-            // 3959): на строке — подключение, регулярка — в своём файле (С13).
-            if matches!(route.line, 3958 | 3959) {
+            // Модули, вынесенные из `index.mjs` (combat-lab 3959, map-import
+            // 3960): на строке — подключение, регулярка — в своём файле (С13).
+            if matches!(route.line, 3959 | 3960) {
                 assert!(here.contains("Route(req, res, requestPath)"), "строка {}: нет подключения модуля\n{here}", route.line);
                 continue;
             }

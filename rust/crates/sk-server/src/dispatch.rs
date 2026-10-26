@@ -416,11 +416,16 @@ pub async fn handle(state: Shared, request: Request) -> Response<Body> {
     }
     let peer = request.extensions().get::<ConnectInfo<SocketAddr>>().map(|info| info.0);
     let (parts, body) = request.into_parts();
+    // Тело, которое маршрут не прочитал (или до маршрута дело не дошло),
+    // дочитывается после ответа, как в Node (С19.1).
+    let body = RequestBody::new(body);
+    let leftover = body.leftover();
     let raw_url = raw_target(&parts.uri);
     // `new URL(...)` — первая строка обработчика: исключение уходит в
     // `failUnhandledRequest` ещё до заголовков безопасности (3920).
     let Some(pathname) = crate::url::pathname(&raw_url) else {
         eprintln!("[Сказание] Необработанная ошибка {} ?: Invalid URL", parts.method);
+        leftover.drain();
         return ApiError::internal("Invalid URL").into_response();
     };
     // Настройки ИИ кампании из пути (3921–3928); сбой чтения — тоже до
@@ -433,10 +438,12 @@ pub async fn handle(state: Shared, request: Request) -> Response<Body> {
                 Ok(Ok(settings)) => Some(settings),
                 Ok(Err(error)) => {
                     eprintln!("[Сказание] Необработанная ошибка {} {pathname}: {}", parts.method, error.message);
+                    leftover.drain();
                     return ApiError::internal(error.message).into_response();
                 }
                 Err(error) => {
                     eprintln!("[Сказание] Необработанная ошибка {} {pathname}: {error}", parts.method);
+                    leftover.drain();
                     return ApiError::internal(error.to_string()).into_response();
                 }
             }
@@ -445,10 +452,11 @@ pub async fn handle(state: Shared, request: Request) -> Response<Body> {
     };
     let method = parts.method.clone();
     let log_path = pathname.clone();
-    let ctx = RouteCtx { state, method: parts.method, raw_url, pathname, headers: parts.headers, peer, params: Vec::new(), body: RequestBody::new(body) };
+    let ctx = RouteCtx { state, method: parts.method, raw_url, pathname, headers: parts.headers, peer, params: Vec::new(), body };
     let perf_started = sk_store::perf::request_trace().then(std::time::Instant::now);
     let perf_label = perf_started.map(|_| format!("{method} {log_path}"));
     let mut response = crate::ai_context::with_campaign_ai(settings, crate::boundary::guard(method, log_path, dispatch(ctx))).await;
+    leftover.drain();
     apply_security_headers(response.headers_mut());
     if let (Some(started), Some(label)) = (perf_started, perf_label) {
         let spans: serde_json::Map<String, Value> = sk_store::perf::take().into_iter().map(|(name, count, ms)| (name.to_string(), serde_json::json!([count, (ms * 100.0).round() / 100.0]))).collect();

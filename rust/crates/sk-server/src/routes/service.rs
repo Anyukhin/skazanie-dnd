@@ -21,10 +21,10 @@ const MAX_AUDIO: usize = 44 + 16_000 * 2 * 60;
 
 pub fn routes() -> Vec<Route> {
     vec![
-        Route::new(3940, Methods::Any, Matcher::raw("/api/health"), health),
-        Route::get(3954, Matcher::raw("/api/admin/usage"), admin_usage),
-        Route::get(3960, Matcher::raw("/api/speech/status"), speech_status),
-        Route::new(3964, Methods::One(Method::POST), Matcher::raw("/api/speech/transcribe"), speech_transcribe),
+        Route::new(3941, Methods::Any, Matcher::raw("/api/health"), health),
+        Route::get(3955, Matcher::raw("/api/admin/usage"), admin_usage),
+        Route::get(3961, Matcher::raw("/api/speech/status"), speech_status),
+        Route::new(3965, Methods::One(Method::POST), Matcher::raw("/api/speech/transcribe"), speech_transcribe),
     ]
 }
 

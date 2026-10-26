@@ -1,17 +1,9 @@
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { FileEventStore } from '../server/event-store.mjs'
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
-import { MapStore } from '../server/map-store.mjs'
-import {
-  GAME_STATE_PROJECTOR_VERSION,
-  applyGameEvent,
-  normalizeCampaignState,
-} from '../server/rules-engine.mjs'
-import { registerUser, setupAdmin, startTestServer } from './kit/http.mjs'
+import { readJournal, registerUser, setupAdmin, startTestServer } from './kit/index.mjs'
 
 function initialState(code) {
   return {
@@ -161,18 +153,12 @@ test('HTTP MakeAttack игрока применяет Скрытую атаку 
 
   await server.stop()
 
-  const eventStore = new FileEventStore({
-    rootDir: join(server.storageDir, 'engine'),
-    reducer: applyGameEvent,
-    normalizeState: normalizeCampaignState,
-    snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
-    mapStore: new MapStore({ rootDir: join(server.storageDir, 'engine') }),
-  })
-  const durable = await eventStore.load(campaignId)
+  // Журнал на остановленном сервере — через набор, без раскладки хранилища.
+  const durable = await readJournal(server, campaignId)
   const enemyHp = durable.state.enemies.find((enemy) => enemy.id === 'enemy').hp
   assert.ok(enemyHp < 100)
   assert.equal(durable.state.mechanics.combat.action_economy.rogue.sneak_attack_turn_key, 'combat:1:rogue')
-  const storedEvents = await eventStore.getEvents(campaignId)
+  const storedEvents = durable.events
   assert.equal(storedEvents.filter((event) => event.event_type === 'AttackResolved').length, 1)
   assert.equal(storedEvents.filter((event) => event.event_type === 'SneakAttackApplied').length, 1)
 

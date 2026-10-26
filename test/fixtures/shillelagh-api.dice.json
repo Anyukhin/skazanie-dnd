@@ -1,0 +1,12 @@
+{
+  "format": "skazanie.test-dice/1",
+  "description": "Кости test/shillelagh-api.test.mjs (прежде shillelagh-deterministic-dice.mjs): герои hero-slot-1..2 бросают d20 на 18 и прочие кости максимумом, враги встречи — d20 на 2 (инициатива 8) и прочие кости минимумом, спасброски от смерти — 20. Остальные броски настоящие.",
+  "rules": [
+    { "actor": "^(hero-slot-[12]|encounter-.*)$", "purpose": "^death_saving_throw$", "sides": 20, "value": 20 },
+    { "actor": "^hero-slot-[12]$", "sides": 20, "value": 18 },
+    { "actor": "^hero-slot-[12]$", "value": "max" },
+    { "actor": "^encounter-", "purpose": "^initiative$", "sides": 20, "value": 8 },
+    { "actor": "^encounter-", "sides": 20, "value": 2 },
+    { "actor": "^encounter-", "value": "min" }
+  ]
+}

@@ -11,6 +11,8 @@
 //! - [`http`], [`url`] — тело, cookie, заголовки, разбор адреса как в JS;
 //! - [`access`], [`idempotency`], [`limits`] — общие помощники маршрутов;
 //! - [`ai_context`] — настройки ИИ кампании на время запроса;
+//! - [`cli`] — разбор аргументов бинаря, [`legacy_import`] — подкоманда
+//!   `import-legacy` (С19.2);
 //! - [`room`], [`journal`], [`projection`], [`streams`] — заглушки С1/С9 с
 //!   зафиксированными сигнатурами;
 //! - [`test_hooks`] — кости и сбои журнала из данных (фича `test-hooks`) и
@@ -29,6 +31,7 @@
 pub mod access;
 pub mod ai_context;
 pub mod boundary;
+pub mod cli;
 pub mod clocks;
 pub mod command_fingerprints;
 pub mod command_guard;
@@ -42,6 +45,7 @@ pub mod hero_hooks;
 pub mod http;
 pub mod idempotency;
 pub mod journal;
+pub mod legacy_import;
 pub mod limits;
 pub mod merchant_guard;
 pub mod orchestration;

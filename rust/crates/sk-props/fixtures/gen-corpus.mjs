@@ -68,7 +68,7 @@ for (const seed of ['brawl-a', 'brawl-b', 'brawl-c']) {
   attemptScene('brawl', () => buildThemedScene({ ...tavern, seed, description: 'После вчерашней драки трактирщик ещё не прибрался.' }))
   attemptScene('tavern', () => buildThemedScene({ ...tavern, seed }))
 }
-for (const seed of ['temple-a', 'temple-b']) {
+for (const seed of ['temple-a', 'temple-b', 'temple-c', 'temple-d', 'temple-e']) {
   attemptScene('temple', () => buildThemedScene({ ...temple, seed }))
   attemptScene('temple-ruined', () => buildThemedScene({ ...temple, seed, description: 'Заброшенный храм, свод местами обвалился.' }))
 }
@@ -107,17 +107,22 @@ for (const input of [
 ]) attemptScene(input.location, () => generateSceneGeometry(input))
 for (const seed of ['s0', 's6', 's10', '39', '200', 'a', 'b', 'c', 'd', 'e']) attemptScene('building', () => generateBuildingScene({ seed }))
 for (const seed of ['s6', 's10', 's189', '39', '200']) attemptScene('fortress', () => generateAresFortressScene({ seed }))
+// Сцены тестов #184: гарнитур, поворот карты и мебель у точки появления.
+attemptScene('orient-seats', () => generateBuildingScene({ seed: 'orient-seats', width: 30, height: 26, design: { building_use: 'tavern' } }))
+for (const seed of ['spawn-a', 'spawn-b', 'spawn-c', 'spawn-d', 'spawn-e', 'spawn-f']) attemptScene('spawn', () => generateBuildingScene({ seed, width: 30, height: 26, design: { building_use: 'tavern' }, entry: 'interior' }))
+for (const use of ['manor', 'tavern', 'house']) for (const seed of ['bed-a', 'bed-b']) attemptScene('bedroom', () => generateBuildingScene({ seed, width: 36, height: 30, design: { building_use: use } }))
 setRecording(false)
 
 // --- повтор и запись ---------------------------------------------------------------------
 
-const PROP_PLACEMENT = new Set(['placeProps', 'ensurePropAccess', 'placeRequiredProps', 'placeColonnade', 'attachPropSupports'])
+const PROP_PLACEMENT = new Set(['placeProps', 'ensurePropAccess', 'placeRequiredProps', 'placeColonnade', 'attachPropSupports', 'seatAroundSurface'])
 const real = {
   placeProps: (map, args) => pp.placeProps(map, ...args),
   ensurePropAccess: (map) => pp.ensurePropAccess(map),
   placeRequiredProps: (map, args) => pp.placeRequiredProps(map, ...args),
   placeColonnade: (map, args) => pp.placeColonnade(map, ...args),
   attachPropSupports: (map) => pp.attachPropSupports(map),
+  seatAroundSurface: (map, args) => pp.seatAroundSurface(map, ...args),
   placeVignettes: (map, args) => sd.placeVignettes(map, ...args),
   roughenGround: (map, args) => sd.roughenGround(map, ...args),
   markLowFurniture: (map, args) => sd.markLowFurniture(map, ...args),

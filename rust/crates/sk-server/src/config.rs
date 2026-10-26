@@ -41,7 +41,7 @@ pub struct Config {
     pub port: f64,
     /// `DND_STORAGE_DIR ? resolve(…) : join(cwd, 'storage')`.
     pub storage_dir: PathBuf,
-    /// `join(root, 'dist')`.
+    /// `join(root, 'dist')`, `root` — корень данных процесса.
     pub dist_dir: PathBuf,
     /// `String(ADMIN_SETUP_TOKEN || '')`.
     pub admin_setup_token: String,
@@ -153,8 +153,9 @@ fn unique(values: impl IntoIterator<Item = String>) -> Vec<String> {
 }
 
 impl Config {
-    /// Настройки из окружения процесса. `root` — каталог с `dist/`;
-    /// хранилище по умолчанию — `storage/` в текущем каталоге, как у JS.
+    /// Настройки из окружения процесса. `root` — корень данных
+    /// (`sk_core::data_root`), клиент раздаётся из его `dist/`; хранилище по
+    /// умолчанию — `storage/` в текущем каталоге, как у JS.
     pub fn from_env(root: &Path) -> Self {
         let cwd = std::env::current_dir().unwrap_or_else(|_| root.to_path_buf());
         Self::from_env_with(root, &cwd, &|name| std::env::var_os(name).map(|value| value.to_string_lossy().into_owned()))
