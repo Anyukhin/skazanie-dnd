@@ -70,10 +70,13 @@ fn normalize(state: &Value) -> Result<Value, Failure> {
 }
 
 /// `{ ...room, state }`: ключи комнаты в её порядке, `state` — на своём месте.
+/// Состояние комнаты не копируется (Ск4): оно всё равно заменяется.
 fn room_with_state(room: &Room, state: Value) -> Value {
-    let mut body = room.to_json();
-    body["state"] = state;
-    body
+    let mut body = Map::new();
+    body.insert("version".into(), json!(room.version));
+    body.insert("state".into(), state);
+    body.insert("updatedAt".into(), json!(room.updated_at));
+    Value::Object(body)
 }
 
 /// `getRoom(code)` в ядре.
@@ -109,6 +112,7 @@ fn room_route(ctx: &mut RouteCtx) -> RouteFuture<'_> {
 /// 500 `INTERNAL_ERROR` последней границы, соседние кампании не задеты.
 async fn read_room(ctx: &mut RouteCtx) -> ApiResult {
     let user = require_user(ctx).await?;
+    let pre_span = sk_store::perf::span("rooms.pre_access");
     let code = ctx.param(0).to_string();
     let state = ctx.state.clone();
     // `accessDeniedBeforeReconcile` читает комнату, только если пользователь
@@ -121,6 +125,7 @@ async fn read_room(ctx: &mut RouteCtx) -> ApiResult {
         access_denied_before_reconcile(&accounts, Some(&checked_user), &checked_code, move |_| prefetched.unwrap_or(Ok(fallback)))
     })
     .await?;
+    drop(pre_span);
     if denied {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "Нет доступа к этой комнате"));
     }
@@ -128,11 +133,22 @@ async fn read_room(ctx: &mut RouteCtx) -> ApiResult {
         let code = code.clone();
         state.core.call(move |core| Box::pin(async move { projection::reconcile_campaign_projection(&core, &code) })).await??
     };
+    let access_span = sk_store::perf::span("rooms.access");
     let accounts = state.accounts.clone();
+    // Комната — одна на оба потока (Ск4): права читают её по ссылке, без копии
+    // состояния; после проверки она снова только у маршрута.
+    let reconciled = std::sync::Arc::new(reconciled);
     let (checked_user, checked_code, checked_room) = (user.clone(), code.clone(), reconciled.clone());
     let (allowed, actor_id) = blocking(move || -> Result<(bool, String), Failure> {
-        let room = checked_room.unwrap_or_else(|| Room::empty(&checked_code));
-        if !can_access_room(&accounts, Some(&checked_user), &room)? {
+        let fallback;
+        let room = match checked_room.as_ref() {
+            Some(room) => room,
+            None => {
+                fallback = Room::empty(&checked_code);
+                &fallback
+            }
+        };
+        if !can_access_room(&accounts, Some(&checked_user), room)? {
             return Ok((false, String::new()));
         }
         let actor = match room.state.as_ref() {
@@ -142,13 +158,15 @@ async fn read_room(ctx: &mut RouteCtx) -> ApiResult {
         Ok((true, actor))
     })
     .await??;
+    drop(access_span);
     if !allowed {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "Нет доступа к этой комнате"));
     }
     // `persistAuthoritativeProjection` вернул `null`: в JS `room.state` у
     // `null` — `TypeError` мимо маршрута.
-    let room = reconciled.ok_or_else(|| ApiError::internal("TypeError: Cannot read properties of null (reading 'state')"))?;
-    let Some(room_state) = room.state.clone() else { return Ok(json(StatusCode::OK, &room.to_json())) };
+    let reconciled = std::sync::Arc::try_unwrap(reconciled).unwrap_or_else(|shared| (*shared).clone());
+    let mut room = reconciled.ok_or_else(|| ApiError::internal("TypeError: Cannot read properties of null (reading 'state')"))?;
+    let Some(room_state) = room.state.take() else { return Ok(json(StatusCode::OK, &room.to_json())) };
     // Поле недоверенное: лишь ключ поиска в кэше проекций. Неизвестный или
     // чужой хеш — «карты у клиента нет», карта уходит целиком.
     let client_map_hash = sk_core::text::head(&ctx.search_param("map_hash").unwrap_or_default(), 128);
@@ -157,18 +175,23 @@ async fn read_room(ctx: &mut RouteCtx) -> ApiResult {
         .call(move |core| {
             Box::pin(async move {
                 let normalize_span = sk_store::perf::span("rooms.normalize");
-                let normalized = normalize(&room_state)?;
+                let normalized = sk_rules::normalize::normalize_campaign_state_owned(room_state)?;
                 drop(normalize_span);
+                let presence_span = sk_store::perf::span("rooms.presence");
                 let present = crate::streams::normalized_state_with_live_presence(&core, &normalized, &code)?;
+                drop(presence_span);
                 let viewer_span = sk_store::perf::span("rooms.viewer_state_for");
                 let projected = viewer_state_for(&present, &user, Some(&Value::String(actor_id)))?.unwrap_or(Value::Null);
                 drop(viewer_span);
-                let _compact = sk_store::perf::span("rooms.compact");
+                let compact_span = sk_store::perf::span("rooms.compact");
                 let (compacted, _hash) = sk_tactical::reveal_transport::compact_state_for_transport(&projected, &client_map_hash);
+                drop(compact_span);
+                let _body = sk_store::perf::span("rooms.body");
                 Ok::<Value, Failure>(room_with_state(&room, compacted.unwrap_or(projected)))
             })
         })
         .await??;
+    let _serialize = sk_store::perf::span("rooms.serialize");
     Ok(json(StatusCode::OK, &body))
 }
 

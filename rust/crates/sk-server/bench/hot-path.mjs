@@ -44,6 +44,10 @@ const dumpState = flag('dump-state', '')
 // (2026-10-25) так свелось к сборке встречи: другая обстановка первой сцены
 // (#184 не перенесён), другие занятые клетки — другая точка появления крысы.
 const dumpJournal = flag('dump-journal', '')
+// `--dump-rooms <файл>`: тела ответов GET /api/rooms по порядку (исследование,
+// после рассказа, в бою) — сверка «ответ байт в байт» между сборками (Ск4).
+const dumpRooms = flag('dump-rooms', '')
+const roomBodies = []
 const CAMPAIGN = 'HOT-PATH'
 
 const cleanups = []
@@ -97,6 +101,7 @@ async function main() {
     })
     const text = await response.text()
     const elapsed = performance.now() - started
+    if (dumpRooms && method === 'GET' && path.startsWith('/api/rooms/')) roomBodies.push(text)
     if (label) record(response.status < 300 ? label : `${label} [${response.status}]`, elapsed)
     if (trace) {
       await new Promise((resolveWait) => setTimeout(resolveWait, 15))
@@ -215,6 +220,7 @@ async function main() {
       before: commit.state_version_before, after: commit.state_version_after,
       events: commit.events.map((event) => event.event_type ?? event.type), payloads: commit.events })), null, 1))
   }
+  if (dumpRooms) writeFileSync(dumpRooms, roomBodies.join('\n'))
   const report = {
     impl, iterations, prefill, viewers, prefill_ms: Math.round(prefillMs), combat_rounds: combatRounds,
     final_state_version: finalRoom.state.state_version, room_messages: finalRoom.state.messages?.length ?? 0,

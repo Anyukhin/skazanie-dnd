@@ -307,6 +307,14 @@ fn consumed(events: &[Value], interaction_id: Option<&Value>) -> bool {
         .any(|event| is_str(event.get("event_type"), "PartyDecisionConsumed") && get(event.get("payload"), "interaction_id") == interaction_id)
 }
 
+/// Ждёт ли состояние исполнения решённого голосования по заданию — условие,
+/// при котором [`finish_quest_decision`] исполняет команду (без него — `None`).
+pub fn quest_decision_pending(state: Option<&Value>) -> bool {
+    let interaction = state.and_then(|state| state.get("agentInteraction"));
+    let marked = js::truthy(get(interaction, "questAbandonment")) || js::truthy(get(interaction, "questAcceptance"));
+    marked && is_str(get(interaction, "status"), "resolved") && state.is_some_and(|state| is_str(get(get(state.get("mechanics"), "campaign_lifecycle"), "status"), "active"))
+}
+
 /// Исполнение решённого голосования (`finishQuestDecision`): сохранённое
 /// решение само служит возобновляемой работой после сбоя. `state` — уже
 /// загруженная голова; без неё журнал читается заново. `resolve_plan` —
@@ -320,11 +328,10 @@ pub fn finish_quest_decision(executor: &AuthoritativeExecutor<'_>, campaign_id: 
             &loaded
         }
     };
-    let interaction = current.get("agentInteraction");
-    let marked = js::truthy(get(interaction, "questAbandonment")) || js::truthy(get(interaction, "questAcceptance"));
-    if !marked || !is_str(get(interaction, "status"), "resolved") || !is_str(get(get(current.get("mechanics"), "campaign_lifecycle"), "status"), "active") {
+    if !quest_decision_pending(Some(current)) {
         return Ok(None);
     }
+    let interaction = current.get("agentInteraction");
     let interaction_id = get(interaction, "id");
     let key = format!("quest-decision:{}", js::string(interaction_id));
     let mut command = Map::new();

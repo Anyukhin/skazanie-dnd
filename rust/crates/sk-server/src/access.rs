@@ -240,8 +240,13 @@ pub fn campaign_voter_count(accounts: &Accounts, campaign_id: &str, state: &Valu
 /// прогнозом удара (закрытая КД не раскрывается процентом попадания) и
 /// сводкой удара надетым оружием своего героя (#188).
 pub fn viewer_state_for(state: &Value, user: &Value, actor_id: Option<&Value>) -> Result<Option<Value>, Failure> {
+    let span = sk_store::perf::span("viewer.projection");
     let projected = sk_projection::viewer_projection::campaign_state_for_viewer(Some(state), Some(user), actor_id)?;
+    drop(span);
+    let span = sk_store::perf::span("viewer.forecast");
     let forecast = sk_tactics::combat_forecast_view::with_combat_forecast(projected.as_ref(), Some(state), actor_id)?;
+    drop(span);
+    let _span = sk_store::perf::span("viewer.weapon");
     Ok(sk_tactics::weapon_attack_view::with_weapon_attack_summaries(forecast.as_ref(), Some(state), actor_id))
 }
 
