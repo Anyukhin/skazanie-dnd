@@ -553,8 +553,18 @@ impl Accounts {
     }
 
     /// `redeemCampaignInvite(...)`: членство и признак повтора.
-    pub fn redeem_campaign_invite(&self, campaign_id: &str, token: &str, user_id: &str, unavailable_hero_ids: &[String]) -> AccountResult<(Value, bool)> {
+    /// `party_hero_ids` — герои отряда: ссылка на героя вне его отказывает
+    /// (`INVITE_HERO_NOT_IN_PARTY`) до записи членства; `None` — без сверки.
+    pub fn redeem_campaign_invite(&self, campaign_id: &str, token: &str, user_id: &str, unavailable_hero_ids: &[String], party_hero_ids: Option<&[String]>) -> AccountResult<(Value, bool)> {
         let normalized = normalize_campaign_id(campaign_id)?;
+        let assert_in_party = |hero_ids: &[String]| -> AccountResult<()> {
+            match party_hero_ids {
+                Some(party) if hero_ids.iter().any(|hero| !party.contains(hero)) => {
+                    Err(AccountError { message: "Приглашение ссылается на героя, которого нет в кампании".into(), code: Some("INVITE_HERO_NOT_IN_PARTY") })
+                }
+                _ => Ok(()),
+            }
+        };
         let conn = self.lock();
         let body: Option<String> = conn
             .query_row("SELECT body FROM invites WHERE campaign_id = ?1 AND token_hash = ?2 ORDER BY seq LIMIT 1", params![normalized, token_hash(token)], |row| row.get(0))
@@ -590,6 +600,7 @@ impl Accounts {
             let Some(hero_id) = invite_heroes.iter().find(|candidate| !assigned.contains(candidate) && !taken.contains(candidate)).cloned() else {
                 return Err(AccountError { message: "В кампании не осталось свободных героев".into(), code: Some("CAMPAIGN_FULL") });
             };
+            assert_in_party(std::slice::from_ref(&hero_id))?;
             let membership = json!({ "campaignId": normalized, "userId": user_id, "role": invite.get("role").cloned().unwrap_or(Value::Null), "heroIds": [hero_id], "status": "active", "joinedAt": now });
             Self::save_membership(&conn, &membership)?;
             let mut redemptions = invite.get("redemptions").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -615,6 +626,7 @@ impl Accounts {
         if invite_heroes.iter().any(|hero| assigned.contains(hero)) {
             return Err(AccountError::new("Герой из приглашения уже назначен другому игроку"));
         }
+        assert_in_party(&normalize_hero_ids(&invite_heroes))?;
         let membership = json!({ "campaignId": normalized, "userId": user_id, "role": invite.get("role").cloned().unwrap_or(Value::Null), "heroIds": normalize_hero_ids(&invite_heroes), "status": "active", "joinedAt": now });
         Self::save_membership(&conn, &membership)?;
         invite["usedAt"] = Value::from(now);

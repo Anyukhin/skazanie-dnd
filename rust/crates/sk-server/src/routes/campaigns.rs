@@ -39,13 +39,13 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     vec![
-        Route::get(4445, Matcher::path("/api/campaigns"), list_campaigns),
-        Route::get(4473, Matcher::path("/api/heroes"), list_heroes),
-        Route::post(4485, Matcher::path("/api/campaigns"), create_campaign),
+        Route::get(4458, Matcher::path("/api/campaigns"), list_campaigns),
+        Route::get(4486, Matcher::path("/api/heroes"), list_heroes),
+        Route::post(4498, Matcher::path("/api/campaigns"), create_campaign),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/invites$/` и `POST`.
-        Route::post(4807, Matcher::path_template("/api/campaigns/{id}/invites"), create_invite),
+        Route::post(4835, Matcher::path_template("/api/campaigns/{id}/invites"), create_invite),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/join$/` и `POST`.
-        Route::post(4848, Matcher::path_template("/api/campaigns/{id}/join"), join_campaign),
+        Route::post(4876, Matcher::path_template("/api/campaigns/{id}/join"), join_campaign),
     ]
 }
 
@@ -472,7 +472,16 @@ async fn create_body(ctx: &mut RouteCtx, creator: &Value) -> Result<axum::respon
         .core
         .call(move |core| {
             Box::pin(async move {
-                let (initialized, _) = core.events.initialize_campaign(request).map_err(Failure::from)?;
+                // Параллельный запрос с тем же кодом успел создать журнал раньше
+                // (тем же или своим состоянием): он и владелец, этому — отказ,
+                // как после создания.
+                let (initialized, fresh) = match core.events.initialize_campaign(request) {
+                    Err(error) if error.code == "CAMPAIGN_ALREADY_INITIALIZED" => return Ok(None),
+                    result => result.map_err(Failure::from)?,
+                };
+                if !fresh {
+                    return Ok(None);
+                }
                 let mut room_state = initialized.state;
                 if let Some(map) = room_state.as_object_mut() {
                     let messages = map.get("messages").filter(|value| value.is_array()).cloned().unwrap_or_else(|| json!([]));
@@ -480,10 +489,13 @@ async fn create_body(ctx: &mut RouteCtx, creator: &Value) -> Result<axum::respon
                     map.insert("engine_mode".into(), Value::from("enforce"));
                     map.insert("state_projector_version".into(), Value::from(sk_rules::constants::GAME_STATE_PROJECTOR_VERSION));
                 }
-                room::save_room(&core, &room_code, &room_state, 0).map(|saved| saved.room)
+                room::save_room(&core, &room_code, &room_state, 0).map(|saved| Some(saved.room))
             })
         })
         .await??;
+    let Some(room) = room else {
+        return Err(ApiError::new(StatusCode::CONFLICT, "Кампания с таким кодом уже существует").into());
+    };
     // Первое место — создателя (4594–4606): обычный игрок всегда, а
     // администратор — когда мастер создания оставил места пустыми.
     let owner_hero_ids: Vec<Value> = array(state.get("partyMemberIds")).iter().take(1).cloned().collect();
@@ -588,10 +600,11 @@ async fn join_body(ctx: &mut RouteCtx, user: &Value) -> Result<axum::response::R
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Для входа нужна действующая ссылка-приглашение").into());
     }
     let created = created_hero_ids(&state);
+    let party: IndexSet<String> = party_ids(&state).into_iter().collect();
+    let party_list: Vec<String> = party.iter().cloned().collect();
     let accounts = ctx.state.accounts.clone();
     let (user_id, campaign) = (js::s(user.get("id")), campaign_id.clone());
-    let (membership, duplicate) = blocking(move || accounts.redeem_campaign_invite(&campaign, &token, &user_id, &created)).await??;
-    let party: IndexSet<String> = party_ids(&state).into_iter().collect();
+    let (membership, duplicate) = blocking(move || accounts.redeem_campaign_invite(&campaign, &token, &user_id, &created, Some(&party_list))).await??;
     let hero_ids = membership.get("heroIds").cloned().unwrap_or(Value::Null);
     if array(Some(&hero_ids)).iter().any(|id| !party.contains(&js::string(Some(id)))) {
         return Err(ApiError::new(StatusCode::CONFLICT, "Приглашение ссылается на героя, которого нет в кампании").into());
@@ -606,13 +619,13 @@ async fn join_body(ctx: &mut RouteCtx, user: &Value) -> Result<axum::response::R
 }
 
 /// `POST /api/campaigns/:id/join` (4847–4869): вход по приглашению;
-/// `CAMPAIGN_FULL` — 409, прочее исключение — 400 `{ error }`.
+/// `CAMPAIGN_FULL` и герой вне отряда — 409, прочее исключение — 400 `{ error }`.
 fn join_campaign(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     Box::pin(async move {
         let user = require_user(ctx).await?;
         let outcome = join_body(ctx, &user).await;
         settle(outcome, |failure| {
-            let status = if failure.code.as_deref() == Some("CAMPAIGN_FULL") { StatusCode::CONFLICT } else { StatusCode::BAD_REQUEST };
+            let status = if matches!(failure.code.as_deref(), Some("CAMPAIGN_FULL" | "INVITE_HERO_NOT_IN_PARTY")) { StatusCode::CONFLICT } else { StatusCode::BAD_REQUEST };
             ApiError::new(status, failure.message)
         })
     })

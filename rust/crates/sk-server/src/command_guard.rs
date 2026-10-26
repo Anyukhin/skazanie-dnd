@@ -166,27 +166,11 @@ pub fn policy_error(message: impl Into<String>, code: &str) -> Failure {
     Failure::new(message, Some(code))
 }
 
-/// `TypeError` V8 на `null.key` (элемент `null` в списке состояния).
-fn null_read(key: &str) -> Failure {
-    Failure::new(format!("Cannot read properties of null (reading '{key}')"), None)
-}
 
-/// `String(candidate.id)` без `?.`: `null` в списке — `TypeError`.
-fn strict_id(candidate: &Value) -> GuardResult<String> {
-    if candidate.is_null() {
-        return Err(null_read("id"));
-    }
-    Ok(js::string(get(Some(candidate), "id")))
-}
-
-/// `(state.players ?? []).some((candidate) => String(candidate.id) === actor)`.
+/// `(state.players ?? []).some((candidate) => candidate != null && String(candidate.id) === actor)`:
+/// `null` в списке героев пропускается.
 fn party_has(state: &Value, actor: &str) -> GuardResult<bool> {
-    for candidate in list(get(Some(state), "players")) {
-        if strict_id(candidate)? == actor {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+    Ok(list(get(Some(state), "players")).iter().any(|candidate| !candidate.is_null() && js::string(get(Some(candidate), "id")) == actor))
 }
 
 /// `commandType(command)` (643–645).
@@ -460,13 +444,13 @@ pub fn sanitize_player_npc_combat_command(caller: &Caller<'_>, state: &Value, in
 }
 
 /// `combatActorFor(state, actorIdValue)` (1248–1251): герой или актёр
-/// кампании; `null` в списке — `TypeError`, как в JS.
+/// кампании; `null` в списке пропускается.
 pub fn combat_actor_for<'s>(state: &'s Value, actor_id: Option<&Value>) -> GuardResult<Option<&'s Value>> {
     let wanted = js::s(actor_id);
     let source = Some(state);
     for candidate in list(get(source, "players")).iter().chain(list(get(source, "actors"))) {
         if candidate.is_null() {
-            return Err(null_read("id"));
+            continue;
         }
         if js::string(nn(get(Some(candidate), "id"), get(Some(candidate), "actor_id"))) == wanted {
             return Ok(Some(candidate));
@@ -541,13 +525,9 @@ pub fn sanitize_player_combat_command(caller: &Caller<'_>, state: &Value, input:
         "MoveActor" => put(&mut command, "to", raw_point(get(source, "to"))),
         "MakeAttack" => {
             let target = js::s(nn(get(source, "target_id"), get(source, "targetId")));
-            let mut enemy = false;
-            for candidate in list(get(Some(state), "enemies")) {
-                if strict_id(candidate)? == target {
-                    enemy = true;
-                    break;
-                }
-            }
+            // `candidate?.id != null && String(candidate.id) === target`: ни
+            // `null` в списке, ни враг без `id` целью «undefined» не станут.
+            let enemy = list(get(Some(state), "enemies")).iter().any(|candidate| js::present(get(Some(candidate), "id")) && js::string(get(Some(candidate), "id")) == target);
             let scene_npc = !enemy && list(get(get(Some(state), "social"), "npcs")).iter().any(|candidate| js::s(get(Some(candidate), "id")) == target);
             if !skip_attack_target_policy && !enemy && !scene_npc {
                 return Err(policy_error("Цель атаки не найдена", "INVALID_ATTACK_TARGET"));
@@ -1206,7 +1186,7 @@ pub fn sanitize_player_item_command(caller: &Caller<'_>, state: &Value, input: &
     }
     let allowed = allowed_with(&[
         "item_id", "itemId", "target_id", "targetId", "recipient_id", "recipientId", "quantity", "equipped", "attuned", "activated", "charges_to_spend", "chargesToSpend", "to", "use_mode", "useMode", "weapon_id",
-        "weaponId",
+        "weaponId", "equip_slot",
     ]);
     reject_unexpected(input, &allowed, "Команда предмета содержит запрещённые поля", "ITEM_COMMAND_UNKNOWN_FIELD")?;
     let actor = actor_of(input);
@@ -1307,7 +1287,9 @@ pub fn sanitize_merchant_command(caller: &Caller<'_>, state: &Value, input: &Val
     if merchant_id.is_empty() {
         return Err(policy_error("Не указан торговец", "MERCHANT_NOT_FOUND"));
     }
-    let expected = js::number(nn(get(source, "expected_state_version"), get(source, "expectedStateVersion")));
+    // Явный `null` — «котировок нет», а не версия 0 (`Number(null)`).
+    let expected_input = nn(get(source, "expected_state_version"), get(source, "expectedStateVersion"));
+    let expected = if matches!(expected_input, Some(Value::Null)) { f64::NAN } else { js::number(expected_input) };
     if !(expected.is_finite() && expected.fract() == 0.0 && expected.abs() <= 9_007_199_254_740_991.0) || expected < 0.0 {
         return Err(policy_error("Перед сделкой нужно получить актуальные котировки", "EXPECTED_STATE_VERSION_REQUIRED"));
     }

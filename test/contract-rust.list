@@ -185,3 +185,7 @@ test/legendary-action-http.test.mjs            # UseLegendaryAction не при�
 # JS-процесса. Стенд горячего пути расходился 310 против 271 события из-за неперенесённого #184;
 # зелёный против Rust после слияния rs/port-main.
 test/first-scene-map-parity-api.test.mjs # 12 мест: поселение, дом с двором, граф храма и склепа, лес, пещера, авторские миры
+# Исправления HTTP-маршрутов (2026-10-26, docs/rust-port-js-findings.md): чужой ключ /lifecycle — 409,
+# левая рука в EquipItem, версия торговца null, кость комнаты строчными, гонка создания кампании,
+# домашние правила «всё или ничего» с 409 на чужое значение ключа.
+test/http-route-fixes-api.test.mjs     # lifecycle/settings: конфликт ключа; /commands и dice; два POST /api/campaigns

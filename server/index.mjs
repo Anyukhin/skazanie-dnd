@@ -155,7 +155,7 @@ import { withCombatForecast } from './combat-forecast-view.mjs'
 import { withWeaponAttackSummaries } from './weapon-attack-view.mjs'
 import { compactStateForTransport } from './reveal-transport.mjs'
 import { isPartySummon } from './combat-spells.mjs'
-import { assertCampaignPlayable, lifecycleEventForAction } from './campaign-lifecycle.mjs'
+import { assertCampaignPlayable, lifecycleActionForCommit, lifecycleEventForAction } from './campaign-lifecycle.mjs'
 import { campaignRewindEvent, planCampaignControl } from './campaign-controls.mjs'
 import {
   assertDirectorTransitionResult,
@@ -271,6 +271,8 @@ const locationIllustrationService = new LocationIllustrationService({
 const campaignStreams = new Map()
 const campaignTyping = new Map()
 const campaignWorldClockJobs = new Map()
+// Каталог создания героя в `/api/health` — статичные данные (~130 КБ): строится один раз.
+let healthCharacterCreationCatalog = null
 /** Сколько коммитов часов молвы допустимо в одном заходе драйвера. */
 const WORLD_RUMOR_BURST_LIMIT = 4
 const TYPING_TTL_MS = 4_000
@@ -460,7 +462,7 @@ const combatTurnCoordinator = new CombatTurnCoordinator({
     } : null)
   },
   onClockChanged: (campaignId) => {
-    broadcastCampaignRoom(campaignId)
+    broadcastCampaignRoomSafely(campaignId)
   },
   onError: (error, campaignId) => {
     console.error(`[Сказание] Не удалось автоматически продолжить бой ${campaignId}:`, error?.message || error)
@@ -1248,7 +1250,7 @@ function assertMerchantResultFingerprint(result, command) {
 
 function combatActorFor(state, actorIdValue) {
   return [...(state.players ?? []), ...(state.actors ?? [])]
-    .find((candidate) => String(candidate.id ?? candidate.actor_id) === String(actorIdValue ?? '')) ?? null
+    .find((candidate) => candidate != null && String(candidate.id ?? candidate.actor_id) === String(actorIdValue ?? '')) ?? null
 }
 
 function assertPlayerCombatActorPermission(user, state, input) {
@@ -1273,7 +1275,7 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
   if (type === 'MoveActor') return { ...base, to: { x: input?.to?.x, y: input?.to?.y } }
   if (type === 'MakeAttack') {
     const target = String(input?.target_id ?? input?.targetId ?? '')
-    const enemy = (state.enemies ?? []).find((candidate) => String(candidate.id) === target)
+    const enemy = (state.enemies ?? []).find((candidate) => candidate?.id != null && String(candidate.id) === target)
     // Нейтральный NPC сцены — тоже цель: удар по нему из исследования движок
     // разворачивает в `AttackNpc` (`resolveOpeningStrike`) и сам проверяет
     // видимость, присутствие и боевой лист. Здесь — только что такой NPC есть.
@@ -1426,7 +1428,7 @@ function sanitizePlayerRestCommand(user, state, input) {
   if (!actor || !canUseHero(user, actor, state.sessionCode)) {
     throw commandPolicyError('Отдыхать можно только от имени своего героя', 'ACTOR_FORBIDDEN')
   }
-  if (!(state.players ?? []).some((candidate) => String(candidate.id) === actor)) {
+  if (!(state.players ?? []).some((candidate) => candidate != null && String(candidate.id) === actor)) {
     throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
   }
   const expected = input?.expected_state_version ?? input?.expectedStateVersion
@@ -1475,7 +1477,7 @@ function sanitizePlayerCharacterCommand(user, state, input) {
   if (!actor || !canUseHero(user, actor, state.sessionCode)) {
     throw commandPolicyError('Изменять развитие можно только у своего героя', 'ACTOR_FORBIDDEN')
   }
-  if (!(state.players ?? []).some((candidate) => String(candidate.id) === actor)) {
+  if (!(state.players ?? []).some((candidate) => candidate != null && String(candidate.id) === actor)) {
     throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
   }
   const expected = input?.expected_state_version ?? input?.expectedStateVersion
@@ -1967,7 +1969,7 @@ function sanitizePlayerItemCommand(user, state, input) {
     'quantity', 'equipped', 'attuned', 'activated',
     'expected_state_version', 'expectedStateVersion',
     'charges_to_spend', 'chargesToSpend',
-    'to', 'use_mode', 'useMode', 'weapon_id', 'weaponId',
+    'to', 'use_mode', 'useMode', 'weapon_id', 'weaponId', 'equip_slot',
   ])
   const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
   if (unexpected.length) {
@@ -1977,7 +1979,7 @@ function sanitizePlayerItemCommand(user, state, input) {
   if (!actor || !canUseHero(user, actor, state.sessionCode)) {
     throw commandPolicyError('Действовать с предметами можно только от имени своего героя', 'ACTOR_FORBIDDEN')
   }
-  const owner = (state.players ?? []).find((candidate) => String(candidate.id) === actor)
+  const owner = (state.players ?? []).find((candidate) => candidate != null && String(candidate.id) === actor)
   if (!owner) throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
   const itemId = String(input?.item_id ?? input?.itemId ?? '').trim().slice(0, 120)
   if (!itemId) throw commandPolicyError('Предмет не найден у героя', 'ITEM_NOT_FOUND')
@@ -2039,10 +2041,12 @@ function sanitizeMerchantCommand(user, state, input, routeMerchantId = null) {
   if (!PLAYER_MERCHANT_COMMANDS.has(type)) throw commandPolicyError('Для торговца доступна только оценка, покупка, продажа или попытка договориться о цене', 'PLAYER_COMMAND_FORBIDDEN')
   const actor = String(input?.actor_id ?? input?.actorId ?? '')
   if (!actor || !canUseHero(user, actor, state.sessionCode)) throw commandPolicyError('Торговать можно только от имени своего героя', 'ACTOR_FORBIDDEN')
-  if (!(state.players ?? []).some((candidate) => String(candidate.id) === actor)) throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
+  if (!(state.players ?? []).some((candidate) => candidate != null && String(candidate.id) === actor)) throw commandPolicyError('Герой не найден в кампании', 'ACTOR_FORBIDDEN')
   const merchantId = String(routeMerchantId ?? input?.merchant_id ?? input?.merchantId ?? '').slice(0, 120)
   if (!merchantId) throw commandPolicyError('Не указан торговец', 'MERCHANT_NOT_FOUND')
-  const expected = Number(input?.expected_state_version ?? input?.expectedStateVersion)
+  // `Number(null)` — 0: явный `null` значит «котировок нет», а не версию 0.
+  const expectedInput = input?.expected_state_version ?? input?.expectedStateVersion
+  const expected = expectedInput === null ? Number.NaN : Number(expectedInput)
   if (!Number.isSafeInteger(expected) || expected < 0) throw commandPolicyError('Перед сделкой нужно получить актуальные котировки', 'EXPECTED_STATE_VERSION_REQUIRED')
   const base = {
     command_type: type,
@@ -2359,10 +2363,19 @@ function explicitNarrationNpcId(state, user, playerId, rawNpcId) {
   return npcId
 }
 
-function streamConnections(campaignId) {
+// Запись в реестре заводит только подключение потока (`create`): чтение
+// присутствия кампании без потоков получает пустой набор и реестр не растит.
+function streamConnections(campaignId, { create = false } = {}) {
   const normalized = String(campaignId || '').toUpperCase()
-  if (!campaignStreams.has(normalized)) campaignStreams.set(normalized, new Map())
-  return campaignStreams.get(normalized)
+  if (create && !campaignStreams.has(normalized)) campaignStreams.set(normalized, new Map())
+  return campaignStreams.get(normalized) ?? new Map()
+}
+
+// Рассылка из микрозадачи и таймера: брошенная там ошибка — необработанное
+// исключение процесса, а не отказ одного запроса.
+function broadcastCampaignRoomSafely(campaignId, suppliedRoom = null) {
+  try { broadcastCampaignRoom(campaignId, suppliedRoom) }
+  catch (error) { console.error(`[Сказание] Не удалось разослать комнату ${campaignId}:`, error?.message || error) }
 }
 
 /**
@@ -2829,7 +2842,7 @@ function nudgeWorldClocks(campaignId) {
 
 onRoomSaved((campaignId, room) => {
   queueMicrotask(() => {
-    broadcastCampaignRoom(campaignId, room)
+    broadcastCampaignRoomSafely(campaignId, room)
     combatTurnCoordinator.nudge(campaignId)
     nudgeWorldClocks(campaignId)
   })
@@ -3949,7 +3962,7 @@ async function handleHttpRequest(req, res) {
     rulesetId: rulePack.manifest.ruleset_id,
     ruleCount: rulePack.rules.length,
     installedRulesets: installedRulesetProfiles,
-    characterCreation: characterCreationCatalog(LEGACY_DEFAULT_RULESET_ID),
+    characterCreation: (healthCharacterCreationCatalog ??= characterCreationCatalog(LEGACY_DEFAULT_RULESET_ID)),
     tools: [],
   })
   if (req.url === '/api/admin/usage' && req.method === 'GET') {
@@ -4243,7 +4256,7 @@ async function handleHttpRequest(req, res) {
         if (!res.destroyed) res.destroy()
       },
     })
-    streamConnections(campaignId).set(connectionId, connection)
+    streamConnections(campaignId, { create: true }).set(connectionId, connection)
     const drain = () => connection.outbox.drain()
     res.on('drain', drain)
     const heartbeat = setInterval(() => {
@@ -4269,7 +4282,7 @@ async function handleHttpRequest(req, res) {
       queueMicrotask(() => {
         void reconcilePartyDecisionPresence(campaignId)
           .catch((error) => console.error('[Сказание] Не удалось зафиксировать отключение участника:', error?.message || error))
-          .finally(() => broadcastCampaignRoom(campaignId))
+          .finally(() => broadcastCampaignRoomSafely(campaignId))
       })
     }
     connection.close = close
@@ -4567,7 +4580,10 @@ async function handleHttpRequest(req, res) {
         ruleset_version: state.ruleset_version,
         enabled_rule_packs: state.enabled_rule_packs,
         enabled_house_rules: state.enabled_house_rules,
-      })
+      }).catch((error) => (error?.code === 'CAMPAIGN_ALREADY_INITIALIZED' ? { initialized: false } : Promise.reject(error)))
+      // Параллельный запрос с тем же кодом успел создать журнал раньше (тем же или своим
+      // состоянием): он и владелец, второму — отказ, как после создания.
+      if (initialized.initialized === false) return json(res, 409, { error: 'Кампания с таким кодом уже существует' })
       // Журнал принадлежит комнате, а не движку: импорт состояния без него
       // ронял клиент на первом же рендере («messages is not iterable»).
       const room = saveRoom(code, {
@@ -4698,6 +4714,23 @@ async function handleHttpRequest(req, res) {
       if (!reasoningLevelAllowedFor(requestedModel, requestedReasoning)) {
         return json(res, 400, { error: 'Выбранная модель не поддерживает этот уровень рассуждений', code: 'REASONING_LEVEL_NOT_SUPPORTED' })
       }
+      // Домашние правила идущей кампании: `{ houseRules: { [id]: true|false } }`.
+      // Весь набор проверяется до первой записи — и редакции, и правил: отказ
+      // по любому из них не оставляет за собой частично сохранённых настроек.
+      const requestedHouseRules = body.houseRules && typeof body.houseRules === 'object' && !Array.isArray(body.houseRules)
+        ? Object.entries(body.houseRules)
+        : []
+      const houseRuleKey = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').trim()
+      for (const [houseRuleId, enabled] of requestedHouseRules) {
+        campaignHouseRuleChangeEvent(houseRuleId, enabled, { ...loaded.state, enabled_house_rules: [] }, { actorId: user.id })
+        if (!houseRuleKey) throw new CampaignRulesetError('Для смены домашнего правила нужен idempotency_key', 'IDEMPOTENCY_KEY_REQUIRED')
+        // Повтор ключа правила — только с тем же значением.
+        const repeated = await eventStore.getByIdempotencyKey(campaignId, `${houseRuleKey}:house-rule:${houseRuleId}`)
+        const repeatedEvent = repeated?.events?.find((event) => event.event_type === 'CampaignHouseRuleChanged')
+        if (repeated && (repeatedEvent?.payload?.house_rule_id !== String(houseRuleId) || repeatedEvent?.payload?.enabled !== enabled)) {
+          throw new CampaignRulesetError('Этот idempotency_key уже использован для другого значения домашнего правила', 'IDEMPOTENCY_CONFLICT')
+        }
+      }
       let rulesetState = loaded.state
       const requestedRulesetId = body.rulesetId === undefined && body.ruleset_id === undefined
         ? String(loaded.state.ruleset_id)
@@ -4730,21 +4763,14 @@ async function handleHttpRequest(req, res) {
         rulesetState = latest.state
         persistAuthoritativeProjection(campaignId, latest.state, committed?.replayed ? [] : (committed?.events ?? []))
       }
-      // Домашние правила идущей кампании: `{ houseRules: { [id]: true|false } }`.
-      // Это механика, а не настройка ИИ, поэтому она живёт в журнале событий —
-      // тем же производным путём, что и смена редакции, — и попадает в
-      // `enabled_house_rules` состояния. Какие правила вообще можно
+      // Домашнее правило — механика, а не настройка ИИ, поэтому оно живёт в
+      // журнале событий — тем же производным путём, что и смена редакции, — и
+      // попадает в `enabled_house_rules` состояния. Какие правила вообще можно
       // переключать, решает `campaignHouseRuleChangeEvent`.
-      const requestedHouseRules = body.houseRules && typeof body.houseRules === 'object' && !Array.isArray(body.houseRules)
-        ? Object.entries(body.houseRules)
-        : []
       for (const [houseRuleId, enabled] of requestedHouseRules) {
-        campaignHouseRuleChangeEvent(houseRuleId, enabled, { ...rulesetState, enabled_house_rules: [] }, { actorId: user.id })
-        const idempotencyKey = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').trim()
-        if (!idempotencyKey) throw new CampaignRulesetError('Для смены домашнего правила нужен idempotency_key', 'IDEMPOTENCY_KEY_REQUIRED')
         const committed = await authoritativeExecutor.commitDerived({
           campaignId,
-          idempotencyKey: `${idempotencyKey}:house-rule:${houseRuleId}`,
+          idempotencyKey: `${houseRuleKey}:house-rule:${houseRuleId}`,
           deriveEvents: async (freshState) => {
             const event = campaignHouseRuleChangeEvent(houseRuleId, enabled, freshState, { actorId: user.id })
             return event ? [event] : []
@@ -4759,7 +4785,9 @@ async function handleHttpRequest(req, res) {
         if (!committed.replayed) {
           const rule = campaignRulesetSettings(latest.state).houseRules.find((entry) => entry.id === houseRuleId)
           appendRoomJournal(campaignId, [{
-            id: `house-rule-${campaignId}-${Date.now()}`,
+            // Версия события уникальна в журнале: два правила одного запроса
+            // в одну миллисекунду больше не делят id строки летописи.
+            id: `house-rule-${campaignId}-${committed.events?.[0]?.state_version_after ?? Date.now()}`,
             speaker: 'system',
             author: 'Настройки кампании',
             text: `Домашнее правило «${rule?.label ?? houseRuleId}» ${enabled ? 'включено' : 'выключено'}.${rule?.description ? ` ${rule.description}.` : ''}`,
@@ -4855,15 +4883,15 @@ async function handleHttpRequest(req, res) {
       const token = String(body.invite_token ?? body.inviteToken ?? '')
       if (!token) return json(res, 400, { error: 'Для входа нужна действующая ссылка-приглашение' })
       const createdHeroIds = (room.state.players ?? []).filter((hero) => hero.characterSetupRequired === false).map((hero) => String(hero.id))
-      const redeemed = redeemCampaignInvite({ campaignId, token, userId: user.id, unavailableHeroIds: createdHeroIds })
       const partyIds = new Set((room.state.partyMemberIds?.length ? room.state.partyMemberIds : room.state.players.map((hero) => hero.id)).map(String))
+      const redeemed = redeemCampaignInvite({ campaignId, token, userId: user.id, unavailableHeroIds: createdHeroIds, partyHeroIds: [...partyIds] })
       if (redeemed.membership.heroIds.some((heroId) => !partyIds.has(String(heroId)))) {
         return json(res, 409, { error: 'Приглашение ссылается на героя, которого нет в кампании' })
       }
       const updated = userForToken(cookies(req).skazanie_session) ?? user
       return json(res, 200, { code: campaignId, hero_ids: redeemed.membership.heroIds, user: updated, duplicate: redeemed.duplicate })
     } catch (error) {
-      const status = error?.code === 'CAMPAIGN_FULL' ? 409 : 400
+      const status = ['CAMPAIGN_FULL', 'INVITE_HERO_NOT_IN_PARTY'].includes(error?.code) ? 409 : 400
       return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось присоединиться к кампании' })
     }
   }
@@ -4986,6 +5014,11 @@ async function handleHttpRequest(req, res) {
       const loaded = await eventStore.load(campaignId)
       const idempotencyKey = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? randomUUID())
       const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+      // Повтор ключа — только тот же переход: другое действие или коммит
+      // другого маршрута под этим ключом — конфликт, а не чужой результат.
+      if (duplicate && lifecycleActionForCommit(duplicate) !== String(body.action || '').toLowerCase()) {
+        throw Object.assign(new Error('Этот idempotency_key уже использован для другого действия кампании'), { code: 'IDEMPOTENCY_CONFLICT' })
+      }
       const lifecycleEvent = duplicate ? null : lifecycleEventForAction(body.action, loaded.state, {
         actorId: user.id,
         reason: body.reason,
@@ -5681,7 +5714,7 @@ async function handleHttpRequest(req, res) {
         commands = [...commands, { command_type: 'StartCombat', actor_id: lawCommands[0].actor_id, server_authoritative: true }]
       }
       const actor = String(commands[0]?.actor_id || room.state.activePlayerId || '')
-      const commandActor = [...(room.state.players ?? []), ...(room.state.actors ?? [])].find((candidate) => String(candidate.id ?? candidate.actor_id) === actor)
+      const commandActor = [...(room.state.players ?? []), ...(room.state.actors ?? [])].find((candidate) => candidate != null && String(candidate.id ?? candidate.actor_id) === actor)
       const controller = String(commandActor?.controllerId ?? commandActor?.controller_id ?? commandActor?.ownerId ?? commandActor?.owner_id ?? '')
       if (!historicallyAuthorizedAttackActors.has(actor)
         && !canUseHero(user, actor, commandMatch[1])
@@ -6011,17 +6044,19 @@ async function handleHttpRequest(req, res) {
   const roomDiceMatch = req.url?.match(/^\/api\/rooms\/([A-Za-z0-9-]+)\/dice$/)
   if (roomDiceMatch && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
+    // Код комнаты — в верхнем регистре: комнату `room-1` находит и `getRoom`, а журнал ведётся под `ROOM-1`.
+    const roomDiceCode = roomDiceMatch[1].toUpperCase()
     try {
       const body = await readBody(req)
       const playerId = String(body.playerId || '')
-      if (!canUseHero(user, playerId, roomDiceMatch[1])) return json(res, 403, { error: 'Бросок доступен только владельцу героя' })
+      if (!canUseHero(user, playerId, roomDiceCode)) return json(res, 403, { error: 'Бросок доступен только владельцу героя' })
       /* Набор костей закрыт и серверный: клиент выбирает из него, но подставить
          произвольную грань не может — общий бросок виден всем и должен быть
          обычной костью, а не выдумкой. */
       const sides = Number(body.sides ?? 20)
       if (!PUBLIC_DIE_SIDES.has(sides)) return json(res, 400, { error: 'Такой кости нет: доступны d4, d6, d8, d10, d12, d20 и d100' })
 
-      const current = getRoom(roomDiceMatch[1])
+      const current = getRoom(roomDiceCode)
       if (!current.state) return json(res, 409, { error: 'Комната ещё не готова — повторите бросок через секунду' })
       if (!canAccessRoom(user, current)) return json(res, 403, { error: 'Нет доступа к этой комнате' })
       assertCampaignPlayable(current.state)
@@ -6043,7 +6078,7 @@ async function handleHttpRequest(req, res) {
       // Единственный путь, у которого повтора не было вовсе: конфликт версии
       // просто терял внеигровой бросок. Теперь политика общая.
       const committed = await authoritativeExecutor.commitDerived({
-        campaignId: roomDiceMatch[1],
+        campaignId: roomDiceCode,
         idempotencyKey: `public-die:${roll.id}`,
         events: [{
           event_type: 'PublicDieRolled',
@@ -6056,7 +6091,7 @@ async function handleHttpRequest(req, res) {
         }],
         producerCapability: PUBLIC_DICE_CAPABILITY,
       })
-      const projected = persistAuthoritativeProjection(roomDiceMatch[1], committed.state, committed.events, null, { forceProjectorRefresh: true })
+      const projected = persistAuthoritativeProjection(roomDiceCode, committed.state, committed.events, null, { forceProjectorRefresh: true })
       if (!projected) return json(res, 409, { error: 'Не удалось обновить публичную проекцию броска' })
       return json(res, 200, {
         roll,

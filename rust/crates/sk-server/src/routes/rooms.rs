@@ -41,11 +41,11 @@ const ROOM_METHODS: &[Method] = &[Method::GET, Method::PUT];
 pub fn routes() -> Vec<Route> {
     vec![
         // `parsedUrl.pathname.match(/^\/api\/rooms\/([A-Za-z0-9-]+)$/)` (6010), GET 6069 и PUT 6083.
-        Route::new(6010, Methods::Set(ROOM_METHODS), Matcher::path_template("/api/rooms/{id}"), room_route),
+        Route::new(6043, Methods::Set(ROOM_METHODS), Matcher::path_template("/api/rooms/{id}"), room_route),
         // `req.url?.match(/^\/api\/rooms\/([A-Za-z0-9-]+)\/dice$/)` и `POST` (6011–6012).
-        Route::post(6011, Matcher::raw_template("/api/rooms/{id}/dice"), public_die),
+        Route::post(6044, Matcher::raw_template("/api/rooms/{id}/dice"), public_die),
         // `req.url === '/api/roll' && req.method === 'POST'` (6094).
-        Route::post(6094, Matcher::raw("/api/roll"), issue_roll),
+        Route::post(6129, Matcher::raw("/api/roll"), issue_roll),
     ]
 }
 
@@ -228,7 +228,8 @@ fn public_die(ctx: &mut RouteCtx) -> RouteFuture<'_> {
 
 async fn public_die_body(ctx: &mut RouteCtx, user: Value) -> Result<axum::response::Response, Caught> {
     let body = ctx.json_body().await?;
-    let code = ctx.param(0).to_string();
+    // Код комнаты — в верхнем регистре: журнал ведётся под `ROOM-1`, а не под `room-1`.
+    let code = ctx.param(0).to_uppercase();
     let state = ctx.state.clone();
     let player_id = string_or_empty(body.get("playerId"));
     let accounts = state.accounts.clone();

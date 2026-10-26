@@ -102,18 +102,38 @@ fn invites_hand_out_free_heroes_and_reject_reuse() {
     let (token, invite) = accounts.create_campaign_invite("RUN-1", &owner, &["hero-a".into(), "hero-b".into(), "hero-c".into()], None, true).expect("приглашение");
     assert_eq!(invite["expiresAt"], 10_000 + 7 * 24 * 60 * 60 * 1000);
 
-    let (membership, duplicate) = accounts.redeem_campaign_invite("RUN-1", &token, &guest, &["hero-b".into()]).expect("гость вошёл");
+    let (membership, duplicate) = accounts.redeem_campaign_invite("RUN-1", &token, &guest, &["hero-b".into()], None).expect("гость вошёл");
     assert!(!duplicate);
     assert_eq!(membership["heroIds"], json!(["hero-c"]), "многоместная ссылка пропускает занятых и уже созданных героев");
-    let (_, again) = accounts.redeem_campaign_invite("RUN-1", &token, &guest, &[]).expect("повтор");
+    let (_, again) = accounts.redeem_campaign_invite("RUN-1", &token, &guest, &[], None).expect("повтор");
     assert!(again);
-    let full = accounts.redeem_campaign_invite("RUN-1", &token, &third, &["hero-b".into()]).expect_err("мест нет");
+    let full = accounts.redeem_campaign_invite("RUN-1", &token, &third, &["hero-b".into()], None).expect_err("мест нет");
     assert_eq!(full.code, Some("CAMPAIGN_FULL"));
 
     let (single, _) = accounts.create_campaign_invite("RUN-1", &owner, &["hero-b".into()], Some(1), false).expect("одноразовое");
     now.store(10_000 + 60_001, Ordering::SeqCst);
-    assert_eq!(accounts.redeem_campaign_invite("RUN-1", &single, &third, &[]).expect_err("истекло").message, "Срок действия приглашения истёк");
-    assert_eq!(accounts.redeem_campaign_invite("RUN-1", "чужой", &third, &[]).expect_err("нет").message, "Приглашение недействительно");
+    assert_eq!(accounts.redeem_campaign_invite("RUN-1", &single, &third, &[], None).expect_err("истекло").message, "Срок действия приглашения истёк");
+    assert_eq!(accounts.redeem_campaign_invite("RUN-1", "чужой", &third, &[], None).expect_err("нет").message, "Приглашение недействительно");
     assert_eq!(accounts.list_campaign_memberships("run-1").expect("члены").len(), 2);
     assert!(accounts.campaign_membership_for(&guest, "RUN-1").expect("членство").is_some());
+}
+
+/// Ссылка на героя вне отряда отказывает до записи членства (`store-regression.test.mjs`).
+#[test]
+fn invite_to_hero_outside_party_is_refused_before_membership() {
+    let now = Arc::new(AtomicI64::new(10_000));
+    let accounts = accounts_at(now);
+    let owner = accounts.register_user("owner@mail.ru", "длинный-пароль", "").expect("владелец")["id"].as_str().expect("id").to_string();
+    let guest = accounts.register_user("guest@mail.ru", "длинный-пароль", "").expect("гость")["id"].as_str().expect("id").to_string();
+    accounts.upsert_campaign_membership("PARTY-A", &owner, "owner", &["hero-1".into()]).expect("владелец");
+    let party: Vec<String> = vec!["hero-1".into(), "hero-2".into()];
+    for multi_use in [false, true] {
+        let (token, _) = accounts.create_campaign_invite("PARTY-A", &owner, &["hero-gone".into()], None, multi_use).expect("приглашение");
+        let refused = accounts.redeem_campaign_invite("PARTY-A", &token, &guest, &[], Some(&party)).expect_err("герой вне отряда");
+        assert_eq!((refused.code, refused.message.as_str()), (Some("INVITE_HERO_NOT_IN_PARTY"), "Приглашение ссылается на героя, которого нет в кампании"));
+        assert!(accounts.campaign_membership_for(&guest, "PARTY-A").expect("членство").is_none(), "членство не записано");
+    }
+    let (valid, _) = accounts.create_campaign_invite("PARTY-A", &owner, &["hero-2".into()], None, false).expect("приглашение");
+    let (membership, _) = accounts.redeem_campaign_invite("PARTY-A", &valid, &guest, &[], Some(&party)).expect("вход");
+    assert_eq!(membership["heroIds"], json!(["hero-2"]));
 }

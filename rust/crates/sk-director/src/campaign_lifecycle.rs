@@ -415,6 +415,32 @@ fn transition_for(action: &str) -> Option<(&'static [&'static str], &'static str
 /// `lifecycleEventForAction(action, state, { actorId, reason, now })`: событие
 /// перехода или отказ с кодом JS. `options` `None` — аргумент не передан;
 /// `now` не задан — текущее время.
+/// `lifecycleActionForCommit(commit)`: действие жизненного цикла, которое
+/// записал коммит маршрута `/lifecycle` (по первому событию), — для сверки
+/// повтора ключа. Коммит чужого маршрута (`event_id` не `campaign-lifecycle:…`) — `None`.
+pub fn lifecycle_action_for_commit(events: &[Value]) -> Option<&'static str> {
+    let event = events.first()?;
+    if !js::s(event.get("event_id")).starts_with("campaign-lifecycle:") {
+        return None;
+    }
+    Some(match event.get("event_type").and_then(Value::as_str)? {
+        "CampaignArcChainSet" => {
+            if event.get("payload").and_then(|payload| payload.get("enabled")) == Some(&Value::Bool(true)) {
+                "chain_arcs"
+            } else {
+                "conclude_after_arc"
+            }
+        }
+        "CampaignActivated" => "activate",
+        "CampaignPaused" => "pause",
+        "CampaignResumed" => "resume",
+        "CampaignCompleted" => "complete",
+        "CampaignFailed" => "fail",
+        "CampaignArchived" => "archive",
+        _ => return None,
+    })
+}
+
 pub fn lifecycle_event_for_action(action: Option<&Value>, state: &Value, options: Option<&Value>) -> DirectorResult<Value> {
     if matches!(options, Some(Value::Null)) {
         return Err(DirectorError::type_error("Cannot destructure property 'actorId' of '(intermediate value)(intermediate value)(intermediate value)' as it is null."));
@@ -440,10 +466,8 @@ pub fn lifecycle_event_for_action(action: Option<&Value>, state: &Value, options
             "payload": { "enabled": normalized_action == "chain_arcs", "reason": reason_text, "changed_by": actor, "occurred_at": now },
         }));
     }
-    // `transitions[action]` у ключа прототипа — функция без `from`: TypeError.
-    if normalized_action == "constructor" || normalized_action == "__proto__" {
-        return Err(DirectorError::type_error("Cannot read properties of undefined (reading 'includes')"));
-    }
+    // Ключ прототипа (`constructor`, `__proto__`) — не переход: в JS только
+    // свои ключи `transitions` (`Object.hasOwn`).
     let Some((_, to, event)) = transition_for(&normalized_action).filter(|(from, ..)| from.contains(&status.as_str())) else {
         return Err(error("INVALID_CAMPAIGN_TRANSITION", format!("Переход lifecycle \"{status}\" → \"{normalized_action}\" запрещён")));
     };
