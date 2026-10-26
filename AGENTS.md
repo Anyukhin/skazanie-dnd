@@ -24,7 +24,11 @@
 - **Тесты — встроенный `node:test`, файлы `test/*.test.mjs`.** Jest, Vitest и
   Playwright в проекте нет; браузерный сценарий проверяется вручную.
 - Node `>=20.19.0`, пакетный менеджер **pnpm**.
-- Хранилище — файлы в `storage/` (переопределяется `DND_STORAGE_DIR`). Базы нет.
+- **`rust/` — перенос сервера на Rust** (Cargo workspace, бинарь
+  `skazanie-server`). До переключения эталон поведения — JS; правила работы с
+  Rust — `rust/AGENTS.md`.
+- Хранилище — `storage/` (переопределяется `DND_STORAGE_DIR`): у JS — файлы,
+  у Rust — SQLite в том же каталоге. Отдельного сервера БД нет.
 - Версии в `package.json` — `^X.Y.Z`, совпадающие с `pnpm-lock.yaml`; менять
   только вместе с локом. Новые зависимости разрешены (решение владельца
   2026-10-13); в Rust — фиксировать в `Cargo.lock`.
@@ -62,6 +66,9 @@ pnpm migrate:dry-run  # прогон миграций без записи
 pnpm backup           # зашифрованная копия storage в ./backups; нужен DND_BACKUP_KEY
                       # (без него копия не расшифровывается). Справка —
                       # node tools/storage-backup.mjs --help
+
+pnpm rust:play        # Rust-сервер для игры рядом с основным: :8788, tmp/rust-play/storage
+pnpm test:contract:rust  # контракт HTTP против Rust; остальное — rust/AGENTS.md
 ```
 
 `*:rights` пишут хеши в `data/asset-rights.json` — без них `content:verify`
@@ -90,7 +97,8 @@ pnpm backup           # зашифрованная копия storage в ./backu
 архитектура, покрытие, ограничения; `tools/` — аудиты и обслуживание;
 `server/migrations/` — миграции данных; `server/rules/` (`core`, `actors`,
 `tactical-geometry`) — части движка, реэкспортируемые `rules-engine.mjs`;
-`server/routes/` — HTTP-маршруты, вынесенные из `index.mjs`. Модули
+`server/routes/` — HTTP-маршруты, вынесенные из `index.mjs`; `rust/` — тот же
+сервер на Rust (`rust/AGENTS.md`). Модули
 `server/rules/*` не импортируют `rules-engine.mjs`: граф без циклов держит
 `test/server-import-graph.test.mjs`.
 
@@ -251,6 +259,8 @@ pnpm backup           # зашифрованная копия storage в ./backu
    через внедрённый детерминированный Dice Service.
 5. Схемы событий и контракты промптов **версионировать**. Сохранённые кампании и
    старый replay не ломать без явной миграции в `server/migrations/`.
+6. До переключения на Rust правка поведения в `server/` переносится в `rust/`
+   в той же ветке или отдельной задачей (`rust/AGENTS.md` §1).
 
 **Статусы механики** (карточки заклинаний и действий, см. `docs/known-limitations.md`):
 
@@ -304,7 +314,8 @@ pnpm backup           # зашифрованная копия storage в ./backu
 свобода и непрерывность кампании → художественное и визуальное качество`.
 
 **Остановиться и спросить пользователя**, если задача требует: миграции или
-удаления данных в `storage/`, изменения схемы событий без обратной совместимости,
+удаления данных в `storage/`, переключения игры на Rust-сервер или переноса в
+него настоящего `storage/`, изменения схемы событий без обратной совместимости,
 ослабления любого инварианта из раздела 5 или отступления от
 `docs/product-principles.md`.
 

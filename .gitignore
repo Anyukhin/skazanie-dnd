@@ -23,3 +23,6 @@ local-ca/
 
 # Rust: артефакты сборки
 rust/target/
+
+# Личные заметки Claude под эту машину
+CLAUDE.local.md

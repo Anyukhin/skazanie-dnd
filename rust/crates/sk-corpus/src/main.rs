@@ -1,6 +1,6 @@
 //! `cargo run -p sk-corpus -- reducer <каталог корпуса> [тип команды]`
 //! `cargo run -p sk-corpus -- normalize <каталог корпуса> [предел]`
-//! `cargo run -p sk-corpus -- resolve <каталог корпуса> <тип команды>[,<тип>…]`
+//! `cargo run -p sk-corpus -- resolve <каталог корпуса> <тип команды>[,<тип>…] | all`
 //! `cargo run -p sk-corpus -- summary <каталог корпуса> <файл сводок JS>`
 
 fn main() {
@@ -49,7 +49,21 @@ fn main() {
                 eprintln!("укажите тип команды: resolve <каталог> <тип>[,<тип>…]");
                 std::process::exit(2);
             };
-            let kinds: Vec<&str> = kinds.split(',').filter(|kind| !kind.is_empty()).collect();
+            // `all` — все типы команд, что есть в корпусе (в порядке первой встречи).
+            let all: Vec<String> = if kinds == "all" {
+                let mut seen: Vec<String> = Vec::new();
+                for record in corpus.records().expect("записи корпуса") {
+                    if let Some(kind) = record.command.get("type").and_then(serde_json::Value::as_str) {
+                        if !seen.iter().any(|known| known == kind) {
+                            seen.push(kind.to_string());
+                        }
+                    }
+                }
+                seen
+            } else {
+                kinds.split(',').filter(|kind| !kind.is_empty()).map(str::to_string).collect()
+            };
+            let kinds: Vec<&str> = all.iter().map(String::as_str).collect();
             for (kind, report) in sk_corpus::check_resolve_many(&corpus, &kinds).expect("сверка разбора") {
                 println!("{}", report.render(&kind));
             }

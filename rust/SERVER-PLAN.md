@@ -1,5 +1,7 @@
 # План переноса маршрутов sk-server на Rust
 
+> История (2026-10-24): план исполнен, все маршруты перенесены. Текущие правила — `rust/AGENTS.md`, статус — `rust/PORT-STATUS.md`.
+
 Я только читал файлы. Серверы не запускал, `storage/` и `.env` не трогал. План опирается на разбор маршрутов из задания. Отдельно я сверил его с деревом worktree `C:/Users/anton/PycharmProjects/Dnd-narrator-live`:
 
 - `rust/crates/sk-server/src/*.rs` — 707 строк;

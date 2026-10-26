@@ -159,8 +159,8 @@
 ```bash
 export PATH="$USERPROFILE/.cargo/bin:$HOME/.cargo/mingw64-root/mingw64/bin:$PATH"
 cd <worktree>/rust
-cargo build -p sk-<имя>
-cargo test -p sk-<имя>
+cargo build --release -p sk-<имя>   # только release: отладочные exe блокирует Smart App Control
+cargo test --release -p sk-<имя> --no-fail-fast
 ```
 
 Node для эталонов: `"$LOCALAPPDATA/OpenAI/Codex/bin/5b9024f90663758b/node.exe"`
