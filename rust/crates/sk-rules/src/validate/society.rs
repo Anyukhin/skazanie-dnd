@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Общество: NPC-мир, пленные, контейнеры, звери, парлей, закон, таверна, благословения, письма. Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 6204–6213, 6214–6243, 6244–6251, 6252–6260, 6261–6287, 6288–6352, 6353–6465, 6641–6679, 6683. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6226–6235, 6236–6265, 6266–6273, 6274–6282, 6283–6309, 6310–6374, 6375–6487, 6663–6701, 6705. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 //!
 //! Блоки, которые дополняют команду (`Object.assign`), пишут поля в
@@ -41,7 +41,7 @@ fn actor_balance_cp(v: &Validation<'_>) -> f64 {
     sk_economy::merchant_economy::currency_to_copper(hero.and_then(|hero| hero.get("currency"))) as f64
 }
 
-/// Блок 11 (6204–6213): команды мира NPC.
+/// Блок 11 (6226–6235): команды мира NPC.
 pub fn check_npc_world(v: &mut Validation<'_>) -> Step {
     if !sk_npc_world::npc_positioning::NPC_WORLD_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());
@@ -55,7 +55,7 @@ pub fn check_npc_world(v: &mut Validation<'_>) -> Step {
     }
 }
 
-/// Блок 12 (6214–6243): пленные.
+/// Блок 12 (6236–6265): пленные.
 pub fn check_captive(v: &mut Validation<'_>) -> Step {
     use sk_world_life::captives::{captive_for, captive_settlement_for, CAPTIVE_COMMAND_TYPES, CAPTIVE_PLAYER_COMMAND_TYPES};
     let kind = command_type(v);
@@ -92,7 +92,7 @@ pub fn check_captive(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 13 (6244–6251): контейнер добычи.
+/// Блок 13 (6266–6273): контейнер добычи.
 pub fn check_loot_container(v: &mut Validation<'_>) -> Step {
     use sk_director::loot_containers::{validate_loot_container_command, LootContainerError, LOOT_CONTAINER_COMMAND_TYPES};
     if !LOOT_CONTAINER_COMMAND_TYPES.contains(&command_type(v).as_str()) {
@@ -108,7 +108,7 @@ pub fn check_loot_container(v: &mut Validation<'_>) -> Step {
     }
 }
 
-/// Блок 14 (6252–6260): звери.
+/// Блок 14 (6274–6282): звери.
 pub fn check_beast(v: &mut Validation<'_>) -> Step {
     if !sk_npc_world::beast_taming::BEAST_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());
@@ -124,7 +124,7 @@ pub fn check_beast(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 15 (6261–6287): переговоры.
+/// Блок 15 (6283–6309): переговоры.
 pub fn check_parley(v: &mut Validation<'_>) -> Step {
     use sk_society::parley::{standing_enemies, truce_for, PARLEY_COMMAND_TYPES};
     let kind = command_type(v);
@@ -183,7 +183,7 @@ fn encounter_assembly_refusal(halt: Halt) -> Halt {
     }
 }
 
-/// Блок 16 (6288–6352): закон.
+/// Блок 16 (6310–6374): закон.
 pub fn check_law(v: &mut Validation<'_>) -> Step {
     use sk_society::law_and_order::{current_region_id, guard_encounter_for, guard_encounter_is_here, wanted_for, GUARD_ENCOUNTER_DIFFICULTY, GUARD_ENCOUNTER_THEME, GUARD_RESOLUTIONS, LAW_COMMAND_TYPES};
     let kind = command_type(v);
@@ -246,7 +246,7 @@ pub fn check_law(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 17 (6353–6465): таверна.
+/// Блок 17 (6375–6487): таверна.
 pub fn check_tavern(v: &mut Validation<'_>) -> Step {
     use sk_npc_world::tavern_life::{is_tavern_opponent, is_tavern_scene, tavern_earmarked_cp_against, tavern_ejected, tavern_free_purse_for, tavern_gambler_purse_for, tavern_round_for, TAVERN_COMMAND_TYPES, TAVERN_DRINK_PRICE_CP, TAVERN_STAKES_CP};
     let kind = command_type(v);
@@ -313,7 +313,7 @@ pub fn check_tavern(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 25 (6641–6679): благословение.
+/// Блок 25 (6663–6701): благословение.
 pub fn check_blessing(v: &mut Validation<'_>) -> Step {
     use sk_npc_world::blessings::{blessing_availability_for, hero_is_blessed, is_blessing_priest, BLESSING_COMMAND_TYPES, BLESSING_DONATION_CP};
     if !BLESSING_COMMAND_TYPES.contains(&command_type(v).as_str()) {
@@ -346,7 +346,7 @@ pub fn check_blessing(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 26 (6683): письмо.
+/// Блок 26 (6705): письмо.
 pub fn check_courier_letter(v: &mut Validation<'_>) -> Step {
     if sk_world_life::courier_letters::COURIER_LETTER_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         assert_send_letter_allowed(v.state, &v.command)?;

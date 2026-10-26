@@ -3,10 +3,10 @@
 //!
 //! JS: `server/rules-engine.mjs` — `creatureTypeFor`, `understandsSpellLanguage`
 //! (2978–2990), `sculptSpellsLimit` (3410), `chooseSpellSlot` и кости усиления
-//! (9794–9885), `reactionSlotChoice`, `withSpellOptionOverrides`,
-//! `conditionsForSlotLevel`, `delayedSpellDamageExpression` (10459–10513),
-//! `concentrationSaveAdvantageFor` (10558), `lifeDomainCaster` (10780),
-//! `assertBonusActionSpellAllowed` (10790–10807), лучи и снаряды (11029–11058).
+//! (9816–9907), `reactionSlotChoice`, `withSpellOptionOverrides`,
+//! `conditionsForSlotLevel`, `delayedSpellDamageExpression` (10481–10535),
+//! `concentrationSaveAdvantageFor` (10580), `lifeDomainCaster` (10802),
+//! `assertBonusActionSpellAllowed` (10812–10829), лучи и снаряды (11051–11080).
 
 use serde_json::{Map, Value};
 use sk_core::js;

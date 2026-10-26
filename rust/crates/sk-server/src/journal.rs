@@ -1,4 +1,4 @@
-//! Летопись комнаты — перенос `server/index.mjs:2074–2252` и 3365–3380:
+//! Летопись комнаты — перенос `server/index.mjs:2075–2253` и 3365–3380:
 //! идентификаторы сообщений, слова игрока к команде, последние реплики
 //! рассказчика, `journalEntry` (запись с границами длины и карточками броска,
 //! ставки, хода мира, письма и зверя), `appendRoomJournal` (три попытки,
@@ -17,7 +17,7 @@ use crate::core::GameCore;
 use crate::error::Failure;
 use crate::room::Room;
 
-/// `JOURNAL_HISTORY_LIMIT` (2234).
+/// `JOURNAL_HISTORY_LIMIT` (2235).
 pub const ROOM_JOURNAL_LIMIT: usize = 400;
 
 fn message_id(prefix: &str, idempotency_key: &str) -> String {
@@ -45,7 +45,7 @@ pub fn player_message_id(idempotency_key: &str) -> String {
     message_id("player", idempotency_key)
 }
 
-/// `playerNoteFrom(body)` (2096–2099): слова игрока к структурной команде —
+/// `playerNoteFrom(body)` (2097–2100): слова игрока к структурной команде —
 /// управляющие символы в пробел, обрезка, предел 2000; служебная команда
 /// (`/why`) — не реплика.
 pub fn player_note_from(body: &Value) -> String {
@@ -76,7 +76,7 @@ fn nullish<'a>(values: &[Option<&'a Value>]) -> Option<&'a Value> {
     values.iter().copied().find(|value| js::present(*value)).flatten()
 }
 
-/// `playerNoteAuthor(state, commandActor, actorId)` (2102–2108): герой
+/// `playerNoteAuthor(state, commandActor, actorId)` (2103–2109): герой
 /// игрока, а за призванное существо — хозяин.
 pub fn player_note_author(state: &Value, command_actor: Option<&Value>, actor_id: Option<&Value>) -> String {
     let heroes = state.get("players").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
@@ -88,7 +88,7 @@ pub fn player_note_author(state: &Value, command_actor: Option<&Value>, actor_id
     text::head(&name.map_or_else(|| "Герой".to_string(), |value| js::s(Some(value))), 80)
 }
 
-/// `recentNarratorTexts(state, limit = 6)` (2111–2116): последние реплики
+/// `recentNarratorTexts(state, limit = 6)` (2112–2117): последние реплики
 /// рассказчика — для проверки повторов.
 pub fn recent_narrator_texts(state: Option<&Value>, limit: usize) -> Vec<String> {
     let messages = state.and_then(|state| state.get("messages")).and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
@@ -121,7 +121,7 @@ fn object(value: Option<&Value>) -> Option<&Map<String, Value>> {
     value.filter(|value| js::truthy(Some(value))).and_then(Value::as_object)
 }
 
-/// `journalRoll(roll)` (2118–2134): бросок рядом с репликой — только
+/// `journalRoll(roll)` (2119–2135): бросок рядом с репликой — только
 /// разрешённая проверка (число итога и булев исход).
 pub fn journal_roll(roll: Option<&Value>) -> Option<Value> {
     let roll = object(roll)?;
@@ -138,7 +138,7 @@ pub fn journal_roll(roll: Option<&Value>) -> Option<Value> {
     }))
 }
 
-/// `journalStakes(stakes)` (2136–2147).
+/// `journalStakes(stakes)` (2137–2148).
 pub fn journal_stakes(stakes: Option<&Value>) -> Option<Value> {
     let stakes = object(stakes)?;
     let difficulty = js::number(stakes.get("difficulty"));
@@ -163,7 +163,7 @@ pub fn journal_stakes(stakes: Option<&Value>) -> Option<Value> {
     Some(Value::Object(stored))
 }
 
-/// `journalOffscreen(offscreen)` (2154–2168): карточка «Пока вас не было…».
+/// `journalOffscreen(offscreen)` (2155–2169): карточка «Пока вас не было…».
 pub fn journal_offscreen(offscreen: Option<&Value>) -> Option<Value> {
     let offscreen = object(offscreen)?;
     let lines: Vec<Value> = offscreen
@@ -188,7 +188,7 @@ pub fn journal_offscreen(offscreen: Option<&Value>) -> Option<Value> {
     }))
 }
 
-/// `journalLetter(letter)` (2175–2189): карточка-конверт.
+/// `journalLetter(letter)` (2176–2190): карточка-конверт.
 pub fn journal_letter(letter: Option<&Value>) -> Option<Value> {
     let letter = object(letter)?;
     let kind = js::s(letter.get("kind"));
@@ -205,7 +205,7 @@ pub fn journal_letter(letter: Option<&Value>) -> Option<Value> {
     }))
 }
 
-/// `journalBeast(beast)` (2196–2210): карточка ступени приручения.
+/// `journalBeast(beast)` (2197–2211): карточка ступени приручения.
 pub fn journal_beast(beast: Option<&Value>) -> Option<Value> {
     let beast = object(beast)?;
     let kind = js::s(beast.get("kind"));
@@ -230,7 +230,7 @@ fn clock_label(now_ms: i64) -> String {
     format!("{:02}:{:02}", minutes / 60, minutes % 60)
 }
 
-/// `journalEntry({...})` (2212–2232): запись летописи с автором, временем и
+/// `journalEntry({...})` (2213–2233): запись летописи с автором, временем и
 /// границами длины.
 pub fn journal_entry(entry: &Value) -> Value {
     journal_entry_at(entry, sk_core::clock::now_ms())
@@ -284,7 +284,7 @@ pub(crate) fn room_messages(state: &Value) -> Result<Vec<Value>, Failure> {
     }
 }
 
-/// `appendRoomJournal(campaignId, entries)` (2236–2252): дописать новые по
+/// `appendRoomJournal(campaignId, entries)` (2237–2253): дописать новые по
 /// `id` записи (через [`journal_entry`]), оставить последние 400; до трёх
 /// попыток на конфликт версии комнаты. `None` — писать нечего, комнаты нет
 /// или три конфликта подряд.
@@ -318,7 +318,7 @@ pub fn append_room_journal_at(core: &Rc<GameCore>, campaign_id: &str, entries: &
     Ok(None)
 }
 
-/// `journalCandidatesFor(events, journalMessage)` (3371–3380): карточки из
+/// `journalCandidatesFor(events, journalMessage)` (3372–3381): карточки из
 /// событий (ход мира, почта, зверь, решение отряда, сюжет, контора) и
 /// переданная маршрутом реплика (одна запись или список — `.flat()`).
 pub fn journal_candidates_for(events: &[Value], journal_message: Option<&Value>) -> Vec<Value> {

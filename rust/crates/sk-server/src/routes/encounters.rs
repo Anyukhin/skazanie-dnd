@@ -1,11 +1,11 @@
 //! С18.3: сборка встречи `POST /api/campaigns/:id/encounters/assemble`
-//! (`server/index.mjs` 5306–5447, отпечатки встречи 995–1022).
+//! (`server/index.mjs` 5307–5448, отпечатки встречи 995–1022).
 //!
-//! Встреча ведущего от `EncounterAssembler`: белый список полей тела (5318)
+//! Встреча ведущего от `EncounterAssembler`: белый список полей тела (5319)
 //! → ключ идемпотентности → команда `CreateEncounter` с отпечатком
 //! (`encounterCommandFingerprint`) → сверка повтора ключа → предпросмотр
 //! сборщика по авторитетному состоянию с той же занятостью клеток, стенами и
-//! окнами, что у Rules Engine (5349–5368) → предупреждение «смертельно» в
+//! окнами, что у Rules Engine (5350–5369) → предупреждение «смертельно» в
 //! летопись до точки невозврата → `GameOrchestrator::handle` с
 //! `CreateEncounter` и `StartCombat` → сверка отпечатка итога → ходы врагов до
 //! хода героя (`settleCombatContinuation`) → вводка ведущего
@@ -61,15 +61,15 @@ use crate::routes::campaigns::Caught;
 use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
-    // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/encounters\/assemble$/` и `POST` (5306–5307).
+    // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/encounters\/assemble$/` и `POST` (5307–5308).
     vec![Route::post(5308, Matcher::path_template("/api/campaigns/{id}/encounters/assemble"), assemble)]
 }
 
-/// Коды 409 (5444).
+/// Коды 409 (5445).
 const CONFLICT_CODES: &[&str] = &["STATE_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT", "ENCOUNTER_ALREADY_PRESENT", "ENCOUNTER_DURING_COMBAT"];
-/// Коды 403 (5445).
+/// Коды 403 (5446).
 const FORBIDDEN_CODES: &[&str] = &["ENCOUNTER_MANAGEMENT_FORBIDDEN", "ACTOR_FORBIDDEN"];
-/// Ключи тела (5318).
+/// Ключи тела (5319).
 const ALLOWED_KEYS: &[&str] = &["expected_state_version", "difficulty", "theme", "seed", "idempotency_key"];
 
 fn get<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
@@ -100,9 +100,9 @@ fn reply(status: StatusCode, message: &str, code: &str) -> Caught {
     Caught::Reply(ApiError::coded(status, message, code))
 }
 
-// --- отпечатки встречи (995–1022) ----------------------------------------------
+// --- отпечатки встречи (996–1023) ----------------------------------------------
 
-/// `encounterCommandFingerprint(command)` (995–1003): SHA-256 строки
+/// `encounterCommandFingerprint(command)` (996–1004): SHA-256 строки
 /// `JSON.stringify({ type, difficulty, theme, seed })`.
 pub fn encounter_command_fingerprint(command: &Value) -> Result<String, Failure> {
     let field = |key: &str| js_string_or_empty(get(Some(command), key));
@@ -126,7 +126,7 @@ fn created_fingerprints(events: Option<&Value>) -> HashSet<String> {
         .collect()
 }
 
-/// `assertEncounterIdempotency(campaignId, idempotencyKey, command)` (1005–1014).
+/// `assertEncounterIdempotency(campaignId, idempotencyKey, command)` (1006–1015).
 pub fn assert_encounter_idempotency(journal: &dyn DuplicateLookup, campaign_id: &str, idempotency_key: &str, command: &Value) -> Result<(), Failure> {
     let Some(duplicate) = journal.get_by_idempotency_key(campaign_id, idempotency_key)? else { return Ok(()) };
     let fingerprints = created_fingerprints(get(Some(&duplicate), "events"));
@@ -136,7 +136,7 @@ pub fn assert_encounter_idempotency(journal: &dyn DuplicateLookup, campaign_id: 
     Ok(())
 }
 
-/// `assertEncounterResultFingerprint(result, command)` (1016–1021): первое
+/// `assertEncounterResultFingerprint(result, command)` (1017–1022): первое
 /// `EncounterCreated` итога несёт отпечаток команды.
 pub fn assert_encounter_result_fingerprint(result: &Value, command: &Value) -> Result<(), Failure> {
     let event = array(get(Some(result), "mechanics")).iter().find(|candidate| event_type(candidate) == Some("EncounterCreated"));
@@ -189,7 +189,7 @@ fn idempotency_key(body: &Value, ctx: &RouteCtx) -> Result<String, Caught> {
     Ok(key)
 }
 
-/// Тело `try` до задания ядра (5309–5322).
+/// Тело `try` до задания ядра (5310–5323).
 async fn assemble_try(ctx: &mut RouteCtx, admin: Value, campaign_id: String) -> Result<Value, Caught> {
     let state = ctx.state.clone();
     let code = campaign_id.clone();
@@ -242,7 +242,7 @@ fn undefined_read(key: &str) -> Failure {
     Failure::new(format!("Cannot read properties of undefined (reading '{key}')"), None)
 }
 
-/// Живые герои отряда с уровнем и позицией (5341–5345).
+/// Живые герои отряда с уровнем и позицией (5342–5346).
 fn preview_party(state: &Value) -> Result<Vec<Value>, Failure> {
     let members = array(state.get("partyMemberIds"));
     let players = state.get("players").and_then(Value::as_array);
@@ -270,7 +270,7 @@ fn preview_party(state: &Value) -> Result<Vec<Value>, Failure> {
     Ok(party)
 }
 
-/// Занятые клетки предпросмотра — тот же расчёт, что у Rules Engine (5349–5361).
+/// Занятые клетки предпросмотра — тот же расчёт, что у Rules Engine (5350–5362).
 fn preview_occupied_cells(state: &Value) -> Result<HashSet<String>, Failure> {
     let mut occupied = HashSet::new();
     let actors = array(state.get("enemies")).iter().chain(array(state.get("actors")).iter());
@@ -295,7 +295,7 @@ fn preview_occupied_cells(state: &Value) -> Result<HashSet<String>, Failure> {
     Ok(occupied)
 }
 
-/// Клетки сцены для сборщика: тип, открытость, черта, занятость, стены и окна (5362–5370).
+/// Клетки сцены для сборщика: тип, открытость, черта, занятость, стены и окна (5363–5371).
 fn preview_cells(state: &Value, occupied: &HashSet<String>) -> Result<Vec<Value>, Failure> {
     let mut cells = Vec::new();
     for cell in array(get(state.get("scene"), "cells")) {
@@ -333,13 +333,13 @@ fn assemble_preview(input: &Value) -> Result<Value, Failure> {
 }
 
 /// Строка-опора повествования боя: «Звенит сталь. Первый ход — за …» после
-/// вводки ведущего не звучит (5417–5418).
+/// вводки ведущего не звучит (5418–5419).
 fn without_opening_cue(text: &str) -> String {
     let cue = sk_core::re!(r"^(?:Звенит сталь\.|Сталь покидает ножны\.|Медлить больше некогда\.)\s*(?:Первый ход — за [^.]+\.\s*)?", "u");
     sk_core::text::replace_first(cue, text, "")
 }
 
-/// Задание ядра (5323–5442).
+/// Задание ядра (5324–5443).
 async fn run(core: Rc<GameCore>, app: Arc<AppState>, job: Assembly) -> Result<Value, Failure> {
     let campaign_id = job.campaign_id.as_str();
     let idempotency_key = job.idempotency_key.as_str();

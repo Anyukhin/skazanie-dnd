@@ -2,7 +2,7 @@
 //! «Цветной брызг»), атака заклинанием и её последствия при попадании,
 //! промахе и вторичном взрыве. Задача Р9.
 //!
-//! JS: `server/rules-engine.mjs`, 17220–17717.
+//! JS: `server/rules-engine.mjs`, 17242–17739.
 
 use serde_json::{json, Map, Value};
 use sk_core::js;
@@ -17,7 +17,7 @@ use crate::pause::{rule, Halt, Pause, ProtectiveReactionArgs, Step};
 use crate::replay::apply_game_event;
 use crate::tactical_geometry::{point_json, points_json};
 
-/// «Волшебная стрела» и прочие автоматические снаряды (17220–17227).
+/// «Волшебная стрела» и прочие автоматические снаряды (17242–17249).
 pub(super) fn magic_missile(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let target = cast.affected.first().cloned().unwrap_or(Value::Null);
     let command = cast.command.clone();
@@ -26,7 +26,7 @@ pub(super) fn magic_missile(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     r.append_magic_missile_resolution(MagicMissile { source_command: &command, spell: &spell, target: &target, slot_level: command.get("slot_level"), damage_type: &damage_type, source_item: None })
 }
 
-/// Пул хитов: «Усыпление» и «Цветной брызг» (17228–17255).
+/// Пул хитов: «Усыпление» и «Цветной брызг» (17250–17277).
 pub(super) fn hit_point_pool(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let state = r.state.clone();
     let spell = cast.spell.clone();
@@ -99,7 +99,7 @@ struct Component {
     purpose: String,
 }
 
-/// Атака заклинанием (17256–17717).
+/// Атака заклинанием (17278–17739).
 pub(super) fn spell_attack(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let state = r.state.clone();
     let spell = cast.spell.clone();
@@ -382,7 +382,7 @@ struct HitContext<'a> {
     protective_key: &'a str,
 }
 
-/// Последствия попадания атаки заклинанием (17372–17669).
+/// Последствия попадания атаки заклинанием (17394–17691).
 fn on_hit(r: &mut Resolve<'_>, cast: &Cast, hit: &HitContext<'_>) -> Step {
     let state = hit.state;
     let spell = &cast.spell;
@@ -696,7 +696,7 @@ fn strip_spell_id(payload: Value, spell_id: Option<&Value>) -> Value {
     Value::Object(map)
 }
 
-/// Сводный исход урона попадания по слагаемым (17429–17441).
+/// Сводный исход урона попадания по слагаемым (17451–17463).
 fn damage_outcome_of(outcomes: &[Value]) -> Option<Value> {
     let first = outcomes.first()?;
     let last = outcomes.last().unwrap_or(first);
@@ -714,7 +714,7 @@ fn damage_outcome_of(outcomes: &[Value]) -> Option<Value> {
     Some(Value::Object(outcome))
 }
 
-/// «Клинок зелёного пламени»: перескок огня на соседа цели (17491–17514).
+/// «Клинок зелёного пламени»: перескок огня на соседа цели (17513–17536).
 fn green_flame_blade(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target_id: &str, cantrip_level: i64) -> Step {
     let Some(target_at) = crate::tactical_geometry::actor_point(state, target_id) else { return Ok(()) };
     let actor_id = cast.actor_id.as_str();
@@ -759,7 +759,7 @@ fn green_flame_blade(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target_id:
     Ok(())
 }
 
-/// Окно реакции после попадания заклинанием по герою (17639–17668).
+/// Окно реакции после попадания заклинанием по герою (17661–17690).
 fn attack_reaction_window(r: &mut Resolve<'_>, cast: &Cast, hit: &HitContext<'_>, damage: Option<&Value>) -> Step {
     let state = hit.state;
     let command = &cast.command;
@@ -829,7 +829,7 @@ fn attack_reaction_window(r: &mut Resolve<'_>, cast: &Cast, hit: &HitContext<'_>
     Ok(())
 }
 
-/// Вторичный взрыв вокруг цели атаки (17683–17717).
+/// Вторичный взрыв вокруг цели атаки (17705–17739).
 fn secondary_burst(r: &mut Resolve<'_>, cast: &Cast, state: &Value, burst: &Value, target_id: &str) -> Step {
     let spell = &cast.spell;
     let command = &cast.command;

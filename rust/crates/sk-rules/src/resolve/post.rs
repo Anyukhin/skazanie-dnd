@@ -1,4 +1,4 @@
-//! Хвост `resolveCommandInternal` (`rules-engine.mjs`, 23134–23439):
+//! Хвост `resolveCommandInternal` (`rules-engine.mjs`, 23156–23461):
 //! вложенные последствия событий («Невидимость», вызов на дуэль, концентрация
 //! от урона, снятие и повторный спасбросок от урона), окно «Несгибаемого»,
 //! поражение отряда, невосприимчивые состояния, бегство, сверка концентрации
@@ -62,7 +62,7 @@ fn utf16_order(left: &str, right: &str) -> std::cmp::Ordering {
     left.encode_utf16().cmp(right.encode_utf16())
 }
 
-/// `concentrationReconciliationEvents(state, command, events)` (23470):
+/// `concentrationReconciliationEvents(state, command, events)` (23492):
 /// концентрация и заготовка тех, кого коснулась команда, согласуются после
 /// всех последствий.
 pub fn concentration_reconciliation_events(state: &Value, command: &Value, events: &[Value]) -> Result<Vec<Value>, Halt> {
@@ -143,7 +143,7 @@ fn with_draft_visibility(command: &Value, draft: &Value) -> Value {
 }
 
 impl Resolve<'_> {
-    /// Вложенные последствия событий команды (23134–23296).
+    /// Вложенные последствия событий команды (23156–23318).
     fn nested_consequences(&mut self) -> Result<(), Halt> {
         if self.nested_consequences_resolved {
             return Ok(());
@@ -413,7 +413,7 @@ impl Resolve<'_> {
         event_from(&command_with_rules(&self.command, &[rule_ids::CONDITIONS]), "ConditionRemoved", Some(removal_payload(condition, trigger)), Some(&json!([damaged])))
     }
 
-    /// Окно «Несгибаемого» после проваленного спасброска (23297–23343).
+    /// Окно «Несгибаемого» после проваленного спасброска (23319–23365).
     fn indomitable_window(&mut self) -> Result<Option<Value>, Halt> {
         if self.depth != 0 || self.context.is_true("indomitableResume") || !self.events.iter().any(failed_saving_throw_event) {
             return Ok(None);
@@ -475,7 +475,7 @@ impl Resolve<'_> {
         Ok(Some(event_from(&source, "ReactionWindowOpened", Some(Value::Object(payload)), Some(&json!([opportunity.target_id])))))
     }
 
-    /// Последняя смерть героя кончает кампанию поражением (23345–23364).
+    /// Последняя смерть героя кончает кампанию поражением (23367–23386).
     fn party_defeat(&mut self) -> Result<(), Halt> {
         if self.depth != 0 || !self.events.iter().any(|event| event_type(event) == "HeroDied") || self.events.iter().any(|event| event_type(event) == "CampaignFailed") {
             return Ok(());

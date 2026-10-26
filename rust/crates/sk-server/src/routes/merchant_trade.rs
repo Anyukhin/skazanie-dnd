@@ -1,5 +1,5 @@
 //! С18.2: торговля игрока `POST /api/campaigns/:id/merchants/:merchantId/commands`
-//! (`server/index.mjs` 5472–5528).
+//! (`server/index.mjs` 5473–5529).
 //!
 //! Одна торговая команда героя (`BuyItem`, `SellItem`, `AppraiseItem`,
 //! `BargainWithMerchant`, `PurchaseMerchantService`): санитайзер игрока с id
@@ -53,15 +53,15 @@ use crate::routes::{merchant_route_id, MERCHANT_PATH};
 use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
-    // Общая регулярка торговца (5449) и `POST` с хвостом `/commands` (5472).
+    // Общая регулярка торговца (5450) и `POST` с хвостом `/commands` (5473).
     vec![Route::pass(5473, Methods::One(Method::POST), Matcher::path_template(MERCHANT_PATH), merchant_trade)]
 }
 
-/// Коды 409 (5523).
+/// Коды 409 (5524).
 const CONFLICT_CODES: &[&str] = &["STATE_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT"];
-/// Коды 403 (5525).
+/// Коды 403 (5526).
 const FORBIDDEN_CODES: &[&str] = &["ACTOR_FORBIDDEN", "PLAYER_COMMAND_FORBIDDEN"];
-/// Коды 404 (5526).
+/// Коды 404 (5527).
 const NOT_FOUND_CODES: &[&str] = &["MERCHANT_NOT_FOUND", "ITEM_NOT_FOUND", "STOCK_NOT_FOUND"];
 
 /// Ответы `campaignHasMemberships`, узнанные в [`blocking`] до задания ядра.
@@ -109,7 +109,7 @@ struct Trade {
     hero_ids: Vec<Value>,
 }
 
-/// Тело `try` до задания ядра (5474–5484).
+/// Тело `try` до задания ядра (5475–5485).
 async fn trade_try(ctx: &mut RouteCtx, user: Value, campaign_id: String) -> Result<Value, Caught> {
     let state = ctx.state.clone();
     let code = campaign_id.clone();
@@ -152,7 +152,7 @@ async fn trade_try(ctx: &mut RouteCtx, user: Value, campaign_id: String) -> Resu
     Ok(state.core.call(move |core| Box::pin(async move { run(core, app, trade).await })).await??)
 }
 
-/// Задание ядра (5485–5520).
+/// Задание ядра (5486–5521).
 async fn run(core: Rc<GameCore>, app: Arc<AppState>, trade: Trade) -> Result<Value, Failure> {
     let campaign_id = trade.campaign_id.as_str();
     let idempotency_key = trade.idempotency_key.as_str();

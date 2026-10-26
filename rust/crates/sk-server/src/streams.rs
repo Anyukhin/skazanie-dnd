@@ -1,5 +1,5 @@
-//! Живые потоки кампаний и присутствие — перенос `server/index.mjs:270–290,
-//! 2361–2482, 2601–2712, 2829–2835, 4172–4282` (задача С9).
+//! Живые потоки кампаний и присутствие — перенос `server/index.mjs:271–291,
+//! 2362–2483, 2602–2713, 2830–2836, 4173–4283` (задача С9).
 //!
 //! Где живёт реестр (решение №1, рецензия С0 CORE-03): **в ядре**,
 //! [`crate::core::GameCore::streams`]. Рассылка кадров, отзыв доступа,
@@ -17,7 +17,7 @@
 //!   «рассылать после снятия замков»).
 //!
 //! **Сверка прав читает аккаунты синхронно** — как `usersForSessionKeys` JS
-//! (2404), но через **своё** соединение SQLite только для чтения ядра
+//! (2405), но через **своё** соединение SQLite только для чтения ядра
 //! ([`LiveStreams::open`]), а не через общее `Accounts` HTTP-слоя. Запрет
 //! CORE-02 («вход другого игрока или запись сессии остановили бы ядро на
 //! замке») касается общего замка: здесь замок свой и его держит только поток
@@ -57,16 +57,16 @@ use crate::error::{ApiError, Failure};
 use crate::room::Room;
 use crate::state::{AppState, Clock};
 
-/// `STREAM_ACCESS_RECHECK_MS` (281): частота лёгкой сверки потоков с сессиями.
+/// `STREAM_ACCESS_RECHECK_MS` (282): частота лёгкой сверки потоков с сессиями.
 pub const STREAM_ACCESS_RECHECK_MS: i64 = 1_000;
-/// `TYPING_TTL_MS` (275): сколько живёт индикатор ввода.
+/// `TYPING_TTL_MS` (276): сколько живёт индикатор ввода.
 pub const TYPING_TTL_MS: i64 = 4_000;
 /// Пульс тихого потока (`setInterval(…, 20_000)`, 4253).
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(20);
 /// Сколько кадров тела ответа может ждать hyper, прежде чем запись скажет
 /// «занято» (аналог `highWaterMark` сокета Node, но в кадрах).
 pub const SOCKET_HIGH_WATER: usize = 2;
-/// `retry: 2000\n\n` — первый кусок тела (4207).
+/// `retry: 2000\n\n` — первый кусок тела (4208).
 pub const RETRY_CHUNK: &str = "retry: 2000\n\n";
 
 /// `connectedHeroIdsForCampaign(campaignId)`: герои, чьи хозяева сейчас
@@ -183,7 +183,7 @@ fn render_error(message: impl Into<String>) -> RenderError {
     Box::<dyn std::error::Error + Send + Sync>::from(message.into())
 }
 
-/// `campaignStreamFrame(event, payload)` (2643–2645): общий счётчик кадров и
+/// `campaignStreamFrame(event, payload)` (2644–2646): общий счётчик кадров и
 /// соединений процесса.
 fn frame(sequence: &AtomicU64, event: &str, payload: &Value) -> String {
     frame_with_data(sequence, event, &js::stringify(payload))
@@ -439,7 +439,7 @@ impl LiveStreams {
         self.campaigns.borrow().get(&upper(campaign_id)).is_some_and(|connections| !connections.is_empty())
     }
 
-    /// `revalidateCampaignStreams(campaignId, { state, maxAgeMs })` (2380–2433).
+    /// `revalidateCampaignStreams(campaignId, { state, maxAgeMs })` (2381–2434).
     pub fn revalidate(&self, campaign_id: &str, state: Option<&Value>, max_age_ms: i64) {
         let normalized = upper(campaign_id);
         let live = self.connections(&normalized);
@@ -518,7 +518,7 @@ impl LiveStreams {
         Ok(())
     }
 
-    /// `revokeCampaignStream(connection, reason)` (2440–2449).
+    /// `revokeCampaignStream(connection, reason)` (2441–2450).
     fn revoke(&self, connection: &Rc<Connection>, reason: &str) {
         if connection.closed() {
             return;
@@ -537,7 +537,7 @@ impl LiveStreams {
         }
     }
 
-    /// `close` соединения (4255–4272): снять с реестра; затем фоновой задачей —
+    /// `close` соединения (4256–4273): снять с реестра; затем фоновой задачей —
     /// воздержание ушедших голосующих и рассылка комнаты.
     fn close(&self, connection: &Rc<Connection>) {
         if connection.link.closed.swap(true, Ordering::SeqCst) {
@@ -578,7 +578,7 @@ impl LiveStreams {
         }
     }
 
-    /// `writeCampaignStream(connection, event, payload)` (2654–2660): кадр
+    /// `writeCampaignStream(connection, event, payload)` (2655–2661): кадр
     /// через очередь соединения; `render` собирает его в момент записи.
     fn write(&self, connection: &Rc<Connection>, key: Option<String>, render: FrameRender) -> Result<Option<bool>, RenderError> {
         if connection.closed() || connection.destroyed() {
@@ -600,7 +600,7 @@ impl LiveStreams {
         self.write(&connection, campaign_stream_frame_key(event, payload), Box::new(move || Ok(Some(frame(&sequence, &event_name, &data)))))
     }
 
-    /// `connectionsFor` потока рассказа (285–288): лёгкая сверка, затем
+    /// `connectionsFor` потока рассказа (286–289): лёгкая сверка, затем
     /// открытые соединения кампании (С18.5).
     pub fn narration_connections(&self, campaign_id: &str) -> Vec<StreamHandle> {
         self.revalidate(campaign_id, None, STREAM_ACCESS_RECHECK_MS);
@@ -628,7 +628,7 @@ impl LiveStreams {
         self.after_outbox(&connection);
     }
 
-    /// Пульс (4247–4254): тихий поток сверяется с сессией, затем через очередь
+    /// Пульс (4248–4255): тихий поток сверяется с сессией, затем через очередь
     /// уходит комментарий — один, сколько бы их ни набежало, пока сокет занят.
     fn heartbeat(&self, connection: &Rc<Connection>) {
         if connection.closed() || connection.destroyed() {
@@ -650,7 +650,7 @@ impl LiveStreams {
         }
     }
 
-    /// `typingActorIdsForCampaign(campaignId)` (2633–2641).
+    /// `typingActorIdsForCampaign(campaignId)` (2634–2642).
     pub fn typing_actor_ids(&self, campaign_id: &str) -> Vec<String> {
         let normalized = upper(campaign_id);
         let now = self.now();
@@ -671,7 +671,7 @@ impl LiveStreams {
         actors.iter().map(|actor| js::s(Some(actor))).collect()
     }
 
-    /// Запись индикатора ввода (4184–4189).
+    /// Запись индикатора ввода (4185–4190).
     fn set_typing(&self, campaign_id: &str, user_id: &str, actor_id: &str, typing: bool) {
         let mut all = self.typing.borrow_mut();
         let entries = all.entry(campaign_id.to_string()).or_default();
@@ -685,7 +685,7 @@ impl LiveStreams {
         }
     }
 
-    /// `broadcastCampaignTyping(campaignId)` (2662–2669).
+    /// `broadcastCampaignTyping(campaignId)` (2663–2670).
     fn broadcast_typing(&self, campaign_id: &str) {
         let normalized = upper(campaign_id);
         self.revalidate(&normalized, None, STREAM_ACCESS_RECHECK_MS);
@@ -753,7 +753,7 @@ fn actor_for(hero_ids: &[String], state: &Value) -> String {
 }
 
 impl Presence for LiveStreams {
-    /// `connectedHeroIdsForCampaign` (2476–2480): присутствие и состав
+    /// `connectedHeroIdsForCampaign` (2477–2481): присутствие и состав
     /// голосующих не держат отозванные соединения.
     fn connected_hero_ids(&self, campaign_id: &str) -> IndexSet<String> {
         self.revalidate(campaign_id, None, STREAM_ACCESS_RECHECK_MS);
@@ -768,7 +768,7 @@ impl Presence for LiveStreams {
 }
 
 impl StreamRegistry for LiveStreams {
-    /// Logout закрывает потоки только этой сессии (2452–2459).
+    /// Logout закрывает потоки только этой сессии (2453–2460).
     fn revoke_for_session(&self, session_key: &str) {
         if session_key.is_empty() {
             return;
@@ -781,7 +781,7 @@ impl StreamRegistry for LiveStreams {
         }
     }
 
-    /// Администратор поменял роль или героев (2461–2474): открытые потоки
+    /// Администратор поменял роль или героев (2462–2475): открытые потоки
     /// пользователя получают свежую проекцию, потерявшие доступ закрываются
     /// внутри той же рассылки.
     fn refresh_for_user(&self, user_id: &str) {
@@ -804,7 +804,7 @@ impl StreamRegistry for LiveStreams {
 
 // --- присутствие и рассылка комнаты ------------------------------------------
 
-/// `stateWithLivePresence(state, campaignId)` (2601–2631): полная сверка
+/// `stateWithLivePresence(state, campaignId)` (2602–2632): полная сверка
 /// потоков по этому состоянию, затем присутствие — только по соединениям с
 /// живой сессией и доступом. С заглушкой реестра потоков нет: герои не в сети.
 pub fn state_with_live_presence(core: &GameCore, state: &Value, campaign_id: &str) -> Result<Value, Failure> {
@@ -877,7 +877,7 @@ struct RenderedRoom {
     data: Arc<str>,
 }
 
-/// `broadcastCampaignRoom(campaignId, suppliedRoom)` (2671–2706): каждому
+/// `broadcastCampaignRoom(campaignId, suppliedRoom)` (2672–2707): каждому
 /// соединению — его проекция, сжатая относительно карты, которую оно
 /// действительно отправило. Кадр собирается в момент записи в сокет: пока
 /// медленный клиент не дочитал прежнее, кадр ждёт в очереди и может быть
@@ -992,10 +992,10 @@ pub fn prepare_stream(state: &Arc<AppState>, campaign_id: &str) -> (PendingStrea
     (PendingStream { link, socket }, body)
 }
 
-/// Рукопожатие `GET /api/campaigns/:id/stream` (4194–4280) на потоке ядра:
+/// Рукопожатие `GET /api/campaigns/:id/stream` (4195–4281) на потоке ядра:
 /// отказ до сверки, сверка проекции, доступ, затем регистрация соединения,
 /// пульс и первая рассылка. `Err` — ответ JSON (заголовки ещё не ушли).
-/// Сбой после «заголовков» (4202) обрывает поток, как `res.destroy()`
+/// Сбой после «заголовков» (4203) обрывает поток, как `res.destroy()`
 /// последней границы JS, и в лог идёт как необработанная ошибка маршрута.
 pub fn open_stream(core: &Rc<GameCore>, user: &Value, campaign_id: &str, session_key: String, pending: PendingStream) -> Result<(), ApiError> {
     let Some(live) = core.streams.live() else { return Err(ApiError::internal("Реестр живых потоков не подключён")) };
@@ -1093,7 +1093,7 @@ fn spawn_heartbeat(core: &Rc<GameCore>, connection: &Rc<Connection>, period: Dur
 
 // --- поток рассказа ядра (С18.5) -------------------------------------------
 
-/// `campaignNarrationStream` (`index.mjs:284–290`): снимки текста рассказа,
+/// `campaignNarrationStream` (`index.mjs:285–291`): снимки текста рассказа,
 /// пока его пишет модель.
 pub type NarrationHub = CampaignNarrationStream<StreamHandle>;
 
@@ -1161,9 +1161,9 @@ fn build_narration() -> NarrationHub {
         }
     });
     CampaignNarrationStream::new(NarrationStreamOptions {
-        // `connectionsFor` (285–288): лёгкая сверка, затем открытые соединения.
+        // `connectionsFor` (286–289): лёгкая сверка, затем открытые соединения.
         connections_for: Box::new(|campaign_id| with_narration_core(|core| core.streams.live().map(|live| live.narration_connections(campaign_id)).unwrap_or_default()).unwrap_or_default()),
-        // `write` (289): кадр через очередь соединения (`writeCampaignStream`).
+        // `write` (290): кадр через очередь соединения (`writeCampaignStream`).
         write: Box::new(|handle, event, payload| {
             with_narration_core(|core| {
                 if let Some(live) = core.streams.live() {
@@ -1191,7 +1191,7 @@ pub fn narration(core: &Rc<GameCore>) -> NarrationHub {
     })
 }
 
-/// Проверки `PUT …/presence/typing` до чтения тела (4174–4178): комната без
+/// Проверки `PUT …/presence/typing` до чтения тела (4175–4179): комната без
 /// сверки, затем доступ.
 pub fn typing_room_check(core: &GameCore, user: &Value, campaign_id: &str) -> Result<(), ApiError> {
     let Some(live) = core.streams.live() else { return Err(ApiError::internal("Реестр живых потоков не подключён")) };
@@ -1205,7 +1205,7 @@ pub fn typing_room_check(core: &GameCore, user: &Value, campaign_id: &str) -> Re
     Ok(())
 }
 
-/// Остаток `PUT …/presence/typing` (4180–4191): владелец героя, запись
+/// Остаток `PUT …/presence/typing` (4181–4192): владелец героя, запись
 /// индикатора, рассылка кадра `presence`.
 pub fn set_typing(core: &GameCore, user: &Value, campaign_id: &str, actor_id: &str, typing: bool) -> Result<(), ApiError> {
     let Some(live) = core.streams.live() else { return Err(ApiError::internal("Реестр живых потоков не подключён")) };

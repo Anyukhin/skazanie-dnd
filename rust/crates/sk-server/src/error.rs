@@ -1,10 +1,10 @@
 //! Отказы маршрутов.
 //!
 //! [`ApiError`] — готовый JSON-ответ `{ error, code?, … }` (`json(res, status,
-//! body)` в `server/index.mjs:469–480`). [`Failure`] — ошибка нижнего слоя с
+//! body)` в `server/index.mjs:470–481`). [`Failure`] — ошибка нижнего слоя с
 //! текстом и кодом, как `error.message`/`error.code` в JS: маршрут сам
 //! выбирает статус по коду ([`Failure::respond`]), а необработанная — через
-//! `?` — становится 500 `INTERNAL_ERROR` последней границы (`index.mjs:3885–3917`).
+//! `?` — становится 500 `INTERNAL_ERROR` последней границы (`index.mjs:3886–3918`).
 
 use axum::body::Body;
 use axum::http::{Response, StatusCode};
@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 use crate::http::{json, BodyError};
 
 /// Коды гонки журнала, на которые маршруты команд отвечают 409: общая часть
-/// списков JS (`index.mjs:4369, 4420, 4800`). Маршрут дописывает свои
+/// списков JS (`index.mjs:4370, 4421, 4801`). Маршрут дописывает свои
 /// (`PARTY_DECISION_CONFLICT`, `CAMPAIGN_RULESET_LOCKED`…) к этому набору
 /// или берёт его как есть — но не набирает заново.
 pub const STATE_CONFLICT_CODES: [&str; 2] = ["STATE_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT"];
@@ -29,7 +29,7 @@ pub struct ApiError {
 
 pub type ApiResult<T = Response<Body>> = Result<T, ApiError>;
 
-/// `{ error: 'Внутренняя ошибка сервера', code: 'INTERNAL_ERROR' }` (`index.mjs:3912`).
+/// `{ error: 'Внутренняя ошибка сервера', code: 'INTERNAL_ERROR' }` (`index.mjs:3913`).
 pub const INTERNAL_ERROR_MESSAGE: &str = "Внутренняя ошибка сервера";
 
 impl ApiError {
@@ -64,7 +64,7 @@ impl ApiError {
         error
     }
 
-    /// `json(res, 404, { error: 'API endpoint не найден' })` (`index.mjs:6477`).
+    /// `json(res, 404, { error: 'API endpoint не найден' })` (`index.mjs:6478`).
     pub fn api_not_found() -> Self {
         Self::new(StatusCode::NOT_FOUND, "API endpoint не найден")
     }
@@ -81,7 +81,7 @@ impl axum::response::IntoResponse for ApiError {
 }
 
 /// Ошибки разбора тела — вина запроса: 400 с кодом (`REQUEST_BODY_ERROR_CODES`,
-/// `index.mjs:3887`, `failUnhandledRequest` 3909–3911).
+/// `index.mjs:3888`, `failUnhandledRequest` 3909–3911).
 impl From<BodyError> for ApiError {
     fn from(error: BodyError) -> Self {
         if crate::http::REQUEST_BODY_ERROR_CODES.contains(&error.code) {

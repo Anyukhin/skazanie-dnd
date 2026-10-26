@@ -3,14 +3,14 @@
 //! линия и стена), линия действия от начала области, кто в области, цели
 //! заклинания среди участников и социальных NPC. Задача Р1.
 //!
-//! JS: `server/rules-engine.mjs` — `isLargeOrLarger` (9887), `areaCenterOf`
-//! (9898), куб от точки (9929–9950), круговая геометрия (9952–9965),
-//! `positionInArea` (9967), `spreadsAroundCorners` (9979), линия действия
-//! (9988–10054), конус и куб от заклинателя (10056–10084), `actorInArea`
-//! (10086), `activeAreaEffectsAt` (10097), `wallCells` (10312),
-//! `positionInEffect` (10379), `areaEffectAffectsActor` (10399),
-//! `areaCasterSideIds` (10432), `areaCellsOf` (10577), `areasOverlap`
-//! (10608), `spellTargetsAt` (10614), `npcSpellTargetsAt` (10683).
+//! JS: `server/rules-engine.mjs` — `isLargeOrLarger` (9909), `areaCenterOf`
+//! (9920), куб от точки (9951–9972), круговая геометрия (9974–9987),
+//! `positionInArea` (9989), `spreadsAroundCorners` (10001), линия действия
+//! (10010–10076), конус и куб от заклинателя (10078–10106), `actorInArea`
+//! (10108), `activeAreaEffectsAt` (10119), `wallCells` (10334),
+//! `positionInEffect` (10401), `areaEffectAffectsActor` (10421),
+//! `areaCasterSideIds` (10454), `areaCellsOf` (10599), `areasOverlap`
+//! (10630), `spellTargetsAt` (10636), `npcSpellTargetsAt` (10705).
 
 use std::cell::RefCell;
 use std::collections::HashMap;

@@ -1,10 +1,10 @@
 //! Разбор команды — `resolveCommandInternal` (`rules-engine.mjs`,
-//! 13032–23439). Задача Р0: подготовка (13032–13117), контекст разбора
+//! 13032–23439). Задача Р0: подготовка (13054–13139), контекст разбора
 //! [`Resolve`], диспетчер (`dispatch.rs`).
 //!
-//! Замыкания JS (13061–13700) — методы [`Resolve`] в `impl`-блоках своих
+//! Замыкания JS (13083–13722) — методы [`Resolve`] в `impl`-блоках своих
 //! файлов: время мира — `world_time.rs` (Р4), остальное — `kernel.rs` (Р5).
-//! Хвост последствий (23134–23439) — `post.rs` (Р5); обёртки
+//! Хвост последствий (23156–23461) — `post.rs` (Р5); обёртки
 //! `resolveCommand`, `resolveCommandWithPauses`, `resolveCommands` —
 //! `api.rs` (Р5); удар-открытие — `opening_strike.rs` (Р5).
 //!
@@ -145,7 +145,7 @@ pub fn reaction_choices(raw: Option<&Value>, key_field: &str) -> IndexMap<String
     choices
 }
 
-/// Прокси NPC сцены для заклинаний 2014 (13044–13053): видимый NPC без листа
+/// Прокси NPC сцены для заклинаний 2014 (13066–13075): видимый NPC без листа
 /// в бою получает в расчёте свой стат-блок. События сохраняют id NPC.
 fn push_npc_spell_proxies(state: &mut Value, input: &Value) -> Step {
     if input.get("command_type").and_then(Value::as_str) != Some("CastSpell") || !sk_core::game::uses_2014(state) {
@@ -174,7 +174,7 @@ fn push_npc_spell_proxies(state: &mut Value, input: &Value) -> Step {
 }
 
 /// `TruceBroken` для команды, которая бьёт через линию перемирия
-/// (13101–13116): `truce` — `truceFor(state)` до команды. Лечение своего под
+/// (13123–13138): `truce` — `truceFor(state)` до команды. Лечение своего под
 /// перемирием — не нарушение.
 pub fn truce_broken_event(state: &Value, command: &Value, target_id: &Value, truce: &Value) -> Option<Value> {
     if !TRUCE_BREAKING_COMMAND_TYPES.contains(&js::s(command.get("command_type")).as_str()) {
@@ -262,7 +262,7 @@ impl Resolve<'_> {
         self.projector.project(&self.events)
     }
 
-    /// Вероломство: удар под перемирием (13092–13117). Разрыв уговора идёт в
+    /// Вероломство: удар под перемирием (13114–13139). Разрыв уговора идёт в
     /// журнал **перед** самим ударом.
     fn append_truce_broken(&mut self) {
         let Some(truce) = self.truce_before_command.clone() else { return };

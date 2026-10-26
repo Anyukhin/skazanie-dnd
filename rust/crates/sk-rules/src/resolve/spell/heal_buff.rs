@@ -1,7 +1,7 @@
 //! Заклинание: переливание жизни, лечение, «Открывание», «Рассеивание
 //! магии», усиление навыка и прочие усиления и полезные заклинания. Задача Р9.
 //!
-//! JS: `server/rules-engine.mjs`, 18227–18589.
+//! JS: `server/rules-engine.mjs`, 18249–18611.
 
 use serde_json::{json, Map, Value};
 use sk_core::js;
@@ -14,7 +14,7 @@ use crate::core::{ability_modifier, command_with, command_with_rules, condition_
 use crate::pause::{rule, Step};
 use crate::tactical_geometry::npc_positioning::NpcTargetGeometry;
 
-/// Переливание жизни: заклинатель платит хитами, цель получает вдвое (18227–18248).
+/// Переливание жизни: заклинатель платит хитами, цель получает вдвое (18249–18270).
 pub(super) fn life_transference(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let state = r.state.clone();
     let spell = cast.spell.clone();
@@ -58,7 +58,7 @@ pub(super) fn life_transference(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     Ok(())
 }
 
-/// Лечение (18249–18306).
+/// Лечение (18271–18328).
 pub(super) fn healing(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let state = r.state.clone();
     let spell = cast.spell.clone();
@@ -165,7 +165,7 @@ pub(super) fn healing(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     Ok(())
 }
 
-/// «Открывание»: замок снимается без проверки, и стук слышно (18307–18346).
+/// «Открывание»: замок снимается без проверки, и стук слышно (18329–18368).
 pub(super) fn knock(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let spell = cast.spell.clone();
     let command = cast.command.clone();
@@ -234,7 +234,7 @@ pub(super) fn knock(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     Ok(())
 }
 
-/// «Рассеивание магии»: концентрация и длящиеся области в точке (18347–18396).
+/// «Рассеивание магии»: концентрация и длящиеся области в точке (18369–18418).
 pub(super) fn dispel_magic(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let state = r.state.clone();
     let spell = cast.spell.clone();
@@ -297,7 +297,7 @@ pub(super) fn dispel_magic(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     Ok(())
 }
 
-/// «Заимствованные знания» и «Усиление навыка» (18397–18428).
+/// «Заимствованные знания» и «Усиление навыка» (18419–18450).
 pub(super) fn skill_buff(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let state = r.state.clone();
     let spell = cast.spell.clone();
@@ -339,7 +339,7 @@ pub(super) fn skill_buff(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     Ok(())
 }
 
-/// Состояния усиления (18435–18448).
+/// Состояния усиления (18457–18470).
 fn buff_conditions(spell: &Value, command: &Value, uses_2014: bool) -> Vec<Value> {
     let option = js::s(command.get("spell_option"));
     let chosen = at(field(spell, "conditionsByOption"), &option).and_then(Value::as_array).filter(|list| !list.is_empty());
@@ -368,7 +368,7 @@ fn buff_conditions(spell: &Value, command: &Value, uses_2014: bool) -> Vec<Value
     Vec::new()
 }
 
-/// Усиления и полезные заклинания (18429–18589).
+/// Усиления и полезные заклинания (18451–18611).
 pub(super) fn buff(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let state = r.state.clone();
     let spell = cast.spell.clone();

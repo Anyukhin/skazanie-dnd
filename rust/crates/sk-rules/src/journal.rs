@@ -1,7 +1,7 @@
 //! Журналы, которые редьюсер ведёт в состоянии: боевой (`battleLog`, 50
 //! записей), отметки на карте (`mapFeedback`, 6) и экономический
 //! (`economyLog`, 50); запись идемпотентна по id события. Перенос
-//! `rules-engine.mjs`, 24002–24072: `eventJournalId`, `attackEndpointsFor`,
+//! `rules-engine.mjs`, 24024–24094: `eventJournalId`, `attackEndpointsFor`,
 //! `battleLogAreaFromPayload`, `appendBattleLog`, `recentBattleSpellName`,
 //! `appendMapFeedback`, `appendEconomyLog`. Задача Р0.
 

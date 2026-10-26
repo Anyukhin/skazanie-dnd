@@ -1,4 +1,4 @@
-//! С18.1: `POST /api/campaigns/:id/commands` — `server/index.mjs:5530–5956`.
+//! С18.1: `POST /api/campaigns/:id/commands` — `server/index.mjs:5531–5957`.
 //!
 //! Структурированные команды стола (бой, заклинания, предметы, отдых,
 //! развитие, торговля, обыск, пленные, звери, стража, таверна, письма,
@@ -30,10 +30,10 @@
 //!
 //! Отклонения и долги:
 //!
-//! - **`combatTurnCoordinator.hold`** (5761–5763) — координатор хода боя ядра
+//! - **`combatTurnCoordinator.hold`** (5762–5764) — координатор хода боя ядра
 //!   (С17, [`crate::clocks::hold_combat`]): удержание до шага «реплика в
 //!   летописи», снятие там же или в `finally` (уничтожение `Pending`).
-//! - **`settleCombatContinuation` (3352–3363)** — стадия `combat-continuation`
+//! - **`settleCombatContinuation` (3353–3364)** — стадия `combat-continuation`
 //!   координатора последствий ядра (С17, [`crate::clocks::settle_combat_continuation`]).
 //! - `assertMerchantIdempotency`/`assertMerchantResultFingerprint` (1023,
 //!   1241) — в `merchant_guard.rs` (С14).
@@ -76,19 +76,19 @@ use crate::startup::{finish_failed_roll_reservation, RollReservation};
 use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
-    // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/commands$/)` и `POST` (5530–5531).
+    // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/commands$/)` и `POST` (5531–5532).
     vec![Route::post(5531, Matcher::path_template("/api/campaigns/{id}/commands"), campaign_commands)]
 }
 
-/// Коды сбоя хранилища, на которые `catch` отвечает 500 (5922).
+/// Коды сбоя хранилища, на которые `catch` отвечает 500 (5923).
 const INTERNAL_CODES: &[&str] = &["EIO", "ENOSPC", "CORRUPT_EVENT_LOG", "CAMPAIGN_RECOVERY_REQUIRED", "INVALID_STORE_FILE"];
-/// Коды 409 (5924).
+/// Коды 409 (5925).
 const CONFLICT_CODES: &[&str] = &["STATE_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT", "ENCOUNTER_ALREADY_PRESENT", "ENCOUNTER_DURING_COMBAT"];
-/// Коды 403 (5925).
+/// Коды 403 (5926).
 const FORBIDDEN_CODES: &[&str] = &["ACTOR_FORBIDDEN", "PLAYER_COMMAND_FORBIDDEN"];
-/// Текст 500 маршрута (5944).
+/// Текст 500 маршрута (5945).
 const INTERNAL_MESSAGE: &str = "Внутренняя ошибка сервера. Повторите запрос с тем же ключом.";
-/// Текст отказа владельца героя (5588, 5641).
+/// Текст отказа владельца героя (5589, 5642).
 const ACTOR_FORBIDDEN_MESSAGE: &str = "Команда доступна только владельцу героя или его призванного существа";
 
 fn is_admin(user: &Value) -> bool {
@@ -221,7 +221,7 @@ fn campaign_commands(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     })
 }
 
-/// Шаги `try` до первого чтения журнала (5545–5548): комната, доступ, тело;
+/// Шаги `try` до первого чтения журнала (5546–5549): комната, доступ, тело;
 /// заодно — членство и герои кампании для санитайзеров.
 async fn admit(ctx: &mut RouteCtx, campaign_id: &str, user: Value) -> Result<Admitted, Stop> {
     let state = ctx.state.clone();
@@ -279,7 +279,7 @@ async fn run(core: Rc<GameCore>, state: Arc<AppState>, admitted: Admitted) -> Re
     }
 }
 
-/// `catch (error)` (5920–5952).
+/// `catch (error)` (5921–5953).
 fn catch_reply(core: &Rc<GameCore>, campaign_id: &str, user: &Value, pending: Pending, failure: Failure) -> Result<(StatusCode, Value), ApiError> {
     finish_failed_roll_reservation(core, pending.reservation.as_ref(), failure.code.as_deref());
     let code = failure.code.clone().unwrap_or_default();
@@ -335,7 +335,7 @@ fn spread_with(value: &Value, key: &str, item: Value) -> Value {
     copy
 }
 
-/// Тело `try` (5545–5919).
+/// Тело `try` (5546–5920).
 async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted, pending: &mut Pending) -> Result<(StatusCode, Value), Stop> {
     let campaign_id = admitted.campaign_id.as_str();
     let user = &admitted.user;
@@ -363,7 +363,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
     }
     let before = latest_campaign_state(core, campaign_id, room.state.as_ref())?;
 
-    // Вход в бой с NPC — отдельная атомарная команда (5558–5563).
+    // Вход в бой с NPC — отдельная атомарная команда (5559–5564).
     let requested_npc_combat = of_type(&commands, PLAYER_NPC_COMBAT_COMMANDS).len();
     if requested_npc_combat > 0 && commands.len() != 1 {
         return Err(policy_error("Вход в бой с NPC должен быть отдельной атомарной командой", "PLAYER_COMMAND_FORBIDDEN").into());
@@ -376,13 +376,13 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
         assert_npc_combat_idempotency(core.events.as_ref(), campaign_id, idempotency_key, first)?;
     }
 
-    // Атаки не смешиваются с другими командами (5564–5567).
+    // Атаки не смешиваются с другими командами (5565–5568).
     let requested_attacks: Vec<Value> = of_type(&commands, &["MakeAttack"]).into_iter().cloned().collect();
     if !requested_attacks.is_empty() && requested_attacks.len() != commands.len() {
         return Err(policy_error("Атаки нельзя смешивать с другими командами в одном атомарном batch", "PLAYER_COMMAND_FORBIDDEN").into());
     }
     // Повтор атаки ищется до проверки текущей цели: исчезнувший призыв
-    // авторизуется по связи с хозяином из сохранённого состояния (5568–5595).
+    // авторизуется по связи с хозяином из сохранённого состояния (5569–5596).
     let mut historical_actors: HashSet<String> = HashSet::new();
     let mut preflight_attacks = Vec::new();
     for command in &requested_attacks {
@@ -418,7 +418,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
         assert_make_attack_idempotency(core.events.as_ref(), campaign_id, idempotency_key, &preflight_attacks, authorize)?
     };
 
-    // Отдых — одной семантической командой (5596–5599).
+    // Отдых — одной семантической командой (5597–5600).
     if !of_type(&commands, PLAYER_REST_COMMANDS).is_empty() && commands.len() != 1 {
         return Err(policy_error("Отдых принимается одной семантической командой", "PLAYER_COMMAND_FORBIDDEN").into());
     }
@@ -472,7 +472,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
     }
     commands = sanitized;
     // CMD-01/02: повтор ключа сверяется с заявкой в форме санитайзера, до
-    // серверных дополнений ниже (5627–5631).
+    // серверных дополнений ниже (5628–5632).
     let request_commands = commands.clone();
     let mut rest_command = commands.iter().find(|command| has(PLAYER_REST_COMMANDS, &command_type(command))).cloned();
     if let Some(rest) = &rest_command {
@@ -493,7 +493,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
     }
     let set = orchestration(core, state)?;
     // Письмо: отказ движка до модели, повтор ключа без нового черновика
-    // (5665–5673).
+    // (5666–5674).
     if !of_type(&commands, PLAYER_LETTER_COMMANDS).is_empty() {
         if commands.len() != 1 {
             return Err(policy_error("Письмо идёт отдельной атомарной командой", "PLAYER_COMMAND_FORBIDDEN").into());
@@ -505,7 +505,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
             commands = vec![with_courier_reply_draft(&model, &before, letter).await];
         }
     }
-    // Драка со стражей — следом штатный `StartCombat` (5679–5681).
+    // Драка со стражей — следом штатный `StartCombat` (5680–5682).
     let law_fight = of_type(&commands, PLAYER_LAW_COMMANDS).first().map(|law| (js::string(get(Some(law), "resolution")), get(Some(law), "actor_id").cloned()));
     if let Some((resolution, actor_id)) = law_fight {
         if resolution == "fight" {
@@ -519,7 +519,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
             commands.push(Value::Object(start));
         }
     }
-    // Кто действует (5682–5690).
+    // Кто действует (5683–5691).
     let actor = {
         let first = commands.first().and_then(|command| get(Some(command), "actor_id"));
         if js::truthy(first) {
@@ -580,7 +580,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
     if !of_type(&commands, PLAYER_CAPTIVE_COMMANDS).is_empty() && commands.len() != 1 {
         return Err(policy_error("Действие с пленным должно быть отдельной атомарной командой", "PLAYER_COMMAND_FORBIDDEN").into());
     }
-    // Обыск атомарен целиком: весь набор или ничего (5728–5734).
+    // Обыск атомарен целиком: весь набор или ничего (5729–5735).
     let loot_commands: Vec<Value> = of_type(&commands, PLAYER_LOOT_COMMANDS).into_iter().cloned().collect();
     if !loot_commands.is_empty() && commands.len() != 1 {
         return Err(policy_error("Обыск должен быть отдельной атомарной командой", "PLAYER_COMMAND_FORBIDDEN").into());
@@ -606,7 +606,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
         assert_make_attack_idempotency(core.events.as_ref(), campaign_id, idempotency_key, &attack_commands, None)?;
     }
     // Двухфазный ручной бросок: первая фаза без `roll` получает карточку,
-    // вторая приносит серверный `roll_id` (5744–5755).
+    // вторая приносит серверный `roll_id` (5745–5756).
     let manual_roll = body.get("manual_roll") == Some(&Value::Bool(true)) || body.get("manualRoll") == Some(&Value::Bool(true));
     let mut verified_roll = Value::Null;
     let roll_id = get(body.get("roll"), "roll_id");
@@ -620,7 +620,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
         return Err(policy_error("Принимается только серверный roll_id", "UNVERIFIED_ROLL").into());
     }
     // Пока ход в бою идёт к летописи — строка хода, затем критическая реплика
-    // рассказчика, — координатор не начинает следующий автоход (5756–5763).
+    // рассказчика, — координатор не начинает следующий автоход (5757–5764).
     let combat_before = js::truthy(get(get(get(Some(&before), "mechanics"), "combat"), "active"));
     if combat_before || types_any(PLAYER_COMBAT_COMMANDS) {
         pending.hold = crate::clocks::hold_combat(core, campaign_id);
@@ -657,7 +657,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
         pending.reservation = None;
     }
     let viewer_actor = Value::String(actor.clone());
-    // Карточка проверки: мир не изменился, ответ уходит как есть (5772).
+    // Карточка проверки: мир не изменился, ответ уходит как есть (5773).
     if js::truthy(result.get("check")) {
         let payload = spread_with(&result, "room_version", Value::from(room.version));
         let reply = sk_projection::viewer_projection::turn_result_for_viewer(Some(&payload), Some(user), Some(&viewer_actor)).map_err(Failure::from)?;
@@ -692,7 +692,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
     respond(core, &set, admitted, &actor, command_actor.as_ref(), &types, &merchant_commands, pending.hold.take(), result).await
 }
 
-/// Продолжение боя и свежая голова журнала (5780–5806).
+/// Продолжение боя и свежая голова журнала (5781–5807).
 async fn settle_after_commit(core: &Rc<GameCore>, campaign_id: &str, result: &mut Value, types: &IndexSet<String>, resolves_reaction: bool) -> Result<(), Stop> {
     let authoritative = result.get("authoritative_state").cloned().unwrap_or(Value::Null);
     let original = nullish(result.get("state_version"), get(Some(&authoritative), "state_version")).cloned().unwrap_or(Value::from(0));
@@ -730,7 +730,7 @@ async fn settle_after_commit(core: &Rc<GameCore>, campaign_id: &str, result: &mu
     Ok(())
 }
 
-/// Летопись хода, критический момент и ответ зрителю (5807–5919).
+/// Летопись хода, критический момент и ответ зрителю (5808–5920).
 #[allow(clippy::too_many_arguments)]
 async fn respond(
     core: &Rc<GameCore>,
@@ -751,7 +751,7 @@ async fn respond(
     let mechanics = array(result.get("mechanics")).to_vec();
     let end_turn = types.contains("EndTurn");
     // Ход, который зовёт рассказчика, узнаётся по тем же событиям, что и
-    // реплика; слова игрока к ходу в бою — тоже (5807–5816).
+    // реплика; слова игрока к ходу в бою — тоже (5808–5817).
     let player_note = if committed_state.is_some() { player_note_from(&admitted.body) } else { String::new() };
     let critical_trigger = committed_state.as_ref().and_then(|state| {
         sk_agents::creative_director::critical_moment_for(&mechanics, state)
@@ -807,7 +807,7 @@ async fn respond(
     } else {
         None
     };
-    // Разговор с вариантами: реплика героя и ответ собеседника (5850–5861).
+    // Разговор с вариантами: реплика героя и ответ собеседника (5851–5862).
     let dialogue_chosen = mechanics.iter().find(|event| get(Some(event), "event_type").and_then(Value::as_str) == Some("DialogueOptionChosen")).and_then(|event| get(Some(event), "payload")).filter(|payload| !payload.is_null()).cloned();
     let mut dialogue_entries = Vec::new();
     if let Some(chosen) = &dialogue_chosen {
@@ -833,7 +833,7 @@ async fn respond(
     }
     let first_entries: Vec<Value> = note_entry.into_iter().chain(dialogue_entries).chain(turn_entry.clone()).collect();
     // Строка хода ложится в летопись сразу после commit, до ожидания
-    // рассказчика (5862–5866).
+    // рассказчика (5863–5867).
     let projected = match &committed_state {
         Some(state) => {
             let journal = (!first_entries.is_empty()).then(|| Value::Array(first_entries.clone()));
@@ -846,7 +846,7 @@ async fn respond(
     let mut narrator_text = String::new();
     if let (Some(trigger), Some(state)) = (&critical_trigger, &committed_state) {
         // Повтор ключа отдаёт уже записанную реплику, а не зовёт рассказчика
-        // второй раз (5870–5878).
+        // второй раз (5871–5879).
         let current = get_room(core, campaign_id)?;
         let stored = array(current.state.as_ref().and_then(|state| state.get("messages")))
             .iter()

@@ -1,6 +1,6 @@
 //! Время мира в разборе команды: замыкания `appendTimeAdvance`,
 //! `appendScenarioKnightPresence`, `appendWorldTimeConsequences`
-//! (`rules-engine.mjs`, 13119–13313). Задача Р4б.
+//! (`rules-engine.mjs`, 13141–13335). Задача Р4б.
 //!
 //! В JS это замыкания `resolveCommandInternal` над `events`, `rolls`,
 //! `diceService` и `projectEvents`; здесь — методы [`Resolve`]. Все
@@ -87,7 +87,7 @@ fn draft_event(command: &Value, draft: &Value, targets_default_empty: bool) -> V
 }
 
 impl Resolve<'_> {
-    /// `appendTimeAdvance(sourceCommand, amount, unit, options)` (13119):
+    /// `appendTimeAdvance(sourceCommand, amount, unit, options)` (13141):
     /// `TimeAdvanced`, отпуск истёкших призывов, часы мира и рассвет
     /// предметов. Возвращает пересечённые минуты.
     pub fn append_time_advance(&mut self, source_command: &Value, amount: Option<&Value>, unit: Option<&Value>, options: TimeAdvanceOptions) -> Result<i64, Halt> {
@@ -139,7 +139,7 @@ impl Resolve<'_> {
         Ok(elapsed_minutes as i64)
     }
 
-    /// `appendScenarioKnightPresence(sourceCommand)` (13155): ночной гость
+    /// `appendScenarioKnightPresence(sourceCommand)` (13177): ночной гость
     /// сценария приходит и уходит с часами мира и с приходом отряда.
     pub fn append_scenario_knight_presence(&mut self, source_command: &Value) -> Step {
         let projected = self.project_events()?;

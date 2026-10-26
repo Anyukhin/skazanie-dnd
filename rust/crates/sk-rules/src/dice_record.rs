@@ -1,6 +1,6 @@
 //! Кости разбора команды — перенос `recordingDiceService`,
 //! `replayDiceService`, `rollIndomitableReplacement` и
-//! `failedSavingThrowEvent` (`rules-engine.mjs`, 12263–12320). Задача Р0.
+//! `failedSavingThrowEvent` (`rules-engine.mjs`, 12285–12342). Задача Р0.
 //!
 //! Стенограмма бросков лежит в `ReactionWindowOpened.pending_dice_transcript`
 //! (журнал и хеш проекции), поэтому её JSON обязан совпадать с JS побайтно:

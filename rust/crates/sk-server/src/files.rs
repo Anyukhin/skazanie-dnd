@@ -1,5 +1,5 @@
 //! С12: отдача файлов картинок — `serveGenerated`, `serveNpcPortrait`,
-//! `serveGeneratedImage` (`server/index.mjs:3834–3883`).
+//! `serveGeneratedImage` (`server/index.mjs:3835–3884`).
 //!
 //! Ответы с файлом пишутся мимо `json(...)`: в них нет заголовков CORS и
 //! `no-store`, только свои (`res.writeHead`); заголовки безопасности
@@ -39,7 +39,7 @@ fn generated_name_allowed(name: &str) -> bool {
     !stem.is_empty() && stem.chars().all(|ch| matches!(ch.to_ascii_lowercase(), 'a'..='f' | '0'..='9' | '-')) && matches!(extension.as_str(), "png" | "webp" | "jpg" | "jpeg")
 }
 
-/// `serveGenerated(req, res)` (3834–3841): `tail` — адрес после
+/// `serveGenerated(req, res)` (3835–3842): `tail` — адрес после
 /// `/generated/items/` вместе со строкой запроса (`req.url.split('?')[0]`).
 ///
 /// Тип файла JS выбирает по `name.endsWith('.webp')` с учётом регистра, хотя
@@ -85,7 +85,7 @@ pub(crate) fn location_text(url: Option<&Value>, npc_id: &str) -> String {
     }
 }
 
-/// `serveNpcPortrait(req, res, portrait)` для заглушки (3843–3854): 302 на
+/// `serveNpcPortrait(req, res, portrait)` для заглушки (3844–3855): 302 на
 /// ролевую или предзаготовленную картинку. `npc_id` — id профиля (для
 /// адреса-свойства прототипа).
 pub fn serve_static_portrait(portrait: &StaticNpcPortrait, npc_id: &str) -> Result<Response<Body>, String> {
@@ -108,7 +108,7 @@ pub struct CachedImage<'a> {
 }
 
 /// `serveGeneratedImage(req, res, image, headerPrefix, cacheControl)`
-/// (3863–3883): `source` у сгенерированной картинки — всегда `generated`,
+/// (3864–3884): `source` у сгенерированной картинки — всегда `generated`,
 /// тип — `image/webp`.
 pub async fn serve_generated_image(request_headers: &HeaderMap, image: CachedImage<'_>, header_prefix: &str, cache_control: &str) -> Result<Response<Body>, String> {
     let source = format!("{header_prefix}-Source");

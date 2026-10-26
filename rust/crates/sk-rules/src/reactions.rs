@@ -5,7 +5,7 @@
 //! JS: `server/rules-engine.mjs` — `OPPORTUNITY_BLOCKING_CONDITIONS`,
 //! `opportunityAttackers` (4530–4565; `opportunityAttackProfile` — Р3),
 //! варианты реакций 9536–9792 (`bardicInspirationDieSides` — Р3),
-//! `counterspellWindowFor` (9903–9922), `heroReactionModesFor` (12727–12749).
+//! `counterspellWindowFor` (9925–9944), `heroReactionModesFor` (12749–12771).
 //! Исполнение режимов реакций (`resolveReactionPreferences`) — `resolve/api.rs`.
 
 use std::cmp::Ordering;

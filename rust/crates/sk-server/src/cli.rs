@@ -8,6 +8,8 @@
 //!   `test-hooks`);
 //! - `import-legacy …` — перенос старого storage
 //!   ([`crate::legacy_import::run`], С19.2);
+//! - `audit-storage …` — рабочий аудит хранилища перед запуском
+//!   ([`crate::storage_audit::run`], С19);
 //! - иное — справка в stderr, код 2 ([`USAGE_EXIT`]).
 //!
 //! Прежний позиционный «корень проекта» (`skazanie-server <каталог>`) убран:
@@ -24,6 +26,8 @@ skazanie-server — HTTP-сервер «Сказания».
   skazanie-server                      запустить сервер
   skazanie-server --help | -h          эта справка
   skazanie-server import-legacy …      перенести старое storage (JS) в базу
+  skazanie-server audit-storage …      сверить хранилище перед запуском (журнал, replay,
+                                       комнаты): 0 — чисто, 1 — блокеры, 3 — отказ
   skazanie-server journal …            журнал кампании (только сборка с test-hooks)
   skazanie-server session …            сессии входа (только сборка с test-hooks)
   skazanie-server room | audit …       комната и сверка хранилища (только сборка с test-hooks)
@@ -52,6 +56,8 @@ pub enum Invocation {
     Room(String, Vec<String>),
     /// `import-legacy` с остатком аргументов.
     ImportLegacy(Vec<String>),
+    /// `audit-storage` с остатком аргументов.
+    AuditStorage(Vec<String>),
     /// Неизвестный аргумент.
     Unknown(String),
 }
@@ -66,6 +72,7 @@ pub fn parse(args: &[String]) -> Invocation {
         "session" => Invocation::Session(rest),
         "room" | "audit" => Invocation::Room(first.clone(), rest),
         "import-legacy" => Invocation::ImportLegacy(rest),
+        "audit-storage" => Invocation::AuditStorage(rest),
         other => Invocation::Unknown(other.to_string()),
     }
 }
@@ -83,6 +90,7 @@ pub fn run_tool(invocation: &Invocation) -> Option<i32> {
         Invocation::Session(rest) => Some(crate::test_hooks::session_cli::main(rest)),
         Invocation::Room(name, rest) => Some(crate::test_hooks::room_cli::main(name, rest)),
         Invocation::ImportLegacy(rest) => Some(crate::legacy_import::run(rest)),
+        Invocation::AuditStorage(rest) => Some(crate::storage_audit::run(rest)),
         Invocation::Unknown(argument) => {
             eprintln!("skazanie-server: неизвестный аргумент «{argument}»\n\n{HELP}");
             Some(USAGE_EXIT)
@@ -107,6 +115,7 @@ mod tests {
         assert_eq!(parse(&args(&["journal", "--storage", "x"])), Invocation::Journal(args(&["--storage", "x"])));
         assert_eq!(parse(&args(&["session", "--expire"])), Invocation::Session(args(&["--expire"])));
         assert_eq!(parse(&args(&["import-legacy"])), Invocation::ImportLegacy(Vec::new()));
+        assert_eq!(parse(&args(&["audit-storage", "--json"])), Invocation::AuditStorage(args(&["--json"])));
         for unknown in ["help", "--port", "serve", ".", "C:/repo", "--HELP", ""] {
             assert_eq!(parse(&args(&[unknown])), Invocation::Unknown(unknown.to_string()), "{unknown}");
         }

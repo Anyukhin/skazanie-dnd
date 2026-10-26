@@ -1,8 +1,8 @@
-//! С18.5: переходы сцены Режиссёра и соло-выход (`server/index.mjs:2924–2960,
-//! 3021–3093, 3126–3351`).
+//! С18.5: переходы сцены Режиссёра и соло-выход (`server/index.mjs:2925–2961,
+//! 3022–3094, 3127–3352`).
 //!
 //! - [`execute_party_decision_tool`] — `executeTool('request_party_decision', …)`
-//!   (2924–2955): карточка решения отряда в `effects.interaction`. Ветка
+//!   (2925–2956): карточка решения отряда в `effects.interaction`. Ветка
 //!   `advance_scene` того же `executeTool` в JS ни один маршрут не зовёт —
 //!   она не перенесена;
 //! - [`execute_director_scene_transition`] — переход сцены по решённому
@@ -82,7 +82,7 @@ fn literal(entries: Vec<(&str, Option<Value>)>) -> Value {
 
 // --- executeTool('request_party_decision') ----------------------------------
 
-/// `executeTool('request_party_decision', args, effects, state)` (2925–2952):
+/// `executeTool('request_party_decision', args, effects, state)` (2926–2953):
 /// записывает карточку в `effects.interaction` и возвращает итог инструмента.
 pub fn execute_party_decision_tool(args: &Value, effects: &mut Value, state: &Value) -> Value {
     if js::truthy(effects.get("interaction")) {
@@ -154,11 +154,11 @@ pub fn execute_party_decision_tool(args: &Value, effects: &mut Value, state: &Va
 // --- очередь на решение группы ------------------------------------------------
 
 thread_local! {
-    /// `directorDecisionLocks` (3022): очередь заданий на одно решение.
+    /// `directorDecisionLocks` (3023): очередь заданий на одно решение.
     static DECISION_LOCKS: RefCell<HashMap<String, Rc<tokio::sync::Mutex<()>>>> = RefCell::new(HashMap::new());
 }
 
-/// `directorDecisionLockKey(campaignId, reference)` (3028–3036).
+/// `directorDecisionLockKey(campaignId, reference)` (3029–3037).
 fn decision_lock_key(campaign_id: &str, reference: &Value) -> String {
     hash::sha256_hex(format!("{campaign_id}\0{}\0{}", js::s(reference.get("interaction_id")), js::s(reference.get("resolved_option_id"))))
 }
@@ -193,7 +193,7 @@ fn is_scene_advanced(event: &Value) -> bool {
     event.get("event_type").and_then(Value::as_str) == Some("SceneAdvanced")
 }
 
-/// `committedSceneForPartyDecision(campaignId, reference)` (3052–3057).
+/// `committedSceneForPartyDecision(campaignId, reference)` (3053–3058).
 fn committed_scene_for_party_decision(core: &GameCore, campaign_id: &str, reference: &Value) -> Result<Option<Value>, Failure> {
     let events = core.events.get_events(campaign_id, 0, None)?;
     let same = |event: &Value, field: &str| {
@@ -206,7 +206,7 @@ fn committed_scene_for_party_decision(core: &GameCore, campaign_id: &str, refere
     Ok(events.into_iter().rev().find(|event| is_scene_advanced(event) && same(event, "interaction_id") && same(event, "resolved_option_id")))
 }
 
-/// `committedSceneForFingerprint(campaignId, fingerprint)` (3059–3063).
+/// `committedSceneForFingerprint(campaignId, fingerprint)` (3060–3064).
 pub fn committed_scene_for_fingerprint(core: &GameCore, campaign_id: &str, fingerprint: &str) -> Result<Option<Value>, Failure> {
     let events = core.events.get_events(campaign_id, 0, None)?;
     Ok(events.into_iter().rev().find(|event| is_scene_advanced(event) && get(event.get("payload"), "request_fingerprint").and_then(Value::as_str) == Some(fingerprint)))
@@ -237,7 +237,7 @@ pub async fn allowed_actor_ids(app: &Arc<AppState>, user: &Value, campaign_id: &
     Ok(js::strings_value(ids))
 }
 
-/// `executeDirectorSceneTransition(input)` (3065–3076).
+/// `executeDirectorSceneTransition(input)` (3066–3077).
 pub async fn execute_director_scene_transition(input: TransitionInput<'_>) -> Result<Value, Failure> {
     let source = match input.resolution.get("partyDecision").filter(|value| !value.is_null()) {
         Some(reference) => reference.clone(),
@@ -292,7 +292,7 @@ fn with_transition(result: &Value, transition: Value, extra: Vec<(&str, Value)>)
     js::spread(result, Value::Object(patch))
 }
 
-/// `executeDirectorSceneTransitionOnce` (3194–3282).
+/// `executeDirectorSceneTransitionOnce` (3195–3283).
 async fn execute_director_scene_transition_once(input: TransitionInput<'_>, party_decision: Value) -> Result<Value, Failure> {
     let TransitionInput { core, app, services, campaign_id, room_state, user, action, idempotency_key, resolution } = input;
     let authoritative = latest_campaign_state(core, campaign_id, Some(&room_state))?;
@@ -470,7 +470,7 @@ pub struct SoloExitInput<'a> {
     pub proposal: &'a Value,
 }
 
-/// `executeSoloPartyExit` (3126–3192): соло-стол не голосует — решение
+/// `executeSoloPartyExit` (3127–3193): соло-стол не голосует — решение
 /// открывается и решается одним голосом героя, затем переход. `None` — путь
 /// неприменим (уже открыто другое решение, кворум не сошёлся, вариант ухода
 /// не опознан), и вызывающий открывает обычную карточку.

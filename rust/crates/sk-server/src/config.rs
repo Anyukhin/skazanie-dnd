@@ -1,5 +1,5 @@
-//! Настройки сервера — перенос верхушки `server/index.mjs` (202–231, 251, 312,
-//! 356, 409, 430, 494) и переменных, которые JS читает в других модулях:
+//! Настройки сервера — перенос верхушки `server/index.mjs` (203–232, 252, 313,
+//! 357, 410, 431, 495) и переменных, которые JS читает в других модулях:
 //! `store.mjs:8,138` (`DND_STORAGE_DIR`, `ADMIN_SETUP_TOKEN`),
 //! `speech-input.mjs:11` (`DND_WHISPER_*`), `rules-corpus.mjs:29`
 //! (`DND_CORPUS_DIR`), `migrations/001-event-engine.mjs:73–74`
@@ -22,7 +22,7 @@ use sk_narration_base::model_style_profiles::SELECTABLE_EXTRA_MODELS;
 pub const LEGACY_DEFAULT_RULESET_ID: &str = sk_ruleset::ruleset_config::LEGACY_DEFAULT_RULESET_ID;
 /// `DEFAULT_RULESET_VERSION` (`server/migrations/001-event-engine.mjs:18`).
 pub const DEFAULT_RULESET_VERSION: &str = "5.2.1";
-/// `MIN_PARTY_SLOTS` / `MAX_PARTY_SLOTS` (`index.mjs:206–207`).
+/// `MIN_PARTY_SLOTS` / `MAX_PARTY_SLOTS` (`index.mjs:207–208`).
 pub const MIN_PARTY_SLOTS: i64 = 1;
 pub const MAX_PARTY_SLOTS: i64 = 5;
 
@@ -129,7 +129,7 @@ fn lowered(value: Option<String>) -> String {
     sk_core::text::trim(&value.unwrap_or_default()).to_lowercase()
 }
 
-/// Список моделей каскада (`index.mjs:214–215`).
+/// Список моделей каскада (`index.mjs:215–216`).
 pub fn fallback_models_from(raw: Option<String>, model: &str) -> Vec<String> {
     let raw = non_empty(raw).unwrap_or_else(|| DEFAULT_FALLBACK_MODELS.to_string());
     let mut unique: Vec<String> = Vec::new();

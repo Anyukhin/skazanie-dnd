@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Вход в бой: нападение на NPC, встреча, старт и конец боя. Задача Р11.
 //!
-//! JS: `server/rules-engine.mjs`, 6900–6902, 6903–6921, 7044–7046, 7047–7057. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6922–6924, 6925–6943, 7066–7068, 7069–7079. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 
 use serde_json::Value;
@@ -23,7 +23,7 @@ fn array_of(value: Option<&Value>) -> &[Value] {
     value.and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[])
 }
 
-/// Блок 47 (6900–6902): нападение на NPC.
+/// Блок 47 (6922–6924): нападение на NPC.
 pub fn check_attack_npc(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "AttackNpc" {
         return Ok(());
@@ -31,7 +31,7 @@ pub fn check_attack_npc(v: &mut Validation<'_>) -> Step {
     validate_attack_npc_command(&mut v.command, v.state)
 }
 
-/// Блок 48 (6903–6921): сборка встречи.
+/// Блок 48 (6925–6943): сборка встречи.
 pub fn check_encounter_lifecycle(v: &mut Validation<'_>) -> Step {
     let kind = command_type(v);
     if !ENCOUNTER_LIFECYCLE_COMMAND_TYPES.contains(&kind.as_str()) {
@@ -56,7 +56,7 @@ pub fn check_encounter_lifecycle(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 59 (7044–7046): бой ещё не начат.
+/// Блок 59 (7066–7068): бой ещё не начат.
 pub fn check_start_combat(v: &mut Validation<'_>) -> Step {
     if command_type(v) == "StartCombat" && game::combat_active(v.state) {
         return Err(rule("Бой уже начат", "COMBAT_ALREADY_ACTIVE"));
@@ -64,7 +64,7 @@ pub fn check_start_combat(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 60 (7047–7057): конец боя — не посреди спасбросков от смерти героя
+/// Блок 60 (7069–7079): конец боя — не посреди спасбросков от смерти героя
 /// из очереди.
 pub fn check_end_combat(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "EndCombat" {

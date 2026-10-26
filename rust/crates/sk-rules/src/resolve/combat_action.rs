@@ -2,7 +2,7 @@
 //! возобновление пауз (15377–15717, помощники — `resolve/resume.rs`) и 45
 //! приёмов. Задача Р10.
 //!
-//! JS: `server/rules-engine.mjs`, 15344–16662. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 15366–16684. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 //!
 //! Приёмы — цепочка `else if` в порядке JS: первая подходящая ветка
@@ -317,7 +317,7 @@ impl Act {
     }
 }
 
-/// `UseCombatAction` (15344–16662).
+/// `UseCombatAction` (15366–16684).
 pub fn use_combat_action(r: &mut Resolve<'_>) -> Step {
     let resume = Resume::new(r);
     if r.command.get("action_id").and_then(Value::as_str) == Some("decline-reaction") {
@@ -338,7 +338,7 @@ pub fn use_combat_action(r: &mut Resolve<'_>) -> Step {
     run(r, &act)
 }
 
-/// Отказ от реакции (15697–15716).
+/// Отказ от реакции (15719–15738).
 fn decline(r: &mut Resolve<'_>, resume: &Resume) -> Step {
     let window = match resume.window.as_ref() {
         None => return Err(Fault::type_error("Cannot read properties of undefined (reading 'trigger')").into()),
@@ -374,7 +374,7 @@ fn decline(r: &mut Resolve<'_>, resume: &Resume) -> Step {
     Ok(())
 }
 
-/// Цепочка приёмов (15745–16660).
+/// Цепочка приёмов (15767–16682).
 fn run(r: &mut Resolve<'_>, a: &Act) -> Step {
     let id = a.id().to_string();
     let kind = a.effect_kind().map(str::to_string);
@@ -569,7 +569,7 @@ fn run(r: &mut Resolve<'_>, a: &Act) -> Step {
     }
 }
 
-/// Продолжение «Обессиливания» (15745–15827).
+/// Продолжение «Обессиливания» (15767–15849).
 fn enervation_continuation(r: &mut Resolve<'_>, a: &Act) -> Step {
     let link = crate::enervation_link::enervation_link_for(&a.state, a.command.get("actor_id"));
     let Some(link) = link.filter(|link| link.target_id == js::string(a.effect_field("target_id"))) else {
@@ -633,7 +633,7 @@ fn enervation_continuation(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Заклинание-реакция в окне (15840–15977).
+/// Заклинание-реакция в окне (15862–15999).
 fn reaction_spell(r: &mut Resolve<'_>, a: &Act) -> Step {
     a.spend(r)?;
     let spell = a.action.get("spell").cloned().unwrap_or(Value::Null);
@@ -698,7 +698,7 @@ fn reaction_spell(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// «Адское возмездие» (15872–15893).
+/// «Адское возмездие» (15894–15915).
 fn hellish_rebuke(r: &mut Resolve<'_>, a: &Act, spell: &Value, slot_level: f64) -> Step {
     let source_id = a.source_actor_id();
     let source = sk_core::game::find_actor(&a.state, &js::s(a.window_field("source_actor_id"))).cloned();
@@ -745,7 +745,7 @@ fn hellish_rebuke(r: &mut Resolve<'_>, a: &Act, spell: &Value, slot_level: f64) 
     Ok(())
 }
 
-/// «Искусная острота» (15894–15932).
+/// «Искусная острота» (15916–15954).
 fn silvery_barbs(r: &mut Resolve<'_>, a: &Act, spell: &Value) -> Step {
     let original = coalesce(&[a.window_field("trigger_roll")]).cloned().unwrap_or_else(js::obj);
     let modifier = js::safe_int(original.get("modifier"), 0);
@@ -792,7 +792,7 @@ fn silvery_barbs(r: &mut Resolve<'_>, a: &Act, spell: &Value) -> Step {
     Ok(())
 }
 
-/// Контрзаклинание (15933–15968): `true` — сохранённое заклинание отменено.
+/// Контрзаклинание (15955–15990): `true` — сохранённое заклинание отменено.
 fn counterspell(r: &mut Resolve<'_>, a: &Act, spell: &Value) -> Result<bool, Halt> {
     let pending = a.window_field("pending_spell_command").cloned();
     let pending_ref = pending.as_ref().filter(|value| !value.is_null());
@@ -922,7 +922,7 @@ fn release_attack(r: &mut Resolve<'_>, a: &Act, item_id: Option<Value>, extra: V
     Ok(())
 }
 
-/// Атака по возможности в окне (16006–16029).
+/// Атака по возможности в окне (16028–16051).
 fn opportunity_attack(r: &mut Resolve<'_>, a: &Act) -> Step {
     let Some(opportunity) = crate::combat::weapons::opportunity_attack_profile(&a.state, a.actor())? else {
         return Err(rule("Для атаки по возможности нужно готовое ближнее оружие", "OPPORTUNITY_WEAPON_UNAVAILABLE"));
@@ -991,7 +991,7 @@ fn readied_trigger_label(trigger: &str) -> Option<Result<Value, Halt>> {
     None
 }
 
-/// «Готовность» (16030–16095).
+/// «Готовность» (16052–16117).
 fn ready_action(r: &mut Resolve<'_>, a: &Act) -> Step {
     if !sk_core::game::combat_active(&a.state) {
         return Err(rule("Готовиться можно только в бою", "COMBAT_NOT_ACTIVE"));
@@ -1096,7 +1096,7 @@ fn readied_used(a: &Act, readied: &Value) -> Value {
     event_from(&a.rules(&[rule_ids::REACTION]), "ReadiedActionExpired", Some(payload), Some(&a.actor_targets()))
 }
 
-/// Выпуск заготовленного заклинания (16096–16117).
+/// Выпуск заготовленного заклинания (16118–16139).
 fn readied_spell(r: &mut Resolve<'_>, a: &Act) -> Step {
     let readied = readied_for(a).cloned();
     let Some(readied) = readied.filter(|readied| js::truthy(readied.get("spell_id"))) else {
@@ -1146,7 +1146,7 @@ fn readied_spell(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Выпуск заготовленного удара (16118–16135).
+/// Выпуск заготовленного удара (16140–16157).
 fn readied_attack(r: &mut Resolve<'_>, a: &Act) -> Step {
     let Some(readied) = readied_for(a).filter(|readied| js::truthy(Some(readied))).cloned() else {
         return Err(rule("Ничего не заготовлено", "READIED_ACTION_MISSING"));
@@ -1160,7 +1160,7 @@ fn readied_attack(r: &mut Resolve<'_>, a: &Act) -> Step {
     release_attack(r, a, Some(item), vec![("reaction_attack", Value::Bool(true))], |context| context.set("reactionResolution", Value::Bool(true)))
 }
 
-/// Встать (16136–16144).
+/// Встать (16158–16166).
 fn stand_up(r: &mut Resolve<'_>, a: &Act, conditions: &sk_core::indexmap::IndexSet<String>) -> Step {
     if !conditions.contains("prone") {
         return Err(rule("Встать можно только из состояния «сбит с ног»", "ACTOR_NOT_PRONE"));
@@ -1176,7 +1176,7 @@ fn stand_up(r: &mut Resolve<'_>, a: &Act, conditions: &sk_core::indexmap::IndexS
     Ok(())
 }
 
-/// Высвободиться (16150–16162).
+/// Высвободиться (16172–16184).
 fn break_free(r: &mut Resolve<'_>, a: &Act) -> Step {
     let restrained = conditions_of(&a.state, &a.actor_id).iter().find(|condition| condition_name(condition) == "restrained").cloned();
     let Some(restrained) = restrained else {
@@ -1249,13 +1249,13 @@ impl StripMarker for Value {
     }
 }
 
-/// «Совладать с собой» против заклинания с действием-спасброском (16163–16169).
+/// «Совладать с собой» против заклинания с действием-спасброском (16185–16191).
 fn steady_nerves_save_applies(a: &Act) -> bool {
     let conditions = conditions_of(&a.state, &a.actor_id);
     !conditions.iter().any(|condition| condition.get("id").and_then(Value::as_str) == Some("wrathful-smite-frightened")) && conditions.iter().any(|condition| js::truthy(condition.get("action_save_ability")))
 }
 
-/// «Неудержимая пляска Отто» 2014 и родня (16163–16186).
+/// «Неудержимая пляска Отто» 2014 и родня (16185–16208).
 fn steady_nerves_save(r: &mut Resolve<'_>, a: &Act) -> Step {
     let conditions = conditions_of(&a.state, &a.actor_id).to_vec();
     let Some(hold) = conditions.iter().find(|condition| js::truthy(condition.get("action_save_ability"))).cloned() else {
@@ -1304,7 +1304,7 @@ fn steady_nerves_save(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// «Совладать с собой» под «Гневной карой» (16187–16206).
+/// «Совладать с собой» под «Гневной карой» (16209–16228).
 fn steady_nerves_check(r: &mut Resolve<'_>, a: &Act) -> Step {
     let fear = conditions_of(&a.state, &a.actor_id).iter().find(|condition| condition_name(condition) == "wrathful-smite-frightened").cloned();
     let Some(fear) = fear else {
@@ -1347,7 +1347,7 @@ fn steady_nerves_check(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Потушить пламя (16207–16222).
+/// Потушить пламя (16229–16244).
 fn extinguish(r: &mut Resolve<'_>, a: &Act) -> Step {
     let own = a.id() == "extinguish-self";
     let target_id = if own { a.actor_id.clone() } else { a.target_key.clone() };
@@ -1368,7 +1368,7 @@ fn extinguish(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Спрятаться (16233–16242).
+/// Спрятаться (16255–16264).
 fn hide(r: &mut Resolve<'_>, a: &Act, conditions: &sk_core::indexmap::IndexSet<String>) -> Step {
     let modifier = ability_of(a.actor(), "dex") + skill_proficiency_bonus(a.actor(), "stealth", Some(&a.state)) + if conditions.contains("pass-without-trace") { 10 } else { 0 };
     let check_options = options(vec![
@@ -1420,7 +1420,7 @@ fn medicine_check(r: &mut Resolve<'_>, a: &Act, purpose: &str) -> Result<Value, 
     Ok(check)
 }
 
-/// Стабилизировать (16246–16261).
+/// Стабилизировать (16268–16283).
 fn stabilize(r: &mut Resolve<'_>, a: &Act) -> Step {
     if !crate::targets::is_unstable_dying_hero(&a.state, &a.target_key) {
         return Err(rule("Стабилизация нужна только союзнику с 0 ОЗ, который ещё делает спасброски от смерти", "STABILIZATION_NOT_REQUIRED"));
@@ -1441,7 +1441,7 @@ fn stabilize(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Первая помощь (16262–16279).
+/// Первая помощь (16284–16301).
 fn first_aid(r: &mut Resolve<'_>, a: &Act) -> Step {
     let rest = sk_core::game::mechanics(&a.state).get("resting").and_then(|all| all.get(&a.target_key));
     if at(rest, "reason").and_then(Value::as_str) != Some("knockout") || !condition_ids_for(&a.state, &a.target_key).contains("unconscious") {
@@ -1456,7 +1456,7 @@ fn first_aid(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Дыхание драконорождённого (16280–16340).
+/// Дыхание драконорождённого (16302–16362).
 fn species_breath(r: &mut Resolve<'_>, a: &Act) -> Step {
     let Some(position) = sk_core::game::actor_position(&a.state, &a.target_key) else {
         return Err(rule("Цель дыхания должна находиться на карте", "MAP_POSITION_REQUIRED"));
@@ -1537,7 +1537,7 @@ fn species_breath(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Толчок (16341–16377): сбить с ног или оттолкнуть на 5 футов.
+/// Толчок (16363–16399): сбить с ног или оттолкнуть на 5 футов.
 fn shove(r: &mut Resolve<'_>, a: &Act) -> Step {
     let mode = match coalesce(&[a.command.get("shove_mode")]) {
         Some(mode) => js::string(Some(mode)),
@@ -1707,7 +1707,7 @@ fn cantrip_resistance(payload: &Value) -> Option<Value> {
     ]))
 }
 
-/// Метка охотника (16409–16419).
+/// Метка охотника (16431–16441).
 fn hunters_mark(r: &mut Resolve<'_>, a: &Act) -> Step {
     a.spend(r)?;
     if let Some(previous) = a.concentration(&a.actor_id) {
@@ -1734,7 +1734,7 @@ fn hunters_mark(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Рывок умения (16433–16436).
+/// Рывок умения (16455–16458).
 fn effect_dash(r: &mut Resolve<'_>, a: &Act) -> Step {
     a.spend(r)?;
     if let Some(condition) = a.effect_field("addCondition").filter(|value| js::truthy(Some(value))) {
@@ -1751,7 +1751,7 @@ fn effect_dash(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Состояние умения (16437–16447).
+/// Состояние умения (16459–16469).
 fn effect_condition(r: &mut Resolve<'_>, a: &Act) -> Step {
     a.spend(r)?;
     let effect_id = format!("{}:{}", js::string(a.action.get("id")), js::string(a.command.get("command_id")));
@@ -1773,7 +1773,7 @@ fn effect_condition(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Проверка умения (16448–16457).
+/// Проверка умения (16470–16479).
 fn effect_check(r: &mut Resolve<'_>, a: &Act) -> Step {
     a.spend(r)?;
     let ability = match coalesce(&[a.effect_field("ability")]) {
@@ -1807,7 +1807,7 @@ fn effect_check(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Состязание умения (16458–16465).
+/// Состязание умения (16480–16487).
 fn effect_contest(r: &mut Resolve<'_>, a: &Act) -> Step {
     a.spend(r)?;
     let state = a.state.clone();
@@ -1826,7 +1826,7 @@ fn effect_contest(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Лечение умением (16466–16487).
+/// Лечение умением (16488–16509).
 fn effect_heal(r: &mut Resolve<'_>, a: &Act) -> Step {
     let target = sk_core::game::find_actor(&a.state, &a.target_key).cloned();
     let level = js::safe_int(at(a.actor(), "level"), 1).max(1);
@@ -1861,7 +1861,7 @@ fn effect_heal(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Удар оружием с надбавкой (16488–16571).
+/// Удар оружием с надбавкой (16510–16593).
 fn weapon_attack(r: &mut Resolve<'_>, a: &Act) -> Step {
     // Кость превосходства, кара и Ошеломляющий удар тратятся, когда удар
     // попал; прочие удары с запасом платят заранее.
@@ -2027,7 +2027,7 @@ fn weapon_attack(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Дикий облик (16572–16585).
+/// Дикий облик (16594–16607).
 fn wild_shape(r: &mut Resolve<'_>, a: &Act) -> Step {
     let revert = js::truthy(a.action.get("revert"));
     if revert {
@@ -2048,7 +2048,7 @@ fn wild_shape(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Целебный облик (16586–16596).
+/// Целебный облик (16608–16618).
 fn wild_shape_heal(r: &mut Resolve<'_>, a: &Act) -> Step {
     a.spend(r)?;
     let slot = js::safe_int(a.action.get("heal_slot_level"), 1).max(1);
@@ -2064,7 +2064,7 @@ fn wild_shape_heal(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Изгнание нежити (16597–16637).
+/// Изгнание нежити (16619–16659).
 fn turn_undead(r: &mut Resolve<'_>, a: &Act) -> Step {
     let dc = 8 + js::safe_int(at(a.actor(), "proficiency"), 0).max(0) + ability_of(a.actor(), "wis");
     let level = js::safe_int(at(a.actor(), "level"), 1).max(1);
@@ -2155,7 +2155,7 @@ fn turn_undead(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// Спасбросок против умения (16638–16649).
+/// Спасбросок против умения (16660–16671).
 fn effect_save(r: &mut Resolve<'_>, a: &Act) -> Step {
     let target = sk_core::game::find_actor(&a.state, &a.target_key).cloned();
     let ability = match coalesce(&[a.effect_field("saveAbility")]) {

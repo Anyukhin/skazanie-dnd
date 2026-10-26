@@ -3,13 +3,13 @@
 //! JS: `clone`, `assertMechanicsSupported` (1024–1044), `uniqueStrings`,
 //! `plainObject` (1209–1215), `abilityModifier` (2221), `diceExpression`
 //! (3096), `monsterTraitFor`/`monsterActionFor` (3120–3128), доспехи
-//! (3740–3763), `targetFor` (5055), `playerActor` (5106),
-//! `objectiveWithinLimit` (5124), `inventoryItem` (5145), `sameCampaignParty`
-//! (5404), сборка событий `eventFrom`, `npcWorldEventsFrom`,
+//! (3740–3763), `targetFor` (5077), `playerActor` (5128),
+//! `objectiveWithinLimit` (5146), `inventoryItem` (5167), `sameCampaignParty`
+//! (5426), сборка событий `eventFrom`, `npcWorldEventsFrom`,
 //! `heroDiedEventFrom`, `itemGrantedEventFrom`, `commandWithRules`
-//! (7858–7959), `actorMaxHp` (7967), `resourcePool` (9169), `conditionIdsFor`
-//! (10771), состояния из таблицы (10925–10937), `replaceActor` (23566),
-//! `combatActorKind` (23966), `restartTurnClock` (23983), путь журнала
+//! (7880–7981), `actorMaxHp` (7989), `resourcePool` (9191), `conditionIdsFor`
+//! (10793), состояния из таблицы (10947–10959), `replaceActor` (23588),
+//! `combatActorKind` (23988), `restartTurnClock` (24005), путь журнала
 //! `battleLogMovePath` (1114) и вариант реакции «Готовности» `readiedOptionFor`
 //! (1874).
 //!

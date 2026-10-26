@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Герой: выборы и заклинания, повышение уровня, импорт, броски характеристик и богатства. Задача Р6.
 //!
-//! JS: `server/rules-engine.mjs`, 22859–22863, 22864–22868, 22869–22873, 22874–22886, 22887–22893. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 22881–22885, 22886–22890, 22891–22895, 22896–22908, 22909–22915. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Value};
@@ -26,7 +26,7 @@ fn push_draft(r: &mut Resolve<'_>, draft: &Value) {
     r.events.push(event);
 }
 
-/// `SetCharacterChoices`, `SetSpellSelections` (22858–22863).
+/// `SetCharacterChoices`, `SetSpellSelections` (22880–22885).
 pub fn character_build(r: &mut Resolve<'_>) -> Step {
     let Some(draft) = sk_combat_content::character_build::character_build_event(&r.command) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'event_type')").into());
@@ -35,14 +35,14 @@ pub fn character_build(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `LevelUp` (22864–22868).
+/// `LevelUp` (22886–22890).
 pub fn level_up(r: &mut Resolve<'_>) -> Step {
     let draft = sk_character::character_lifecycle::level_up_event(Some(&r.command)).map_err(lifecycle_fault)?;
     push_draft(r, &draft);
     Ok(())
 }
 
-/// `ImportCharacter` (22869–22873).
+/// `ImportCharacter` (22891–22895).
 pub fn import_character(r: &mut Resolve<'_>) -> Step {
     let draft = sk_character::character_lifecycle::character_import_event(Some(&r.command)).map_err(lifecycle_fault)?;
     push_draft(r, &draft);
@@ -56,7 +56,7 @@ fn best_three(roll: &Value) -> Value {
     js::num(dice.iter().take(3).sum())
 }
 
-/// `RollCharacterAbilities` (22874–22886).
+/// `RollCharacterAbilities` (22896–22908).
 pub fn roll_character_abilities(r: &mut Resolve<'_>) -> Step {
     let actor_id = js::s(r.command.get("actor_id"));
     let Some(actor) = sk_core::game::find_actor(&r.state, &actor_id) else {
@@ -77,7 +77,7 @@ pub fn roll_character_abilities(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `RollCharacterWealth` (22887–22893).
+/// `RollCharacterWealth` (22909–22915).
 pub fn roll_character_wealth(r: &mut Resolve<'_>) -> Step {
     let class_id = js::s(r.command.get("character_class"));
     let Some(formula) = sk_chargen::character_creation_wealth::phb_starting_wealth(&class_id).filter(|_| r.command.get("character_class").is_some_and(Value::is_string)) else {

@@ -1,7 +1,7 @@
 //! Возобновление пауз в `UseCombatAction` (`resolvePendingCommand` и его
 //! пять замыканий). Задача Р10.
 //!
-//! JS: `server/rules-engine.mjs`, 15345–15717.
+//! JS: `server/rules-engine.mjs`, 15367–15739.
 //!
 //! Окно реакции (`ReactionWindowOpened`) хранит остановленную команду
 //! (`pending_command` или `pending_spell_command`), стенограмму её костей
@@ -80,7 +80,7 @@ pub struct Resume {
 }
 
 impl Resume {
-    /// Подготовка ветки `UseCombatAction` (15345–15377).
+    /// Подготовка ветки `UseCombatAction` (15367–15399).
     pub fn new(r: &Resolve<'_>) -> Self {
         let command = &r.command;
         let window = crate::core::coalesce(&[command.get("reaction_window")]).or_else(|| sk_core::game::combat(&r.state).get("reaction_window")).cloned();
@@ -218,7 +218,7 @@ fn object_values(map: &Map<String, Value>) -> Vec<Value> {
     js::entries(map).into_iter().map(|(_, value)| value.clone()).collect()
 }
 
-/// `resumePendingSpell()` (15377–15392): отказ от контрзаклинания —
+/// `resumePendingSpell()` (15399–15414): отказ от контрзаклинания —
 /// сохранённое заклинание творится дальше.
 pub(super) fn resume_pending_spell(r: &mut Resolve<'_>, resume: &Resume) -> Step {
     let Some(pending) = resume.field("pending_spell_command").filter(|value| js::truthy(Some(value))).cloned() else { return Ok(()) };
@@ -229,7 +229,7 @@ pub(super) fn resume_pending_spell(r: &mut Resolve<'_>, resume: &Resume) -> Step
     Ok(())
 }
 
-/// `resumePendingElementalDamage(useAbsorb, absorbAction)` (15393–15467).
+/// `resumePendingElementalDamage(useAbsorb, absorbAction)` (15415–15489).
 pub(super) fn resume_pending_elemental_damage(r: &mut Resolve<'_>, resume: &Resume, use_absorb: bool, absorb_action: Option<&Value>) -> Step {
     if !resume.trigger_is("spell-area-damage") || !js::truthy(resume.field("pending_command")) || !js::truthy(resume.field("pending_elemental_damage")) {
         return Ok(());
@@ -323,7 +323,7 @@ pub(super) fn resume_pending_elemental_damage(r: &mut Resolve<'_>, resume: &Resu
     Ok(())
 }
 
-/// `resumePendingProtectiveReaction(useProtection, protectionAction)` (15468–15524).
+/// `resumePendingProtectiveReaction(useProtection, protectionAction)` (15490–15546).
 pub(super) fn resume_pending_protective_reaction(r: &mut Resolve<'_>, resume: &Resume, use_protection: bool, protection_action: Option<&Value>) -> Step {
     if !js::truthy(resume.field("pending_command")) || !js::truthy(resume.field("pending_protective_reaction")) {
         return Ok(());
@@ -397,7 +397,7 @@ fn resistance_action(mode: &str, accepted: bool) -> (&'static str, &'static str)
     }
 }
 
-/// `resumeResistanceChoice(choiceMode)` (15525–15591).
+/// `resumeResistanceChoice(choiceMode)` (15547–15613).
 pub(super) fn resume_resistance_choice(r: &mut Resolve<'_>, resume: &Resume, choice_mode: &str) -> Step {
     if !resume.trigger_is("saving-throw-bonus-choice") || !js::truthy(resume.field("pending_command")) || !js::truthy(resume.field("pending_resistance_choice")) {
         return Ok(());
@@ -447,7 +447,7 @@ pub(super) fn resume_resistance_choice(r: &mut Resolve<'_>, resume: &Resume, cho
     Ok(())
 }
 
-/// `resolveIndomitableChoice(accepted)` (15592–15695): Несгибаемый — переброс
+/// `resolveIndomitableChoice(accepted)` (15614–15717): Несгибаемый — переброс
 /// проваленного спасброска; очередь окон для следующих воинов.
 pub(super) fn resolve_indomitable_choice(r: &mut Resolve<'_>, resume: &Resume, accepted: bool) -> Step {
     if !resume.trigger_is("failed-saving-throw") || !js::truthy(resume.field("pending_command")) || !matches!(resume.field("pending_dice_transcript"), Some(Value::Array(_))) {

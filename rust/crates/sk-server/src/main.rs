@@ -1,5 +1,5 @@
 //! Запуск сервера «Сказания»: `skazanie-server` — перенос верхушки и хвоста
-//! `server/index.mjs` (1, 202–240, 287–310, 6481–6505). Аргументы разбирает
+//! `server/index.mjs` (1, 203–241, 288–311, 6482–6506). Аргументы разбирает
 //! [`sk_server::cli`]: справка, неизвестный аргумент и подкоманды порт не
 //! открывают. Корень данных и раздачи клиента — `sk_core::data_root`
 //! (`DND_DATA_DIR`, каталог бинаря или дерево сборки).
@@ -97,7 +97,7 @@ fn load_dotenv(path: &Path) {
     }
 }
 
-/// Клиенты модели (`index.mjs:296–310, 409–418`).
+/// Клиенты модели (`index.mjs:297–311, 410–419`).
 fn build_models(config: &Config, ledger: &Arc<DurableUsageLedger>) -> Result<LlmClients, String> {
     let router = |model: &str, timeout_ms: f64| -> Result<RouterAiClient, String> {
         RouterAiClient::new(RouterAiClientConfig {
@@ -180,9 +180,9 @@ fn fail(message: String) -> ! {
 
 fn main() {
     // Разбор аргументов (С19.1): справка, отказ разбора и служебные
-    // подкоманды (`journal`, `session`, `room`, `audit` набора тестов, `import-legacy`) — до
-    // `.env`, без отметки писателя storage и без порта. Сервер — только без
-    // аргументов.
+    // подкоманды (`journal`, `session`, `room`, `audit` набора тестов,
+    // `import-legacy`, `audit-storage`) — до `.env`, без отметки писателя
+    // storage и без порта. Сервер — только без аргументов.
     let args: Vec<String> = std::env::args_os().skip(1).map(|arg| arg.to_string_lossy().into_owned()).collect();
     if let Some(code) = sk_server::cli::run_tool(&sk_server::cli::parse(&args)) {
         std::process::exit(code);
@@ -215,7 +215,7 @@ fn main() {
     }
     // Аудит PR #131, RCV-05: отметка писателя — до первой записи в storage.
     let mut writer = sk_infra::backup_service::claim_storage_writer(&config.storage_dir, Default::default()).unwrap_or_else(|error| fail(format!("Не удалось отметить писателя storage: {error}")));
-    // Редакция по умолчанию (`index.mjs:313, 317–319`): неизвестная или не
+    // Редакция по умолчанию (`index.mjs:314, 318–320`): неизвестная или не
     // допустимая для процесса — отказ старта её собственным текстом.
     if let Err(error) = sk_server::routes::catalog::check_process_default(&config.default_ruleset_id) {
         writer.release();

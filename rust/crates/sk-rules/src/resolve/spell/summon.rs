@@ -1,7 +1,7 @@
 //! Заклинание: призыв существ и дополнительные лучи заклинания с несколькими
 //! лучами (каждый луч — вложенный разбор той же команды). Задача Р9.
 //!
-//! JS: `server/rules-engine.mjs`, 18624–18756 (призыв), 18761–18798 (лучи).
+//! JS: `server/rules-engine.mjs`, 18646–18778 (призыв), 18783–18820 (лучи).
 
 use serde_json::{json, Map, Value};
 use sk_core::js;
@@ -23,7 +23,7 @@ fn dice_text(count: i64, sides: impl std::fmt::Display, modifier: i64) -> String
     format!("{count}d{sides}{suffix}")
 }
 
-/// Призыв (18624–18756).
+/// Призыв (18646–18778).
 pub(super) fn summon(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let state = r.state.clone();
     let spell = cast.spell.clone();
@@ -219,10 +219,10 @@ pub(super) fn summon(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     Ok(())
 }
 
-/// Коды отказа луча, при которых луч по отброшенной цели пропадает (18781).
+/// Коды отказа луча, при которых луч по отброшенной цели пропадает (18803).
 const PUSHED_AWAY_CODES: [&str; 4] = ["TRAJECTORY_BLOCKED", "TARGET_OUT_OF_RANGE", "TARGET_NOT_VISIBLE", "TOTAL_COVER"];
 
-/// Дополнительные лучи: каждый — вложенный разбор той же команды (18761–18798).
+/// Дополнительные лучи: каждый — вложенный разбор той же команды (18783–18820).
 pub(super) fn additional_beams(r: &mut Resolve<'_>, cast: &Cast) -> Step {
     let spell = &cast.spell;
     if field(spell, "kind").and_then(Value::as_str) != Some("attack") || !crate::spells::slots::has_multiple_beams(Some(spell)) || r.context.truthy("additionalBeam") {

@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Закон: амнистия и встреча со стражей. Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 22117–22130, 22131–22309. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 22139–22152, 22153–22331. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -21,7 +21,7 @@ fn get(value: &Value, key: &str) -> Value {
     value.get(key).cloned().unwrap_or(Value::Null)
 }
 
-/// `ClearWantedLevel` (22117–22130).
+/// `ClearWantedLevel` (22139–22152).
 pub fn clear_wanted_level(r: &mut Resolve<'_>) -> Step {
     let region_id = js::string(r.command.get("region_id"));
     let region = Value::String(region_id.clone());
@@ -60,7 +60,7 @@ fn defiance_crime(r: &Resolve<'_>, encounter: &Value, points: i64, witnesses: Va
     Value::Object(crime)
 }
 
-/// `ResolveGuardEncounter` (22131–22309).
+/// `ResolveGuardEncounter` (22153–22331).
 pub fn resolve_guard_encounter(r: &mut Resolve<'_>) -> Step {
     let encounter = guard_encounter_for(&r.state);
     if !js::truthy(Some(&encounter)) {

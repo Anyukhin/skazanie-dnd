@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Хиты, ресурсы, состояния: уменьшение максимума хитов, судьба погибшего героя, трата и восстановление ресурса, опознание противника, наложение и снятие состояния. Задача Р2.
 //!
-//! JS: `server/rules-engine.mjs`, 15167–15199, 15200–15215, 15222–15229, 15230–15237, 15241–15283, 15295–15313, 15341–15343. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 15189–15221, 15222–15237, 15244–15251, 15252–15259, 15263–15305, 15317–15335, 15363–15365. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 //!
 //! Здесь же [`resolve_branch_without_tail`] — разбор без хвоста последствий
@@ -34,7 +34,7 @@ fn actor_targets(command: &Value) -> Value {
     json!([command.get("actor_id").cloned().unwrap_or(Value::Null)])
 }
 
-/// `ReduceHitPointMaximum` (15167–15199).
+/// `ReduceHitPointMaximum` (15189–15221).
 pub fn reduce_hit_point_maximum(r: &mut Resolve<'_>) -> Step {
     let target_id = js::s(Some(&r.target_id));
     let target = sk_core::game::find_actor(&r.state, &target_id);
@@ -76,7 +76,7 @@ pub fn reduce_hit_point_maximum(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ResolveHeroDeath` (15200–15215).
+/// `ResolveHeroDeath` (15222–15237).
 pub fn resolve_hero_death(r: &mut Resolve<'_>) -> Step {
     let actor_id = r.command.get("actor_id").cloned().unwrap_or(Value::Null);
     let Some(hero) = player_actor(&r.state, Some(&actor_id)) else {
@@ -106,7 +106,7 @@ fn command_resource(r: &Resolve<'_>) -> (String, crate::core::Pool, i64) {
     (resource, pool, js::safe_int(r.command.get("amount"), 0))
 }
 
-/// `SpendResource` (15222–15229).
+/// `SpendResource` (15244–15251).
 pub fn spend_resource(r: &mut Resolve<'_>) -> Step {
     let (resource, pool, amount) = command_resource(r);
     if pool.current < amount {
@@ -117,7 +117,7 @@ pub fn spend_resource(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `RestoreResource` (15230–15237).
+/// `RestoreResource` (15252–15259).
 pub fn restore_resource(r: &mut Resolve<'_>) -> Step {
     let (resource, pool, amount) = command_resource(r);
     let after = pool.max.min(pool.current + amount);
@@ -126,7 +126,7 @@ pub fn restore_resource(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `IdentifyEnemy` (15241–15283).
+/// `IdentifyEnemy` (15263–15305).
 pub fn identify_enemy(r: &mut Resolve<'_>) -> Step {
     let actor = sk_core::game::find_actor(&r.state, &js::s(r.command.get("actor_id")));
     let target = sk_core::game::find_actor(&r.state, &js::s(r.command.get("target_id")));
@@ -187,7 +187,7 @@ pub fn identify_enemy(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `AddCondition` (15295–15313).
+/// `AddCondition` (15317–15335).
 pub fn add_condition(r: &mut Resolve<'_>) -> Step {
     if r.command.get("monster_ability").and_then(Value::as_str) == Some("nimble-escape") {
         let actor_id = js::s(r.command.get("actor_id"));
@@ -213,7 +213,7 @@ pub fn add_condition(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `RemoveCondition` (15341–15343).
+/// `RemoveCondition` (15363–15365).
 pub fn remove_condition(r: &mut Resolve<'_>) -> Step {
     let targets = json!([r.target_id.clone()]);
     r.events.push(event_from(&r.command, "ConditionRemoved", Some(json!({ "condition": js::string(r.command.get("condition")) })), Some(&targets)));

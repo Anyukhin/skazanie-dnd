@@ -1,5 +1,5 @@
 //! `applyGameEvent`, `replayEvents`, проектор команды `createCommandProjector`
-//! (`rules-engine.mjs`, 24201–24211, 27108–27188). Задача Р4б.
+//! (`rules-engine.mjs`, 24223–24233, 27130–27210). Задача Р4б.
 //!
 //! `applyGameEvent` выбирает режим retention по `reducer_version` и
 //! `state_version_after` события (`INVALID_REDUCER_VERSION`,
@@ -122,7 +122,7 @@ fn apply_game_event_from(raw_state: StateArg, event: &Value) -> Result<Value, Ha
     in_mode(mode, || apply_game_event_current(raw_state, event))
 }
 
-/// `applyGameEventCurrent(rawState, event)`: замена состояния (24201–24211)
+/// `applyGameEventCurrent(rawState, event)`: замена состояния (24223–24233)
 /// или нормализация и ветка редьюсера.
 fn apply_game_event_current(raw_state: StateArg, event: &Value) -> Result<Value, Halt> {
     let kind = event.get("event_type").and_then(Value::as_str);

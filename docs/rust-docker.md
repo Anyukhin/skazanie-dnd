@@ -98,18 +98,41 @@ DND_EXTRA_CA_CERTS=/app/local-ca/kaspersky-root.pem
 1. Остановить JS-сервис: `docker compose stop skazanie` (с туннелем —
    `docker compose --profile public stop`).
 2. Снимок старого хранилища: `pnpm backup` или копия `./storage`.
-3. Импорт старого storage в том Rust-сервиса подкомандой `import-legacy`
-   (задача С19.2; точные аргументы — её `--help`):
+3. Пробный импорт — ничего не пишет, только сводка (перенос идёт в базу в
+   памяти):
 
    ```bash
-   docker compose -f compose.rust.yaml run --rm --no-deps \
-     -v ./storage:/legacy-storage:ro skazanie-rust import-legacy /legacy-storage
+   docker compose -f compose.rust.yaml run --rm --no-deps      -v ./storage:/legacy-storage:ro skazanie-rust      import-legacy --from /legacy-storage --dry-run
+   ```
+
+   Код 3 — часть кампаний или комнат будет пропущена (причины в сводке):
+   разобраться до настоящего импорта.
+4. Импорт в том Rust-сервиса (`--to` по умолчанию — `DND_STORAGE_DIR`,
+   `/app/storage`; пишет только в пустое хранилище):
+
+   ```bash
+   docker compose -f compose.rust.yaml run --rm --no-deps      -v ./storage:/legacy-storage:ro skazanie-rust      import-legacy --from /legacy-storage
    ```
 
    `./storage` монтируется только для чтения — импорт его не меняет.
-4. Порт: `SKAZANIE_RUST_PORT=8787` в `.env` (или в окружении) и
+5. Аудит импортированного хранилища — `audit-storage` (аналог
+   `pnpm cutover:audit`): журнал против replay, подтверждение проекции и
+   комнаты (накладки `room_overlays`) против головы журнала. Только читает;
+   на хранилище работающего сервера — отказ, поэтому сервис ещё не запущен:
+
+   ```bash
+   docker compose -f compose.rust.yaml run --rm --no-deps skazanie-rust audit-storage
+   ```
+
+   Коды выхода: 0 — блокеров нет; 1 — есть блокеры (`REPLAY_DIVERGENCE`,
+   `PROJECTION_DIVERGENCE`, `PROJECTION_VERSION_DIVERGENCE`,
+   `ROOM_PROJECTION_MISSING`, `EVENT_STREAM_MISSING`, …; полный отчёт —
+   `--json`); 2 — неверные аргументы; 3 — отказ (нет базы, работает сервер,
+   база не читается). При коде 1 не запускать: расхождение комнаты сверка при
+   старте приведёт к журналу, а причину расхождения лучше увидеть до этого.
+6. Порт: `SKAZANIE_RUST_PORT=8787` в `.env` (или в окружении) и
    `docker compose -f compose.rust.yaml up -d`.
-5. Проверить `docker compose -f compose.rust.yaml ps` (healthy), войти,
+7. Проверить `docker compose -f compose.rust.yaml ps` (healthy), войти,
    открыть кампанию.
 
 Туннель (`tunnel`, профиль `public`) смотрит на `skazanie:8787` в сети

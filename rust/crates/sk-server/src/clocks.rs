@@ -1,19 +1,19 @@
 //! С17: фоновые драйверы ядра — перенос `server/index.mjs`:
 //!
-//! - **мировые часы** (2706–2827, 3696–3796): лавка
+//! - **мировые часы** (2707–2828, 3697–3797): лавка
 //!   ([`run_merchant_economy_clock`], три попытки на конфликт версии), голод
 //!   пленных ([`run_captive_clock`]), молва ([`run_world_rumor_clock`]) и их
 //!   общий драйвер [`nudge_world_clocks`] с пределом оборотов молвы
 //!   [`WORLD_RUMOR_BURST_LIMIT`];
-//! - **координатор хода боя** (432–467): один `CombatTurnCoordinator` на
+//! - **координатор хода боя** (433–468): один `CombatTurnCoordinator` на
 //!   ядро — автоход NPC после коммита, `turn_clock` комнаты, автопропуск хода
 //!   по сроку (`DND_COMBAT_TURN_TIMEOUT_MS`), удержание автохода маршрутом
 //!   `/commands` ([`hold_combat`]);
-//! - **координатор последствий** (372–395, 3352–3363): асинхронный прогон
+//! - **координатор последствий** (373–396, 3353–3364): асинхронный прогон
 //!   стадий `sk_society::post_commit_coordinator::STAGES` с памятью
 //!   выполненных одноразовых стадий на ядро ([`run_post_commit`]),
 //!   [`settle_combat_continuation`];
-//! - хук «проекция записана» (2829–2835): толчок боя и часов
+//! - хук «проекция записана» (2830–2836): толчок боя и часов
 //!   ([`install`]), толчки при старте (6493–6503, [`startup_nudges`]).
 //!
 //! Всё живёт на потоке ядра (`thread_local`, без `Send`). Координатору боя и
@@ -67,7 +67,7 @@ use crate::projection::{executor_failure, persist_authoritative_projection, with
 use crate::room::{get_room, Room};
 use crate::state::AppState;
 
-/// Сколько коммитов часов молвы допустимо в одном заходе драйвера (274).
+/// Сколько коммитов часов молвы допустимо в одном заходе драйвера (275).
 pub const WORLD_RUMOR_BURST_LIMIT: usize = 4;
 
 // --- приложение ядра ---------------------------------------------------------
@@ -159,7 +159,7 @@ impl ClockRun {
     }
 }
 
-// --- часы лавки (3696–3747) ----------------------------------------------------
+// --- часы лавки (3697–3748) ----------------------------------------------------
 
 /// `runMerchantEconomyClock(campaignId)`: пополнение лавок и событие часов
 /// одним прямым коммитом (как в JS — последний прямой писатель), три попытки
@@ -218,7 +218,7 @@ pub fn run_merchant_economy_clock(core: &GameCore, campaign_id: &str) -> Result<
     Err(Failure::new("Не удалось синхронизировать экономические часы", None))
 }
 
-// --- часы голода пленных (2724–2768) -------------------------------------------
+// --- часы голода пленных (2725–2769) -------------------------------------------
 
 /// `captiveClockHasWork(campaignId, room)`: калитка без чтения журнала.
 pub fn captive_clock_has_work(room: &Room) -> bool {
@@ -246,7 +246,7 @@ pub fn run_captive_clock(core: &GameCore, campaign_id: &str) -> Result<ClockRun,
     Ok(ClockRun { state: normalize(&committed.commit.state)?, events: committed.commit.events })
 }
 
-// --- часы молвы (2706–2719, 3749–3796) ------------------------------------------
+// --- часы молвы (2707–2720, 3750–3797) ------------------------------------------
 
 /// `worldRumorClockHasWork(campaignId, room)`: есть ли в летописи поступки.
 pub fn world_rumor_clock_has_work(room: &Room) -> bool {
@@ -309,7 +309,7 @@ pub fn run_world_rumor_clock(core: &GameCore, campaign_id: &str) -> Result<Clock
     Ok(ClockRun { state: normalize(&last)?, events })
 }
 
-// --- драйвер мировых часов (2770–2827) -----------------------------------------
+// --- драйвер мировых часов (2771–2828) -----------------------------------------
 
 #[derive(Default)]
 struct ClockJob {
@@ -348,7 +348,7 @@ pub fn nudge_world_clocks(core: &Rc<GameCore>, campaign_id: &str) {
     });
 }
 
-/// `finally` драйвера (2820–2825): снять отметку работы и либо начать новый
+/// `finally` драйвера (2821–2826): снять отметку работы и либо начать новый
 /// заход по толчку, пришедшему во время этого, либо забыть кампанию. На
 /// панике захода, отмене остановкой и несостоявшейся постановке кампания
 /// просто забывается: следующая запись проекции толкнёт часы заново (новый
@@ -404,7 +404,7 @@ async fn drive_world_clocks(core: &Rc<GameCore>, campaign_id: &str, job: &ClockJ
         if !world_rumor_clock_has_work(&gate_room) {
             continue;
         }
-        // Предохранитель от несходящегося такта (см. JS 2797–2805).
+        // Предохранитель от несходящегося такта (см. JS 2798–2806).
         if rumor_commits >= WORLD_RUMOR_BURST_LIMIT {
             continue;
         }
@@ -423,7 +423,7 @@ async fn drive_world_clocks(core: &Rc<GameCore>, campaign_id: &str, job: &ClockJ
     Ok(())
 }
 
-// --- координатор последствий (372–395) -----------------------------------------
+// --- координатор последствий (373–396) -----------------------------------------
 
 /// Запрос одного прогона (`postCommitCoordinator.run({ campaignId, state,
 /// events, commitKey, stages, context })`).
@@ -478,12 +478,12 @@ fn commit_key_for(commit_key: &str, events: &[Value]) -> String {
 }
 
 /// Зависимости для `applies`/`key` стадий: из них JS читает только
-/// `heroesNeedingHooks` (2871–2874).
+/// `heroesNeedingHooks` (2872–2875).
 fn stage_deps() -> PostCommitDeps {
     PostCommitDeps { heroes_needing_hooks: Some(Box::new(|state, campaign_id| crate::hero_hooks::pending_hero_ids(state, campaign_id).into_iter().map(Value::String).collect())), ..PostCommitDeps::default() }
 }
 
-/// Исполнить стадию по имени — зависимости координатора JS (372–395, 2871–2874).
+/// Исполнить стадию по имени — зависимости координатора JS (373–396, 2872–2875).
 async fn run_stage(core: &Rc<GameCore>, name: &str, context: &StageContext<'_>) -> Result<Option<Value>, String> {
     match name {
         "combat-continuation" => {
@@ -499,7 +499,7 @@ async fn run_stage(core: &Rc<GameCore>, name: &str, context: &StageContext<'_>) 
             let room = persist_authoritative_projection(core, &context.campaign_id, context.state, context.events, journal_message, PersistOptions::default()).map_err(|error| error.to_string())?;
             Ok(Some(room.map_or(Value::Null, |room| room.to_json())))
         }
-        // С18.4: `completeEncounter` (377–387) — в `routes/autonomy.rs`.
+        // С18.4: `completeEncounter` (378–388) — в `routes/autonomy.rs`.
         "encounter-completion" => crate::routes::autonomy::complete_encounter_stage(core, &context.campaign_id, context.stage_key.as_deref().unwrap_or("")).await,
         // У JS этих зависимостей нет: `context.deps.x?.(context)` — `undefined`.
         _ => Ok(None),
@@ -578,7 +578,7 @@ pub struct Continued {
     pub events: Vec<Value>,
 }
 
-/// `settleCombatContinuation(campaignId, { advanceNpc })` (3352–3363): стадия
+/// `settleCombatContinuation(campaignId, { advanceNpc })` (3353–3364): стадия
 /// `combat-continuation` координатора последствий по авторитетному
 /// состоянию. Не применима или упала — пусто. Сбой чтения журнала — ошибка.
 pub async fn settle_combat_continuation(core: &Rc<GameCore>, campaign_id: &str, advance_npc: bool) -> Result<Continued, Failure> {
@@ -595,7 +595,7 @@ pub async fn settle_combat_continuation(core: &Rc<GameCore>, campaign_id: &str, 
     })
 }
 
-// --- координатор хода боя (432–467) --------------------------------------------
+// --- координатор хода боя (433–468) --------------------------------------------
 
 fn core_stopped() -> StoreError {
     StoreError::new("CORE_STOPPED", "игровое ядро остановлено")
@@ -662,20 +662,20 @@ impl NpcController for WeakController {
     }
 }
 
-/// Хозяин координатора: таймеры ядра и обратные вызовы `index.mjs:432–467`.
+/// Хозяин координатора: таймеры ядра и обратные вызовы `index.mjs:433–468`.
 struct TurnHost {
     core: Weak<GameCore>,
     timers: RefCell<HashMap<u64, tokio::task::AbortHandle>>,
     next_timer: Cell<u64>,
 }
 
-/// `console.error('[Сказание] Не удалось автоматически продолжить бой …')` (464).
+/// `console.error('[Сказание] Не удалось автоматически продолжить бой …')` (465).
 fn log_turn_error(campaign_id: &str, message: &str) {
     eprintln!("[Сказание] Не удалось автоматически продолжить бой {campaign_id}: {message}");
 }
 
 impl TurnHost {
-    /// `isSeatUnclaimed` (440–445): в кампании с участниками герой без хозяина.
+    /// `isSeatUnclaimed` (441–446): в кампании с участниками герой без хозяина.
     fn seat_unclaimed(&self, campaign_id: &str, state: &Value, actor_ids: &[String]) -> Result<bool, Failure> {
         let Some(core) = self.core.upgrade() else { return Ok(false) };
         let Some(live) = core.streams.live() else { return Ok(false) };
@@ -688,7 +688,7 @@ impl TurnHost {
         Ok(actor_ids.iter().all(|actor_id| heroes.contains(actor_id) && !assigned.contains(actor_id)))
     }
 
-    /// `onCommitted` (446–462): проекция и строка летописи «Система боя».
+    /// `onCommitted` (447–463): проекция и строка летописи «Система боя».
     fn committed(&self, campaign_id: &str, state: &Value, events: &[Value], turns: Option<&[Value]>) -> Result<(), Failure> {
         let Some(core) = self.core.upgrade() else { return Ok(()) };
         let options = json!({ "npcTurns": turns.unwrap_or(&[]) });
@@ -852,7 +852,7 @@ pub fn hold_combat(core: &Rc<GameCore>, campaign_id: &str) -> Option<CombatHold>
 
 // --- хук проекции и запуск ----------------------------------------------------------
 
-/// Хук «проекция записана» (2829–2835): толчок координатора боя и часов мира
+/// Хук «проекция записана» (2830–2836): толчок координатора боя и часов мира
 /// (рассылку ставит С9 своим хуком раньше этого).
 fn clocks_hook(core: Rc<GameCore>, campaign_id: String, _room: Room) -> LocalFuture<()> {
     Box::pin(async move {
@@ -870,7 +870,7 @@ pub fn install(core: &GameCore) {
     }
 }
 
-/// Толчки через 250 мс после `listen` (6495–6499): координатор боя и часы мира
+/// Толчки через 250 мс после `listen` (6496–6500): координатор боя и часы мира
 /// для каждой комнаты.
 pub fn startup_nudges(core: &Rc<GameCore>, codes: &[String]) {
     for campaign_id in codes {

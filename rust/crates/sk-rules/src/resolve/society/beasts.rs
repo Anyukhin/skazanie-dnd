@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Звери: кормление и отпугивание. Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 21361–21400, 21401–21418. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 21383–21422, 21423–21440. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -15,7 +15,7 @@ use crate::core::{command_with_rules, event_from, player_actor, slice_utf16};
 use crate::pause::{Fault, Step};
 use crate::preview_checks::catalog_item_owned;
 
-/// `FeedBeast` (21361–21400).
+/// `FeedBeast` (21383–21422).
 pub fn feed_beast(r: &mut Resolve<'_>) -> Step {
     let actor = player_actor(&r.state, r.command.get("actor_id")).cloned();
     let Some(food) = beast_food_item_for(actor.as_ref(), Some(&catalog_item_owned)) else {
@@ -50,7 +50,7 @@ pub fn feed_beast(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ScareWithBeast` (21401–21418).
+/// `ScareWithBeast` (21423–21440).
 pub fn scare_with_beast(r: &mut Resolve<'_>) -> Step {
     let Some(registered) = beast_for(&r.state, r.command.get("beast_id")) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'id')").into());

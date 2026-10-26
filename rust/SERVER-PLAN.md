@@ -9,9 +9,9 @@
 - `rust/crates/sk-orchestrator/src/{game,autonomous}_orchestrator.rs` — по одной строке;
 - `rust/crates/sk-turns/src/{npc_turn_scheduler,combat_turn_coordinator}.rs` — по одной строке (`PORT-STATUS.md:52` «в работе Н1»);
 - `server/store.mjs:438–477` — комнаты;
-- матчеры диспетчера `server/index.mjs:3931–6010`.
+- матчеры диспетчера `server/index.mjs:3932–6011`.
 
-**Важная поправка к вводным.** Кроме О1 и О2 есть третий блокер: крейт `sk-turns` не перенесён. Через `settleCombatContinuation` (`index.mjs:3352–3363`) от него зависят три маршрута: `encounters/assemble` (5397), `/commands` (5785) и `system-tick` (5973). От него же зависит `combatTurnCoordinator.hold/nudge` (5762, 6497).
+**Важная поправка к вводным.** Кроме О1 и О2 есть третий блокер: крейт `sk-turns` не перенесён. Через `settleCombatContinuation` (`index.mjs:3353–3364`) от него зависят три маршрута: `encounters/assemble` (5397), `/commands` (5785) и `system-tick` (5973). От него же зависит `combatTurnCoordinator.hold/nudge` (5762, 6497).
 
 ---
 
@@ -19,11 +19,11 @@
 
 **1. Диспетчер по порядку JS, а не дерево axum.** Axum остаётся транспортом: один обработчик на всё плюс `security_layer`. Внутри стоит упорядоченная таблица `(метод, матчер, обработчик)` в порядке `index.mjs`. Так одним механизмом получаем паритет в пяти местах:
 
-- **Проваливание вниз по списку.** Пример: `merchantLifecycleMatch` проверяется только для `POST` (5223). При `GET .../merchants/commands` JS идёт дальше, к `merchantMatch` (5449), и там `merchant_id` становится `'commands'`.
+- **Проваливание вниз по списку.** Пример: `merchantLifecycleMatch` проверяется только для `POST` (5224). При `GET .../merchants/commands` JS идёт дальше, к `merchantMatch` (5450), и там `merchant_id` становится `'commands'`.
 - **Наборы символов в регулярках.** `[A-Za-z0-9-]+`, `[^/]+`, `[A-Za-z0-9._:-]+`, у админа `[a-f0-9-]+` без длины. В axum `{id}` пропускает любые символы.
 - **Сырой `req.url` против `pathname`.** 11 маршрутов с `?query` отвечают 404.
 - **Ответы на неверный метод.** Вместо 405 с пустым телом — 404 JSON «API endpoint не найден» (6477). `HEAD /api/*` тоже даёт 404, а не-API `POST` отдаёт клиента (6478).
-- **Порядок проверок.** `characterCreation` (3931) идёт раньше health; combat-lab и map-import (3958–3959) — раньше speech и auth.
+- **Порядок проверок.** `characterCreation` (3932) идёт раньше health; combat-lab и map-import (3958–3959) — раньше speech и auth.
 
 **2. Комната — проекция, а не второе хранилище.** Это продолжает решение `docs/rust-rewrite-plan.md:43–51, 318–323`; окончательно его утверждает владелец, см. §4. Состав:
 
@@ -119,7 +119,7 @@
 
 | # | Задача | JS (строки) | Rust-файлы | Зависит | Объём JS→Rust | Паритет |
 |---|---|---|---|---|---|---|
-| **С1** | Комната, летопись, проекция, сверка, резервы бросков | `store.mjs` 438–477; `index.mjs` 2074–2117 (id сообщений, `playerNote*`, `recentNarratorTexts`), 2118–2252 (`journalEntry`, `appendRoomJournal`: 3 попытки, 400), 3012–3019 (`latestCampaignState`), 3365–3496 (`persistAuthoritativeProjection`, `journalCandidatesFor`, SEC-02 hash 3404–3416, удаление снятых полей 3447–3449), 3497–3594 (reconcile, `enableDefaultHouseRules`, reconcileAll с изоляцией ошибки кампании 3574–3582), 3595–3621 (резервы), 3622–3695 (`persistInteractionProjection`, `expirePartyDecisionIfNeeded`, `reconcilePartyDecisionPresence` через трейт `Presence`) | `room.rs`, `journal.rs`, `projection.rs`, `startup.rs` | С0 | ~750 → 1300 | Г: последовательности «коммит → проекция → летопись» с `room.version`. К: `room-projection-equivalence`, `snapshot-projector-version`. Rust-тесты: конфликт версии накладки, 400 записей, сбой одной кампании при reconcileAll |
+| **С1** | Комната, летопись, проекция, сверка, резервы бросков | `store.mjs` 438–477; `index.mjs` 2075–2118 (id сообщений, `playerNote*`, `recentNarratorTexts`), 2119–2253 (`journalEntry`, `appendRoomJournal`: 3 попытки, 400), 3012–3019 (`latestCampaignState`), 3365–3496 (`persistAuthoritativeProjection`, `journalCandidatesFor`, SEC-02 hash 3404–3416, удаление снятых полей 3447–3449), 3497–3594 (reconcile, `enableDefaultHouseRules`, reconcileAll с изоляцией ошибки кампании 3574–3582), 3595–3621 (резервы), 3622–3695 (`persistInteractionProjection`, `expirePartyDecisionIfNeeded`, `reconcilePartyDecisionPresence` через трейт `Presence`) | `room.rs`, `journal.rs`, `projection.rs`, `startup.rs` | С0 | ~750 → 1300 | Г: последовательности «коммит → проекция → летопись» с `room.version`. К: `room-projection-equivalence`, `snapshot-projector-version`. Rust-тесты: конфликт версии накладки, 400 записей, сбой одной кампании при reconcileAll |
 | **С2** | Тестовый набор Rust | шаблон `test/kit/http.mjs:334–426`, `llm.mjs:151–291` | `tests/kit/{mod,client,dice,llm,fake_provider,golden}.rs`, `src/test_hooks.rs` (фича `test-hooks`: `DND_TEST_DICE_RULES`, `DND_COMMIT_FAULTS` только при `NODE_ENV=test` и storage в tmp), подкоманда `skazanie-server journal --storage --campaign` | С0 | — → ~900 | Сторож: тестовый `Config` не наследует `ROUTERAI_*`; каждый клиент в `AppState` — metered |
 | **С3** | Контрактный режим JS-кита (правит `test/`, нужно право от владельца) | `test/kit/http.mjs:130–230`; ~65 своих копий spawn → `startTestServer`; кости и сбои в виде данных (`test/fixtures/*.dice.json`); `readJournal(server, code)`; `corruptCampaign(server, code, 'tail'\|'seed')`; расширение `test-network-isolation` на бинарь; `pnpm test:contract:rust` | `test/kit/*`, `test/*.test.mjs` (механически), `package.json` (скрипт) | нет, можно начать сразу | ~65 файлов | JS-корпус зелёный в режиме `js` до и после замены |
 
@@ -128,7 +128,7 @@
 | # | Задача | JS (строки) | Rust | Зависит | Объём | Паритет |
 |---|---|---|---|---|---|---|
 | **С4** | Служебные маршруты и справочники: полный health (`configured` по ключу, `model`, `models`, `fallbackModels`, `rulesetId`, `ruleCount`, `installedRulesets`, `characterCreation`), `admin/usage`, speech status и transcribe (WAV), `rulesets/:id/character-creation`, `rules/search`, `world-templates`, `engine-mode` → 410 | 3931–3969, 4425–4442, 5216–5220 | `routes/service.rs`, `routes/catalog.rs` | С0 | ~85 → 250 | Г: health, каталоги, поиск. К: `api-integration` (часть), `world-template-api` (GET). **Сначала JS-тест на ките для speech** |
-| **С5** | Боевой стенд администратора | `routes/combat-lab-routes.mjs` 1–86; `index.mjs` 340–344, 3958 | `routes/combat_lab.rs` (прогоны — фоновые задачи `tokio`, `DELETE` даёт 202, `report` — вложение, 405 только для `report`) | С0 | ~90 → 250 | К: `combat-lab-observer-api`. Г: scenarios, catalog, assess, generate |
+| **С5** | Боевой стенд администратора | `routes/combat-lab-routes.mjs` 1–86; `index.mjs` 341–345, 3959 | `routes/combat_lab.rs` (прогоны — фоновые задачи `tokio`, `DELETE` даёт 202, `report` — вложение, 405 только для `report`) | С0 | ~90 → 250 | К: `combat-lab-observer-api`. Г: scenarios, catalog, assess, generate |
 | **С6** | Кампании, членство, рекап: `GET`/`POST /campaigns` (bootstrap мастером или state админом; серверные поля `RULESET_*`/`WORLD_TEMPLATE_*`; 1..5 мест; первое место владельцу), `heroes`, `invites`, `join`, `recap` (любая ошибка → 200 `{recap:null, reason:'unavailable'}`) | 206–207, 4444–4620, 4805–4868 | `routes/campaigns.rs`, `routes/recap.rs` | С1 | ~230 → 500 | К: `creator-seat-api`, `ruleset-selection-api`, `world-template-api`, `table-of-five-api` (без typing). Г: создание и приглашение. **Сначала JS-тест для `/api/heroes`** |
 | **С7** | Настройки ИИ, редакция, домашние правила (ключ `${key}:house-rule:${id}`; режим и модель — строкой летописи, без события) | 4622–4803 | `routes/settings.rs` | С1 | ~180 → 380 | К: `campaign-reasoning-settings` (HTTP), `campaign-improv-mode` (HTTP), `house-rule-default-api`, `exploration-opening-strike-api` (позже, нужны `/commands`) |
 | **С8** | Откат и жизненный цикл (`event_id` = sha256(`campaignId\0key`); `forceSnapshot`; `NarrativeSummaryRecorded`) | 4901–5037 | `routes/controls.rs` | С1 | ~140 → 300 | Г на `event_id` и состояние после отката. **JS-теста на `/controls` нет — сначала написать на ките** |
@@ -136,7 +136,7 @@
 | **С10** | Комната, общий кубик, выдача кости: `GET /rooms/:id?map_hash=` (200 с пустой комнатой, если `state` нет), `PUT` → 410, `dice` (ключ `public-die:<roll_id>`, `PUBLIC_DIE_SIDES`), `/api/roll` (`CHECK_REQUIRED`) | 528, 6007–6113 | `routes/rooms.rs` | С1; присутствие из С9 через трейт | ~110 → 260 | К: `free-dice-api` (после С9), `narrate-room-version-race` (часть с PUT). Г: room с `map_hash` |
 | **С11** | Решения отряда и задания: `quests abandon/accept`, `votes` (кворум по подключённым героям), общий бросок `1d20` с purpose `party_decision`, сверка повтора после гонки 4352–4358 | 4283–4424 | `routes/party.rs` | С1, С9 (кворум) | ~145 → 330 | К: `quest-abandonment-api` (после `readJournal`). **JS-тест на `party-decisions/:id/roll` — сначала на ките** |
 | **С12** | Ассеты и картинки: портрет (302 или файл с ETag, `X-NPC-Portrait-*`), иллюстрация (только кеш), `asset-preparation` GET/POST, `/generated/items/:file`, `generate-image` (лимит 10, reserve/settle/fail, 429 `LLM_QUOTA_EXCEEDED` до провайдера) | 2962–2995, 3834–3883, 4027–4171, 6114–6142 | `routes/assets.rs`, `files.rs` | С1, С0 (ledger, генераторы) | ~230 → 550 | К: `item-images-api`, `npc-portraits-api`, `location-illustrations-api` (через `startFakeProvider`) |
-| **С13** | Импорт и перестройка карт (preview, apply, rebuild; 405 на прочие методы; `CONFLICT_CODES`; `DND_MAP_LIBRARY`) | `routes/map-import-routes.mjs` 1–205; `index.mjs` 352–361, 3959 | `routes/map_import.rs` | С1 | ~215 → 450 | К: `map-import-api` (оба теста), `map-import-command` остаётся на движке |
+| **С13** | Импорт и перестройка карт (preview, apply, rebuild; 405 на прочие методы; `CONFLICT_CODES`; `DND_MAP_LIBRARY`) | `routes/map-import-routes.mjs` 1–205; `index.mjs` 353–362, 3960 | `routes/map_import.rs` | С1 | ~215 → 450 | К: `map-import-api` (оба теста), `map-import-command` остаётся на движке |
 | **С14** | Торговцы — управление и сборка: `merchants/commands` (lifecycle, лимит 60), `merchants/assemble` (`ShopAssembler`, лимит 30), `GET merchants/:id` (`decodeURIComponent` → 400 `INVALID_MERCHANT_ID`, `slice(120)`), отпечатки торговца | 648–661, 1023–1247, 5222–5304, 5449–5471 | `routes/merchants_admin.rs`, `merchant_guard.rs` | С1 | ~360 → 750 | К: `merchant-lifecycle-api`. Г: отпечатки через `fixtures-env` (сотни случаев) |
 | **С15** | Диалог и объяснение хода: `dialogue` GET/DELETE (реестр уточнений из `AppState`, `pendingNarrationCheck`); `explanation` без проверки комнаты и без перевода в верхний регистр (паритет 5201–5202) | 4870–4899, 5198–5214 | `routes/dialogue.rs` | С1 | ~50 → 150 | Г. **JS-тест на `explanation` — сначала на ките** |
 | **С16** | Санитайзеры и отпечатки `/commands` — **чистые функции без маршрута** | 528–636 (наборы, `LOOT_STALE_ERROR_CODES`, `lootTakenRecordFor`), 662–994 (предмет, MakeAttack 689–796, NPC-бой 797–847, отдых 848–888, предмет 889–910, обыск 911–958, развитие 959–994), 1248–2035 (`combatActorFor`, `assertPlayerCombatActorPermission`, `sanitizePlayer*`, `expandPlayerRestCommand`, `withCourierReplyDraft` — модель как трейт), 2036–2073 (`sanitizeMerchantCommand`) | `command_guard.rs`, `command_fingerprints.rs` | С0 | ~1150 → 2200 | Г: эталоны функций через `fixtures-env.mjs`. Функции не экспортированы из `index.mjs`, поэтому генератор вырезает их через `vm` по диапазону строк или вызывает через HTTP-сценарии `tactical-command-guard`. Самый объёмный, но независимый кусок |
@@ -222,7 +222,7 @@
 1. **Блокер sk-turns снят, его надо убрать из плана.** Н1 влит (`1f12a9ce`, `ef356203`). В `rust/crates/sk-turns/src/npc_turn_scheduler.rs` 2577 строк, в `combat_turn_coordinator.rs` 779. Задачи «Н2» нет: в `sk-turns/src/lib.rs:4-7` оба модуля отнесены к Н1. Запись `rust/PORT-STATUS.md:54` («в работе Н1») устарела, а не `:52`. Что из этого следует:
    - волну 2 переписать как «после С1», без Н1/Н2;
    - `system-tick` (5958–6005) больше ничем не заблокирован;
-   - `settleCombatContinuation` (3352–3363) зовёт только стадию `combat-continuation`, то есть `runNpcTurnScheduler` (373–375). О1 ему не нужен.
+   - `settleCombatContinuation` (3353–3364) зовёт только стадию `combat-continuation`, то есть `runNpcTurnScheduler` (374–376). О1 ему не нужен.
 2. **`sk-agents` перенесён целиком** (`48f800cc`). Bootstrapper, recap, hero hooks, scene architect и lore voice готовы. Это стоит отразить в зависимостях С6, С17 и С18.
 
 ## 2. Архитектурные блокеры, которых нет в §0
@@ -235,13 +235,13 @@
    Положить их в `Arc<AppState>` под многопоточным axum не выйдет, и `post_commit: PostCommitCoordinator` из §1 в таком виде не соберётся. В §0 нужно решение. Варианты:
    - однопоточный «исполнитель кампаний»: `LocalSet` или `current_thread`-рантайм, который владеет этими объектами, а обработчики шлют ему задания по каналу;
    - переписать крейты на `Mutex`/`Arc`. Это правка чужих крейтов, запрещённая `PORTING.md` §7, значит, нужно решение владельца.
-4. **Настройки ИИ кампании на время запроса.** В плане нет `runWithCampaignAiSettings` (`index.mjs:3919-3928`): id из пути переводится в верхний регистр, `model` по умолчанию `|| model`. Это поле читает `FallbackLLMClient` (`server/llm-client.mjs:706`, `currentCampaignModel`) и рассуждения (`:541`).
+4. **Настройки ИИ кампании на время запроса.** В плане нет `runWithCampaignAiSettings` (`index.mjs:3920-3929`): id из пути переводится в верхний регистр, `model` по умолчанию `|| model`. Это поле читает `FallbackLLMClient` (`server/llm-client.mjs:706`, `currentCampaignModel`) и рассуждения (`:541`).
    - В Rust контекст живёт в thread-local стеке (`sk-narration-base/src/campaign_ai_context.rs:156-166`). Через `.await` и `spawn_blocking` он теряется.
    - Нужен `tokio::task_local!` или явная передача. Добавить в С0 (`dispatch.rs`) с тестом.
-   - Отдельно решить фоновые задачи. В JS `queueMicrotask` из `onRoomSaved` (2829–2835, 2875–2892) наследует контекст запроса, поэтому мораль NPC и зацепки героев идут на модели этой кампании. В Rust нужно явно захватывать настройки при `nudge` или задокументировать отклонение.
+   - Отдельно решить фоновые задачи. В JS `queueMicrotask` из `onRoomSaved` (2830–2836, 2876–2893) наследует контекст запроса, поэтому мораль NPC и зацепки героев идут на модели этой кампании. В Rust нужно явно захватывать настройки при `nudge` или задокументировать отклонение.
 5. **Объём замка кампании (§0.3, решение 7).** Если держать замок через ожидание модели (`/api/narrate`, `/commands` с критическим моментом, `autonomy/advance`), запросы стола встанут на 9 с и больше:
    - голоса (4312);
-   - `typing` (4172);
+   - `typing` (4173);
    - кубик (6011);
    - автоход координатора.
 
@@ -249,7 +249,7 @@
 
 ## 3. Пропуски в каркасе С0 и диспетчере
 
-6. **`/api/health` не проверяет метод** (`index.mjs:3940`, сырой `req.url`). `HEAD` и `POST` с разрешённого источника отвечают 200. Обязательный тест С0 «`HEAD /api/health` даёт 404» неверен: заменить на «HEAD и POST дают 200». Текущий Rust `get(health)` (`sk-server/src/lib.rs:105`) на `POST` вернёт 405, это тоже исправить.
+6. **`/api/health` не проверяет метод** (`index.mjs:3941`, сырой `req.url`). `HEAD` и `POST` с разрешённого источника отвечают 200. Обязательный тест С0 «`HEAD /api/health` даёт 404» неверен: заменить на «HEAD и POST дают 200». Текущий Rust `get(health)` (`sk-server/src/lib.rs:105`) на `POST` вернёт 405, это тоже исправить.
 7. **Сырых маршрутов с `?query` 15, а не 11:**
    - 3940 health, 3954 admin/usage;
    - 3960 и 3964 speech;
@@ -257,8 +257,8 @@
    - 4011 и 4015 admin/users;
    - 6010 `rooms/:id/dice`, 6093 `/api/roll`, 6118 `generate-image`, 6143 `narrate`.
 
-   `/generated/items/` (6114) query допускает: `serveGenerated` (3835) отрезает его через `split('?')`. Сейчас Rust на `/api/health?x` отвечает 200, это уже расхождение.
-8. **Пример с торговцем в §0.1 неверен.** `GET …/merchants/commands` не доходит до обработчика с `merchant_id='commands'`: условие `!pathname.endsWith('/commands')` (5455) его отсекает, ответ 404. Верный пример — `GET …/merchants/assemble`. Ещё одна тонкость: `decodeURIComponent` с ответом 400 `INVALID_MERCHANT_ID` (5451–5454) срабатывает **до проверки метода**. Например, `DELETE …/merchants/%E0` даёт 400, а не 404. Добавить в тесты С0.
+   `/generated/items/` (6114) query допускает: `serveGenerated` (3836) отрезает его через `split('?')`. Сейчас Rust на `/api/health?x` отвечает 200, это уже расхождение.
+8. **Пример с торговцем в §0.1 неверен.** `GET …/merchants/commands` не доходит до обработчика с `merchant_id='commands'`: условие `!pathname.endsWith('/commands')` (5455) его отсекает, ответ 404. Верный пример — `GET …/merchants/assemble`. Ещё одна тонкость: `decodeURIComponent` с ответом 400 `INVALID_MERCHANT_ID` (5452–5455) срабатывает **до проверки метода**. Например, `DELETE …/merchants/%E0` даёт 400, а не 404. Добавить в тесты С0.
 9. **Исключения из правила «404 вместо 405»:**
    - `map-import` отвечает 405 на **любой** метод, кроме POST, включая GET и HEAD (`server/routes/map-import-routes.mjs:60`);
    - нераспознанный путь под `/api/admin/combat-lab/` проваливается дальше по диспетчеру (`combat-lab-routes.mjs:84`).
@@ -282,29 +282,29 @@
 
 ## 4. Помощники и проводка без хозяина
 
-17. **Сборка `CombatTurnCoordinator` (432–467)** не отдана ни одной задаче. В неё входят:
+17. **Сборка `CombatTurnCoordinator` (433–468)** не отдана ни одной задаче. В неё входят:
     - `isSeatUnclaimed` (`campaignHasMemberships`, `assignedCampaignHeroIds`, `partyHeroIds`);
     - `onCommitted`: `tactical_narration_parts`, затем строка летописи `combatMessageId('auto-turn:…')`, «Система боя»;
     - `onClockChanged`, который вызывает `broadcastCampaignRoom`.
 
     Назначить на С17. Учесть, что `stateWithLivePresence` (2611) читает `combatTurnCoordinator.clockFor`, поэтому С9 и С10 зависят от этого экземпляра или трейта.
-18. **Зависимости `PostCommitCoordinator` (372–395)** тоже без хозяина:
+18. **Зависимости `PostCommitCoordinator` (373–396)** тоже без хозяина:
     - `continueCombat` — `runNpcTurnScheduler`;
     - `completeEncounter` — `autonomousCampaign`, то есть **О1**;
     - `persistProjection`;
-    - `heroesNeedingHooks` и `weaveHeroHooks` (2871–2874).
+    - `heroesNeedingHooks` и `weaveHeroHooks` (2872–2875).
 
     Расписать по задачам: `continueCombat` и `persist` — С17, `completeEncounter` — С18.4.
 19. **Хук `onRoomSaved` 2829–2835** кроме рассылки зовёт `combatTurnCoordinator.nudge` и `nudgeWorldClocks`. С9 берёт его только как «рассылку», а хозяина у этих вызовов нет. Передать С17.
 20. **Без назначения или без имени:**
-    - `commandType` (644–647);
+    - `commandType` (645–648);
     - `partyVoterIdForAccount`, `partyVoterSnapshot`, `campaignVoterCount` (2484–2543) не перечислены в `access.rs`. Первые два нужны С1 (3639) и С11 (4300), последний — С18.5 (6278);
-    - глобальный `setActiveMapLibrary` (356);
+    - глобальный `setActiveMapLibrary` (357);
     - `room.updatedAt` (`store.mjs:449,460`) нет в §0.2, а ответы отдают `{...room}`, рассылка — `updatedAt` (2706).
 
 ## 5. Неверные зависимости
 
-21. **С14 зависит от О2.** `executeMerchantLifecycleCommand` (1217–1240) вызывает `gameOrchestrator.handle` (1220), а через него идут оба маршрута С14: `merchants/commands` (5239) и `merchants/assemble` (5287). Перенести С14 в волну 3 или оставить в волне 1 только `GET merchants/:id` (5449–5471) и санитайзеры жизненного цикла.
+21. **С14 зависит от О2.** `executeMerchantLifecycleCommand` (1218–1241) вызывает `gameOrchestrator.handle` (1220), а через него идут оба маршрута С14: `merchants/commands` (5239) и `merchants/assemble` (5287). Перенести С14 в волну 3 или оставить в волне 1 только `GET merchants/:id` (5449–5471) и санитайзеры жизненного цикла.
 22. **О2 зависит от О1.** `GameOrchestrator` получает `unknownActionHandler: autonomousCampaign` (3007). Критический путь — С0 → С1 → О1 → О2 → С18.5. Все С18.x транзитивно ждут О1. Исправить граф в §3.
 23. **С15 (dialogue).** Реестр уточнений — поле оркестратора (`gameOrchestrator.clarificationRegistry`, 4881). То, что О2 обязан принимать его внедрением, записать как контракт О2, а не только как решение С15.
 24. **С18.1 зависит ещё и от С14.** Он использует `assertMerchantIdempotency` (1023, вызов в 5713) и `assertMerchantResultFingerprint` (1241, вызов в 5773).
@@ -327,9 +327,9 @@
 ## 6. Пересечения между задачами
 
 26. С18.4 (3094–3125) целиком лежит внутри С18.5 (3021–3351). `warnOnDeadlyEncounter` вызывается только в autonomy (5054, 5146): исключить его из С18.5.
-27. `enableDefaultHouseRules` (3543) есть и в С1 (3497–3594), и в С17. Оставить в С1, в С17 — только вызов при старте.
+27. `enableDefaultHouseRules` (3544) есть и в С1 (3497–3594), и в С17. Оставить в С1, в С17 — только вызов при старте.
 28. `main.rs` 6481–6505 (С0) пересекается с 6489–6504 (С17). В С0 — точка подключения, в С17 — её наполнение.
-29. `PUBLIC_DIE_SIDES` (528) объявлен в С10 и входит в диапазон С16 (528–636).
+29. `PUBLIC_DIE_SIDES` (529) объявлен в С10 и входит в диапазон С16 (528–636).
 30. Торговец разнесён по трём файлам: 648–661 (С14), 2036–2073 (С16), общий разбор id 5449–5454 (С14 и С18.2). Предлагаю:
     - всё про отпечатки и игровую торговлю — в `command_guard.rs` С16;
     - в `merchant_guard.rs` — только жизненный цикл (1032–1240);
@@ -338,8 +338,8 @@
 
 ## 7. С16 — не «чистые функции»
 
-32. **Функции `assert*Idempotency` асинхронно читают `eventStore`.** Строки: 768, 828, 860, 891, 939, 1005, 1023. `withCourierReplyDraft` (1918) зовёт модель. Значит, в С16 нужен трейт журнала, а не только трейт модели.
-33. **Вырезать функции через `vm` по номерам строк хрупко.** У `index.mjs` верхнеуровневые эффекты: `claimStorageWriter` (236), `await loadRulePacks` (314), `listen`. Генератор должен:
+32. **Функции `assert*Idempotency` асинхронно читают `eventStore`.** Строки: 768, 828, 860, 891, 939, 1005, 1023. `withCourierReplyDraft` (1919) зовёт модель. Значит, в С16 нужен трейт журнала, а не только трейт модели.
+33. **Вырезать функции через `vm` по номерам строк хрупко.** У `index.mjs` верхнеуровневые эффекты: `claimStorageWriter` (237), `await loadRulePacks` (314), `listen`. Генератор должен:
     - брать только исходники функций со заглушками зависимостей;
     - сверять хеш `server/index.mjs` с закреплённым коммитом и падать при расхождении.
 
@@ -372,7 +372,7 @@
 ## 9. Мелкие неточности
 
 36. В С17 «3 попытки на конфликт» есть только у часов торговцев (3697, 3746). У молвы — предел оборотов `WORLD_RUMOR_BURST_LIMIT = 4` (274, 2802). У пленных повторов нет (2748–2774).
-37. С0 `access.rs` относит 2478–2562 к себе «кроме подключённых героев». Но `connectedHeroIdsForCampaign` (2478) делает сверку потоков (2480), поэтому `campaign_voter_count` и кворум требуют трейт `Presence` уже в С0.
+37. С0 `access.rs` относит 2478–2562 к себе «кроме подключённых героев». Но `connectedHeroIdsForCampaign` (2479) делает сверку потоков (2480), поэтому `campaign_voter_count` и кворум требуют трейт `Presence` уже в С0.
 
 ---
 

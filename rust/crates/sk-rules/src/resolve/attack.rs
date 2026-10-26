@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Атака оружием `MakeAttack`, смена оружия, областная атака предметом. Задача Р8.
 //!
-//! JS: `server/rules-engine.mjs`, 13857–14999, 15000–15009, 15068–15150. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 13879–15021, 15022–15031, 15090–15172. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 //!
 //! `MakeAttack` правит саму команду (серверный профиль удара заменяет
@@ -138,7 +138,7 @@ impl Resolve<'_> {
     }
 }
 
-/// `MakeAttack` (13857–14999).
+/// `MakeAttack` (13879–15021).
 pub fn make_attack(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let actor_id = js::s(r.command.get("actor_id"));
@@ -1524,7 +1524,7 @@ struct NextWeaponHit<'a> {
     critical: bool,
 }
 
-/// Заготовленный удар (14768–14903): «Палящая кара», «Гневная кара»,
+/// Заготовленный удар (14790–14925): «Палящая кара», «Гневная кара»,
 /// «Опутывающий удар», «Громовая кара», «Удар Зефира», «Молниевая стрела».
 fn next_weapon_hit(r: &mut Resolve<'_>, state: &Value, hit: &NextWeaponHit<'_>) -> Step {
     let NextWeaponHit { actor, target, actor_id, actor_value, target_id, target_value, condition, spell, next, landed, critical } = *hit;
@@ -1751,7 +1751,7 @@ fn next_weapon_hit(r: &mut Resolve<'_>, state: &Value, hit: &NextWeaponHit<'_>) 
     Ok(())
 }
 
-/// `ChangeWeapon` (15000–15009).
+/// `ChangeWeapon` (15022–15031).
 pub fn change_weapon(r: &mut Resolve<'_>) -> Step {
     let actor_id = js::s(r.command.get("actor_id"));
     let actor = game::find_actor(&r.state, &actor_id);
@@ -1772,7 +1772,7 @@ pub fn change_weapon(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `MakeAreaAttack` (15068–15150).
+/// `MakeAreaAttack` (15090–15172).
 pub fn make_area_attack(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();

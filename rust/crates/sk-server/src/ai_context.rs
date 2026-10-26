@@ -1,5 +1,5 @@
 //! Настройки ИИ кампании на время запроса — `runWithCampaignAiSettings`
-//! (`server/index.mjs:3919–3928`) поверх `AsyncLocalStorage`.
+//! (`server/index.mjs:3920–3929`) поверх `AsyncLocalStorage`.
 //!
 //! В Rust контекст `sk_narration_base::campaign_ai_context` — стек на поток:
 //! через `.await` (задача может проснуться на другом потоке) и через
@@ -14,7 +14,7 @@
 //! постановщика, [`with_campaign_ai`] на стороне исполнителя (ядро
 //! [`crate::core::CoreHandle`], [`crate::blocking::run_blocking`], фоновые
 //! задачи). Так ведёт себя и `queueMicrotask` в JS: он наследует контекст
-//! запроса (`index.mjs:2829–2835`).
+//! запроса (`index.mjs:2830–2836`).
 
 use std::future::Future;
 use std::pin::Pin;
@@ -63,14 +63,14 @@ pub fn run_sync<R>(settings: Option<Value>, operation: impl FnOnce() -> R) -> R 
 }
 
 /// `requestPath.match(/^\/api\/(?:campaigns|rooms)\/([A-Za-z0-9-]+)/)?.[1]?.toUpperCase()`
-/// (3921–3922): id кампании из начала пути, без якоря в конце.
+/// (3922–3923): id кампании из начала пути, без якоря в конце.
 pub fn campaign_id_from_path(pathname: &str) -> Option<String> {
     let rest = pathname.strip_prefix("/api/campaigns/").or_else(|| pathname.strip_prefix("/api/rooms/"))?;
     let id: String = rest.chars().take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '-').collect();
     (!id.is_empty()).then(|| id.to_uppercase())
 }
 
-/// `{ ...stored, model: stored.model || model }` (3924–3926).
+/// `{ ...stored, model: stored.model || model }` (3925–3927).
 pub fn request_settings(stored: &sk_store::accounts::CampaignAiSettings, server_model: &str) -> Value {
     let mut value = stored.to_json();
     if stored.model.is_empty() {

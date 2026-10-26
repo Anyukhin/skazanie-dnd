@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Перемещение `MoveActor`. Задача Р10.
 //!
-//! JS: `server/rules-engine.mjs`, 18811–19105. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 18833–19127. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 //!
 //! Путь — авторитетный (поиск по карте с ценой шага, раскачка на люстре,
@@ -82,7 +82,7 @@ impl Route {
     }
 }
 
-/// `MoveActor` (18811–19105).
+/// `MoveActor` (18833–19127).
 pub fn move_actor(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();
@@ -457,7 +457,7 @@ fn condition_name(condition: &Value) -> String {
     }
 }
 
-/// Герой (или призыв отряда), из чьей досягаемости уходит враг (19021–19040).
+/// Герой (или призыв отряда), из чьей досягаемости уходит враг (19043–19062).
 fn opportunity_reactor(state: &Value, mover: Option<&Value>, from: &Value, route: &Route) -> Result<Option<String>, Halt> {
     let order = initiative_order(state);
     let economy = sk_core::game::combat(state).get("action_economy");
@@ -493,7 +493,7 @@ fn opportunity_reactor(state: &Value, mover: Option<&Value>, from: &Value, route
     Ok(eligible.into_iter().next())
 }
 
-/// Заготовивший атаку на подход врага (19046–19074).
+/// Заготовивший атаку на подход врага (19068–19096).
 fn readied_reactor(state: &Value, mover_id: &str, from: &Value, destination: Option<&Value>) -> Option<(String, Value)> {
     let order = initiative_order(state);
     let mover_enemy = sk_core::game::is_enemy_actor(state, mover_id);

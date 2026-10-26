@@ -1,6 +1,6 @@
 //! Торговля: жизненный цикл торговцев, оценка, запас, сделки, журнал экономики. Задача Р6.
 //!
-//! JS: `server/rules-engine.mjs`, 1012–1022, 1381–1661, 5409–5453, 5462–5473, 23989, 24074–24095.
+//! JS: `server/rules-engine.mjs`, 1012–1022, 1381–1661, 5431–5475, 5484–5495, 24011, 24096–24117.
 //!
 //! Нормализаторы жизненного цикла (`normalizeLifecycle*`, `lifecycle*FromCanonical`)
 //! общие у проверки команд торговцев и редьюсера: событие хранит уже
@@ -356,7 +356,7 @@ pub fn normalize_lifecycle_restock(input: Option<&Value>, merchant: &Value) -> R
     Ok(entries)
 }
 
-/// `APPRAISAL_RARITY[key]` (5409–5420).
+/// `APPRAISAL_RARITY[key]` (5431–5442).
 pub fn appraisal_rarity(key: &str) -> Option<&'static str> {
     Some(match key {
         "обычный" | "common" => "common",
@@ -368,7 +368,7 @@ pub fn appraisal_rarity(key: &str) -> Option<&'static str> {
     })
 }
 
-/// `appraisalCategory(item)` (5422–5426).
+/// `appraisalCategory(item)` (5444–5448).
 pub fn appraisal_category(item: Option<&Value>) -> String {
     let kind = js::s(item.and_then(|item| item.get("type"))).to_lowercase();
     if ["weapon", "armor", "consumable", "tool", "treasure"].contains(&kind.as_str()) {
@@ -386,7 +386,7 @@ fn field_or(item: Option<&Value>, key: &str, fallback: &str) -> String {
     }
 }
 
-/// `appraisalForInventoryItem(actor, merchant, item)` (5428–5446). Отказ
+/// `appraisalForInventoryItem(actor, merchant, item)` (5450–5468). Отказ
 /// оценщика — ошибка JS `ItemAppraisalError` с его кодом (не отказ правила).
 pub fn appraisal_for_inventory_item(actor: &Value, merchant: &Value, item: &Value) -> Result<Value, Halt> {
     let stack_key = inventory_stack_key(Some(item));
@@ -412,20 +412,20 @@ pub fn appraisal_for_inventory_item(actor: &Value, merchant: &Value, item: &Valu
     Ok(Value::Object(record))
 }
 
-/// `appraisalBlocked(item)` (5448–5453): сюжетную вещь не оценивают и не продают.
+/// `appraisalBlocked(item)` (5470–5475): сюжетную вещь не оценивают и не продают.
 pub fn appraisal_blocked(item: Option<&Value>) -> bool {
     let field = |key: &str| item.and_then(|item| item.get(key));
     let text = |key: &str| if js::truthy(field(key)) { js::s(field(key)) } else { String::new() };
     js::is_true(field("quest_item")) || js::is_false(field("sellable")) || text("type").to_lowercase() == "quest" || sk_core::text::lower(&text("rarity")) == "сюжетный"
 }
 
-/// `merchantStock(merchant, stockId)` (5462–5464).
+/// `merchantStock(merchant, stockId)` (5484–5486).
 pub fn merchant_stock<'a>(merchant: Option<&'a Value>, stock_id: Option<&Value>) -> Option<&'a Value> {
     let wanted = js::s(stock_id);
     merchant.and_then(|merchant| merchant.get("stock")).and_then(Value::as_array)?.iter().find(|stock| js::string(stock.get("stock_id")) == wanted)
 }
 
-/// `checkedTransactionTotal(unitPrice, quantity)` (5466–5473).
+/// `checkedTransactionTotal(unitPrice, quantity)` (5488–5495).
 pub fn checked_transaction_total(unit_price: Option<&Value>, quantity: Option<&Value>) -> Result<i64, RuleError> {
     let unit = js::safe_int(unit_price, 0);
     let count = js::safe_int(quantity, 0);
@@ -435,7 +435,7 @@ pub fn checked_transaction_total(unit_price: Option<&Value>, quantity: Option<&V
     Ok(unit * count)
 }
 
-/// `replaceMerchant(state, id, updater)` (23989–23991): торговец с этим id
+/// `replaceMerchant(state, id, updater)` (24011–24013): торговец с этим id
 /// заменяется итогом `updater`; ошибка `updater` прерывает замену целиком.
 pub fn replace_merchant(state: &mut Value, id: &str, mut updater: impl FnMut(&Value) -> Result<Value, RuleError>) -> Result<(), RuleError> {
     let Some(merchants) = state.get("merchants").and_then(Value::as_array) else { return Ok(()) };
@@ -447,7 +447,7 @@ pub fn replace_merchant(state: &mut Value, id: &str, mut updater: impl FnMut(&Va
     Ok(())
 }
 
-/// `setItemAppraisal(state, actorId, itemId, appraisal)` (24074–24085).
+/// `setItemAppraisal(state, actorId, itemId, appraisal)` (24096–24107).
 pub fn set_item_appraisal(state: &mut Value, actor_id: Option<&Value>, item_id: Option<&Value>, appraisal: Option<&Value>) {
     let owner = js::s(actor_id);
     let item = js::s(item_id);
@@ -464,7 +464,7 @@ pub fn set_item_appraisal(state: &mut Value, actor_id: Option<&Value>, item_id: 
     mechanics.insert("item_appraisals".into(), Value::Object(next));
 }
 
-/// `removeItemAppraisal(state, actorId, itemId)` (24087–24095).
+/// `removeItemAppraisal(state, actorId, itemId)` (24109–24117).
 pub fn remove_item_appraisal(state: &mut Value, actor_id: Option<&Value>, item_id: Option<&Value>) {
     let owner = js::s(actor_id);
     let item = js::s(item_id);

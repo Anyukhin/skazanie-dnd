@@ -1,12 +1,12 @@
 //! Разбор адреса запроса так, как его видит `server/index.mjs`.
 //!
 //! - [`pathname`] — `new URL(req.url || '/', 'http://skazanie.local').pathname`
-//!   (3920, 4027): разбор `.`/`..` (и `%2e`), `\` как `/`, «схемная» форма
+//!   (3921, 4028): разбор `.`/`..` (и `%2e`), `\` как `/`, «схемная» форма
 //!   `//хост/путь`, процентное кодирование набора пути WHATWG; ошибка разбора —
 //!   как исключение `new URL` (отказ всего запроса 500).
 //! - [`decode_uri_component`] — `decodeURIComponent`: `None` там, где JS
 //!   бросает `URIError`.
-//! - [`origin_host`] — `new URL(origin).host` для `originAllowed` (2266).
+//! - [`origin_host`] — `new URL(origin).host` для `originAllowed` (2267).
 //! - [`search_param`] — `url.searchParams.get(name)`.
 //!
 //! Hyper сам отвергает часть сырых адресов (пробелы, `\`, управляющие

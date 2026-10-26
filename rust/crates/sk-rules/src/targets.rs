@@ -3,10 +3,10 @@
 //! существо-цель заклинания (в том числе социальный NPC). Задача Р1.
 //!
 //! JS: `server/rules-engine.mjs` — `spellCreatureFor` (1695),
-//! `creatureHeightFeet` (3997), `distanceBetweenActors` (4292),
+//! `creatureHeightFeet` (3997), `distanceBetweenActors` (4314),
 //! `deathSaveTracker`, `isDeadHero`, `isDyingHero`, `isUnstableDyingHero`
 //! (5110–5143; `objectiveWithinLimit` из того же диапазона — в
-//! [`crate::core`]), `knightDistanceFeet` (8185).
+//! [`crate::core`]), `knightDistanceFeet` (8207).
 
 use serde_json::{json, Value};
 use sk_core::{game, js};

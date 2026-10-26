@@ -1,6 +1,6 @@
 //! Проверки и спасброски: виды, пассивное восприятие, скрытность, внезапность, ауры, свет и погода, броски спасбросков. Задача Р2.
 //!
-//! JS: `server/rules-engine.mjs`, 3418 (`seesInMagicalDarkness`), 11237–11345
+//! JS: `server/rules-engine.mjs`, 3418 (`seesInMagicalDarkness`), 11259–11367
 //! (преимущество вида, везение полурослика, помеха проверок и страх, проверка
 //! с состояниями, состязание в захвате), 11456–11505 (пассивное восприятие,
 //! скрытность, внезапность, «Меткий удар»), 11507–11543 (модификаторы атаки от
@@ -81,7 +81,7 @@ pub fn sees_in_magical_darkness(actor: Option<&Value>) -> bool {
         && sk_ruleset::character_progression::normalized_selected_feature_ids(Some(actor)).iter().any(|id| id == "devils-sight")
 }
 
-// --- вид, везение, помеха, страх (11237–11345) -------------------------------
+// --- вид, везение, помеха, страх (11259–11367) -------------------------------
 
 /// `speciesSaveAdvantageFor(state, id, { ability, condition, purpose })`.
 pub fn species_save_advantage_for(state: &Value, id: &str, ability: Option<&Value>, condition: Option<&Value>, purpose: Option<&Value>) -> Option<String> {
@@ -244,7 +244,7 @@ pub fn grapple_contest(state: &Value, dice: &mut dyn RulesDice, command: &Value,
     Ok(json!({ "attacker": attacker, "defender": defender, "success": success }))
 }
 
-// --- восприятие, скрытность, внезапность, «Меткий удар» (11456–11505) --------
+// --- восприятие, скрытность, внезапность, «Меткий удар» (11478–11527) --------
 
 /// `passivePerception(actor, state)`: число JS (надбавка листа может быть дробной).
 pub fn passive_perception(actor: Option<&Value>, state: Option<&Value>) -> f64 {
@@ -299,7 +299,7 @@ pub fn active_true_strike_for(state: &Value, attacker_id: &str, target_id: &str)
         && js::s(at(concentration, "effect_id")) == js::string(condition.get("effect_id"))
 }
 
-// --- модификаторы атаки от состояний (11507–11543) ----------------------------
+// --- модификаторы атаки от состояний (11529–11565) ----------------------------
 
 /// Параметры `conditionAttackModifiers`.
 #[derive(Debug, Clone, Copy)]
@@ -392,7 +392,7 @@ pub fn condition_attack_modifiers(state: &Value, attacker_id: &str, target_id: &
     result
 }
 
-// --- ауры (11545–11610) ---------------------------------------------------------
+// --- ауры (11567–11632) ---------------------------------------------------------
 
 /// Источник «Ауры жизни».
 #[derive(Debug, Clone, PartialEq)]
@@ -515,7 +515,7 @@ pub fn item_saving_throw_payload(bonus: f64) -> Map<String, Value> {
     payload
 }
 
-// --- владение спасброском, кровавое безумие, противоядие (11612–11648) --------
+// --- владение спасброском, кровавое безумие, противоядие (11634–11670) --------
 
 /// `CLASS_SAVING_THROW_PROFICIENCIES[classKey]`.
 pub fn class_saving_throw_proficiencies(class_key: &str) -> &'static [&'static str] {
@@ -565,7 +565,7 @@ pub fn active_antitoxin_save_advantage(state: &Value, target_id: &str, condition
     Some(js::safe_int(effect.get("expires_at_minutes"), elapsed))
 }
 
-// --- проверка из реестра бросков (11658–11688) ---------------------------------
+// --- проверка из реестра бросков (11680–11710) ---------------------------------
 
 /// `checkRollFromVerified(verified, options)`: d20-проверка из броска игрока;
 /// `options` — объект JS (`modifier`, `difficulty`, `purpose`, `actorId`,
@@ -637,7 +637,7 @@ pub fn check_roll_from_verified(verified: Option<&Value>, options: &Value) -> Op
     }))
 }
 
-// --- заговор «Свет» и погода (11701–11730) ---------------------------------------
+// --- заговор «Свет» и погода (11723–11752) ---------------------------------------
 
 /// `LIGHT_CONDITION`.
 pub const LIGHT_CONDITION: &str = "light";
@@ -684,7 +684,7 @@ pub fn weather_check_swing_for(state: &Value, skill: Option<&Value>, actor_id: O
     Some(swing)
 }
 
-// --- броски спасбросков (12043–12107) ----------------------------------------------
+// --- броски спасбросков (12065–12129) ----------------------------------------------
 
 /// `const { avoid_or_end_condition, ...diceOptions } = options`.
 fn split_condition_context(options: &Value) -> (Option<&Value>, Map<String, Value>) {
@@ -792,7 +792,7 @@ pub fn roll_saving_throw_check(state: &Value, dice: &mut dyn RulesDice, target_i
     Ok(Value::Object(result))
 }
 
-// --- Увёртливость, Чувство опасности, итог спасброска (12116–12176) ---------------
+// --- Увёртливость, Чувство опасности, итог спасброска (12138–12198) ---------------
 
 /// `hasEvasion(state, targetId)`.
 pub fn has_evasion(state: &Value, target_id: &str) -> bool {

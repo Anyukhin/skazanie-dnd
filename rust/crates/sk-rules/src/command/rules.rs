@@ -1,5 +1,5 @@
 //! Провенанс команд: `RULE_IDS`, `COMMAND_RULES`, `sourceIdsFor`
-//! (`rules-engine.mjs`, 669–692, 744–906, 4567–4577). Задача Р0.
+//! (`rules-engine.mjs`, 669–692, 744–906, 4589–4599). Задача Р0.
 
 use serde_json::Value;
 use sk_ruleset::ruleset_config::{ruleset_rule_id, INSTALLED_RULESET_IDS};

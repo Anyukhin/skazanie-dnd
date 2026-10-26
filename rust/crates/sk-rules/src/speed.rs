@@ -1,8 +1,8 @@
 //! Скорость существа. Задача Р1.
 //!
-//! JS: `server/rules-engine.mjs` — `effectiveSpeedFeet` (11068),
-//! `activeLongstriderConditions` (11087), `movementBonusFeet` (11095),
-//! `classSpeedBonusFeet` (12163). Штраф доспеха не по силе
+//! JS: `server/rules-engine.mjs` — `effectiveSpeedFeet` (11090),
+//! `activeLongstriderConditions` (11109), `movementBonusFeet` (11117),
+//! `classSpeedBonusFeet` (12185). Штраф доспеха не по силе
 //! (`armorStrengthSpeedPenalty`, 3760) и состояние нулевой скорости
 //! (`speedZeroConditionFor`, 10930) — в [`crate::core`].
 

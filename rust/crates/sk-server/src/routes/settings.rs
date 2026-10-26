@@ -1,7 +1,7 @@
 //! С7: настройки ИИ кампании, редакция правил и домашние правила —
-//! `GET`/`PATCH /api/campaigns/:id/settings` (`server/index.mjs:4622–4803`).
+//! `GET`/`PATCH /api/campaigns/:id/settings` (`server/index.mjs:4623–4804`).
 //!
-//! Один маршрут на строке разбора регулярки (4622) с любым методом: метод
+//! Один маршрут на строке разбора регулярки (4623) с любым методом: метод
 //! проверяет обработчик, как JS (`campaignAiSettingsMatch && req.method === …`,
 //! 4649 и 4661); прочие методы идут дальше по таблице. Путь сравнивается по
 //! `pathname`, строка запроса не мешает.
@@ -64,7 +64,7 @@ fn campaign_settings(ctx: &mut RouteCtx) -> PassFuture<'_> {
     })
 }
 
-/// Коды отказа, которым `catch` отвечает 409 (4799).
+/// Коды отказа, которым `catch` отвечает 409 (4800).
 const CONFLICT_CODES: &[&str] = &["CAMPAIGN_RULESET_LOCKED", "IDEMPOTENCY_CONFLICT", "STATE_VERSION_CONFLICT", "HOUSE_RULE_DURING_COMBAT"];
 
 const SETTINGS_AUTHOR: &str = "Настройки кампании";
@@ -116,7 +116,7 @@ async fn is_owner(state: &AppState, user: &Value, campaign_id: &str) -> Result<b
 }
 
 /// `campaignAiSettingsPayload(saved, campaignId, { canManage, rulesetState, rulesetEvents })`
-/// (4628–4648): модель вне серверного списка показывается как модель
+/// (4629–4649): модель вне серверного списка показывается как модель
 /// сервера, уровень, который модель не принимает, — как `auto`.
 fn settings_payload(app: &AppState, saved: &CampaignAiSettings, generations_today: i64, can_manage: bool, ruleset_state: &Value, ruleset_events: &Value) -> Result<Value, Failure> {
     let config = &app.config;
@@ -153,7 +153,7 @@ async fn generations_today(state: &AppState, campaign_id: &str) -> Result<i64, A
 
 // --- GET ----------------------------------------------------------------------
 
-/// `GET /api/campaigns/:id/settings` (4649–4659): видят все, у кого есть
+/// `GET /api/campaigns/:id/settings` (4650–4660): видят все, у кого есть
 /// доступ к кампании; `canManage` — администратору и владельцу.
 async fn get_settings(ctx: &mut RouteCtx) -> Result<Response<Body>, ApiError> {
     let user = require_user(ctx).await?;
@@ -196,7 +196,7 @@ fn lowered(value: &Value) -> String {
     text::lower(&trimmed(value))
 }
 
-/// Запрошенные настройки ИИ после проверки (4672–4700).
+/// Запрошенные настройки ИИ после проверки (4673–4701).
 struct Requested {
     model: String,
     style: String,
@@ -204,7 +204,7 @@ struct Requested {
     reasoning: String,
 }
 
-/// Разбор и проверка настроек ИИ из тела (4672–4700).
+/// Разбор и проверка настроек ИИ из тела (4673–4701).
 fn requested_settings(app: &AppState, body: &Value, current: &CampaignAiSettings) -> Result<Requested, ApiError> {
     let allowed = &app.config.allowed_ai_models;
     let model = match body.get("model") {
@@ -275,7 +275,7 @@ fn commit_derived(core: &GameCore, campaign_id: &str, key: &str, derive: &sk_sto
     executor.commit_derived(request).map_err(executor_failure)
 }
 
-/// Смена редакции (4700–4734) и домашние правила (4736–4769) в ядре; ответ —
+/// Смена редакции (4701–4735) и домашние правила (4737–4770) в ядре; ответ —
 /// состояние, по которому собирается раздел `ruleset` ответа.
 fn change_ruleset(core: &std::rc::Rc<GameCore>, change: &RulesetChange) -> Result<Value, Failure> {
     let campaign_id = change.campaign_id.as_str();
@@ -293,7 +293,7 @@ fn change_ruleset(core: &std::rc::Rc<GameCore>, change: &RulesetChange) -> Resul
                 if js::s(selected) != requested {
                     return Err(Failure::new("Этот idempotency_key уже использован для другой редакции", Some("IDEMPOTENCY_CONFLICT")));
                 }
-                // Найденный по ключу коммит без `replayed` (4709): его события
+                // Найденный по ключу коммит без `replayed` (4710): его события
                 // идут в проекцию, как в JS.
                 duplicate.events
             }
@@ -355,7 +355,7 @@ fn change_ruleset(core: &std::rc::Rc<GameCore>, change: &RulesetChange) -> Resul
     Ok(ruleset_state)
 }
 
-/// Строки летописи о смене режима и модели (4783–4796): не событие движка,
+/// Строки летописи о смене режима и модели (4784–4797): не событие движка,
 /// а запись комнаты — режим живёт в настройках, а не в состоянии.
 fn settings_journal(campaign_id: &str, requested: &Requested, previous_improv_mode: &str, model_changed: bool) -> Vec<Value> {
     let mut entries = Vec::new();
@@ -451,7 +451,7 @@ fn saved_from(saved: &Value, fallback: &CampaignAiSettings) -> CampaignAiSetting
     }
 }
 
-/// `PATCH /api/campaigns/:id/settings` (4661–4802): только администратор и
+/// `PATCH /api/campaigns/:id/settings` (4662–4803): только администратор и
 /// владелец кампании.
 async fn patch_settings(ctx: &mut RouteCtx) -> Result<Response<Body>, ApiError> {
     let user = require_user(ctx).await?;

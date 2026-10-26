@@ -1,12 +1,12 @@
 //! Блоки `validateCommand`: Боевой приём `UseCombatAction`. Задача Р10.
 //!
-//! JS: `server/rules-engine.mjs`, 7586–7768. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 7608–7790. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 //!
 //! Отказ от реакции (`decline-reaction`) в JS выходит из `validateCommand`
 //! досрочно (`return command`, 7594). Здесь блок просто заканчивается: из
 //! блоков после него для `UseCombatAction` срабатывает только проверка
-//! происхождения (7819), а она видит непустые `source_rule_ids`, которые
+//! происхождения (7841), а она видит непустые `source_rule_ids`, которые
 //! `normalizeCommand` берёт из `COMMAND_RULES`.
 //!
 //! Действие, которое блок кладёт в `command.combat_action`, разбор берёт
@@ -84,7 +84,7 @@ fn other_window_actor(window: &Value, command: &Value) -> bool {
     !super::common::strict_equal(Some(&Value::String(js::string(window.get("actor_id")))), command.get("actor_id"))
 }
 
-/// Выбор Сопротивления в окне спасброска (7604–7619).
+/// Выбор Сопротивления в окне спасброска (7626–7641).
 fn resistance_choice_action(action_id: &str) -> Value {
     let used = action_id == "use-resistance";
     json!({
@@ -101,7 +101,7 @@ fn resistance_choice_action(action_id: &str) -> Value {
     })
 }
 
-/// Встроенные реакции и Несгибаемый (7620–7636).
+/// Встроенные реакции и Несгибаемый (7642–7658).
 fn builtin_action(action_id: &str) -> Option<Value> {
     Some(match action_id {
         "indomitable" => json!({
@@ -128,7 +128,7 @@ fn builtin_action(action_id: &str) -> Option<Value> {
     })
 }
 
-/// Карточка заклинания-реакции (7637–7648).
+/// Карточка заклинания-реакции (7659–7670).
 fn reaction_spell_action(spell: &Value, option: Option<&Value>) -> Value {
     let mut action = Map::new();
     action.insert("id".into(), Value::String(format!("cast:{}", js::string(spell.get("id")))));
@@ -172,7 +172,7 @@ fn with_fields(action: &Value, fields: &[(&str, Value)]) -> Value {
     Value::Object(map)
 }
 
-/// Блок 71 (7586–7768): боевой приём (авторитетный бой).
+/// Блок 71 (7608–7790): боевой приём (авторитетный бой).
 pub fn check_combat_action(v: &mut Validation<'_>) -> Step {
     if v.command.get("command_type").and_then(Value::as_str) != Some("UseCombatAction") || !(js::truthy(v.command.get("server_authoritative")) || v.context.truthy("serverAuthoritativeCombat")) {
         return Ok(());
@@ -351,7 +351,7 @@ pub fn check_combat_action(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Цель приёма (7724–7766).
+/// Цель приёма (7746–7788).
 fn check_action_target(v: &mut Validation<'_>, action: &Value, actor_id: &str, actor: Option<&Value>) -> Step {
     let state = v.state;
     let target_value = target_for(&v.command);

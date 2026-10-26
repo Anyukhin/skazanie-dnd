@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Переговоры посреди боя: предложение и уговор. Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 21419–21566, 21567–21633. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 21441–21588, 21589–21655. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -20,7 +20,7 @@ fn get(value: &Value, key: &str) -> Value {
     value.get(key).cloned().unwrap_or(Value::Null)
 }
 
-/// `ProposeParley` (21419–21566).
+/// `ProposeParley` (21441–21588).
 pub fn propose_parley(r: &mut Resolve<'_>) -> Step {
     let round = sk_core::game::combat(&r.state).get("round").cloned();
     let morale = parley_morale_for(&r.state);
@@ -152,7 +152,7 @@ pub fn propose_parley(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `SettleParley` (21567–21633).
+/// `SettleParley` (21589–21655).
 pub fn settle_parley(r: &mut Resolve<'_>) -> Step {
     let Some(truce) = truce_for(&r.state) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'tribute_cp')").into());

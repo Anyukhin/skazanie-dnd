@@ -465,7 +465,7 @@ pub async fn handle(state: Shared, request: Request) -> Response<Body> {
     response
 }
 
-/// Тело `handleHttpRequest` после `applySecurityHeaders` (3929–6478).
+/// Тело `handleHttpRequest` после `applySecurityHeaders` (3930–6479).
 async fn dispatch(mut ctx: RouteCtx) -> ApiResult {
     if ctx.method == Method::OPTIONS {
         return Ok(preflight());

@@ -9,7 +9,7 @@
 //! `lifecyclePurseCp`). Читают их проверка и разбор `AdvanceScene` (Р6) и
 //! жизненный цикл торговцев; отказ — `RulesValidationError` с кодом JS.
 //!
-//! Расстановка отряда на входе сцены (12184–12261) — `scene/placement.rs`.
+//! Расстановка отряда на входе сцены (12206–12283) — `scene/placement.rs`.
 
 use serde_json::{Map, Value};
 use sk_core::js;

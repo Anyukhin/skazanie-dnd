@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Таверна: кости на деньги и выпивка. Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 21646–21714, 21715–21948, 21949–21960, 21961–22017. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 21668–21736, 21737–21970, 21971–21982, 21983–22039. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -45,7 +45,7 @@ fn append_minutes(r: &mut Resolve<'_>, minutes: i64) -> Step {
     r.append_world_time_consequences(&source, Some(&json!(minutes)), Some(&json!("minute")), TimeAdvanceOptions::default())
 }
 
-/// `OpenTavernDiceRound` (21646–21714).
+/// `OpenTavernDiceRound` (21668–21736).
 pub fn open_tavern_dice_round(r: &mut Resolve<'_>) -> Step {
     let gambler = tavern_gambler_for(&r.state, r.command.get("npc_id").unwrap_or(&Value::Null));
     let Some(actor) = player_actor(&r.state, r.command.get("actor_id")).cloned() else {
@@ -127,7 +127,7 @@ fn approach_check(r: &mut Resolve<'_>, ability: Option<&str>, skill: &str, diffi
     Ok(check)
 }
 
-/// `AnswerTavernDiceRound` (21715–21948).
+/// `AnswerTavernDiceRound` (21737–21970).
 pub fn answer_tavern_dice_round(r: &mut Resolve<'_>) -> Step {
     let actor_id = get(&r.command, "actor_id");
     let Some(round) = tavern_round_for(&r.state, &actor_id) else {
@@ -290,7 +290,7 @@ pub fn answer_tavern_dice_round(r: &mut Resolve<'_>) -> Step {
     append_minutes(r, TAVERN_DICE_ROUND_MINUTES)
 }
 
-/// `LeaveTavernDiceRound` (21949–21960).
+/// `LeaveTavernDiceRound` (21971–21982).
 pub fn leave_tavern_dice_round(r: &mut Resolve<'_>) -> Step {
     let Some(round) = tavern_round_for(&r.state, &get(&r.command, "actor_id")) else {
         return Err(null_read("npc_id"));
@@ -301,7 +301,7 @@ pub fn leave_tavern_dice_round(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `OrderTavernDrink` (21961–22017).
+/// `OrderTavernDrink` (21983–22039).
 pub fn order_tavern_drink(r: &mut Resolve<'_>) -> Step {
     let actor_id = get(&r.command, "actor_id");
     let Some(actor) = player_actor(&r.state, Some(&actor_id)).cloned() else {

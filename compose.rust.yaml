@@ -12,11 +12,10 @@
 # Переключение на 8787 (когда Rust становится основным):
 #   1. docker compose stop skazanie            — остановить JS-сервис;
 #   2. pnpm backup (или копия ./storage)       — снимок старого хранилища;
-#   3. импорт старого storage в том Rust-сервиса подкомандой import-legacy
-#      (задача С19.2), например:
-#        docker compose -f compose.rust.yaml run --rm --no-deps \
-#          -v ./storage:/legacy-storage:ro skazanie-rust import-legacy /legacy-storage
-#      точные аргументы — `… run --rm skazanie-rust import-legacy --help`;
+#   3. импорт старого storage в том Rust-сервиса (сначала с --dry-run):
+#        docker compose -f compose.rust.yaml run --rm --no-deps #          -v ./storage:/legacy-storage:ro skazanie-rust import-legacy --from /legacy-storage
+#   3a. аудит тома до запуска (0 — чисто, 1 — блокеры):
+#        docker compose -f compose.rust.yaml run --rm --no-deps skazanie-rust audit-storage
 #   4. SKAZANIE_RUST_PORT=8787 в окружении (или в .env) и
 #        docker compose -f compose.rust.yaml up -d
 #   Откат: docker compose -f compose.rust.yaml down && docker compose up -d —

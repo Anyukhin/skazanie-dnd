@@ -1,5 +1,5 @@
-//! Проекция журнала в комнату — перенос `server/index.mjs:3012–3019,
-//! 3382–3594, 3622–3695`: `latestCampaignState`,
+//! Проекция журнала в комнату — перенос `server/index.mjs:3013–3020,
+//! 3383–3595, 3623–3696`: `latestCampaignState`,
 //! `persistAuthoritativeProjection`, `reconcileCampaignProjection`,
 //! `reconcileAllCampaignProjections`, `persistInteractionProjection`,
 //! `expirePartyDecisionIfNeeded`, `reconcilePartyDecisionPresence` и хук
@@ -83,7 +83,7 @@ fn normalize(state: &Value) -> Result<Value, Failure> {
     Ok(sk_rules::normalize::normalize_campaign_state(state)?)
 }
 
-/// `latestCampaignState(campaignId, fallbackState)` (3012–3019): состояние
+/// `latestCampaignState(campaignId, fallbackState)` (3013–3020): состояние
 /// журнала, а при любом сбое загрузки или нормализации — нормализованное
 /// запасное.
 pub fn latest_campaign_state(core: &GameCore, campaign_id: &str, fallback_state: Option<&Value>) -> Result<Value, Failure> {
@@ -273,7 +273,7 @@ pub(crate) fn with_rules_plan<T>(core: &GameCore, operation: impl FnOnce(&sk_sto
     operation(&resolve)
 }
 
-/// `reconcileCampaignProjection(campaignId)` (3497–3534): истечь голосование,
+/// `reconcileCampaignProjection(campaignId)` (3498–3535): истечь голосование,
 /// исполнить решённое задание, сверить комнату с головой журнала и либо
 /// подтвердить совпавшую, либо переписать. Кампании нет в журнале — комната
 /// как есть.
@@ -325,7 +325,7 @@ fn reconcile_inner(core: &Rc<GameCore>, campaign_id: &str, now_ms: i64) -> Resul
     persist_authoritative_projection(core, campaign_id, &authoritative.state, &events, None, PersistOptions { force_projector_refresh: true, await_projection: false })
 }
 
-/// `reconcileAllCampaignProjections()` (3574–3582): сверка всех комнат при
+/// `reconcileAllCampaignProjections()` (3575–3583): сверка всех комнат при
 /// старте. Сбой одной кампании пишется в лог и не мешает остальным; ответ —
 /// отказы по кампаниям (для лога и тестов). Ошибка — только если не
 /// прочитался сам список комнат (в JS — падение старта).
@@ -340,7 +340,7 @@ pub fn reconcile_all_campaign_projections(core: &Rc<GameCore>) -> Result<Vec<(St
     Ok(failures)
 }
 
-/// `persistInteractionProjection(campaignId, interaction)` (3622–3654):
+/// `persistInteractionProjection(campaignId, interaction)` (3623–3655):
 /// открыть голосование отряда событием и спроецировать. Голосующие — по
 /// подключённым героям ([`crate::streams::Presence`]), иначе по `online`,
 /// иначе весь отряд.
@@ -399,7 +399,7 @@ pub async fn persist_interaction_projection(core: Rc<GameCore>, accounts: Arc<Ac
     persist_authoritative_projection(&core, campaign_id, &committed.commit.state, &committed.commit.events, None, PersistOptions::default())
 }
 
-/// `expirePartyDecisionIfNeeded(campaignId, now)` (3656–3670): истечение
+/// `expirePartyDecisionIfNeeded(campaignId, now)` (3657–3671): истечение
 /// голосования; события пересобираются против свежего состояния на каждой
 /// попытке. `None` — истекать нечему.
 pub fn expire_party_decision_if_needed(core: &GameCore, campaign_id: &str, now_ms: i64) -> Result<Option<Executed>, Failure> {
@@ -425,7 +425,7 @@ fn commit_derived_with(core: &GameCore, campaign_id: &str, key: &str, producer: 
     executor.commit_derived(request).map_err(executor_failure)
 }
 
-/// `reconcilePartyDecisionPresence(campaignId)` (3672–3695): ушедшие
+/// `reconcilePartyDecisionPresence(campaignId)` (3673–3696): ушедшие
 /// голосующие воздерживаются (политика `disconnectAction: 'abstain'`), решение
 /// может завершиться; присутствие — [`crate::streams::Presence`] ядра.
 pub fn reconcile_party_decision_presence(core: &Rc<GameCore>, campaign_id: &str) -> Result<Option<Executed>, Failure> {
@@ -461,7 +461,7 @@ pub fn reconcile_party_decision_presence(core: &Rc<GameCore>, campaign_id: &str)
 /// Подписчики: рассылка (С9), координатор боя и часы мира (С17), зацепки
 /// героев (С17). Хук — фоновая задача ядра: он получает свои копии и
 /// исполняется **после** текущего отрезка коммитящего задания, как
-/// `queueMicrotask` (`index.mjs:2783, 2829–2835, 2881, 4268`).
+/// `queueMicrotask` (`index.mjs:2784, 2830–2836, 2882, 4269`).
 pub type ProjectionSavedHook = fn(Rc<GameCore>, String, Room) -> LocalFuture<()>;
 
 /// `onRoomSaved(listener)`: подписать хук на каждую запись комнаты.

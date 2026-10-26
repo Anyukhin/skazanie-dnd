@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Заклинание: магия стат-блока и `CastSpell`. Задача Р9.
 //!
-//! JS: `server/rules-engine.mjs`, 6711–6713, 7325–7568. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6733–6735, 7347–7590. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 //!
 //! Блок дополняет команду на месте, как JS: выбранная ячейка
@@ -39,7 +39,7 @@ fn nn(value: Option<&Value>) -> Option<&Value> {
 }
 
 /// `circularLineOfEffectFor(state, origin, target, radiusFeet, aroundCorners)`
-/// (9988–9998). Перенесённое тело (`areas/shape.rs`, Р1) закрыто в своём
+/// (10010–10020). Перенесённое тело (`areas/shape.rs`, Р1) закрыто в своём
 /// модуле; здесь — та же сборка из открытых частей геометрии.
 fn circular_line_of_effect_for(state: &Value, origin: Point, target: Point, radius_feet: f64, around_corners: bool) -> bool {
     let cells = crate::tactical_geometry::tactical_cell_map(state);
@@ -73,7 +73,7 @@ fn living(target: Option<&Value>) -> bool {
     target.is_some_and(sk_core::game::is_living_actor)
 }
 
-/// Блок 30 (6711–6713): магия стат-блока.
+/// Блок 30 (6733–6735): магия стат-блока.
 pub fn check_monster_spell(v: &mut Validation<'_>) -> Step {
     if v.command.get("command_type").and_then(Value::as_str) != Some("CastSpell") {
         return Ok(());
@@ -91,7 +91,7 @@ pub fn check_monster_spell(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 69 (7325–7568): заклинание (авторитетный бой).
+/// Блок 69 (7347–7590): заклинание (авторитетный бой).
 pub fn check_cast_spell(v: &mut Validation<'_>) -> Step {
     if v.command.get("command_type").and_then(Value::as_str) != Some("CastSpell") || !(js::truthy(v.command.get("server_authoritative")) || v.context.truthy("serverAuthoritativeCombat")) {
         return Ok(());
@@ -223,7 +223,7 @@ pub fn check_cast_spell(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Заклинание в точку (7388–7434).
+/// Заклинание в точку (7410–7456).
 fn check_point_target(v: &mut Validation<'_>, spell: &Value, from: Point, maximum_range: f64, blind: bool) -> Step {
     let state = v.state;
     let actor_id = js::s(v.command.get("actor_id"));
@@ -297,7 +297,7 @@ fn check_point_target(v: &mut Validation<'_>, spell: &Value, from: Point, maximu
     Ok(())
 }
 
-/// Область вокруг себя с выбором целей (7435–7456).
+/// Область вокруг себя с выбором целей (7457–7478).
 fn check_self_area_targets(v: &mut Validation<'_>, spell: &Value) -> Step {
     let state = v.state;
     let raw: Vec<Value> = v.command.get("target_ids").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -335,7 +335,7 @@ fn check_self_area_targets(v: &mut Validation<'_>, spell: &Value) -> Step {
     Ok(())
 }
 
-/// Заклинание по существам (7457–7544).
+/// Заклинание по существам (7479–7566).
 fn check_creature_targets(v: &mut Validation<'_>, spell: &Value, from: Point, maximum_range: f64, slot_level: i64, blind: bool) -> Step {
     let state = v.state;
     let command = v.command.clone();

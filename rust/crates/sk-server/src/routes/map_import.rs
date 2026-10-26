@@ -1,5 +1,5 @@
 //! С13: импорт и перестройка карт — `POST /api/campaigns/:id/map-import`
-//! (`server/routes/map-import-routes.mjs`, подключение — `index.mjs:3959`,
+//! (`server/routes/map-import-routes.mjs`, подключение — `index.mjs:3960`,
 //! сборка — 352–361).
 //!
 //! Один маршрут, три режима тела:
@@ -33,7 +33,7 @@
 //! кампании не нужно, а разбор слэба на 400 000 клеток долгий); аккаунты —
 //! через [`blocking`]. Строки обрезаются по единицам UTF-16, как `slice` JS.
 //!
-//! [`install`] — проводка процесса (`index.mjs:352–356`): импортёр TaleSpire
+//! [`install`] — проводка процесса (`index.mjs:353–357`): импортёр TaleSpire
 //! для движка (`sk_rules::merchants::install_talespire_importer`, как у
 //! `sk-corpus`) и библиотека готовых карт по `DND_MAP_LIBRARY=on`.
 
@@ -72,7 +72,7 @@ const REBUILD_FORMATS: [&str; 2] = ["scene-program-rebuild", "scene-floor-refres
 
 const READ_ONLY: &str = "Завершённая или архивная кампания доступна только для чтения";
 
-/// Проводка процесса (`index.mjs:352–356`): импортёр слэба для движка и
+/// Проводка процесса (`index.mjs:353–357`): импортёр слэба для движка и
 /// глобальная библиотека карт (`setActiveMapLibrary`: включена только при
 /// `DND_MAP_LIBRARY=on`, иначе снята — как у JS при каждом старте).
 pub fn install(config: &Config) {

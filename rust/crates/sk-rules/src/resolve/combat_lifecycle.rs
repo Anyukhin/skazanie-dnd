@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Вход в бой и выход: нападение на NPC, сборка встречи, начало и конец боя. Задача Р11.
 //!
-//! JS: `server/rules-engine.mjs`, 19783–19820, 19821–19843, 19844–19973, 19974–20004. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 19805–19842, 19843–19865, 19866–19995, 19996–20026. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -64,7 +64,7 @@ fn apply_all(state: &Value, events: &[Value]) -> Result<Value, Halt> {
     Ok(current)
 }
 
-/// `AttackNpc` (19783–19820): встреча из профиля NPC и `StartCombat` от
+/// `AttackNpc` (19805–19842): встреча из профиля NPC и `StartCombat` от
 /// имени героя — вложенными командами того же разбора.
 pub fn attack_npc(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
@@ -96,7 +96,7 @@ pub fn attack_npc(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `CreateEncounter` (19821–19843): собранная проверкой встреча — в журнал.
+/// `CreateEncounter` (19843–19865): собранная проверкой встреча — в журнал.
 pub fn create_encounter(r: &mut Resolve<'_>) -> Step {
     let source = r.command.get("encounter").cloned().unwrap_or(Value::Null);
     let proposal_id = source.get("proposal_id");
@@ -194,7 +194,7 @@ fn initiative_entry(r: &mut Resolve<'_>, state: &Value, id: &str) -> Result<Valu
     Ok(Value::Object(entry))
 }
 
-/// `StartCombat` (19844–19973).
+/// `StartCombat` (19866–19995).
 pub fn start_combat(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();
@@ -330,7 +330,7 @@ pub fn start_combat(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `EndCombat` (19974–20004).
+/// `EndCombat` (19996–20026).
 pub fn end_combat(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();

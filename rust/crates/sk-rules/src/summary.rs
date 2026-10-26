@@ -1,7 +1,7 @@
 //! Сводка событий `eventSummary` и подстановка имён `actorNameResolver`.
 //! Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 27251–27502.
+//! JS: `server/rules-engine.mjs`, 27273–27524.
 //!
 //! Тексты — байт в байт с JS: шаблонная строка `${x}` печатает значение как
 //! `String(x)` (`undefined`, `null`, числа без `.0`, массивы через запятую,

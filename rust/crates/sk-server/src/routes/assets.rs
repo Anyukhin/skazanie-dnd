@@ -1,10 +1,10 @@
 //! С12: ассеты и картинки — `server/index.mjs`:
 //!
-//! - `GET /api/campaigns/:id/npcs/:npc/portrait` (4027–4064): заглушка — 302,
+//! - `GET /api/campaigns/:id/npcs/:npc/portrait` (4028–4065): заглушка — 302,
 //!   портрет из кеша или свежий — файл с `ETag`, заголовки `X-NPC-Portrait-*`;
-//! - `GET /api/campaigns/:id/locations/:loc/illustration` (4066–4098): только
+//! - `GET /api/campaigns/:id/locations/:loc/illustration` (4067–4099): только
 //!   кеш, модель не зовётся ни при каком флаге;
-//! - `GET`/`POST /api/campaigns/:id/asset-preparation` (4102–4171): список
+//! - `GET`/`POST /api/campaigns/:id/asset-preparation` (4103–4172): список
 //!   пробелов и подготовка заранее, независимо от рантайм-флага;
 //! - `GET /generated/items/:file` (сырой префикс, 6114; строка запроса
 //!   допускается — `split('?')`);
@@ -51,23 +51,23 @@ const ASSET_METHODS: &[Method] = &[Method::GET, Method::POST];
 
 pub fn routes() -> Vec<Route> {
     vec![
-        // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/npcs\/([^/]+)\/portrait$/)` и `GET` (4028–4029).
+        // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/npcs\/([^/]+)\/portrait$/)` и `GET` (4029–4030).
         Route::get(4030, Matcher::path_template("/api/campaigns/{id}/npcs/{seg}/portrait"), npc_portrait),
-        // `.../locations/([^/]+)/illustration$/` и `GET` (4067–4068).
+        // `.../locations/([^/]+)/illustration$/` и `GET` (4068–4069).
         Route::get(4069, Matcher::path_template("/api/campaigns/{id}/locations/{seg}/illustration"), location_illustration),
-        // `.../asset-preparation$/` и `GET || POST` (4102–4103).
+        // `.../asset-preparation$/` и `GET || POST` (4103–4104).
         Route::new(4104, Methods::Set(ASSET_METHODS), Matcher::path_template("/api/campaigns/{id}/asset-preparation"), asset_preparation),
-        // `req.url?.startsWith('/generated/items/') && req.method === 'GET'` (6114).
+        // `req.url?.startsWith('/generated/items/') && req.method === 'GET'` (6115).
         Route::get(6115, Matcher::raw_prefix("/generated/items/"), generated_item_file),
-        // `req.url === '/api/items/generate-image' && req.method === 'POST'` (6118).
+        // `req.url === '/api/items/generate-image' && req.method === 'POST'` (6119).
         Route::post(6119, Matcher::raw("/api/items/generate-image"), generate_item_image_route),
     ]
 }
 
 // --- картинки процесса ----------------------------------------------------
 
-/// Картинки процесса: сервисы портретов и иллюстраций (`index.mjs:253–269`) и
-/// генераторы предметов (2971–2974). Все — через учёт расхода.
+/// Картинки процесса: сервисы портретов и иллюстраций (`index.mjs:254–270`) и
+/// генераторы предметов (2972–2975). Все — через учёт расхода.
 pub struct Images {
     pub portraits: NpcPortraitService,
     pub illustrations: LocationIllustrationService,
@@ -100,7 +100,7 @@ impl ItemImages {
         &self.directory
     }
 
-    /// `generateItemImage(prompt, aspectRatio)` (2962–2995): ответ
+    /// `generateItemImage(prompt, aspectRatio)` (2963–2996): ответ
     /// `{ url, model, cost }` или ошибка с `code` (`LLM_QUOTA_EXCEEDED` —
     /// отказ резерва до запроса).
     pub async fn generate(&self, prompt: &Value, aspect_ratio: &str) -> Result<Value, Failure> {
@@ -160,7 +160,7 @@ async fn room_access(state: &AppState, user: &Value, room: &Room) -> ApiResult<b
     Ok(blocking(move || can_access_room(&accounts, Some(&user), &room)).await??)
 }
 
-/// Проекция зрителя-игрока (4040–4043, 4078–4084): герой — первый из героев
+/// Проекция зрителя-игрока (4041–4044, 4079–4085): герой — первый из героев
 /// пользователя в кампании, который есть среди игроков журнала.
 async fn player_projection(state: &AppState, user: &Value, code: &str, authoritative: &Value) -> Result<Value, Failure> {
     let accounts = state.accounts.clone();
@@ -316,7 +316,7 @@ fn with_prototype_portrait(mut profile: Value) -> Value {
     profile
 }
 
-/// Тело `try` подготовки (4110–4170); `Err` — 502 `ASSET_PREPARATION_FAILED`.
+/// Тело `try` подготовки (4111–4171); `Err` — 502 `ASSET_PREPARATION_FAILED`.
 async fn prepare_assets(ctx: &mut RouteCtx, state: &AppState, user: &Value, campaign_id: &str, room: &Room) -> Result<ApiResult, Failure> {
     let image_failure = |error: sk_chargen::npc_portraits::ImageServiceError| Failure::new(error.to_string(), error.code());
     let authoritative = authoritative_state(state, campaign_id, room).await?;

@@ -1,4 +1,4 @@
-//! С4: служебные маршруты (`server/index.mjs:3940–3969`): health,
+//! С4: служебные маршруты (`server/index.mjs:3941–3970`): health,
 //! `admin/usage`, speech status и transcribe.
 //!
 //! Все четыре сравнивают **сырой** `req.url`: `/api/health?x` — 404.

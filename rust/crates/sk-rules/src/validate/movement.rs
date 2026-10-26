@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Перемещение `MoveActor`. Задача Р10.
 //!
-//! JS: `server/rules-engine.mjs`, 7769–7791, 7796–7801. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 7791–7813, 7818–7823. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 
 use serde_json::Value;
@@ -19,7 +19,7 @@ fn is_move(v: &Validation<'_>) -> bool {
     v.command.get("command_type").and_then(Value::as_str) == Some("MoveActor")
 }
 
-/// Блок 72 (7769–7791): путь перемещения.
+/// Блок 72 (7791–7813): путь перемещения.
 pub fn check_move_actor(v: &mut Validation<'_>) -> Step {
     if !is_move(v) {
         return Ok(());
@@ -58,7 +58,7 @@ pub fn check_move_actor(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 73 (7796–7801): скорость и состояния при перемещении. Вынужденное
+/// Блок 73 (7818–7823): скорость и состояния при перемещении. Вынужденное
 /// перемещение — не своё движение существа и под запрет не попадает.
 pub fn check_move_speed(v: &mut Validation<'_>) -> Step {
     if !is_move(v) || js::is_true(v.command.get("reaction_movement")) {

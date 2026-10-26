@@ -1,9 +1,9 @@
-//! Запуск и резервы бросков — перенос `server/index.mjs:3536–3621, 6481–6504`:
+//! Запуск и резервы бросков — перенос `server/index.mjs:3537–3622, 6482–6505`:
 //! сверка всех комнат и снятие осиротевших резервов бросков до `listen`,
 //! включение домашних правил «по умолчанию» через 250 мс после старта, снятие
 //! резерва броска упавшего запроса (`finishFailedRollReservation`).
 //!
-//! Толчки координатора боя и часов мира (6497–6498) — С17
+//! Толчки координатора боя и часов мира (6498–6499) — С17
 //! ([`crate::clocks::startup_nudges`] из [`startup_jobs`]).
 
 use std::rc::Rc;
@@ -25,7 +25,7 @@ pub struct RollReservation {
     pub idempotency_key: String,
 }
 
-/// До `listen` (6481–6482): сверка комнат, затем резервы бросков.
+/// До `listen` (6482–6483): сверка комнат, затем резервы бросков.
 /// Ответ — отказы сверки по кампаниям.
 pub fn prepare(core: &Rc<GameCore>) -> Result<Vec<(String, Failure)>, Failure> {
     let failures = reconcile_all_campaign_projections(core)?;
@@ -33,7 +33,7 @@ pub fn prepare(core: &Rc<GameCore>) -> Result<Vec<(String, Failure)>, Failure> {
     Ok(failures)
 }
 
-/// Через 250 мс после `listen` (6493–6503): толчки координатора боя и часов
+/// Через 250 мс после `listen` (6494–6504): толчки координатора боя и часов
 /// мира (С17, [`crate::clocks::startup_nudges`]), затем домашние правила
 /// «по умолчанию» для каждой комнаты.
 pub fn startup_jobs(core: &Rc<GameCore>) {
@@ -50,7 +50,7 @@ pub fn startup_jobs(core: &Rc<GameCore>) {
     }
 }
 
-/// `enableDefaultHouseRules(campaignId)` (3543–3572): правила «по умолчанию»
+/// `enableDefaultHouseRules(campaignId)` (3544–3573): правила «по умолчанию»
 /// для уже идущих кампаний. Ключ идемпотентности постоянный — повторный старт
 /// ничего не дублирует; явный выбор ведущего и идущий бой кампанию не
 /// трогают (`defaultHouseRuleEvent`).
@@ -111,7 +111,7 @@ fn enable_default_house_rule(core: &Rc<GameCore>, campaign_id: &str, house_rule_
     Ok(())
 }
 
-/// `finishFailedRollReservation(reservation, error)` (3595–3609): резерв
+/// `finishFailedRollReservation(reservation, error)` (3596–3610): резерв
 /// упавшего запроса снимается, если commit по его ключу так и не появился.
 /// Исход читается из журнала; не прочитался — бросок остаётся потреблённым.
 /// `ROLL_CONTEXT_MISMATCH` (кость к чужой заявке) сжигает кость.
@@ -129,7 +129,7 @@ pub fn finish_failed_roll_reservation(core: &GameCore, reservation: Option<&Roll
     }
 }
 
-/// `releaseOrphanRollReservations()` (3611–3620): на старте держателей нет —
+/// `releaseOrphanRollReservations()` (3612–3621): на старте держателей нет —
 /// резервы без commit снимаются. Ответ — снятые броски.
 pub fn release_orphan_roll_reservations(core: &GameCore) -> Vec<String> {
     let events = &core.events;

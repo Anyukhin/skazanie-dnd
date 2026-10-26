@@ -3,8 +3,8 @@
 //!
 //! JS: `server/rules-engine.mjs` — `lingeringAreaDamage`,
 //! `lingeringAreaHealing`, `areaEntryConsequences`, `areaTurnConsequences`
-//! (8213–8585), `areaTriggerTurnKey`, `areaEffectTriggeredThisTurn`,
-//! `areaTriggerMarkEvent` (10411–10430), `wearsMetalArmor` (10439–10443).
+//! (8235–8607), `areaTriggerTurnKey`, `areaEffectTriggeredThisTurn`,
+//! `areaTriggerMarkEvent` (10433–10452), `wearsMetalArmor` (10461–10465).
 //!
 //! Все места вызова JS передают в последствия области замыкания разбора
 //! (`resolveDamageWithReactions`, `rollSavingThrow`, `areaSaveModifierFor`),

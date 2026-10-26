@@ -1,6 +1,6 @@
 //! Границы боя и раскрытие клеток, размещение на входе сцены. Задача Р4.
 //!
-//! JS: `server/rules-engine.mjs`, 2911–2957, 12184–12261.
+//! JS: `server/rules-engine.mjs`, 2911–2957, 12206–12283.
 //!
 //! Подрайон боя (`syncCombatBounds`, `growCombatBounds`) перенесён в
 //! `sk-tactical`; здесь — раскрытие клеток карты (`revealSceneCells`) и
@@ -74,7 +74,7 @@ pub fn footprint_placement_edges_blocked(map: Option<&TacticalMap>, actor: Optio
     crate::tactical_geometry::footprint_placement_edges_blocked(map, actor, Some(point))
 }
 
-/// `sceneAdvancePartyIds(state)` (12184): отряд по `partyMemberIds`, только
+/// `sceneAdvancePartyIds(state)` (12206): отряд по `partyMemberIds`, только
 /// живые карточки героев.
 pub fn scene_advance_party_ids(state: &Value) -> Vec<String> {
     let players = state.get("players").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -91,7 +91,7 @@ fn cells_by_key(cells: &[Value]) -> IndexMap<String, Value> {
     cells.iter().map(|cell| (format!("{},{}", js::string(cell.get("x")), js::string(cell.get("y"))), cell.clone())).collect()
 }
 
-/// `partyFootprintFits(actor, anchor, cellsByKey, map, occupied)` (12190).
+/// `partyFootprintFits(actor, anchor, cellsByKey, map, occupied)` (12212).
 fn party_footprint_fits(actor: Option<&Value>, anchor: &Value, cells: &IndexMap<String, Value>, map: Option<&TacticalMap>, occupied: &IndexSet<String>) -> bool {
     let footprint = footprint_cells_for(actor, Some(anchor));
     if footprint.is_empty() || footprint_placement_edges_blocked(map, actor, anchor) {
@@ -169,7 +169,7 @@ pub fn prop_movement_positions(map: &TacticalMap) -> IndexSet<String> {
     blocked
 }
 
-/// `sceneAdvancePartyPositions(state, transition)` (12223): отряд встаёт
+/// `sceneAdvancePartyPositions(state, transition)` (12245): отряд встаёт
 /// у входа новой сцены — ближние к входу клетки пола достаются первым в
 /// списке отряда; реквизит карты уже занимает свои клетки.
 pub fn scene_advance_party_positions(state: &Value, transition: &Value) -> Result<Vec<Value>, RuleError> {

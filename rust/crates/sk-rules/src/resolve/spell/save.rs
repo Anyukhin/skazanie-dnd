@@ -2,7 +2,7 @@
 //! без спасброска (`damage`, `area-damage`), в том числе по мирным NPC сцены.
 //! Задача Р9.
 //!
-//! JS: `server/rules-engine.mjs`, 17718–18226.
+//! JS: `server/rules-engine.mjs`, 17740–18248.
 
 use serde_json::{json, Map, Value};
 use sk_core::indexmap::IndexSet;
@@ -50,7 +50,7 @@ fn failure_duration(spell: &Value, rounds: Option<String>) -> String {
     }
 }
 
-/// Спасбросок и ослабление (17718–18199).
+/// Спасбросок и ослабление (17740–18221).
 pub(super) fn saving_throw_spell(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let state = r.state.clone();
     let spell = cast.spell.clone();
@@ -403,7 +403,7 @@ pub(super) fn saving_throw_spell(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     npc_saving_throws(r, cast, shared_roll.as_ref(), bonus_roll.as_ref(), &bonus_type, &save_ability)
 }
 
-/// Состояние провалившему спасбросок (17932–18031).
+/// Состояние провалившему спасбросок (17954–18053).
 fn apply_failed_condition(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target_id: &str, condition: &Value, save_ability: &str) -> Step {
     let spell = &cast.spell;
     let command = &cast.command;
@@ -551,7 +551,7 @@ fn apply_failed_condition(r: &mut Resolve<'_>, cast: &Cast, state: &Value, targe
 }
 
 /// «Диссонирующий шёпот»: цель тратит реакцию и уходит от заклинателя
-/// (18081–18113).
+/// (18103–18135).
 fn reaction_move_away(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target: &Value, target_id: &str) -> Step {
     let command = &cast.command;
     let actor_id = cast.actor_id.as_str();
@@ -601,7 +601,7 @@ fn reaction_move_away(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target: &
     Ok(())
 }
 
-/// Спасброски и урон мирных NPC сцены от заклинания со спасброском (18115–18199).
+/// Спасброски и урон мирных NPC сцены от заклинания со спасброском (18137–18221).
 fn npc_saving_throws(r: &mut Resolve<'_>, cast: &Cast, shared_roll: Option<&Value>, bonus_roll: Option<&Value>, bonus_type: &str, save_ability: &str) -> Step {
     let spell = &cast.spell;
     let command = &cast.command;
@@ -704,7 +704,7 @@ fn npc_saving_throws(r: &mut Resolve<'_>, cast: &Cast, shared_roll: Option<&Valu
     Ok(())
 }
 
-/// Урон без спасброска (18200–18226).
+/// Урон без спасброска (18222–18248).
 pub(super) fn damage_spell(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let state = r.state.clone();
     let spell = cast.spell.clone();

@@ -1,7 +1,7 @@
 //! С4: справочники — `rulesets/:id/character-creation` (3931),
 //! `rules/search` (4425), `world-templates` (4439), `engine-mode` → 410 (5216);
 //! и [`RuleCatalog`] — пакеты правил процесса с отказом при старте
-//! (`server/index.mjs:312–324`).
+//! (`server/index.mjs:313–325`).
 //!
 //! Маршруты объявляются с номером строки `server/index.mjs`, где JS их
 //! проверяет: порядок общей таблицы (`routes::table`) выводится из этих
@@ -62,7 +62,7 @@ fn manifest_ruleset_id(pack: &Value) -> Option<&str> {
     pack.get("manifest").and_then(|manifest| manifest.get("ruleset_id")).and_then(Value::as_str)
 }
 
-/// Отказ старта до загрузки пакетов (`index.mjs:313, 317–319`): неизвестная
+/// Отказ старта до загрузки пакетов (`index.mjs:314, 318–320`): неизвестная
 /// редакция и редакция, которой нельзя быть умолчанием процесса.
 /// `main.rs` зовёт это до открытия состояния, чтобы отказ печатался своим
 /// текстом, а не как сбой хранилища.
@@ -75,7 +75,7 @@ pub fn check_process_default(default_ruleset_id: &str) -> Result<(), String> {
 }
 
 impl RuleCatalog {
-    /// `index.mjs:313–324` в том же порядке проверок.
+    /// `index.mjs:314–325` в том же порядке проверок.
     pub fn load(default_ruleset_id: &str, root: &Path) -> Result<Self, String> {
         ruleset_profile(default_ruleset_id, ProfileOptions::default()).map_err(|error| error.message)?;
         // `[...new Set([...INSTALLED_RULESET_IDS, defaultRulesetId])]`.

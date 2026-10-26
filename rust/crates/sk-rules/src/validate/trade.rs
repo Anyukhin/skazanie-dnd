@@ -1,12 +1,12 @@
 //! Блоки `validateCommand`: Торговля: жизненный цикл торговцев, сделки, карманная кража. Задача Р6.
 //!
-//! JS: `server/rules-engine.mjs`, 6922–6954, 7064–7156, 7171–7200. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6944–6976, 7086–7178, 7193–7222. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 //!
 //! Продажа краденого честному торговцу в JS выходит из `validateCommand`
 //! досрочно (`return command`, 7143). Здесь блок просто заканчивается: все
 //! блоки после него отбираются по типу команды, и для `SellItem` ни один не
-//! срабатывает — проверка происхождения (7819) видит непустые
+//! срабатывает — проверка происхождения (7841) видит непустые
 //! `source_rule_ids`, которые `normalizeCommand` берёт из `COMMAND_RULES`.
 
 use serde_json::{json, Value};
@@ -39,7 +39,7 @@ fn halt(error: sk_core::RuleError) -> Halt {
     Halt::Rule(error)
 }
 
-/// Блок 49 (6922–6954): жизненный цикл торговцев.
+/// Блок 49 (6944–6976): жизненный цикл торговцев.
 pub fn check_merchant_lifecycle(v: &mut Validation<'_>) -> Step {
     let kind = command_type(v);
     if !MERCHANT_LIFECYCLE_COMMAND_TYPES.contains(&kind.as_str()) {
@@ -103,7 +103,7 @@ fn inventory_weight(actor: &Value) -> Result<f64, Halt> {
     sk_items_life::item_lifecycle::inventory_weight(Some(actor)).map(|weight| js::number(Some(&weight))).map_err(crate::damage::item_fault)
 }
 
-/// Блок 63 (7064–7156): сделки с торговцем.
+/// Блок 63 (7086–7178): сделки с торговцем.
 pub fn check_trade(v: &mut Validation<'_>) -> Step {
     let kind = command_type(v);
     if !["BargainWithMerchant", "AppraiseItem", "BuyItem", "SellItem", "PurchaseMerchantService"].contains(&kind.as_str()) {
@@ -255,7 +255,7 @@ pub fn check_trade(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 64 (7171–7200): карманная кража.
+/// Блок 64 (7193–7222): карманная кража.
 pub fn check_pickpocket(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "PickpocketNpc" {
         return Ok(());
