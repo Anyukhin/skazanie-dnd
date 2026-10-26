@@ -296,6 +296,33 @@ fn expiry_pending(state: &Value, now_ms: i64) -> Result<bool, Failure> {
 
 fn reconcile_inner(core: &Rc<GameCore>, campaign_id: &str, now_ms: i64) -> Result<Option<Room>, Failure> {
     let _span = sk_store::perf::span("reconcile");
+    // Обычный случай (Ск4): голосование не истекает, решённого задания нет,
+    // комната совпадает с головой — голова читается по ссылке, без копии
+    // состояния. Любое действие — прежний путь целиком.
+    let quiet = core.events.inspect(campaign_id, &LoadOptions::default(), |state, _| -> Result<bool, Failure> {
+        Ok(!expiry_pending(state, now_ms)? && !sk_character::quest_decisions::quest_decision_pending(Some(state)))
+    })??;
+    if quiet {
+        let pending = core.events.pending_projection(campaign_id, false)?;
+        let room = get_room(core, campaign_id)?;
+        let Some(room_state) = room.state.as_ref() else {
+            return Err(Failure::new("Cannot convert undefined or null to object", Some("TYPE_ERROR")));
+        };
+        let projected_version = version_of(Some(room_state), -1.0);
+        let (comparison, head_version) = {
+            let _compare = sk_store::perf::span("reconcile.compare");
+            core.events.inspect(campaign_id, &LoadOptions::default(), |state, version| (compare_projection(state, room_state), version))?
+        };
+        if projected_version >= head_version as f64 && comparison.matched {
+            if pending.is_some() {
+                crate::test_hooks::acknowledge_projection(&core.events, campaign_id, head_version, Some(&comparison.projected_hash))?;
+            }
+            return Ok(Some(room));
+        }
+        let authoritative = core.events.load(campaign_id, &LoadOptions::default())?;
+        let events = pending.map(|pending| pending.events).unwrap_or_default();
+        return persist_authoritative_projection(core, campaign_id, &authoritative.state, &events, None, PersistOptions { force_projector_refresh: true, await_projection: false });
+    }
     let load = || core.events.load(campaign_id, &LoadOptions::default()).map_err(Failure::from);
     let mut authoritative = load()?;
     if expiry_pending(&authoritative.state, now_ms)? {
