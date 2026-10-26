@@ -217,6 +217,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | Все броски серверные, один бросок не применяется дважды; механическая проверка принимает только кость своей карточки | `test/dice-service.test.mjs`, `test/roll-registry.test.mjs`, `test/roll-binding.test.mjs` |
 | Клиентские поля недоверенные (путь, дальность, цель) | `test/tactical-command-guard.test.mjs` |
 | Права, членство и владелец героя проверяются сервером | `test/security.test.mjs` |
+| Готового героя игрок не переписывает импортом; новый герой создаётся только с полным набором выборов первого уровня, в 2014 — с `phbCreation` | `test/character-lifecycle-engine.test.mjs`, `test/character-creation-2014.test.mjs` |
 | Игрок видит только разрешённое, в том числе в уже открытом живом потоке после logout, истечения сессии и смены доступа; прогноз удара не выдаёт закрытую КД процентом попадания | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs`, `test/stream-live-access-api.test.mjs`, `test/combat-forecast-disclosure.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
 | NPC знает только своё, публичное и увиденное им самим; повтор своей реплики вырезается сервером; отказ ведёт к зацепке, а не в тупик | `test/npc-knowledge-leads.test.mjs` |
@@ -226,6 +227,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается; двадцать мест корпуса строятся без замечаний | `test/scene-program-layout.test.mjs`, `test/map-library.test.mjs`, `test/scene-program-corpus.test.mjs` |
 | В поселении у каждой двери дома есть дорога, на тропе ничего не стоит; отряд входит со стороны, откуда пришёл, а центр сцены стоит на площади | `test/settlement-generator.test.mjs` (`DOOR_OFF_ROAD`, `PATH_BLOCKED`), `test/scene-entry-road.test.mjs` |
 | Рассказчик не описывает то, что сцена обещала, а карта не держит | `test/narrator.test.mjs` (`ABSENT_LANDMARK_MENTIONED`) |
+| Команда факта, убеждения или слуха проходит, только если предикат есть в онтологии мира для этого вида записи и подлежащего; replay старых событий словарь не проверяет | `test/world-ontology-write.test.mjs`, `test/world-ontology.test.mjs` |
 | Перестройка карты — только ведущему, вне боя, голосования и открытой проверки; та же схема события, что у импорта, replay сходится | `test/map-import-command.test.mjs`, `test/map-import-api.test.mjs` |
 | Враг встречи появляется по эту сторону дверей и окон от отряда | `test/encounter-assembler.test.mjs` |
 | Параллельные команды не перезаписывают друг друга молча | `test/narrate-room-version-race.test.mjs`, `test/snapshot-projector-version.test.mjs` |

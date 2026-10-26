@@ -322,6 +322,9 @@ impl From<ItemLifecycleError> for CharacterLifecycleError {
 
 pub type LifecycleResult<T> = Result<T, CharacterLifecycleError>;
 
+/// Отказ `assertActorAuthority` по умолчанию — для повышения уровня.
+const LEVEL_UP_FORBIDDEN: &str = "Повысить уровень может только владелец героя";
+
 fn invalid<T>(message: impl Into<String>, code: &str) -> LifecycleResult<T> {
     Err(CharacterLifecycleError::invalid(message, code))
 }
@@ -899,6 +902,11 @@ pub fn character_creation_catalog(ruleset_id: &str) -> LifecycleResult<Value> {
         put(&mut entry, "label", class_option.get("label"));
         put(&mut entry, "source_url", class_option.get("sourceUrl"));
         put(&mut entry, "subclass_level", class_option.get("subclassLevel"));
+        // Предпросмотр мастера (хиты 1 уровня, спасброски) берёт числа отсюда,
+        // а не из своей копии таблиц: лист всё равно пересчитывает сервер
+        // (`server/character-lifecycle.mjs:398`, #190).
+        entry.insert("hit_die".into(), int(hit_die_for(Some(&actor))));
+        entry.insert("saving_throws".into(), json!(saving_throw_proficiencies_for(Some(&actor))));
         entry.insert("subclasses".into(), subclasses);
         entry.insert("class_skills".into(), class_skills);
         entry.insert("feature_choice_groups".into(), Value::Array(feature_choice_groups));
@@ -1510,6 +1518,13 @@ fn staged_character_setup_for(state: Option<&Value>, actor: Option<&Value>) -> L
 /// `characterCreationChoicesComplete(actor, options)`: все обязательные
 /// выборы текущего уровня сделаны. Из `options` читается `rulesetId`.
 pub fn character_creation_choices_complete(actor: Option<&Value>, options: Option<&Value>) -> LifecycleResult<bool> {
+    Ok(missing_character_creation_choice(actor, options)?.is_none())
+}
+
+/// `missingCharacterCreationChoice(actor, options)`
+/// (`server/character-lifecycle.mjs:793`, #190): первый незавершённый выбор
+/// текущего уровня словами для игрока, либо `None`.
+pub fn missing_character_creation_choice(actor: Option<&Value>, options: Option<&Value>) -> LifecycleResult<Option<String>> {
     let ability_choices = prop(actor, "abilityScoreIncreases").filter(|value| value.is_object());
     let level_feats = prop(actor, "levelFeats").filter(|value| value.is_object());
     for level in ability_score_choice_levels_for(actor) {
@@ -1525,12 +1540,12 @@ pub fn character_creation_choices_complete(actor: Option<&Value>, options: Optio
         let asi_ok = matches!(asi, Some(Value::Array(items)) if items.len() == 1 || items.len() == 2);
         let feat_ok = matches!(feat, Some(Value::Object(_)) | Some(Value::Array(_))) && !text::trim(&js::s(defined(prop(feat, "id")))).is_empty();
         if !(asi_ok || feat_ok) {
-            return Ok(false);
+            return Ok(Some("Выберите повышение характеристик или черту уровня".into()));
         }
     }
     if let Some(rule) = class_skill_rule_for(actor) {
         if normalized_class_skill_proficiencies(actor).len() as f64 != js::number(rule.get("choiceCount")) || !rule.get("choiceCount").is_some_and(Value::is_number) {
-            return Ok(false);
+            return Ok(Some(format!("Выберите классовые навыки: {}", js::string(rule.get("choiceCount")))));
         }
     }
     let key = class_key(actor);
@@ -1539,18 +1554,18 @@ pub fn character_creation_choices_complete(actor: Option<&Value>, options: Optio
     if let Some(class_info) = class_info {
         let subclass_level = js::number(Some(nullish(class_info.get("subclassLevel"), Some(&json!(1))).unwrap_or(&json!(1))));
         if (normalized_level(prop(actor, "level"))? as f64) >= subclass_level && js::number(class_info.get("subclasses")) > 0.0 && normalized_combat_subclass_for(actor).is_none() {
-            return Ok(false);
+            return Ok(Some("Выберите подкласс".into()));
         }
     }
     let selected_features: HashSet<String> = normalized_selected_feature_ids(actor).into_iter().collect();
     for group in feature_choice_groups_for(actor) {
         let selected = array_of(group.get("options")).iter().filter(|option| option.get("id").and_then(Value::as_str).is_some_and(|id| selected_features.contains(id))).count();
         if !strict_eq(Some(&int(selected as i64)), group.get("choiceCount")) {
-            return Ok(false);
+            return Ok(Some(format!("{}: выберите {}", js::string(group.get("name")), js::string(group.get("choiceCount")))));
         }
     }
     let Some(rules) = spell_selection_rules_for(actor) else {
-        return Ok(true);
+        return Ok(None);
     };
     let selected = normalized_spell_selections_for(actor);
     let known: Vec<String> = unique_in_order(array_of(selected.get("knownSpellIds")).iter().map(|id| js::s(Some(id))).collect());
@@ -1562,25 +1577,27 @@ pub fn character_creation_choices_complete(actor: Option<&Value>, options: Optio
     let cantrips = known.iter().filter(|id| strict_eq(level_of(id), Some(&int(0)))).count() as f64;
     let leveled = known.iter().filter(|id| js::number(Some(nullish(level_of(id), Some(&json!(0))).unwrap_or(&json!(0)))) > 0.0).count() as f64;
     if cantrips != rules.cantrips {
-        return Ok(false);
+        return Ok(Some(format!("Выберите заговоры: {}", js::f64_string(rules.cantrips))));
     }
     if rules.mode == "known" && leveled != rules.spells_known {
-        return Ok(false);
+        return Ok(Some(format!("Выберите известные заклинания: {}", js::f64_string(rules.spells_known))));
     }
     if rules.mode == "spellbook" && leveled < rules.spellbook_minimum {
-        return Ok(false);
+        return Ok(Some(format!("Впишите в книгу заклинаний: {}", js::f64_string(rules.spellbook_minimum))));
     }
-    Ok(true)
+    Ok(None)
 }
 
-fn assert_actor_authority(actor_id: &str, context: Option<&Value>) -> LifecycleResult<()> {
+/// `assertActorAuthority(actorId, context, message)`; текст отказа по умолчанию —
+/// повышения уровня, импорт и броски создания передают свой (#190).
+fn assert_actor_authority(actor_id: &str, context: Option<&Value>, message: &str) -> LifecycleResult<()> {
     let allowed: Vec<String> = match defined(prop(context, "allowedActorIds")) {
         None => Vec::new(),
         Some(Value::Array(items)) => items.iter().map(|item| js::string(Some(item))).collect(),
         Some(_) => return Err(CharacterLifecycleError::runtime("(context?.allowedActorIds ?? []).map is not a function")),
     };
     if !js::is_true(prop(context, "isAdmin")) && !allowed.iter().any(|id| id == actor_id) {
-        return invalid("Повысить уровень может только владелец героя", "ACTOR_FORBIDDEN");
+        return invalid(message, "ACTOR_FORBIDDEN");
     }
     Ok(())
 }
@@ -1608,7 +1625,7 @@ pub fn validate_level_up_command(command: Option<&Value>, state: Option<&Value>,
     }
     let actor_id = clean_identifier(nullish(command.get("actor_id"), command.get("actorId")), "actor_id")?;
     let actor = actor_from_state(state, &actor_id)?;
-    assert_actor_authority(&actor_id, context)?;
+    assert_actor_authority(&actor_id, context, LEVEL_UP_FORBIDDEN)?;
     let current_level = normalized_level(actor.get("level"))?;
     if current_level >= MAX_LEVEL {
         return invalid("Достигнут максимальный поддерживаемый уровень", "LEVEL_CAP_REACHED");
@@ -1726,7 +1743,13 @@ pub fn validate_character_import_command(command: Option<&Value>, state: Option<
     }
     let actor_id = clean_identifier(nullish(command.get("actor_id"), command.get("actorId")), "actor_id")?;
     let actor = actor_from_state(state, &actor_id)?;
-    assert_actor_authority(&actor_id, context)?;
+    assert_actor_authority(&actor_id, context, "Импортировать лист может только владелец героя")?;
+    // Импорт поверх готового героя переписывает уровень, опыт и броски хитов
+    // документом клиента: готового героя развивает только LevelUp, перезаписать
+    // лист целиком может ведущий (`server/character-lifecycle.mjs:984`, #190).
+    if !js::is_true(actor.get("characterSetupRequired")) && !js::is_true(prop(context, "isAdmin")) {
+        return invalid("Герой уже создан: развивайте его повышением уровня, а заменить лист целиком может ведущий", "CHARACTER_ALREADY_CREATED");
+    }
     let ruleset_id = js::s(Some(nullish(prop(state, "ruleset_id"), Some(&json!(LEGACY_DEFAULT_RULESET_ID))).unwrap_or(&Value::Null)));
     let rolls = prop(Some(actor), "characterCreationRolls");
     let parsed = parse_character_import(
@@ -1745,6 +1768,20 @@ pub fn validate_character_import_command(command: Option<&Value>, state: Option<
     let starter_catalog = starter_equipment_catalog_for(&ruleset_id, false);
     let species_policy = character_creation_policy_for(&ruleset_id)?;
     let is_2014 = ruleset_id == DND_2014_RULESET_ID;
+    // Новый герой обязан прийти с полным набором выборов первого уровня; в
+    // кампании 2014 без `phbCreation` пропускались бы все проверки PHB.
+    if js::is_true(actor.get("characterSetupRequired")) && is_2014 && !js::truthy(parsed.creation.as_ref()) {
+        return invalid("Герой редакции 2014 создаётся с выборами PHB (phbCreation)", "IMPORT_PHB_CREATION_REQUIRED");
+    }
+    // В 2024 прибавки характеристик даёт предыстория: без неё сверять не с чем,
+    // значит, и прибавок нет.
+    let origin_bonuses = path(parsed.patch.get("abilityGeneration"), &["originBonuses"]);
+    if is_str(species_policy.get("bonus_source"), "background")
+        && !js::truthy(parsed.patch.get("backgroundId"))
+        && object_values(defined(origin_bonuses)).iter().any(|value| js::number(Some(value)) != 0.0)
+    {
+        return invalid("Прибавки характеристик даёт предыстория: выберите её", "IMPORT_BACKGROUND_REQUIRED");
+    }
     let policy_field = |key: &str, fallback: Value| -> Value {
         defined(path(starter_catalog.as_ref(), &[key])).cloned().unwrap_or(if is_2014 { Value::Null } else { fallback })
     };
@@ -1765,7 +1802,31 @@ pub fn validate_character_import_command(command: Option<&Value>, state: Option<
     put(&mut result, "species_policy_version", species_policy.get("policy_version"));
     result.insert("source_rule_ids".into(), command_source_rules(command, &format!("{ruleset_id}:resources:spending")));
     result.insert("visibility".into(), json!("party"));
-    Ok(Value::Object(result))
+    let validated = Value::Object(result);
+    // При стартовом уровне выше первого выборы досдаются командами подготовки, и
+    // полноту сторожит LevelUp. Здесь — импорт, сразу завершающий создание:
+    // полнота проверяется на том герое, которого запишет reducer.
+    if js::is_true(actor.get("characterSetupRequired")) && character_creation_target_level(state)? <= 1 {
+        let after = apply_character_lifecycle_event(state.unwrap_or(&Value::Null), &character_import_event(Some(&validated))?)?;
+        let mut imported = spread_of(Some(actor_from_state(Some(&after), &actor_id)?));
+        imported.insert("level".into(), int(1));
+        let options = json!({ "rulesetId": ruleset_id });
+        if let Some(missing) = missing_character_creation_choice(Some(&Value::Object(imported)), Some(&options))? {
+            return invalid(format!("Герой не завершён: {missing}"), "IMPORT_CHOICES_INCOMPLETE");
+        }
+    }
+    Ok(validated)
+}
+
+/// `Object.values(value ?? {})`: значения объекта, элементы массива, символы
+/// строки; у прочего — пусто.
+fn object_values(value: Option<&Value>) -> Vec<Value> {
+    match value {
+        Some(Value::Object(map)) => js::entries(map).into_iter().map(|(_, value)| value.clone()).collect(),
+        Some(Value::Array(items)) => items.clone(),
+        Some(Value::String(text)) => text.encode_utf16().map(|unit| Value::String(String::from_utf16_lossy(&[unit]))).collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// `validateCharacterAbilityRollCommand(command, state, context)`: броски
@@ -1776,7 +1837,7 @@ pub fn validate_character_ability_roll_command(command: Option<&Value>, state: O
     };
     let actor_id = clean_identifier(prop(Some(command), "actor_id"), "actor_id")?;
     let actor = actor_from_state(state, &actor_id)?;
-    assert_actor_authority(&actor_id, context)?;
+    assert_actor_authority(&actor_id, context, "Бросать за героя может только владелец героя")?;
     if !is_str(prop(state, "ruleset_id"), DND_2014_RULESET_ID) || !js::truthy(actor.get("characterSetupRequired")) || js::truthy(path(state, &["mechanics", "combat", "active"])) {
         return invalid("Броски характеристик доступны только при создании героя D&D 2014", "CHARACTER_ROLL_UNAVAILABLE");
     }
@@ -1893,7 +1954,7 @@ pub fn apply_character_lifecycle_event(state: &Value, event: &Value) -> Lifecycl
     let actor_id = js::s(nullish(target.as_ref(), event.get("actor_id")));
     let index = players_of(Some(&next))?.iter().position(|candidate| js::string(prop(Some(candidate), "id")) == actor_id);
     let Some(index) = index else {
-        return invalid("Событие LevelUp ссылается на отсутствующего героя", "ACTOR_NOT_FOUND");
+        return invalid(format!("Событие {} ссылается на отсутствующего героя", js::string(event.get("event_type"))), "ACTOR_NOT_FOUND");
     };
     let actor = next["players"][index].clone();
     if actor.is_null() {

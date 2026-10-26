@@ -58,7 +58,7 @@ function characterDocument() {
         speciesOptionId: 'human',
       },
       baseSpeed: 30, hitPointIncreases: [], classSkillProficiencies: ['athletics', 'perception'],
-      selectedFeatureIds: [], knownSpellIds: [], preparedSpellIds: [],
+      selectedFeatureIds: ['fighting-style-defense'], knownSpellIds: [], preparedSpellIds: [],
     },
   }
 }

@@ -52,6 +52,9 @@ fn fighter() -> Value {
         "starterEquipmentChoices": { "armor": ["chain-mail"], "melee-loadout": ["longsword-shield"], "secondary": ["light-crossbow"], "pack": ["explorers-pack"] },
         "baseSpeed": 30, "hitPointIncreases": [], "classSkillProficiencies": ["athletics", "perception"], "selectedFeatureIds": ["fighting-style-defense"],
         "knownSpellIds": [], "preparedSpellIds": [],
+        // #190: герой 2014 создаётся только с выборами PHB — как в
+        // `test/chain-lightning-api.test.mjs` и соседях.
+        "phbCreation": { "schema_version": 1, "classChoices": {} },
     } })
 }
 

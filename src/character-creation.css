@@ -336,3 +336,82 @@
 .creation-species-traits ul{margin:0;padding-left:18px;color:#97794f}
 .creation-species-traits li+li{margin-top:3px}
 .creation-species-traits>div>span{color:#97794f}
+/* Шаг, который сломался после правки более раннего выбора (например, смены класса). */
+.character-creation-wizard>nav button.attention{color:#e6a5a0}
+/* Способ определения характеристик наследовал сетку карточки характеристики
+   (1fr 72px 36px), и выбор обрезался до «Станд». */
+.creation-abilities>label{grid-template-columns:minmax(0,1fr) minmax(220px,auto)}
+/* Шаг характеристик: бюджет покупки, карточки с −/+ и предпросмотр 1 уровня. */
+.creation-point-budget{display:grid;grid-template-columns:150px minmax(0,1fr) minmax(0,240px);align-items:center;gap:18px;margin:0 0 14px;padding:14px 18px;border:1px solid rgba(211,160,97,.16);border-radius:10px;background:rgba(255,255,255,.025)}
+.creation-point-budget small{display:block;color:#a8988a;font:600 var(--fs-xs) var(--f-ui)}
+.creation-point-budget strong{color:#f1dcbc;font:700 30px var(--f-serif)}
+.creation-point-budget strong.spent-all{color:#a9c7b2}
+.creation-point-budget strong span{color:#a8988a;font:500 var(--fs-md) var(--f-ui)}
+.creation-point-budget p{margin:0;color:#b3a28f;font:500 var(--fs-xs) var(--f-ui);line-height:1.4}
+.creation-point-cells{display:grid;grid-template-columns:repeat(27,minmax(0,1fr));gap:3px}
+.creation-point-cells i{height:14px;border-radius:2px;background:#2a241d}
+.creation-point-cells i.spent{background:#d3a061}
+.creation-ability-card{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border:1px solid rgba(211,160,97,.14);border-radius:10px;background:rgba(255,255,255,.025)}
+.creation-ability-card.key{border-color:rgba(211,160,97,.45);background:rgba(185,128,70,.1)}
+.creation-ability-card header{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.creation-ability-card header span{color:#f1dcbc;font:700 var(--fs-md) var(--f-serif)}
+.creation-ability-card header em{color:#d3a061;font:700 var(--fs-xxs) var(--f-ui);font-style:normal;letter-spacing:.04em}
+.creation-abilities .creation-ability-card small{grid-column:auto;color:#a8988a;font:500 var(--fs-xs) var(--f-ui);line-height:1.35}
+.creation-ability-body{display:flex;align-items:center;gap:14px}
+.creation-ability-total{display:flex;flex-direction:column;align-items:center;min-width:64px}
+.creation-ability-total strong{color:#f1dcbc;font:700 40px/1 var(--f-serif)}
+.creation-abilities .creation-ability-total b{color:#d3a061;font:700 var(--fs-md) var(--f-ui)}
+.creation-ability-body select{flex:1;min-height:44px}
+.creation-stepper{flex:1;display:flex;align-items:center;gap:8px}
+.creation-stepper button{width:44px;height:44px;border:1px solid rgba(211,160,97,.35);border-radius:8px;color:#f1dcbc;background:#221c15;font:600 22px/1 var(--f-ui);cursor:pointer}
+.creation-stepper button:hover:not(:disabled){border-color:#d3a061;background:rgba(185,128,70,.2)}
+.creation-stepper button:disabled{border-color:#2f2820;color:#5e554b;background:transparent;cursor:not-allowed}
+.creation-stepper output{min-width:34px;text-align:center;color:#ead3b2;font:700 20px var(--f-ui)}
+.creation-ability-breakdown{margin:0;color:#a8988a;font:500 var(--fs-xs) var(--f-ui)}
+.creation-ability-preview{margin-top:16px;padding:14px 18px;border:1px solid rgba(211,160,97,.16);border-radius:10px;background:rgba(255,255,255,.025)}
+.creation-ability-preview header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.creation-ability-preview header span{color:#f1dcbc;font:700 var(--fs-md) var(--f-serif)}
+.creation-abilities .creation-ability-preview header small{grid-column:auto;color:#a8988a;font:500 var(--fs-xs) var(--f-ui)}
+.creation-ability-preview dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0}
+.creation-ability-preview dl>div{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.035)}
+.creation-ability-preview dt{color:#a8988a;font:600 var(--fs-xs) var(--f-ui)}
+.creation-ability-preview dd{margin:0;color:#f1dcbc;font:700 26px var(--f-serif)}
+.creation-ability-preview dd.creation-preview-saves{font:700 var(--fs-md) var(--f-ui)}
+.creation-abilities .creation-ability-preview dl small{grid-column:auto;color:#a8988a;font:500 var(--fs-xxs) var(--f-ui)}
+@media (max-width:900px){.creation-point-budget{grid-template-columns:minmax(0,1fr)}}
+/* Итоговый шаг: список «перед созданием» и лист героя на всю ширину. */
+.creation-form.identity>.creation-review-checklist,.creation-form.identity>.creation-identity-name,.creation-form.identity>.creation-review-sheet{grid-column:1/-1}
+.creation-review-checklist{padding:14px 16px;border:1px solid rgba(230,165,160,.35);border-radius:10px;background:rgba(230,165,160,.06)}
+.creation-review-checklist.ready{border-color:rgba(145,178,156,.35);background:rgba(145,178,156,.06)}
+.creation-review-checklist header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.creation-review-checklist header span{color:#f1dcbc;font:700 var(--fs-md) var(--f-serif)}
+.creation-review-checklist header b{color:#e6a5a0;font:700 var(--fs-xs) var(--f-ui)}
+.creation-review-checklist.ready header b{color:#a9c7b2}
+.creation-review-checklist ul{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px;margin:0;padding:0;list-style:none}
+.creation-review-checklist li{display:flex;align-items:center;gap:10px;min-height:40px;padding:4px 8px;border-radius:8px}
+.creation-review-checklist li.missing{background:rgba(230,165,160,.1)}
+.creation-review-checklist li i{width:22px;height:22px;flex:none;display:grid;place-items:center;border-radius:50%;font:700 12px var(--f-ui);font-style:normal;color:#a9c7b2;background:rgba(145,178,156,.2)}
+.creation-review-checklist li.missing i{color:#e6a5a0;background:rgba(230,165,160,.25)}
+.creation-review-checklist li span{flex:1;min-width:0;display:flex;flex-direction:column}
+.creation-review-checklist li span b{color:#ead3b2;font:600 var(--fs-sm) var(--f-ui)}
+.creation-review-checklist li span small{color:#e6b8b4;font:500 var(--fs-xxs) var(--f-ui)}
+.creation-review-checklist li button{min-height:36px;padding:0 12px;border:1px solid rgba(230,165,160,.5);border-radius:7px;color:#f1d2cf;background:transparent;font:600 var(--fs-xs) var(--f-ui);cursor:pointer}
+.creation-review-checklist li button:hover{background:rgba(230,165,160,.12)}
+.creation-review-sheet{display:flex;flex-direction:column;gap:14px;padding:18px;border:1px solid rgba(211,160,97,.25);border-radius:12px;background:rgba(255,255,255,.025)}
+.creation-review-sheet header{display:flex;flex-direction:column;gap:2px}
+.creation-review-sheet header b{color:#f1dcbc;font:700 24px var(--f-serif)}
+.creation-review-sheet header span{color:#c9b08c;font:500 var(--fs-sm) var(--f-ui)}
+.creation-review-vitals{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:0}
+.creation-review-vitals>div{padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.04)}
+.creation-review-vitals dt{color:#a8988a;font:600 var(--fs-xs) var(--f-ui)}
+.creation-review-vitals dd{margin:0;color:#f1dcbc;font:700 24px var(--f-serif)}
+.creation-review-scores{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.creation-review-scores>div{display:flex;flex-direction:column;align-items:center;padding:8px 4px;border:1px solid rgba(211,160,97,.18);border-radius:8px}
+.creation-review-scores span{color:#a8988a;font:600 var(--fs-xs) var(--f-ui)}
+.creation-review-scores b{color:#f1dcbc;font:700 20px var(--f-ui)}
+.creation-review-scores small{color:#d3a061;font:700 var(--fs-xs) var(--f-ui)}
+.creation-review-lists{display:grid;gap:8px;margin:0}
+.creation-review-lists dt{color:#b3a28f;font:600 var(--fs-xs) var(--f-ui)}
+.creation-review-lists dd{margin:0;color:#ead3b2;font:500 var(--fs-sm) var(--f-ui);line-height:1.45}
+.creation-review-sheet>p{display:flex;align-items:center;gap:8px;margin:0;color:#a8988a;font:500 var(--fs-xs) var(--f-ui)}
+@media (max-width:900px){.creation-review-scores{grid-template-columns:repeat(3,minmax(0,1fr))}}

@@ -52,7 +52,9 @@ test('у каждого читаемого предиката есть прои�
   assert.deepEqual(declaredExternal, [...EXTERNAL_ONLY_PREDICATES].sort())
   for (const name of EXTERNAL_ONLY_PREDICATES) {
     assert.ok(PREDICATES[name].external_producers?.length, `${name}: внешний производитель должен быть назван`)
-    assert.ok(PREDICATES[name].consumers.length, `${name}: внешний предикат без читателя не нужен в списке`)
+    // Без конкретного читателя внешний предикат допустим, только если он
+    // объявлен для общих читателей — иначе его некому прочесть.
+    assert.ok(PREDICATES[name].consumers.length || PREDICATES[name].generic_readers_only === true, `${name}: внешний предикат без читателя не нужен в списке`)
   }
 })
 

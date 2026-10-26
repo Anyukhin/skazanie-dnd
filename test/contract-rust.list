@@ -140,6 +140,8 @@ test/merchant-api.test.mjs               # торговля игрока и POST
 test/encounter-api.test.mjs           # права, белый список полей, устаревшая версия, ходы врагов до героя, проекция игроку, restart, повтор и конфликт ключа
 test/longstrider-api.test.mjs         # «Скороход»: развитие, сборка встречи, бой и движение через /commands, restart
 test/destructive-wave-api.test.mjs    # «Разрушительная волна»: жрец бури 9-го уровня, сборка встречи и удар по площади
+# #190 (2026-10-25): импорт нового героя 2014 — только с phbCreation и полными выборами.
+test/mass-cure-wounds-api.test.mjs    # «Множественное лечение ран»: импорт двух владельцев, NPC, права, idempotency, restart
 
 # С18.4 (2026-10-24): автономия кампании — autonomy/intents и autonomy/advance, стадия
 # encounter-completion координатора последствий. director-player-entry-api проходит все шаги

@@ -749,7 +749,7 @@
             "background_features_supported": false
           },
           "starter_equipment": null,
-          "classes": "<sha256:806d24a3c42c177e8cc00adf6d4fbe541d86835c9fb94cdb9c1b666f9e9aa4c8:121654>"
+          "classes": "<sha256:de2259abe5a438e0b6412b1a5d2e25525b6be7be6feb1d20b10d10a265b6b61e:122162>"
         },
         "tools": []
       },
@@ -1502,7 +1502,7 @@
             "background_features_supported": false
           },
           "starter_equipment": null,
-          "classes": "<sha256:806d24a3c42c177e8cc00adf6d4fbe541d86835c9fb94cdb9c1b666f9e9aa4c8:121654>"
+          "classes": "<sha256:de2259abe5a438e0b6412b1a5d2e25525b6be7be6feb1d20b10d10a265b6b61e:122162>"
         },
         "tools": []
       },
@@ -1526,7 +1526,7 @@
       "headers": {},
       "body": null,
       "status": 200,
-      "body_norm": "<sha256:9bebe565e00736d0d35b319b59227ec5b3b8792f54d07d111eea471ecd1a587f:822033>"
+      "body_norm": "<sha256:d89d0047fb278dcac9c89124afc9621372147c5a6b72803938301873736aba5b:822541>"
     },
     {
       "as": "anon",
@@ -2232,7 +2232,7 @@
           "background_features_supported": false
         },
         "starter_equipment": null,
-        "classes": "<sha256:806d24a3c42c177e8cc00adf6d4fbe541d86835c9fb94cdb9c1b666f9e9aa4c8:121654>"
+        "classes": "<sha256:de2259abe5a438e0b6412b1a5d2e25525b6be7be6feb1d20b10d10a265b6b61e:122162>"
       }
     },
     {

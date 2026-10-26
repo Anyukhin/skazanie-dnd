@@ -160,7 +160,7 @@ function CharacterDevelopmentWizard({
   </div>
 }
 
-export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = player.level, initialTab = 'sheet', requestLevelUp = false, onClose, onSave, onImport, onLevelUp }: { player: Player; rulesetId?: string; phbCatalog?: PhbCharacterOptionsCatalog; targetLevel?: number; initialTab?: 'sheet' | 'story' | 'advancement'; requestLevelUp?: boolean; onClose: () => void; onSave: (patch: Partial<Player>) => void | Promise<void>; onImport: (source: string) => Promise<void>; onLevelUp: () => void | Promise<{ ok?: boolean; error?: string } | void> }) {
+export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = player.level, initialTab = 'sheet', requestLevelUp = false, onClose, onSave, onImport, onLevelUp }: { player: Player; rulesetId?: string; phbCatalog?: PhbCharacterOptionsCatalog; targetLevel?: number; initialTab?: 'sheet' | 'story' | 'advancement'; requestLevelUp?: boolean; onClose: () => void; onSave: (patch: Partial<Player>) => void | Promise<void>; onImport?: (source: string) => Promise<void>; onLevelUp: () => void | Promise<{ ok?: boolean; error?: string } | void> }) {
   const [draft, setDraft] = useState<Player>(() => structuredClone(player))
   const [tab, setTab] = useState<'sheet' | 'story' | 'advancement'>(() => player.characterSetupStage === 'leveling' ? 'advancement' : initialTab)
   const [notice, setNotice] = useState('')
@@ -357,6 +357,7 @@ export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = p
   const importSheet = async (file?: File) => {
     if (!file) return
     try {
+      if (!onImport) return
       await onImport(await file.text())
       setNotice('Документ отправлен на серверную проверку и импорт.')
     } catch (error) {
@@ -579,7 +580,8 @@ export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = p
           <div><span>ЛИСТ ПЕРСОНАЖА</span><h2>{draft.character}</h2><p>{playerRoleLabel(draft)}</p></div>
           <div className="editor-actions">
             <input ref={importInput} hidden type="file" accept="application/json,.json" onChange={(event) => importSheet(event.target.files?.[0])} />
-            <button onClick={() => importInput.current?.click()} disabled={saving}><Upload size={15} />Импорт Skazanie JSON</button>
+            {/* Готового героя лист целиком заменяет только ведущий: игроку сервер откажет. */}
+            {onImport && <button onClick={() => importInput.current?.click()} disabled={saving}><Upload size={15} />Импорт Skazanie JSON</button>}
             <button onClick={exportSheet}><Download size={15} />Экспорт</button>
             <button className="close-editor" onClick={onClose} disabled={saving} aria-label="Закрыть лист персонажа"><X size={20} /></button>
           </div>

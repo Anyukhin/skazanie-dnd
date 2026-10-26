@@ -17,9 +17,16 @@ import type { PhbCharacterOptionsValue } from './PhbCharacterOptions'
 import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
 import { validateClassChoices } from '../server/character-creation-class-options.mjs'
 import {
+  abilityPreview,
+  addStartingPurchase,
   clearCreationDraft,
+  creationChecklist,
   creationDraftKey,
+  firstIncompleteStepIndex,
   goldLabel,
+  isRolledAssignment,
+  pointBuySpent as pointBuySpentFor,
+  pointBuyStep,
   mergeCreationDraft,
   purchaseShortfallCp,
   readCreationDraft,
@@ -174,6 +181,19 @@ const abilityLabels: Record<(typeof abilityIds)[number], string> = {
   int: 'Интеллект',
   wis: 'Мудрость',
   cha: 'Харизма',
+}
+/** Принятые сокращения: срез первых трёх букв давал «Муд» вместо «Мдр». */
+const abilityShortLabels: Record<(typeof abilityIds)[number], string> = {
+  str: 'Сил', dex: 'Лов', con: 'Тел', int: 'Инт', wis: 'Мдр', cha: 'Хар',
+}
+/** Зачем характеристика за столом: без подсказки покупка шла вслепую. */
+const ABILITY_HINTS: Record<(typeof abilityIds)[number], string> = {
+  str: 'Удар оружием ближнего боя, переноска, Атлетика.',
+  dex: 'Инициатива, КД без тяжёлого доспеха, лук, Скрытность.',
+  con: 'Хиты на каждом уровне и удержание концентрации.',
+  int: 'Знания, Расследование, магия волшебника.',
+  wis: 'Восприятие, Проницательность, магия жреца и друида.',
+  cha: 'Убеждение, обман, магия барда, чародея и колдуна.',
 }
 
 type CreationStepId = 'class' | 'race' | 'subrace' | 'background' | 'abilities' | 'proficiencies' | 'equipment' | 'magic' | 'identity'
@@ -438,10 +458,19 @@ export function CharacterCreationWizard({
   const [error, setError] = useState('')
   // `hero-slot-3` — внутренний идентификатор, игроку он ничего не говорит.
   const slotLabel = /^hero-slot-(\d+)$/.test(player.id)
-    ? `место ${player.id.replace('hero-slot-', '')} из отряда`
+    ? `№ ${player.id.replace('hero-slot-', '')}`
     : player.character || player.id
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !busy) onClose() }
+    // Escape в поле ввода снимает фокус, а не закрывает весь мастер.
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || busy) return
+      const target = event.target
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+        target.blur()
+        return
+      }
+      onClose()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [busy, onClose])
@@ -459,6 +488,12 @@ export function CharacterCreationWizard({
   const abilityRollCount = abilityRoll?.scores.length ?? 0
   const abilityRollComplete = abilityRollCount === abilityIds.length
   const wealthRoll = player.characterCreationRolls?.wealth
+  /* Богатство бросается один раз и за конкретный класс. После смены класса
+     кнопки броска уже нет, а мастер требовал «бросок выбранного класса» —
+     тупик без подсказки. Теперь он называет оба выхода. */
+  const wealthRollForOtherClass = Boolean(wealthRoll && wealthRoll.class_id !== draft.classId)
+  const wealthRollClassLabel = catalog.classes.find((entry) => entry.id === wealthRoll?.class_id)?.label ?? wealthRoll?.class_id ?? ''
+  const wealthRollMismatchMessage = `Стартовое богатство уже брошено за класс «${wealthRollClassLabel}», повторно его не бросают. Верните этот класс или возьмите наборы класса и предыстории.`
   /* Плейтест 2026-10-04, стартовое богатство: при остатке 85 зм кираса за
      400 зм ложилась в корзину, и мастер писал «осталось -315 зм», будто покупка
      состоялась. Покупка сверх остатка теперь не добавляется, а кнопка называет
@@ -470,10 +505,18 @@ export function CharacterCreationWizard({
   const purchaseShortfall = draft.purchaseId ? purchaseShortfallCp({ remainingCp: purchaseBudget.remainingCp, priceCp: purchaseCandidatePriceCp, quantity: draft.purchaseQuantity }) : 0
   const abilityValues = draft.abilityMethod === 'rolled' ? abilityRoll?.scores ?? [] : catalog.ability_policy.standard_array
   const abilityChoices = draft.abilityMethod === 'point_buy' ? [8, 9, 10, 11, 12, 13, 14, 15] : [...new Set(abilityValues)].sort((a, b) => b - a)
-  const pointBuySpent = abilityIds.reduce((sum, ability) => sum + (catalog.point_buy?.costs[draft.abilities[ability]] ?? 0), 0)
+  const pointBuyCosts = catalog.point_buy?.costs ?? {}
+  const pointBuyBudget = catalog.point_buy?.budget ?? 27
+  const pointBuySpent = pointBuySpentFor(draft.abilities, pointBuyCosts)
+  const pointBuyRemaining = pointBuyBudget - pointBuySpent
   useEffect(() => {
     if (draft.abilityMethod === 'rolled' && abilityRoll?.scores.length === abilityIds.length) {
-      setDraft((current) => ({ ...current, abilities: Object.fromEntries(abilityIds.map((id, index) => [id, abilityRoll.scores[index]])) as CharacterAbilityScores }))
+      // Уже расставленные значения этого броска не трогаем: эффект срабатывает
+      // и при открытии мастера, и восстановленная из черновика расстановка
+      // прежде сбрасывалась в порядок бросков.
+      setDraft((current) => isRolledAssignment(current.abilities, abilityRoll.scores)
+        ? current
+        : { ...current, abilities: Object.fromEntries(abilityIds.map((id, index) => [id, abilityRoll.scores[index]])) as CharacterAbilityScores })
     }
   }, [draft.abilityMethod, abilityRoll?.id, abilityRoll?.scores.length])
   const skillRule = classOption?.class_skills
@@ -527,7 +570,7 @@ export function CharacterCreationWizard({
       { id: 'proficiencies' as const, title: 'Владения', description: 'Навыки и расовые выборы' },
       { id: 'equipment' as const, title: 'Снаряжение', description: 'Стартовый комплект' },
       { id: 'magic' as const, title: 'Магия', description: 'Заговоры и 1 круг' },
-      { id: 'identity' as const, title: 'Личность', description: 'Имя и история' },
+      { id: 'identity' as const, title: 'Итог', description: 'Имя и проверка' },
     ]
     if (!hasSubraceStep) return base
     return [...base.slice(0, 2), { id: 'subrace' as const, title: 'Подраса', description: 'Подвид выбранной расы' }, ...base.slice(2)]
@@ -634,6 +677,14 @@ export function CharacterCreationWizard({
   const featBonuses = featPreview?.ok ? featPreview.benefits?.ability_increases ?? {} : {}
   const originBonusFor = (ability: string) => (originBonuses[ability as keyof CharacterAbilityScores] ?? 0) + (featBonuses[ability] ?? 0)
   const castingAbility = spellRules?.spellcastingAbility
+  // Итог с прибавками происхождения и черты, не выше 20 — как в документе импорта.
+  const finalAbilities = Object.fromEntries(abilityIds.map((ability) => [ability, draft.abilities[ability] ? Math.min(20, draft.abilities[ability] + originBonusFor(ability)) : 0])) as CharacterAbilityScores
+  /** Характеристики, на которые класс опирается: подсвечиваются на шаге. */
+  const classKeyAbilities = (RECOMMENDED_ABILITY_ORDER[draft.classId] ?? []).slice(0, 2)
+  const levelOnePreview = abilityPreview({
+    abilities: finalAbilities, hitDie: classOption?.hit_die ?? null, savingThrows: classOption?.saving_throws ?? [],
+    spellcastingAbility: castingAbility ?? null, primaryAbility: PRIMARY_ABILITY[draft.classId] ?? null,
+  })
   const preparedLimit = Math.min(leveledSpells.length, castingAbility && (spellRules.mode === 'prepared' || spellRules.mode === 'spellbook')
     ? Math.max(1, 1 + abilityModifier(draft.abilities[castingAbility] + originBonusFor(castingAbility))) : 0)
   const styleIds: Record<string, string> = { 'fighting-style-defense': 'defense', 'fighting-style-dueling': 'dueling', 'fighting-style-great-weapon': 'great_weapon_fighting', 'fighting-style-protection': 'protection', 'fighting-style-two-weapon': 'two_weapon_fighting', 'fighting-style-archery': 'archery' }
@@ -857,6 +908,10 @@ export function CharacterCreationWizard({
       ...rolledSpells,
       character: pick(RANDOM_NAMES) ?? 'Безымянный герой',
     }))
+    // Все шаги уже заполнены: открываем их в навигации и ведём к «Личности»,
+    // где имя и кнопка создания, — прежде приходилось девять раз жать «Дальше».
+    setStep('identity')
+    setFurthestStep('identity')
     setError('')
   }
 
@@ -876,6 +931,14 @@ export function CharacterCreationWizard({
       starterEquipmentChoices: defaultChoiceRecord(catalog.classes.find((entry) => entry.id === classId)?.starter_equipment?.choice_groups),
     }))
     setError('')
+  }
+
+  /** Шаг кнопок −/+ покупки за очки; недоступный шаг объясняет причину. */
+  const stepAbility = (ability: keyof CharacterAbilityScores, delta: 1 | -1) => {
+    const step = pointBuyStep({ scores: draft.abilities, ability, delta, costs: pointBuyCosts, budget: pointBuyBudget })
+    if (!step.ok) return setError(step.reason)
+    setError('')
+    setDraft((current) => ({ ...current, abilitiesCustomized: true, abilities: { ...current.abilities, [ability]: step.score } }))
   }
 
   const assignAbility = (ability: keyof CharacterAbilityScores, score: number) => {
@@ -923,7 +986,10 @@ export function CharacterCreationWizard({
 
   const toggleSpell = (id: string, prepare = false) => {
     if (!spellRules) return
-    const spell = spellRules.spells.find((entry) => entry.id === id)
+    // Ищем среди показанного: расширенный список покровителя колдуна приходит
+    // из каталога PHB, а не из списка класса, и прежде щелчок по «Приказу»
+    // или «Огненным ладоням» молча ничего не делал.
+    const spell = [...cantrips, ...leveledSpells].find((entry) => entry.id === id)
     if (!spell) return
     if (prepare) {
       const next = toggleBounded(draft.preparedSpellIds, id, preparedLimit)
@@ -950,10 +1016,17 @@ export function CharacterCreationWizard({
     }
   }
 
-  const validateStep = () => {
+  /**
+   * Проверка одного шага. Прежде она смотрела только на текущий шаг, и перед
+   * созданием героя тоже: можно было вернуться к классу, сменить его и
+   * перепрыгнуть к «Личности» — сброшенные навыки и заклинания ловил уже
+   * сервер, и его ответ появлялся без указания шага.
+   */
+  const validateStepFor = (currentStep: CreationStepId) => {
+    const stepIndex = steps.findIndex((entry) => entry.id === currentStep)
     const abilitiesStepIndex = steps.findIndex((entry) => entry.id === 'abilities')
-    const abilitiesReached = currentStepIndex >= abilitiesStepIndex
-    if (abilitiesReached && draft.abilityMethod === 'point_buy' && (pointBuySpent > 27 || abilityIds.some((id) => draft.abilities[id] < 8 || draft.abilities[id] > 15))) return 'Покупка характеристик: значения 8–15, не более 27 очков.'
+    const abilitiesReached = stepIndex >= abilitiesStepIndex
+    if (abilitiesReached && draft.abilityMethod === 'point_buy' && (pointBuySpent > pointBuyBudget || abilityIds.some((id) => draft.abilities[id] < 8 || draft.abilities[id] > 15))) return 'Покупка характеристик: значения 8–15, не более 27 очков.'
     if (abilitiesReached && draft.abilityMethod === 'rolled' && !abilityRollComplete) return `Сделайте все шесть бросков 4к6 (${abilityRollCount}/6).`
     if (abilitiesReached && draft.abilityMethod !== 'point_buy' && [...abilityIds.map((ability) => draft.abilities[ability])].sort((a, b) => a - b).join(',') !== [...abilityValues].sort((a, b) => a - b).join(',')) return 'Распределите все шесть полученных значений характеристик.'
     if (!classOption) return 'Выберите поддерживаемый класс.'
@@ -984,7 +1057,8 @@ export function CharacterCreationWizard({
       if (incomplete) return `${incomplete.name}: выберите ${incomplete.choiceCount}.`
     }
     if (currentStep === 'equipment' && draft.equipmentMode === 'standard' && !starterChoicesReady) return 'Выберите стартовое снаряжение.'
-    if (currentStep === 'equipment' && draft.equipmentMode === 'wealth' && (!wealthRoll || wealthRoll.class_id !== draft.classId || purchaseTotal > wealthRoll.total_gp * 100)) return 'Получите бросок богатства выбранного класса и уложитесь в бюджет покупок.'
+    if (currentStep === 'equipment' && draft.equipmentMode === 'wealth' && wealthRollForOtherClass) return wealthRollMismatchMessage
+    if (currentStep === 'equipment' && draft.equipmentMode === 'wealth' && (!wealthRoll || purchaseTotal > wealthRoll.total_gp * 100)) return 'Получите бросок стартового богатства и уложитесь в бюджет покупок.'
     if (currentStep === 'magic' && spellRules) {
       if (selectedCantrips !== cantripLimit) return `Выберите ${cantripLimit} ${plural(cantripLimit, ['заговор', 'заговора', 'заговоров'])}.`
       if (spellRules.mode === 'known' && selectedKnownSpells !== knownLimit) return `Выберите ${knownLimit} ${plural(knownLimit, ['заклинание', 'заклинания', 'заклинаний'])} 1 круга.`
@@ -993,6 +1067,23 @@ export function CharacterCreationWizard({
     if (currentStep === 'identity' && !draft.character.trim()) return 'Назовите персонажа.'
     return ''
   }
+  const validateStep = () => validateStepFor(currentStep)
+  /** Первый шаг с незавершённым выбором — до него навигация ставит галочки. */
+  const firstIncompleteIndex = firstIncompleteStepIndex(steps.map((entry) => entry.id), (stepId) => validateStepFor(stepId as CreationStepId))
+  /** Итоговый шаг: каждый шаг с отметкой и тем, чего на нём не хватает. */
+  const checklist = currentStep === 'identity' ? creationChecklist(steps, (stepId) => validateStepFor(stepId as CreationStepId)) : []
+  const missingCount = checklist.filter((item) => !item.done).length
+  const reviewSkills = [...new Set([...knownSkills, ...replacementSkills])]
+    .map((id) => allSkills.find((skill) => skill.id === id))
+    .filter((skill): skill is (typeof allSkills)[number] => Boolean(skill))
+    .map((skill) => `${skill.name} ${signed(abilityModifier(finalAbilities[skill.ability] || 10) + levelOnePreview.proficiency)}`)
+  const reviewSpells = [...cantrips, ...leveledSpells].filter((spell) => draft.knownSpellIds.includes(spell.id)).map((spell) => spell.name)
+  const reviewEquipment = draft.equipmentMode === 'wealth'
+    ? draft.purchases.map((item) => `${catalog.starting_wealth?.items.find((entry) => entry.id === item.id)?.name ?? item.id}${item.quantity > 1 ? ` ×${item.quantity}` : ''}`)
+    : [
+      ...(starterProfile?.fixed_items ?? []).map((item) => item.name ?? ''),
+      ...starterGroups.flatMap((group) => group.options.filter((option) => (draft.starterEquipmentChoices[group.id] ?? []).includes(option.id)).map((option) => option.label)),
+    ].filter(Boolean)
 
   const next = () => {
     const message = validateStep()
@@ -1008,8 +1099,11 @@ export function CharacterCreationWizard({
   }
 
   const submit = async () => {
-    const message = validateStep()
-    if (message) return setError(message)
+    const incomplete = steps[firstIncompleteIndex]
+    if (incomplete) {
+      setStep(incomplete.id)
+      return setError(`${incomplete.title}: ${validateStepFor(incomplete.id)}`)
+    }
     if (!classOption || !speciesOption) return
     // Итог обязан равняться стандартному массиву плюс server-owned прибавки:
     // в 2014 они принадлежат виду, в 2024 — предыстории.
@@ -1118,7 +1212,11 @@ export function CharacterCreationWizard({
         <nav aria-label="Шаги создания персонажа">
           {steps.map((entry, index) => {
             const subraceShortcut = entry.id === 'subrace' && currentStep === 'race' && hasSubraceStep
-            return <button type="button" key={entry.id} className={entry.id === currentStep ? 'active' : index <= furthestStepIndex ? 'complete' : ''} aria-current={entry.id === currentStep ? 'step' : undefined} disabled={index > furthestStepIndex && !subraceShortcut} onClick={() => { setStep(entry.id); if (subraceShortcut) setFurthestStep(entry.id) }}><i>{index < furthestStepIndex ? <Check size={12} /> : index + 1}</i><span><b>{entry.title}</b><small>{entry.description}</small></span></button>
+            // Галочка — только у шагов до первого незавершённого: после смены
+            // класса сброшенные навыки и заклинания не прячутся за «готово».
+            const verified = firstIncompleteIndex < 0 || index < firstIncompleteIndex
+            const attention = index === firstIncompleteIndex && index < furthestStepIndex && entry.id !== currentStep
+            return <button type="button" key={entry.id} className={entry.id === currentStep ? 'active' : attention ? 'attention' : index <= furthestStepIndex ? 'complete' : ''} aria-current={entry.id === currentStep ? 'step' : undefined} title={attention ? validateStepFor(entry.id) : undefined} disabled={index > furthestStepIndex && !subraceShortcut} onClick={() => { setStep(entry.id); if (subraceShortcut) setFurthestStep(entry.id) }}><i>{attention ? '!' : index < furthestStepIndex && verified ? <Check size={12} /> : index + 1}</i><span><b>{entry.title}</b><small>{attention ? 'Нужно завершить выбор' : entry.description}</small></span></button>
           })}
         </nav>
         <main ref={mainRef}>
@@ -1130,7 +1228,7 @@ export function CharacterCreationWizard({
               <div><dt>Класс</dt><dd>{classOption?.label ?? '—'}</dd></div>
               <div><dt>Раса</dt><dd>{selectedSpecies || '—'}</dd></div>
               <div><dt>Предыстория</dt><dd>{selectedBackground?.name ?? '—'}</dd></div>
-              <div><dt>Характеристики</dt><dd>{abilityIds.map((ability) => `${abilityLabels[ability].slice(0, 3)} ${draft.abilities[ability] ? draft.abilities[ability] + originBonusFor(ability) : '—'}`).join(' · ')}</dd></div>
+              <div><dt>Характеристики</dt><dd>{abilityIds.map((ability) => `${abilityShortLabels[ability]} ${draft.abilities[ability] ? draft.abilities[ability] + originBonusFor(ability) : '—'}`).join(' · ')}</dd></div>
               <div><dt>Расовые выборы</dt><dd>{speciesChoiceGroups.flatMap((group) => group.options.filter((option) => (draft.speciesChoices[group.id] ?? []).includes(option.id)).map((option) => option.label)).join(', ') || 'нет'}</dd></div>
               <div><dt>Снаряжение</dt><dd>{starterGroups.flatMap((group) => group.options.filter((option) => (draft.starterEquipmentChoices[group.id] ?? []).includes(option.id)).map((option) => option.label)).join(', ') || 'серверный набор'}</dd></div>
             </dl>
@@ -1314,7 +1412,11 @@ export function CharacterCreationWizard({
           {currentStep === 'abilities' && <div className="creation-abilities">
             {(catalog.ability_methods?.length ?? 0) > 1 && <label>Способ определения характеристик<select value={draft.abilityMethod} onChange={(event) => {
               const method = event.target.value as CreationDraft['abilityMethod']
-              setDraft((current) => ({ ...current, abilityMethod: method, abilities: Object.fromEntries(abilityIds.map((id, index) => [id, method === 'point_buy' ? 8 : method === 'rolled' ? abilityRollComplete ? abilityRoll?.scores[index] ?? 0 : 0 : catalog.ability_policy.standard_array[index]])) as CharacterAbilityScores }))
+              // Возврат к стандартному массиву раскладывает его под класс, как
+              // при первом открытии, а не по порядку Сил–Лов–Тел.
+              setDraft((current) => ({ ...current, abilityMethod: method, abilitiesCustomized: false, abilities: method === 'standard_array'
+                ? recommendedStandardArray(current.classId, catalog.ability_policy.standard_array)
+                : Object.fromEntries(abilityIds.map((id, index) => [id, method === 'point_buy' ? 8 : abilityRollComplete ? abilityRoll?.scores[index] ?? 0 : 0])) as CharacterAbilityScores }))
               setError('')
             }}>
               <option value="standard_array">Стандартный массив</option><option value="point_buy">Покупка за 27 очков</option><option value="rolled">Серверные броски 4к6</option>
@@ -1342,17 +1444,52 @@ export function CharacterCreationWizard({
                   })}</div>}
               </section>
             </>}
-            {draft.abilityMethod === 'point_buy' ? <p>Потрачено {pointBuySpent}/27 очков. Значения 8–13 стоят 0–5 очков, 14 — 7 очков, 15 — 9 очков. Расовые и другие прибавки применяются после покупки.</p>
+            {/* Покупка за очки — кнопками −/+ и полосой бюджета: прежде значение
+                выбиралось списком, и о перерасходе мастер говорил только у «Дальше». */}
+            {draft.abilityMethod === 'point_buy' ? <section className="creation-point-budget" aria-label="Бюджет покупки">
+              <div><small>Осталось очков</small><strong className={pointBuyRemaining === 0 ? 'spent-all' : ''} aria-live="polite">{pointBuyRemaining}<span> из {pointBuyBudget}</span></strong></div>
+              <div className="creation-point-cells" role="img" aria-label={`Потрачено ${pointBuySpent} из ${pointBuyBudget} очков`}>
+                {Array.from({ length: pointBuyBudget }, (_, index) => <i key={index} className={index < pointBuySpent ? 'spent' : ''} />)}
+              </div>
+              <p>8–13 стоят по очку за ступень, 14 и 15 — по два. Прибавки {bonusSource === 'species' ? 'расы' : 'предыстории'} ложатся сверху.</p>
+            </section>
               : <p>{draft.abilityMethod === 'rolled' && !abilityRollComplete ? `Сначала сделайте все шесть бросков (${abilityRollCount}/6).` : `Распределите значения ${abilityValues.join(', ') || 'после серверного броска'}. Каждое значение используется один раз; занятое меняется местами с той характеристикой, где оно стояло.`}</p>}
-            <div>{abilityIds.map((ability) => <label key={ability}><span>{abilityLabels[ability]}</span><select disabled={draft.abilityMethod === 'rolled' && !abilityRollComplete} value={draft.abilities[ability]} onChange={(event) => assignAbility(ability, Number(event.target.value))}><option value={0}>Не выбрано</option>{abilityChoices.map((score) => <option key={score} value={score}>{score}</option>)}</select><b>{draft.abilities[ability] ? signed(abilityModifier(draft.abilities[ability] + originBonusFor(ability))) : '—'}</b><small>{!draft.abilities[ability] ? 'Выберите значение' : originBonusFor(ability) > 0 ? `+ ${originBonusFor(ability)} ${bonusSource === 'species' ? 'раса' : 'предыстория'} · итог ${draft.abilities[ability] + originBonusFor(ability)}` : `без прибавки ${bonusSource === 'species' ? 'расы' : 'предыстории'}`}</small></label>)}</div>
+            <div className="creation-ability-grid">{abilityIds.map((ability) => {
+              const base = draft.abilities[ability]
+              const bonus = originBonusFor(ability)
+              const total = finalAbilities[ability]
+              const key = classKeyAbilities.includes(ability)
+              const up = pointBuyStep({ scores: draft.abilities, ability, delta: 1, costs: pointBuyCosts, budget: pointBuyBudget })
+              const down = pointBuyStep({ scores: draft.abilities, ability, delta: -1, costs: pointBuyCosts, budget: pointBuyBudget })
+              return <section key={ability} className={`creation-ability-card${key ? ' key' : ''}`} aria-label={abilityLabels[ability]}>
+                <header><span>{abilityLabels[ability]}</span>{key && <em>важно: {classOption?.label}</em>}</header>
+                <small>{ABILITY_HINTS[ability]}</small>
+                <div className="creation-ability-body">
+                  <div className="creation-ability-total"><strong>{total || '—'}</strong><b>{total ? signed(abilityModifier(total)) : ''}</b></div>
+                  {draft.abilityMethod === 'point_buy'
+                    ? <div className="creation-stepper">
+                      <button type="button" aria-label={`Уменьшить: ${abilityLabels[ability]}`} title={down.ok ? undefined : down.reason} disabled={!down.ok} onClick={() => stepAbility(ability, -1)}>−</button>
+                      <output aria-label={`${abilityLabels[ability]}, база`}>{base}</output>
+                      <button type="button" aria-label={`Увеличить: ${abilityLabels[ability]}`} title={up.ok ? undefined : up.reason} disabled={!up.ok} onClick={() => stepAbility(ability, 1)}>+</button>
+                    </div>
+                    : <select aria-label={`${abilityLabels[ability]}: значение`} disabled={draft.abilityMethod === 'rolled' && !abilityRollComplete} value={base} onChange={(event) => assignAbility(ability, Number(event.target.value))}><option value={0}>Не выбрано</option>{abilityChoices.map((score) => <option key={score} value={score}>{score}</option>)}</select>}
+                </div>
+                <p className="creation-ability-breakdown">{!base ? 'Выберите значение' : `база ${base}${bonus > 0 ? ` + ${bonus} ${bonusSource === 'species' ? 'раса' : 'предыстория'}` : ''}${draft.abilityMethod === 'point_buy' && up.ok ? ` · следующая ступень ${up.cost} оч.` : ''}`}</p>
+              </section>
+            })}</div>
+            <section className="creation-ability-preview" aria-label="Что получится на 1 уровне">
+              <header><span>Что получится на 1 уровне</span><small>предварительно — лист при создании пересчитает сервер</small></header>
+              <dl>
+                {levelOnePreview.hitPoints != null && <div><dt>Хиты</dt><dd>{levelOnePreview.hitPoints}</dd><small>к{classOption?.hit_die} + Тел {signed(abilityModifier(finalAbilities.con || 10))}</small></div>}
+                <div><dt>Инициатива</dt><dd>{signed(levelOnePreview.initiative)}</dd><small>от Ловкости</small></div>
+                {levelOnePreview.spell
+                  ? <div><dt>СЛ заклинаний</dt><dd>{levelOnePreview.spell.saveDc}</dd><small>атака заклинанием {signed(levelOnePreview.spell.attack)}</small></div>
+                  : levelOnePreview.attack && <div><dt>Атака</dt><dd>{signed(levelOnePreview.attack.bonus)}</dd><small>{abilityLabels[levelOnePreview.attack.ability as keyof typeof abilityLabels]} + мастерство {levelOnePreview.proficiency}</small></div>}
+                {levelOnePreview.savingThrows.length > 0 && <div><dt>Спасброски</dt><dd className="creation-preview-saves">{levelOnePreview.savingThrows.map((save) => `${abilityShortLabels[save.ability as keyof typeof abilityShortLabels]} ${signed(save.bonus)}`).join(' · ')}</dd><small>владение класса</small></div>}
+              </dl>
+            </section>
           </div>}
           {currentStep === 'proficiencies' && <div className="creation-choices">
-            {catalog.phb && <PhbCharacterOptions catalog={catalog.phb} classId={draft.classId} subclass={draft.subclass}
-              abilities={preFeatAbilities} knownSkillIds={[...knownSkills, ...replacementSkills]} knownToolIds={[...knownTools, ...replacementTools]}
-              variantHuman={speciesOption?.id === 'human-variant'} value={draft.phb} onChange={(value) => patch('phb', value)} />}
-            {replacementToolCount > 0 && <section aria-label="Замена повторяющихся инструментов"><header><span>Замена повторяющихся инструментов</span><b>{replacementTools.length}/{replacementToolCount}</b></header><div>
-              {catalog.phb?.tools.filter((tool) => !knownTools.has(tool.id)).map((tool) => <button key={tool.id} type="button" aria-pressed={replacementTools.includes(tool.id)} className={replacementTools.includes(tool.id) ? 'selected' : ''} onClick={() => patch('backgroundReplacementTools', toggleBounded(replacementTools, tool.id, replacementToolCount))}>{tool.label ?? tool.name}</button>)}
-            </div></section>}
             {classOption?.subclass_level === 1 && <section className="creation-form">
               <label>Подкласс первого уровня<select value={draft.subclass} onChange={(event) => patch('subclass', event.target.value)}>
                 <option value="">Выберите подкласс</option>
@@ -1374,7 +1511,7 @@ export function CharacterCreationWizard({
                 ><Check size={13} /><span><b>{option.label}</b>{option.damage_type && <small>{option.shape === 'line' ? 'Линия' : 'Конус'} · {option.distance_feet} фт. · {option.damage_type}</small>}</span></button>
               })}</div>
             </section>)}
-            <section><header><span>Классовые навыки</span><b>{draft.classSkillIds.length}/{skillRule?.choice_count ?? 0}</b></header><div>{skillRule?.options.map((skill) => <button key={skill.id} className={draft.classSkillIds.includes(skill.id) ? 'selected' : ''} aria-label={`${skill.name}: ${skillHintFor(skill.id) || abilityLabels[skill.ability]}`} onClick={() => toggleSkill(skill.id)}><Check size={13} /><span><b>{skill.name}</b><small>{abilityLabels[skill.ability]}</small>{skillHintFor(skill.id) && <i>{skillHintFor(skill.id)}</i>}</span></button>)}</div></section>
+            <section><header><span>Классовые навыки</span><b>{draft.classSkillIds.length}/{skillRule?.choice_count ?? 0}</b></header><div>{skillRule?.options.map((skill) => <button key={skill.id} type="button" aria-pressed={draft.classSkillIds.includes(skill.id)} className={draft.classSkillIds.includes(skill.id) ? 'selected' : ''} aria-label={`${skill.name}: ${skillHintFor(skill.id) || abilityLabels[skill.ability]}`} onClick={() => toggleSkill(skill.id)}><Check size={13} /><span><b>{skill.name}</b><small>{abilityLabels[skill.ability]}</small>{skillHintFor(skill.id) && <i>{skillHintFor(skill.id)}</i>}</span></button>)}</div></section>
             {replacementCount > 0 && <section aria-label="Замена повторяющихся навыков">
               <header><span>Замена повторяющихся навыков</span><b>{replacementSkills.length}/{replacementCount}</b></header>
               <p>Раса, класс или предыстория дают одинаковое владение. Выберите другой навык взамен каждого повтора.</p>
@@ -1384,13 +1521,23 @@ export function CharacterCreationWizard({
                 onClick={() => patch('backgroundReplacementSkills', toggleBounded(replacementSkills, skill.id, replacementCount))}
               ><Check size={13} />{skill.name}</button>)}</div>
             </section>}
-            {featureGroups.map((group) => <section key={group.id}><header><span>{group.name}</span><b>{group.options.filter((option) => draft.selectedFeatureIds.includes(option.id)).length}/{group.choiceCount}</b></header><div>{group.options.map((option) => <button key={option.id} className={draft.selectedFeatureIds.includes(option.id) ? 'selected' : ''} aria-label={FEATURE_HINTS[option.id] ? `${option.name}: ${FEATURE_HINTS[option.id]}` : option.name} title={FEATURE_HINTS[option.id]} onClick={() => toggleFeature(group, option.id)}><Check size={13} />{option.name}{FEATURE_HINTS[option.id] && <small>{FEATURE_HINTS[option.id]}</small>}</button>)}</div></section>)}
+            {featureGroups.map((group) => <section key={group.id}><header><span>{group.name}</span><b>{group.options.filter((option) => draft.selectedFeatureIds.includes(option.id)).length}/{group.choiceCount}</b></header><div>{group.options.map((option) => <button key={option.id} type="button" aria-pressed={draft.selectedFeatureIds.includes(option.id)} className={draft.selectedFeatureIds.includes(option.id) ? 'selected' : ''} aria-label={FEATURE_HINTS[option.id] ? `${option.name}: ${FEATURE_HINTS[option.id]}` : option.name} title={FEATURE_HINTS[option.id]} onClick={() => toggleFeature(group, option.id)}><Check size={13} />{option.name}{FEATURE_HINTS[option.id] && <small>{FEATURE_HINTS[option.id]}</small>}</button>)}</div></section>)}
+            {/* Классовые выборы PHB идут после навыков: мастерство плута
+                выбирается из уже взятых владений, а прежде стояло выше них. */}
+            {catalog.phb && <PhbCharacterOptions catalog={catalog.phb} classId={draft.classId} subclass={draft.subclass}
+              abilities={preFeatAbilities} knownSkillIds={[...knownSkills, ...replacementSkills]} knownToolIds={[...knownTools, ...replacementTools]}
+              variantHuman={speciesOption?.id === 'human-variant'} value={draft.phb} onChange={(value) => patch('phb', value)} />}
+            {replacementToolCount > 0 && <section aria-label="Замена повторяющихся инструментов"><header><span>Замена повторяющихся инструментов</span><b>{replacementTools.length}/{replacementToolCount}</b></header><div>
+              {catalog.phb?.tools.filter((tool) => !knownTools.has(tool.id)).map((tool) => <button key={tool.id} type="button" aria-pressed={replacementTools.includes(tool.id)} className={replacementTools.includes(tool.id) ? 'selected' : ''} onClick={() => patch('backgroundReplacementTools', toggleBounded(replacementTools, tool.id, replacementToolCount))}>{tool.label ?? tool.name}</button>)}
+            </div></section>}
           </div>}
           {currentStep === 'equipment' && <div className="creation-equipment-groups">
             {catalog.phb && <label className="creation-form">Стартовое снаряжение<select value={draft.equipmentMode} onChange={(event) => patch('equipmentMode', event.target.value as 'standard' | 'wealth')}><option value="standard">Наборы класса и предыстории</option><option value="wealth">Стартовое богатство и покупки</option></select></label>}
             {draft.equipmentMode === 'wealth' && <section className="creation-form">
               <p>Этот вариант заменяет вещи и деньги класса и предыстории. Купленные предметы можно надеть в инвентаре после создания.</p>
               {!wealthRoll ? <button type="button" disabled={busy || !onRollWealth} onClick={async () => { setBusy(true); setError(''); try { await onRollWealth?.(draft.classId) } catch (error) { setError(error instanceof Error ? error.message : 'Ошибка броска') } finally { setBusy(false) } }}>Бросить стартовое богатство</button>
+                : wealthRollForOtherClass
+                  ? <p className="creation-purchase-warning" role="alert">{wealthRollMismatchMessage} <button type="button" onClick={() => patch('equipmentMode', 'standard')}>Взять наборы класса и предыстории</button></p>
                 : purchaseBudget.overBudgetCp > 0
                   // Корзина дороже бюджета (например, собрана до броска): такой
                   // черновик дальше не пройдёт, и об этом сказано сразу, с суммой.
@@ -1398,7 +1545,7 @@ export function CharacterCreationWizard({
                   : <p>Получено {wealthRoll.total_gp} зм · потрачено {goldLabel(purchaseTotal)} · осталось {goldLabel(purchaseBudget.remainingCp ?? 0)}</p>}
               <label>Предмет<select value={draft.purchaseId} onChange={(event) => patch('purchaseId', event.target.value)}><option value="">Выберите предмет</option>{catalog.starting_wealth?.items.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.price_cp / 100} зм</option>)}</select></label>
               <label>Количество<input type="number" min={1} max={1000} value={draft.purchaseQuantity} onChange={(event) => patch('purchaseQuantity', Number(event.target.value))} /></label>
-              <button type="button" disabled={!draft.purchaseId || !Number.isInteger(draft.purchaseQuantity) || draft.purchaseQuantity < 1 || purchaseShortfall > 0} aria-describedby={purchaseShortfall > 0 ? 'creation-purchase-shortfall' : undefined} onClick={() => { if (purchaseShortfall > 0) return; patch('purchases', [...draft.purchases, { id: draft.purchaseId, quantity: draft.purchaseQuantity }]) }}>Добавить покупку</button>
+              <button type="button" disabled={!draft.purchaseId || !Number.isInteger(draft.purchaseQuantity) || draft.purchaseQuantity < 1 || purchaseShortfall > 0} aria-describedby={purchaseShortfall > 0 ? 'creation-purchase-shortfall' : undefined} onClick={() => { if (purchaseShortfall > 0) return; patch('purchases', addStartingPurchase(draft.purchases, draft.purchaseId, draft.purchaseQuantity)) }}>Добавить покупку</button>
               {purchaseShortfall > 0 && <p id="creation-purchase-shortfall" className="creation-purchase-warning" role="status">Не хватает {goldLabel(purchaseShortfall)}: покупка стоит {goldLabel(purchaseCandidatePriceCp * draft.purchaseQuantity)}, в остатке {goldLabel(Math.max(0, purchaseBudget.remainingCp ?? 0))}.</p>}
               {draft.purchases.map((item, index) => <div key={index}>{catalog.starting_wealth?.items.find((entry) => entry.id === item.id)?.name} ×{item.quantity} <button type="button" onClick={() => patch('purchases', draft.purchases.filter((_, at) => at !== index))}>Убрать</button></div>)}
             </section>}
@@ -1453,14 +1600,44 @@ export function CharacterCreationWizard({
             </>}
           </div>}
           {currentStep === 'identity' && <div className="creation-form identity">
+            {/* Перед созданием — что ещё не выбрано, с переходом к шагу: прежде
+                незавершённый шаг всплывал только ошибкой после нажатия «Создать». */}
+            <section className={`creation-review-checklist${missingCount ? '' : ' ready'}`} aria-label="Перед созданием">
+              <header><span>Перед созданием</span><b role="status">{missingCount ? `осталось ${missingCount} ${plural(missingCount, ['шаг', 'шага', 'шагов'])}` : 'всё готово'}</b></header>
+              <ul>{checklist.map((item) => <li key={item.id} className={item.done ? 'done' : 'missing'}>
+                <i aria-hidden="true">{item.done ? <Check size={12} /> : '!'}</i>
+                <span><b>{item.title}</b>{!item.done && <small>{item.message}</small>}</span>
+                {!item.done && item.id !== 'identity' && <button type="button" onClick={() => { setError(''); setStep(item.id as CreationStepId) }}>Перейти</button>}
+              </li>)}</ul>
+            </section>
+            {/* Имя — первым полем: на нём автофокус, и без него герой не создаётся. */}
+            <label className="creation-identity-name"><span>Имя героя</span><input aria-label="Имя героя" value={draft.character} onChange={(event) => patch('character', event.target.value)} maxLength={120} autoFocus /></label>
+            <section className="creation-review-sheet" aria-label="Лист героя">
+              <header>
+                <b>{draft.character.trim() || 'Безымянный герой'}</b>
+                <span>{[`${classOption?.label ?? ''} 1 уровня${draft.subclass ? ` (${draft.subclass})` : ''}`, selectedSpecies, selectedBackground?.name].filter(Boolean).join(' · ')}</span>
+              </header>
+              <dl className="creation-review-vitals">
+                {levelOnePreview.hitPoints != null && <div><dt>Хиты</dt><dd>{levelOnePreview.hitPoints}</dd></div>}
+                <div><dt>Инициатива</dt><dd>{signed(levelOnePreview.initiative)}</dd></div>
+                {speciesOption?.base_speed && <div><dt>Скорость</dt><dd>{speciesOption.base_speed} фт.</dd></div>}
+                <div><dt>Мастерство</dt><dd>{signed(levelOnePreview.proficiency)}</dd></div>
+                {levelOnePreview.spell && <div><dt>СЛ заклинаний</dt><dd>{levelOnePreview.spell.saveDc}</dd></div>}
+              </dl>
+              <div className="creation-review-scores">{abilityIds.map((ability) => <div key={ability}><span>{abilityShortLabels[ability]}</span><b>{finalAbilities[ability] || '—'}</b><small>{finalAbilities[ability] ? signed(abilityModifier(finalAbilities[ability])) : ''}</small></div>)}</div>
+              <dl className="creation-review-lists">
+                <div><dt>Навыки</dt><dd>{reviewSkills.join(' · ') || '—'}</dd></div>
+                <div><dt>Снаряжение</dt><dd>{reviewEquipment.join(', ') || 'набор определит сервер'}</dd></div>
+                {reviewSpells.length > 0 && <div><dt>Заклинания</dt><dd>{reviewSpells.join(', ')}</dd></div>}
+              </dl>
+              <p><ShieldCheck size={14} />Предварительно: хиты, КД и бонусы при создании пересчитает сервер по этому листу.</p>
+            </section>
             <label>Мировоззрение<select value={draft.alignment} onChange={(event) => patch('alignment', event.target.value)}><option value="">Не определено</option>{['Законопослушный добрый', 'Нейтральный добрый', 'Хаотичный добрый', 'Законопослушный нейтральный', 'Истинно нейтральный', 'Хаотичный нейтральный', 'Законопослушный злой', 'Нейтральный злой', 'Хаотичный злой'].map((value) => <option key={value}>{value}</option>)}</select></label>
             <label>Идеал<textarea value={draft.ideals} onChange={(event) => patch('ideals', event.target.value)} maxLength={2000} /></label>
             <label>Привязанность<textarea value={draft.bonds} onChange={(event) => patch('bonds', event.target.value)} maxLength={2000} /></label>
             <label>Слабость<textarea value={draft.flaws} onChange={(event) => patch('flaws', event.target.value)} maxLength={2000} /></label>
-            <label><span>Имя героя</span><input aria-label="Имя героя" value={draft.character} onChange={(event) => patch('character', event.target.value)} maxLength={120} autoFocus /></label>
             <label><span>Внешность и характер</span><textarea aria-label="Внешность и характер" value={draft.appearance} onChange={(event) => patch('appearance', event.target.value)} maxLength={2000} rows={4} /></label>
             <label><span>Предыстория и личный мотив</span><textarea aria-label="Предыстория и личный мотив" value={draft.backstory} onChange={(event) => patch('backstory', event.target.value)} maxLength={8000} rows={6} /></label>
-            <div className="creation-summary"><ShieldCheck size={18} /><span><b>{classOption?.label} · {selectedSpecies}</b><small>Уровень, ОЗ, КД, скорость и бонус мастерства посчитаются сами по листу героя.</small></span></div>
           </div>}
         </main>
         <footer>

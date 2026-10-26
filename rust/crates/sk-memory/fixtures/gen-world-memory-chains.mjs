@@ -111,7 +111,7 @@ function command(state, eventIds) {
       return { ...base, fact: random.chance(0.03) ? pick(JUNK) : {
         id: random.chance(0.06) && pool.facts.length ? pick(pool.facts) : fresh('fact'),
         subject_id: random.chance(0.2) && pool.entities.includes('npc:keeper') ? 'npc:keeper' : entity(),
-        predicate: random.chance(0.95) ? pick(['discovery', 'discovery', 'died', 'uses_route', 'quest_progress']) : '',
+        predicate: random.chance(0.95) ? pick(['discovery', 'discovery', 'died', 'uses_route', 'quest_progress', 'lore', 'party_deed:theft']) : '',
         object: maybe(pick(TEXTS)), summary: maybe(pick(TEXTS)), visibility: pick(VIS), source_event_ids: sources(),
         ...(supersedes ? { supersedes_fact_id: supersedes } : {}),
       } }
@@ -166,7 +166,7 @@ function command(state, eventIds) {
       return { ...base, claim: {
         id: random.chance(0.05) && pool.claims.length ? pick(pool.claims) : fresh(type === 'RecordRumor' ? 'rumor' : 'belief'),
         holder_entity_id: pool.npcs.length && random.chance(0.85) ? pick(pool.npcs) : entity(), ...(random.chance(0.5) ? { subject_entity_id: entity() } : {}),
-        predicate: maybe('suspects'), claim: random.chance(0.95) ? pick(TEXTS.filter(Boolean)) : '', summary: maybe(pick(TEXTS)), visibility: pick(VIS), source_event_ids: sources(),
+        predicate: maybe(pick(['suspects', 'party_deed:theft', 'party_deed:theft', 'discovery', ''])), claim: random.chance(0.95) ? pick(TEXTS.filter(Boolean)) : '', summary: maybe(pick(TEXTS)), visibility: pick(VIS), source_event_ids: sources(),
       } }
     case 'ResolveEpistemicClaim':
       return { ...base, claim_id: pool.claims.length ? pick(pool.claims) : 'claim:missing', truth_status: pick(['confirmed', 'refuted', 'maybe']),

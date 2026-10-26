@@ -30,6 +30,7 @@ const NAMES = [
   'resourcesAfterRest', 'characterCreationTargetLevel', 'characterCreationChoicesComplete', 'validateLevelUpCommand', 'levelUpEvent',
   'validateCharacterImportCommand', 'validateCharacterAbilityRollCommand', 'characterImportEvent', 'resolveLevelUp',
   'isCharacterLifecycleEvent', 'applyCharacterLifecycleEvent', 'migrateCharacterImport', 'parseCharacterImport',
+  'missingCharacterCreationChoice',
 ]
 const STATE_ARG = {
   validateLevelUpCommand: 1, validateCharacterImportCommand: 1, validateCharacterAbilityRollCommand: 1, resolveLevelUp: 1,
@@ -106,6 +107,7 @@ const perOutcome = (key) => (key.endsWith(':ok') ? 1800 : 300)
 const ACTOR_ARG = new Set([
   'hitDieFor', 'savingThrowProficienciesFor', 'normalizedHitPointIncreases', 'deriveMaximumHitPoints', 'deriveArmorClass', 'deriveSpeed',
   'deriveCharacterSheet', 'normalizeCharacterSheet', 'classResourcePlan', 'resourcesAfterRest', 'characterCreationChoicesComplete',
+  'missingCharacterCreationChoice',
 ])
 const outcomeText = (name, args) => {
   try {
@@ -254,6 +256,7 @@ function heroBattery(hero, rulesetId) {
   const resources = c.chance(0.5) ? { pact_slots: { current: c.int(0, 2) }, spell_slots_1: { current: c.pick([0, 1, 'x', null]) }, channel_divinity: { current: 0 } } : c.pick([undefined, null, 'x'])
   run('resourcesAfterRest', [hero, resources, c.pick(['short', 'long', 'short', 'nap'])])
   run('characterCreationChoicesComplete', [hero, { rulesetId }])
+  run('missingCharacterCreationChoice', [hero, { rulesetId }])
   run('deriveArmorClass', [hero])
   run('deriveSpeed', [hero])
   run('deriveMaximumHitPoints', [hero])
@@ -285,6 +288,7 @@ function levelChain(state, actorId, steps) {
     const hero = next.players.find((player) => player.id === actorId)
     run('deriveCharacterSheet', [hero, { rulesetId: next.ruleset_id }])
     run('characterCreationChoicesComplete', [hero, { rulesetId: next.ruleset_id }])
+    run('missingCharacterCreationChoice', [hero, { rulesetId: next.ruleset_id }])
     current = next
   }
   return current
@@ -493,12 +497,34 @@ process.on('beforeExit', () => {
     const slot = lifecycle.createCharacterSlot({ id: `slot-${index}`, index: index % 5 })
     if (Object.keys(trusted).length) slot.characterCreationRolls = trusted
     const startLevel = c.chance(0.5) ? c.int(1, 12) : undefined
-    const state = { ruleset_id: rulesetId, players: [slot], mechanics: { combat: { active: c.chance(0.03) } }, ...(startLevel ? { character_start_level: startLevel } : {}) }
+    let state = { ruleset_id: rulesetId, players: [slot], mechanics: { combat: { active: c.chance(0.03) } }, ...(startLevel ? { character_start_level: startLevel } : {}) }
     run('parseCharacterImport', [document, { rulesetId }])
     if (c.chance(0.2)) run('parseCharacterImport', [document, { rulesetId, allowLegacyAbilityPolicy: true }])
     const command = { command_type: 'ImportCharacter', actor_id: `slot-${index}`, document }
-    const validated = run('validateCharacterImportCommand', [command, state, c.chance(0.9) ? { allowedActorIds: [`slot-${index}`] } : context(`slot-${index}`)])
+    let validated = run('validateCharacterImportCommand', [command, state, c.chance(0.9) ? { allowedActorIds: [`slot-${index}`] } : context(`slot-${index}`)])
     importCodes.set(validated.error?.code ?? validated.error?.name ?? "ok", (importCodes.get(validated.error?.code ?? validated.error?.name ?? "ok") ?? 0) + 1)
+    // #190: 2024 без предыстории, но с прибавками — отказ IMPORT_BACKGROUND_REQUIRED.
+    if (rulesetId === 'srd_5_2_1' && character.backgroundId && c.chance(0.3)) {
+      const { backgroundId: _background, ...withoutBackground } = character
+      run('validateCharacterImportCommand', [{ ...command, document: { ...document, character: withoutBackground } }, state, { isAdmin: true }], { cap: 4000 })
+    }
+    // #190: новый герой без навыков, приёмов или заклинаний — IMPORT_CHOICES_INCOMPLETE.
+    if (rulesetId === 'srd_5_2_1' && c.chance(0.5)) {
+      const missing = c.pick([{ classSkillProficiencies: [] }, { selectedFeatureIds: [] }, { knownSpellIds: [] }, { knownSpellIds: (character.knownSpellIds ?? []).slice(1) }])
+      run('validateCharacterImportCommand', [{ ...command, document: { ...document, character: { ...character, ...missing } } }, state, { isAdmin: true }], { cap: 4000 })
+    }
+    // #190: неполный новый герой (нет phbCreation в 2014, не сделан выбор) не
+    // проходит; ведущий заменяет тем же документом лист готового героя — там
+    // проверки создания не действуют, и цепочка импорта продолжается.
+    if (!validated.value && ['IMPORT_PHB_CREATION_REQUIRED', 'IMPORT_CHOICES_INCOMPLETE'].includes(validated.error?.code)) {
+      const created = { ...state, players: [{ ...slot, characterSetupRequired: false }] }
+      run('validateCharacterImportCommand', [command, created, { allowedActorIds: [`slot-${index}`] }], { cap: 4000 })
+      const replaced = run('validateCharacterImportCommand', [command, created, { isAdmin: true }], { cap: 4000 })
+      if (replaced.value) {
+        state = created
+        validated = replaced
+      }
+    }
     if (!validated.value) continue
     imports += 1
     const event = run('characterImportEvent', [validated.value]).value
@@ -506,6 +532,8 @@ process.on('beforeExit', () => {
     if (!after) continue
     const hero = after.players[0]
     heroBattery(hero, rulesetId)
+    // #190: готового героя игрок своим документом не переписывает.
+    if (c.chance(0.3)) run('validateCharacterImportCommand', [command, after, c.pick([{ allowedActorIds: [hero.id] }, {}, { allowedActorIds: [] }])], { cap: 4000 })
     // Слот уже не слот: повторный импорт существующего героя.
     if (c.chance(0.15)) {
       const again = run('validateCharacterImportCommand', [{ ...command, document: { ...document, character: { ...character, notes: 'Снова' } } }, after, { isAdmin: true }]).value
@@ -515,6 +543,7 @@ process.on('beforeExit', () => {
     if (rulesetId === 'dnd_5e_2014' && c.chance(0.3)) {
       const roll = { command_type: c.pick(['RollCharacterAbilities', 'RollCharacterWealth']), actor_id: `slot-${index}`, roll_index: c.pick([0, 1, 6, '0', 0.5]), character_class: c.pick([classKey, 'monk', 'constructor', 'toString', 'bogus', undefined]) }
       run('validateCharacterAbilityRollCommand', [roll, state, { isAdmin: true }])
+      run('validateCharacterAbilityRollCommand', [roll, state, c.pick([{ allowedActorIds: [] }, { allowedActorIds: [`slot-${index}`] }])])
       run('validateCharacterAbilityRollCommand', [roll, { ...state, players: [{ ...slot, characterCreationRolls: c.pick([{ abilities: { scores: [10, 11] } }, { abilities: { scores: 'abc' } }, { wealth: { id: 'w' } }, { abilities: { scores: [1, 2, 3, 4, 5, 6] } }, null]) }] }, { isAdmin: true }])
     }
   }

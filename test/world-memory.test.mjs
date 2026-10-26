@@ -49,7 +49,7 @@ function buildMemory(initialState = campaign()) {
     {
       command_type: 'RecordWorldFact',
       fact: {
-        id: 'fact:fox-route', subject_id: 'npc:ashen-fox', predicate: 'uses_route',
+        id: 'fact:fox-route', subject_id: 'npc:ashen-fox', predicate: 'lore',
         object: 'The courier uses the old aqueduct.', summary: 'Ashen Fox uses the old aqueduct.', visibility: 'gm_only',
       },
     },
@@ -281,7 +281,7 @@ test('canonical relationships, threads, epistemic claims and summaries replay wi
     { command_type: 'UpsertWorldEntity', entity: { id: 'faction:wardens', kind: 'faction', name: 'Road Wardens', visibility: 'party' } },
     { command_type: 'UpsertWorldEntity', entity: { id: 'location:ford', kind: 'location', name: 'Ash Ford', aliases: ['old trail'], visibility: 'party' } },
     { command_type: 'RecordWorldFact', fact: {
-      id: 'fact:ford-closed', subject_id: 'location:ford', predicate: 'is_closed', object: 'The old trail is flooded.',
+      id: 'fact:ford-closed', subject_id: 'location:ford', predicate: 'lore', object: 'The old trail is flooded.',
       summary: 'Ash Ford is closed after the flood.', visibility: 'party', source_event_ids: ['event:flood'],
     } },
     { command_type: 'RecordWorldRelationship', relationship: {
@@ -295,11 +295,11 @@ test('canonical relationships, threads, epistemic claims and summaries replay wi
     } },
     { command_type: 'AdvanceNarrativeThreadClock', thread_id: 'thread:warden-oath', amount: 1 },
     { command_type: 'RecordNpcBelief', claim: {
-      id: 'belief:vela-river', holder_entity_id: 'npc:vela', subject_entity_id: 'location:ford', predicate: 'caused_flood',
+      id: 'belief:vela-river', holder_entity_id: 'npc:vela', subject_entity_id: 'location:ford',
       claim: 'Vela believes the Wardens opened the sluice gate.', summary: 'Vela suspects the Wardens.', visibility: 'gm_only', source_event_ids: ['event:vela-told'],
     } },
     { command_type: 'RecordRumor', claim: {
-      id: 'rumor:vela-smugglers', holder_entity_id: 'npc:vela', subject_entity_id: 'location:ford', predicate: 'smugglers_arrived',
+      id: 'rumor:vela-smugglers', holder_entity_id: 'npc:vela', subject_entity_id: 'location:ford',
       claim: 'Travellers say smugglers use the old trail.', summary: 'A rumour ties smugglers to Ash Ford.', visibility: 'party', source_event_ids: ['event:travellers'],
     } },
     { command_type: 'ResolveEpistemicClaim', claim_id: 'rumor:vela-smugglers', truth_status: 'refuted', source_event_ids: ['event:search'] },
@@ -330,7 +330,7 @@ test('epistemic and summary validation require provenance, while viewer retrieva
   const seeded = runWorldMemoryCommands(initial, [
     { command_type: 'UpsertWorldEntity', entity: { id: 'npc:vela', kind: 'npc', name: 'Vela', visibility: 'party' } },
     { command_type: 'UpsertWorldEntity', entity: { id: 'location:ford', kind: 'location', name: 'Ash Ford', aliases: ['old trail'], visibility: 'party' } },
-    { command_type: 'RecordWorldFact', fact: { id: 'fact:ford-route', subject_id: 'location:ford', predicate: 'blocks_route', object: 'The old trail is flooded.', summary: 'The old trail cannot be used.', visibility: 'party', source_event_ids: ['event:flood'] } },
+    { command_type: 'RecordWorldFact', fact: { id: 'fact:ford-route', subject_id: 'location:ford', predicate: 'lore', object: 'The old trail is flooded.', summary: 'The old trail cannot be used.', visibility: 'party', source_event_ids: ['event:flood'] } },
     { command_type: 'RecordRumor', claim: { id: 'rumor:party', holder_entity_id: 'npc:vela', claim: 'Smugglers crossed the ford.', summary: 'A visible rumour.', visibility: 'party', source_event_ids: ['event:talk'] } },
     { command_type: 'RecordNpcBelief', claim: { id: 'belief:hidden', holder_entity_id: 'npc:vela', claim: 'Vela thinks the party is being watched.', summary: 'A hidden belief.', visibility: 'gm_only', source_event_ids: ['event:thought'] } },
   ])
@@ -372,7 +372,7 @@ test('superseding a fact preserves history but retires the old assertion', () =>
   const result = resolveCommand({
     command_type: 'RecordWorldFact',
     fact: {
-      id: 'fact:fox-route-new', subject_id: 'npc:ashen-fox', predicate: 'uses_route',
+      id: 'fact:fox-route-new', subject_id: 'npc:ashen-fox', predicate: 'lore',
       object: 'The aqueduct is compromised.', supersedes_fact_id: 'fact:fox-route', visibility: 'gm_only',
     },
   }, first, { diceService: dice(), context: { isDirector: true } })

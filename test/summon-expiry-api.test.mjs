@@ -16,7 +16,7 @@ function commandBody(key, command) {
 function clericDocument(name) {
   const baseScores = { str: 10, dex: 12, con: 13, int: 8, wis: 15, cha: 14 }
   return { schema: 'skazanie.character', schema_version: 1, character: {
-    character: name, characterClass: 'cleric', species: 'Человек', background: 'Прислужник', backgroundId: 'acolyte',
+    character: name, characterClass: 'cleric', subclass: 'Домен жизни', species: 'Человек', background: 'Прислужник', backgroundId: 'acolyte', phbCreation: { schema_version: 1, classChoices: { subclass: 'Домен жизни' } },
     level: 1, experience: 0,
     abilities: Object.fromEntries(Object.entries(baseScores).map(([id, value]) => [id, value + 1])),
     abilityGeneration: { policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2,
@@ -25,7 +25,7 @@ function clericDocument(name) {
     speciesChoices: { 'extra-language': ['dwarvish'] }, backgroundChoices: { tools: [], languages: ['elvish', 'draconic'] },
     starterEquipmentChoices: { armor: ['scale-mail'], weapon: ['mace'], 'ranged-or-simple': ['javelin'], pack: ['priests-pack'] },
     baseSpeed: 30, hitPointIncreases: [], classSkillProficiencies: ['insight', 'religion'],
-    selectedFeatureIds: [], knownSpellIds: [], preparedSpellIds: ['healing-word'],
+    selectedFeatureIds: [], knownSpellIds: ['light', 'mending', 'guidance'], preparedSpellIds: ['healing-word'],
   } }
 }
 

@@ -25,6 +25,7 @@ use sk_society::quest_consequences::{
     record_quest_knowledge,
 };
 use sk_society::retention_context::retention_mode;
+use sk_society::world_ontology::ontology_violation;
 
 use crate::jsv::{
     array, coalesce, contains, entries, first_word, get, head, is_num, is_str, js_order, keys, lower, lower_first, object, or, put, s, safe_id, same_value_zero,
@@ -1657,6 +1658,21 @@ fn normalize_entity_input(input: Option<&Value>) -> Checked<Value> {
     Ok(Value::Object(result))
 }
 
+/// Запись памяти проходит, только если её предикат есть в онтологии мира
+/// для этого вида записи и подлежащего (`assertOntology`,
+/// `server/world-memory.mjs:1103`; словарь — `sk_society::world_ontology`).
+fn assert_ontology(record: &str, predicate: &str, subject_kind: &str) -> Checked<()> {
+    match ontology_violation(record, predicate, subject_kind) {
+        Some(violation) => invalid(violation.message, violation.code),
+        None => Ok(()),
+    }
+}
+
+/// Вид сущности нормализованной памяти (`safeEntity` всегда кладёт строку).
+fn entity_kind(entity: &Value) -> &str {
+    get(Some(entity), "kind").and_then(Value::as_str).unwrap_or_default()
+}
+
 fn normalize_fact_input(input: Option<&Value>, memory: &Value, command_id: Option<&Value>, state: &Value) -> Checked<Value> {
     let value = plain_object(input, "fact")?;
     assert_fields(value, &["id", "subject_id", "predicate", "object", "summary", "visibility", "source_event_ids", "supersedes_fact_id"], "fact")?;
@@ -1669,12 +1685,13 @@ fn normalize_fact_input(input: Option<&Value>, memory: &Value, command_id: Optio
     let source_event_ids = strings(value.get("source_event_ids"), 120, 30);
     let supersedes = if js::truthy(value.get("supersedes_fact_id")) { id(value.get("supersedes_fact_id"), "fact.supersedes_fact_id")? } else { String::new() };
     let facts = memory_list(memory, "facts");
-    if !exists(memory_list(memory, "entities"), &subject_id) {
+    let Some(subject) = find_by_id(memory_list(memory, "entities"), &subject_id) else {
         return invalid("Сущность факта не найдена", "WORLD_ENTITY_NOT_FOUND");
-    }
+    };
     if predicate.is_empty() || (object_text.is_empty() && summary.is_empty()) {
         return invalid("Факт должен содержать predicate и object/summary", "WORLD_FACT_CONTENT_REQUIRED");
     }
+    assert_ontology("fact", &predicate, entity_kind(subject))?;
     if exists(facts, &fact_id) {
         return invalid("Факт с таким id уже существует; создайте новый факт с supersedes_fact_id", "WORLD_FACT_ALREADY_EXISTS");
     }
@@ -1868,6 +1885,10 @@ fn normalize_epistemic_claim_input(input: Option<&Value>, memory: &Value, comman
     }
     if claim_text.is_empty() {
         return invalid("Убеждение или слух не может быть пустым", "WORLD_EPISTEMIC_CLAIM_REQUIRED");
+    }
+    // Предикат утверждения необязателен; названный — должен быть в словаре.
+    if !predicate.is_empty() {
+        assert_ontology("claim", &predicate, holder.map(entity_kind).unwrap_or_default())?;
     }
     if exists(memory_list(memory, "epistemic_claims"), &claim_id) {
         return invalid("Убеждение или слух с таким id уже существует", "WORLD_EPISTEMIC_CLAIM_ALREADY_EXISTS");

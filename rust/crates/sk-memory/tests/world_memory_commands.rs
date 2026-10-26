@@ -43,7 +43,7 @@ fn build_memory() -> Run {
         &campaign(),
         &[
             json!({ "command_type": "UpsertWorldEntity", "entity": { "id": "npc:ashen-fox", "kind": "npc", "name": "Ashen Fox", "summary": "A masked courier.", "visibility": "gm_only" } }),
-            json!({ "command_type": "RecordWorldFact", "fact": { "id": "fact:fox-route", "subject_id": "npc:ashen-fox", "predicate": "uses_route", "object": "The courier uses the old aqueduct.", "summary": "Ashen Fox uses the old aqueduct.", "visibility": "gm_only" } }),
+            json!({ "command_type": "RecordWorldFact", "fact": { "id": "fact:fox-route", "subject_id": "npc:ashen-fox", "predicate": "lore", "object": "The courier uses the old aqueduct.", "summary": "Ashen Fox uses the old aqueduct.", "visibility": "gm_only" } }),
             json!({ "command_type": "RevealWorldFact", "fact_id": "fact:fox-route", "target_ids": ["hero"] }),
             json!({ "command_type": "UpsertQuest", "quest": { "id": "quest:find-seal", "title": "Find the Seal", "summary": "Recover the archive seal.", "objectives": ["Go to the archive vault"], "visibility": "party", "clock": { "current": 1, "max": 3, "label": "Rivals arrive" } } }),
             json!({ "command_type": "AdvanceQuestClock", "quest_id": "quest:find-seal", "amount": 2 }),
@@ -199,13 +199,13 @@ fn ford_commands() -> Vec<Value> {
         json!({ "command_type": "UpsertWorldEntity", "entity": { "id": "npc:vela", "kind": "npc", "name": "Vela", "visibility": "party" } }),
         json!({ "command_type": "UpsertWorldEntity", "entity": { "id": "faction:wardens", "kind": "faction", "name": "Road Wardens", "visibility": "party" } }),
         json!({ "command_type": "UpsertWorldEntity", "entity": { "id": "location:ford", "kind": "location", "name": "Ash Ford", "aliases": ["old trail"], "visibility": "party" } }),
-        json!({ "command_type": "RecordWorldFact", "fact": { "id": "fact:ford-closed", "subject_id": "location:ford", "predicate": "is_closed", "object": "The old trail is flooded.", "summary": "Ash Ford is closed after the flood.", "visibility": "party", "source_event_ids": ["event:flood"] } }),
+        json!({ "command_type": "RecordWorldFact", "fact": { "id": "fact:ford-closed", "subject_id": "location:ford", "predicate": "lore", "object": "The old trail is flooded.", "summary": "Ash Ford is closed after the flood.", "visibility": "party", "source_event_ids": ["event:flood"] } }),
         json!({ "command_type": "RecordWorldRelationship", "relationship": { "id": "relationship:vela-wardens", "from_entity_id": "npc:vela", "relation": "serves", "to_entity_id": "faction:wardens", "summary": "Vela serves the Road Wardens.", "visibility": "party", "source_event_ids": ["event:oath"] } }),
         json!({ "command_type": "UpsertQuest", "quest": { "id": "quest:ford", "title": "Cross Ash Ford", "visibility": "party", "entity_ids": ["location:ford"], "clock": { "current": 0, "max": 3, "label": "Flood rises" } } }),
         json!({ "command_type": "UpsertNarrativeThread", "thread": { "id": "thread:warden-oath", "title": "The warden oath", "summary": "Vela needs proof before guiding the party.", "status": "active", "visibility": "party", "entity_ids": ["npc:vela", "faction:wardens"], "quest_ids": ["quest:ford"], "clock": { "current": 1, "max": 3, "label": "Trust" }, "source_event_ids": ["event:oath"] } }),
         json!({ "command_type": "AdvanceNarrativeThreadClock", "thread_id": "thread:warden-oath", "amount": 1 }),
-        json!({ "command_type": "RecordNpcBelief", "claim": { "id": "belief:vela-river", "holder_entity_id": "npc:vela", "subject_entity_id": "location:ford", "predicate": "caused_flood", "claim": "Vela believes the Wardens opened the sluice gate.", "summary": "Vela suspects the Wardens.", "visibility": "gm_only", "source_event_ids": ["event:vela-told"] } }),
-        json!({ "command_type": "RecordRumor", "claim": { "id": "rumor:vela-smugglers", "holder_entity_id": "npc:vela", "subject_entity_id": "location:ford", "predicate": "smugglers_arrived", "claim": "Travellers say smugglers use the old trail.", "summary": "A rumour ties smugglers to Ash Ford.", "visibility": "party", "source_event_ids": ["event:travellers"] } }),
+        json!({ "command_type": "RecordNpcBelief", "claim": { "id": "belief:vela-river", "holder_entity_id": "npc:vela", "subject_entity_id": "location:ford", "claim": "Vela believes the Wardens opened the sluice gate.", "summary": "Vela suspects the Wardens.", "visibility": "gm_only", "source_event_ids": ["event:vela-told"] } }),
+        json!({ "command_type": "RecordRumor", "claim": { "id": "rumor:vela-smugglers", "holder_entity_id": "npc:vela", "subject_entity_id": "location:ford", "claim": "Travellers say smugglers use the old trail.", "summary": "A rumour ties smugglers to Ash Ford.", "visibility": "party", "source_event_ids": ["event:travellers"] } }),
         json!({ "command_type": "ResolveEpistemicClaim", "claim_id": "rumor:vela-smugglers", "truth_status": "refuted", "source_event_ids": ["event:search"] }),
         json!({ "command_type": "RecordNarrativeSummary", "summary": { "id": "summary:scene-ford", "kind": "scene", "title": "At Ash Ford", "summary": "The party learned that Vela serves the Wardens and the ford is closed.", "visibility": "party", "entity_ids": ["npc:vela", "location:ford"], "thread_ids": ["thread:warden-oath"], "source_event_ids": ["event:oath", "event:flood"] } }),
     ]
@@ -239,7 +239,7 @@ fn claims_and_summaries_require_provenance_and_viewer_retrieval_filters_first() 
         &[
             json!({ "command_type": "UpsertWorldEntity", "entity": { "id": "npc:vela", "kind": "npc", "name": "Vela", "visibility": "party" } }),
             json!({ "command_type": "UpsertWorldEntity", "entity": { "id": "location:ford", "kind": "location", "name": "Ash Ford", "aliases": ["old trail"], "visibility": "party" } }),
-            json!({ "command_type": "RecordWorldFact", "fact": { "id": "fact:ford-route", "subject_id": "location:ford", "predicate": "blocks_route", "object": "The old trail is flooded.", "summary": "The old trail cannot be used.", "visibility": "party", "source_event_ids": ["event:flood"] } }),
+            json!({ "command_type": "RecordWorldFact", "fact": { "id": "fact:ford-route", "subject_id": "location:ford", "predicate": "lore", "object": "The old trail is flooded.", "summary": "The old trail cannot be used.", "visibility": "party", "source_event_ids": ["event:flood"] } }),
             json!({ "command_type": "RecordRumor", "claim": { "id": "rumor:party", "holder_entity_id": "npc:vela", "claim": "Smugglers crossed the ford.", "summary": "A visible rumour.", "visibility": "party", "source_event_ids": ["event:talk"] } }),
             json!({ "command_type": "RecordNpcBelief", "claim": { "id": "belief:hidden", "holder_entity_id": "npc:vela", "claim": "Vela thinks the party is being watched.", "summary": "A hidden belief.", "visibility": "gm_only", "source_event_ids": ["event:thought"] } }),
         ],
@@ -276,7 +276,7 @@ fn players_cannot_forge_memory_and_unknown_nested_fields_are_rejected() {
 #[test]
 fn superseding_a_fact_keeps_history_but_retires_the_old_assertion() {
     let first = build_memory();
-    let result = run(&first.state, &[json!({ "command_type": "RecordWorldFact", "fact": { "id": "fact:fox-route-new", "subject_id": "npc:ashen-fox", "predicate": "uses_route", "object": "The aqueduct is compromised.", "supersedes_fact_id": "fact:fox-route", "visibility": "gm_only" } })]).expect("замена");
+    let result = run(&first.state, &[json!({ "command_type": "RecordWorldFact", "fact": { "id": "fact:fox-route-new", "subject_id": "npc:ashen-fox", "predicate": "lore", "object": "The aqueduct is compromised.", "supersedes_fact_id": "fact:fox-route", "visibility": "gm_only" } })]).expect("замена");
     let status = |id: &str| result.state["worldMemory"]["facts"].as_array().and_then(|facts| facts.iter().find(|fact| fact["id"] == id)).map(|fact| fact["status"].clone());
     assert_eq!(status("fact:fox-route"), Some(json!("superseded")));
     assert_eq!(status("fact:fox-route-new"), Some(json!("active")));
