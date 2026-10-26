@@ -107,7 +107,9 @@ node tools/rust-port-status.mjs     # обновить rust/PORT-STATUS.md
 - Перенос старого хранилища:
   `skazanie-server import-legacy --from <storage JS> --to <новое> --dry-run`
   (справка — `--help`). Импорт делается только с копии: настоящее `storage/`
-  не читать и не копировать без владельца.
+  не читать и не копировать без владельца. После импорта —
+  `skazanie-server audit-storage --storage <каталог>` (только чтение; 0 —
+  чисто, 1 — расхождения, 3 — отказ: нет базы или на хранилище работает сервер).
 - Docker: `Dockerfile.rust`, `compose.rust.yaml` (порт 8788, свой том) —
   `docs/rust-docker.md`. Docker поднимает только владелец.
 - Эталоны JS: `rust/crates/sk-*/fixtures/gen-*.mjs`, первая строка —
