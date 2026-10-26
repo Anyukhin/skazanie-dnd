@@ -997,10 +997,16 @@ pub fn npc_profile_at_world_time(profile: &Value, state_or_elapsed_minutes: &Val
 /// (`npcProfileForViewerAt`): её читает и проекция состояния, и канал событий.
 /// `viewer` — `{ isAdmin, isPartyMember, playerId, state | elapsed_minutes }`.
 pub fn npc_profile_for_viewer_at(profile: &Value, viewer: &Value) -> Value {
+    profile_for_viewer_at(profile, viewer, None)
+}
+
+/// [`npc_profile_for_viewer_at`]; `state` — `viewer.state`, переданное
+/// отдельно, чтобы не копировать состояние в карточку зрителя (Ск4).
+fn profile_for_viewer_at(profile: &Value, viewer: &Value, state: Option<&Value>) -> Value {
     let viewer = or_empty(viewer);
     let normalized = safe_profile(profile, &NULL);
     let source = Some(viewer);
-    let when = coalesce(get(source, "state"), coalesce(get(source, "elapsed_minutes"), Some(empty()))).unwrap_or(empty());
+    let when = state.unwrap_or_else(|| coalesce(get(source, "state"), coalesce(get(source, "elapsed_minutes"), Some(empty()))).unwrap_or(empty()));
     let active = schedule_entry_at(&normalized, when);
     // Скрытое расписание влияет на игру, но не выдаёт закрытое место: игрок
     // видит только, что с NPC сейчас не поговорить.
@@ -2213,6 +2219,17 @@ pub fn apply_npc_social_event(input: &Value, event: &Value, state: &Value, optio
 /// публичные данные NPC без мотивов и убеждений, свои разговоры и обещания,
 /// своё отношение. Ведущий видит всё.
 pub fn npc_social_for_viewer(input: &Value, viewer: &Value) -> Value {
+    social_for_viewer(input, viewer, None)
+}
+
+/// [`npc_social_for_viewer`] с состоянием кампании отдельно от карточки
+/// зрителя: то же, что `viewer` с полем `state`, но без копии состояния в
+/// карточку (Ск4). `state` — объект состояния кампании.
+pub fn npc_social_for_viewer_in(input: &Value, viewer: &Value, state: &Value) -> Value {
+    social_for_viewer(input, viewer, Some(state))
+}
+
+fn social_for_viewer(input: &Value, viewer: &Value, state: Option<&Value>) -> Value {
     let social = normalize_npc_social_state(input, &NULL);
     let viewer = or_empty(viewer);
     let source = Some(viewer);
@@ -2220,7 +2237,7 @@ pub fn npc_social_for_viewer(input: &Value, viewer: &Value) -> Value {
         return social;
     }
     let player_id = clean(get(source, "playerId"), 120);
-    let viewer_state = coalesce(get(source, "state"), None).unwrap_or(empty());
+    let viewer_state = state.unwrap_or_else(|| coalesce(get(source, "state"), None).unwrap_or(empty()));
     let scene = get(Some(viewer_state), "scene");
     let scene_location_id = clean(coalesce(get(scene, "location_id"), get(scene, "locationId")), 120);
     let scene_location = clean_lower(get(scene, "location"), 180);
@@ -2238,7 +2255,7 @@ pub fn npc_social_for_viewer(input: &Value, viewer: &Value) -> Value {
                 && ((!scene_location_id.is_empty() && is_str(current.get("location_id"), &scene_location_id))
                     || (!scene_location.is_empty() && clean_lower(current.get("location"), 180) == scene_location))
         })
-        .map(|npc| npc_profile_for_viewer_at(npc, viewer))
+        .map(|npc| profile_for_viewer_at(npc, viewer, state))
         .collect();
     let visible_npc_ids: IndexSet<String> = npcs.iter().map(|npc| str_field(npc, "id").to_string()).collect();
     let visible_entry = |entry: &&Value| visible_npc_ids.contains(str_field(entry, "npc_id")) && (is_str(entry.get("visibility"), "party") || str_field(entry, "hero_id") == player_id);

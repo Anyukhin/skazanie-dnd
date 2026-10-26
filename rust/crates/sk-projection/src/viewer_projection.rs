@@ -457,6 +457,7 @@ fn scene_revealed_keys(scene: Option<&Value>) -> R<IndexSet<String>> {
 
 /// Проекция тактической карты: карта, её хеш и обезличенные клетки частично
 /// видимого блокирующего предмета.
+#[derive(Clone)]
 struct ProjectedMap {
     map: Value,
     hash: String,
@@ -632,8 +633,55 @@ fn partially_blocked_cells(map: &TacticalMap, revealed_at: &impl Fn(i64, i64) ->
 /// `projectPublicTacticalMap(value)`.
 fn project_public_tactical_map(value: Option<&Value>) -> R<Option<ProjectedMap>> {
     match value {
-        Some(value @ (Value::Object(_) | Value::Array(_))) => compute_public_tactical_map(value),
+        Some(value @ (Value::Object(_) | Value::Array(_))) => public_map_memo::project(value),
         _ => Ok(None),
+    }
+}
+
+/// Память недавних проекций карты (Ск4). [`compute_public_tactical_map`] —
+/// чистая функция карты: разбор, туман, сборка и хеш стоят миллисекунды, а
+/// карта меняется редко (открылся туман, сдвинулся предмет) — комнату же
+/// читают и рассылают после каждой команды. Вход сравнивается с запомненным
+/// точно (значение в значение и порядок ключей), не по хешу: ложного
+/// попадания нет. Ошибки не запоминаются.
+mod public_map_memo {
+    use std::collections::VecDeque;
+    use std::sync::{LazyLock, Mutex};
+
+    use serde_json::Value;
+
+    use super::{compute_public_tactical_map, ProjectedMap, R};
+
+    const LIMIT: usize = 4;
+
+    static KNOWN: LazyLock<Mutex<VecDeque<(Value, Option<ProjectedMap>)>>> = LazyLock::new(|| Mutex::new(VecDeque::new()));
+
+    /// Равенство с порядком ключей объектов (`Map::eq` порядок не учитывает).
+    fn same(left: &Value, right: &Value) -> bool {
+        match (left, right) {
+            (Value::Object(left), Value::Object(right)) => left.len() == right.len() && left.iter().zip(right.iter()).all(|((left_key, left), (right_key, right))| left_key == right_key && same(left, right)),
+            (Value::Array(left), Value::Array(right)) => left.len() == right.len() && left.iter().zip(right.iter()).all(|(left, right)| same(left, right)),
+            (Value::Number(left), Value::Number(right)) => match (left.is_f64(), right.is_f64()) {
+                (true, true) => left.as_f64().map(f64::to_bits) == right.as_f64().map(f64::to_bits),
+                (false, false) => left == right,
+                _ => false,
+            },
+            _ => left == right,
+        }
+    }
+
+    pub(super) fn project(value: &Value) -> R<Option<ProjectedMap>> {
+        {
+            let known = KNOWN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some((_, projected)) = known.iter().find(|(input, _)| same(input, value)) {
+                return Ok(projected.clone());
+            }
+        }
+        let projected = compute_public_tactical_map(value)?;
+        let mut known = KNOWN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        known.push_front((value.clone(), projected.clone()));
+        known.truncate(LIMIT);
+        Ok(projected)
     }
 }
 
@@ -2127,11 +2175,8 @@ fn player_room(raw_state: &Value, user: Option<&Value>, actor: &Value) -> R<Valu
     room.insert("worldMap".into(), public_world_map_for(coalesce(get(visible_ref, "worldMap"), get(source, "worldMap")))?);
     let viewer_card = json!({ "playerId": actor_s, "isAdmin": false, "isPartyMember": true });
     room.insert("worldMemory".into(), sk_memory::world_memory::world_memory_for_viewer(get(source, "worldMemory").unwrap_or(&Value::Null), &viewer_card));
-    let mut social_viewer = viewer_card.clone();
-    if let Some(object) = social_viewer.as_object_mut() {
-        object.insert("state".into(), state.clone());
-    }
-    room.insert("social".into(), sk_social::npc_social::npc_social_for_viewer(get(source, "social").unwrap_or(&Value::Null), &social_viewer));
+    // Карточка зрителя со `state` — без копии состояния в неё (Ск4).
+    room.insert("social".into(), sk_social::npc_social::npc_social_for_viewer_in(get(source, "social").unwrap_or(&Value::Null), &viewer_card, state));
     room.insert("scene_npcs".into(), Value::Array(scene_npcs));
     if js::truthy(get(source, "world_offices")) {
         let offices = sk_world_life::world_offices::offices_for_viewer(source, &json!({ "isPartyMember": true, "playerId": actor_s }));
