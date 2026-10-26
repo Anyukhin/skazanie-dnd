@@ -55,11 +55,11 @@ use crate::state::AppState;
 pub fn routes() -> Vec<Route> {
     vec![
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/merchants\/commands$/` и `POST` (5223–5224).
-        Route::post(5224, Matcher::path_template("/api/campaigns/{id}/merchants/commands"), lifecycle),
+        Route::post(5257, Matcher::path_template("/api/campaigns/{id}/merchants/commands"), lifecycle),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/merchants\/assemble$/` и `POST` (5253–5254).
-        Route::post(5254, Matcher::path_template("/api/campaigns/{id}/merchants/assemble"), assemble),
+        Route::post(5287, Matcher::path_template("/api/campaigns/{id}/merchants/assemble"), assemble),
         // Общая регулярка торговца (5450) и `GET` без хвоста `/commands` (5456).
-        Route::pass(5456, Methods::One(Method::GET), Matcher::path_template(MERCHANT_PATH), merchant_view),
+        Route::pass(5489, Methods::One(Method::GET), Matcher::path_template(MERCHANT_PATH), merchant_view),
     ]
 }
 

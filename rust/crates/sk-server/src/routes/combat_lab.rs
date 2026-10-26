@@ -49,7 +49,7 @@ const RUN_NOT_FOUND: &str = "Прогон боевого стенда не на�
 
 pub fn routes() -> Vec<Route> {
     // `if (!requestPath.startsWith('/api/admin/combat-lab/')) return false`.
-    vec![Route::pass(3959, Methods::Any, Matcher::path_prefix(PREFIX), combat_lab)]
+    vec![Route::pass(3972, Methods::Any, Matcher::path_prefix(PREFIX), combat_lab)]
 }
 
 // --- реестр процесса ----------------------------------------------------------

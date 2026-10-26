@@ -54,10 +54,10 @@ use crate::state::AppState;
 pub fn routes() -> Vec<Route> {
     vec![
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/controls$/` и `POST`.
-        Route::post(4903, Matcher::path_template("/api/campaigns/{id}/controls"), campaign_controls),
+        Route::post(4931, Matcher::path_template("/api/campaigns/{id}/controls"), campaign_controls),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/lifecycle$/`; метод — в обработчике
         // (`GET` 4968, `POST` 4976), прочие идут дальше по таблице.
-        Route::pass(4968, Methods::Any, Matcher::path_template("/api/campaigns/{id}/lifecycle"), campaign_lifecycle),
+        Route::pass(4996, Methods::Any, Matcher::path_template("/api/campaigns/{id}/lifecycle"), campaign_lifecycle),
     ]
 }
 
@@ -308,6 +308,15 @@ fn finale_summary(campaign_id: &str, idempotency_key: &str, actor_id: &Value, st
 fn transition(core: &std::rc::Rc<GameCore>, campaign_id: &str, idempotency_key: &str, body: &Value, actor_id: &str) -> Result<(CommitResult, Option<Room>), Failure> {
     let loaded = core.events.load(campaign_id, &LoadOptions::default())?;
     let duplicate = core.events.get_by_idempotency_key(campaign_id, idempotency_key)?;
+    // Повтор ключа — только тот же переход (`String(body.action || '').toLowerCase()`):
+    // другое действие или коммит другого маршрута под этим ключом — конфликт.
+    if let Some(found) = &duplicate {
+        let action = body.get("action");
+        let requested = if js::truthy(action) { sk_core::text::lower(&js::string(action)) } else { String::new() };
+        if sk_director::campaign_lifecycle::lifecycle_action_for_commit(&found.events) != Some(requested.as_str()) {
+            return Err(Failure::new("Этот idempotency_key уже использован для другого действия кампании", Some("IDEMPOTENCY_CONFLICT")));
+        }
+    }
     let committed = match duplicate {
         Some(found) => found,
         None => {

@@ -49,7 +49,7 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/settings$/`; метод — в обработчике.
-    vec![Route::pass(4623, Methods::Any, Matcher::path_template("/api/campaigns/{id}/settings"), campaign_settings)]
+    vec![Route::pass(4639, Methods::Any, Matcher::path_template("/api/campaigns/{id}/settings"), campaign_settings)]
 }
 
 fn campaign_settings(ctx: &mut RouteCtx) -> PassFuture<'_> {
@@ -280,6 +280,25 @@ fn commit_derived(core: &GameCore, campaign_id: &str, key: &str, derive: &sk_sto
 fn change_ruleset(core: &std::rc::Rc<GameCore>, change: &RulesetChange) -> Result<Value, Failure> {
     let campaign_id = change.campaign_id.as_str();
     let options = EventOptions { actor_id: Some(change.actor_id.clone()), now: None };
+    // Весь набор домашних правил проверяется до первой записи — и редакции, и
+    // правил: отказ по любому из них не оставляет частично сохранённых настроек.
+    for (house_rule_id, enabled) in &change.house_rules {
+        let blank = js::spread(&change.loaded_state, json!({ "enabled_house_rules": [] }));
+        campaign_house_rule_change_event(house_rule_id, Some(enabled), Some(&blank), &options).map_err(ruleset_failure)?;
+        if change.idempotency_key.is_empty() {
+            return Err(Failure::new("Для смены домашнего правила нужен idempotency_key", Some("IDEMPOTENCY_KEY_REQUIRED")));
+        }
+        // Повтор ключа правила — только с тем же значением.
+        let key = format!("{}:house-rule:{house_rule_id}", change.idempotency_key);
+        if let Some(repeated) = core.events.get_by_idempotency_key(campaign_id, &key)? {
+            let payload = repeated.events.iter().find(|event| event.get("event_type").and_then(Value::as_str) == Some("CampaignHouseRuleChanged")).and_then(|event| event.get("payload"));
+            let same_rule = payload.and_then(|payload| payload.get("house_rule_id")).and_then(Value::as_str) == Some(house_rule_id.as_str());
+            let same_value = payload.and_then(|payload| payload.get("enabled")).is_some_and(|value| value == enabled);
+            if !same_rule || !same_value {
+                return Err(Failure::new("Этот idempotency_key уже использован для другого значения домашнего правила", Some("IDEMPOTENCY_CONFLICT")));
+            }
+        }
+    }
     let mut ruleset_state = change.loaded_state.clone();
     if change.requested_ruleset_id != js::string(change.loaded_state.get("ruleset_id")) {
         let key = change.idempotency_key.as_str();
@@ -318,11 +337,6 @@ fn change_ruleset(core: &std::rc::Rc<GameCore>, change: &RulesetChange) -> Resul
     // Домашние правила идущей кампании — механика, а не настройка ИИ: событие
     // журнала тем же производным путём, что и смена редакции.
     for (house_rule_id, enabled) in &change.house_rules {
-        let blank = js::spread(&ruleset_state, json!({ "enabled_house_rules": [] }));
-        campaign_house_rule_change_event(house_rule_id, Some(enabled), Some(&blank), &options).map_err(ruleset_failure)?;
-        if change.idempotency_key.is_empty() {
-            return Err(Failure::new("Для смены домашнего правила нужен idempotency_key", Some("IDEMPOTENCY_KEY_REQUIRED")));
-        }
         let key = format!("{}:house-rule:{house_rule_id}", change.idempotency_key);
         let derive = |fresh: &Value, _loaded: &sk_store::Loaded| -> Result<Vec<Value>, RuleError> {
             let event = campaign_house_rule_change_event(house_rule_id, Some(enabled), Some(fresh), &options).map_err(|error| RuleError::new(error.code, error.message))?;
@@ -332,6 +346,9 @@ fn change_ruleset(core: &std::rc::Rc<GameCore>, change: &RulesetChange) -> Resul
         let Some(committed) = commit_derived(core, campaign_id, &key, &derive, &metadata)? else { continue };
         let latest = core.events.load(campaign_id, &LoadOptions::default())?;
         let events = if committed.replayed { Vec::new() } else { committed.commit.events };
+        // Версия события уникальна в журнале: два правила одного запроса в одну
+        // миллисекунду больше не делят id строки летописи.
+        let line_version = events.first().and_then(|event| event.get("state_version_after")).filter(|version| js::present(Some(version))).map_or_else(|| sk_core::clock::now_ms().to_string(), |version| js::string(Some(version)));
         persist_authoritative_projection(core, campaign_id, &latest.state, &events, None, PersistOptions::default())?;
         ruleset_state = latest.state;
         if !committed.replayed {
@@ -344,7 +361,7 @@ fn change_ruleset(core: &std::rc::Rc<GameCore>, change: &RulesetChange) -> Resul
                 core,
                 campaign_id,
                 &[json!({
-                    "id": format!("house-rule-{campaign_id}-{}", sk_core::clock::now_ms()),
+                    "id": format!("house-rule-{campaign_id}-{line_version}"),
                     "speaker": "system",
                     "author": SETTINGS_AUTHOR,
                     "text": format!("Домашнее правило «{label}» {state_word}.{description}"),

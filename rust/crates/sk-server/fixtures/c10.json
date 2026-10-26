@@ -931,9 +931,20 @@
           100
         ]
       },
-      "status": 400,
+      "status": 200,
       "body_norm": {
-        "error": "Campaign room-1 is not initialized"
+        "roll": {
+          "id": "<uuid>",
+          "kind": "free",
+          "sides": 100,
+          "value": 2,
+          "playerId": "hero-two",
+          "playerName": "Гелла",
+          "rolledAt": "<time>"
+        },
+        "version": 5,
+        "state": "<sha256:b2d5b86343c33d47005d33eb011a5ec47a56577887bb9c8af99ea1d77cbdb231:29323>",
+        "updatedAt": "<time>"
       }
     },
     {
@@ -997,8 +1008,8 @@
       "body": null,
       "status": 200,
       "body_norm": {
-        "version": 4,
-        "state": "<sha256:02aba98a4c3d81ff35ace86c0af1cd4269be56831e66ab2e96220b45d0bc82cd:29455>",
+        "version": 5,
+        "state": "<sha256:d4e99017467cc999c691105a3dc694a79b6ccf2b8c16234198c04bd26a4941e4:29456>",
         "updatedAt": "<time>"
       }
     },

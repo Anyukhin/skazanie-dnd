@@ -41,9 +41,9 @@ const NO_ACCESS: &str = "Нет доступа к этой кампании";
 pub fn routes() -> Vec<Route> {
     vec![
         // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/dialogue$/)` и `['GET', 'DELETE']` (4871–4872).
-        Route::new(4871, Methods::Set(DIALOGUE_METHODS), Matcher::path_template("/api/campaigns/{id}/dialogue"), dialogue),
+        Route::new(4899, Methods::Set(DIALOGUE_METHODS), Matcher::path_template("/api/campaigns/{id}/dialogue"), dialogue),
         // `…\/turns\/([A-Za-z0-9._-]+)\/explanation$/` и `GET` (5199–5200).
-        Route::get(5199, Matcher::path_template("/api/campaigns/{id}/turns/{turn}/explanation"), explanation),
+        Route::get(5232, Matcher::path_template("/api/campaigns/{id}/turns/{turn}/explanation"), explanation),
     ]
 }
 

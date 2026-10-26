@@ -54,7 +54,7 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     // Общая регулярка торговца (5450) и `POST` с хвостом `/commands` (5473).
-    vec![Route::pass(5473, Methods::One(Method::POST), Matcher::path_template(MERCHANT_PATH), merchant_trade)]
+    vec![Route::pass(5506, Methods::One(Method::POST), Matcher::path_template(MERCHANT_PATH), merchant_trade)]
 }
 
 /// Коды 409 (5524).

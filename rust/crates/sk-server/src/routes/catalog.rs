@@ -25,11 +25,11 @@ use crate::http::json;
 pub fn routes() -> Vec<Route> {
     vec![
         // `requestPath.match(/^\/api\/rulesets\/([a-z0-9_]+)\/character-creation$/u)`.
-        Route::get(3932, Matcher::path_template("/api/rulesets/{ruleset}/character-creation"), character_creation),
-        Route::get(4426, Matcher::path("/api/rules/search"), rules_search),
-        Route::get(4440, Matcher::path("/api/world-templates"), world_templates),
+        Route::get(3945, Matcher::path_template("/api/rulesets/{ruleset}/character-creation"), character_creation),
+        Route::get(4439, Matcher::path("/api/rules/search"), rules_search),
+        Route::get(4453, Matcher::path("/api/world-templates"), world_templates),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/engine-mode$/` и `PATCH`.
-        Route::new(5217, Methods::One(Method::PATCH), Matcher::path_template("/api/campaigns/{id}/engine-mode"), engine_mode),
+        Route::new(5250, Methods::One(Method::PATCH), Matcher::path_template("/api/campaigns/{id}/engine-mode"), engine_mode),
     ]
 }
 
@@ -111,6 +111,17 @@ impl RuleCatalog {
 /// `characterCreationCatalog(rulesetId)` как ошибка `{ message, code }`.
 pub fn character_creation_catalog(ruleset_id: &str) -> Result<Value, Failure> {
     sk_character::character_lifecycle::character_creation_catalog(ruleset_id).map_err(|error| Failure::new(error.message, error.code.as_deref()))
+}
+
+/// Каталог создания героя для `/api/health` — статичные данные (~130 КБ):
+/// строится один раз на процесс, как `healthCharacterCreationCatalog` в JS.
+pub fn health_character_creation_catalog(ruleset_id: &str) -> Result<Value, Failure> {
+    static CACHE: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    if let Some(catalog) = CACHE.get() {
+        return Ok(catalog.clone());
+    }
+    let catalog = character_creation_catalog(ruleset_id)?;
+    Ok(CACHE.get_or_init(|| catalog).clone())
 }
 
 /// `GET /api/rulesets/:id/character-creation` (3931–3939): без входа; любая

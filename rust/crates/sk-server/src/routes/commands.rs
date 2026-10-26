@@ -77,7 +77,7 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/commands$/)` и `POST` (5531–5532).
-    vec![Route::post(5531, Matcher::path_template("/api/campaigns/{id}/commands"), campaign_commands)]
+    vec![Route::post(5564, Matcher::path_template("/api/campaigns/{id}/commands"), campaign_commands)]
 }
 
 /// Коды сбоя хранилища, на которые `catch` отвечает 500 (5923).
@@ -529,7 +529,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
         }
     };
     let candidates: Vec<&Value> = array(get(Some(&room_state), "players")).iter().chain(array(get(Some(&room_state), "actors"))).collect();
-    let command_actor = candidates.into_iter().find(|candidate| js::string(nullish(get(Some(candidate), "id"), get(Some(candidate), "actor_id"))) == actor).cloned();
+    let command_actor = candidates.into_iter().find(|candidate| !candidate.is_null() && js::string(nullish(get(Some(candidate), "id"), get(Some(candidate), "actor_id"))) == actor).cloned();
     let controller = {
         let source = command_actor.as_ref();
         let pick = nullish(nullish(nullish(get(source, "controllerId"), get(source, "controller_id")), get(source, "ownerId")), get(source, "owner_id"));

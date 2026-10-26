@@ -31,7 +31,7 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/system-tick$/)` и `POST` (5959–5960).
-    vec![Route::post(5959, Matcher::path_template("/api/campaigns/{id}/system-tick"), system_tick)]
+    vec![Route::post(5992, Matcher::path_template("/api/campaigns/{id}/system-tick"), system_tick)]
 }
 
 /// Конфликты такта с чужим коммитом: ответ — комната как есть (5995–5999).

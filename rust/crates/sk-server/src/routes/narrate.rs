@@ -58,7 +58,7 @@ use crate::streams::NarrationHub;
 
 pub fn routes() -> Vec<Route> {
     // `req.url === '/api/narrate' && req.method === 'POST'` (6144).
-    vec![Route::post(6144, Matcher::raw("/api/narrate"), narrate)]
+    vec![Route::post(6179, Matcher::raw("/api/narrate"), narrate)]
 }
 
 /// Коды 409 (6473).

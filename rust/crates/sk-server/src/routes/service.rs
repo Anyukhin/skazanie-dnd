@@ -21,10 +21,10 @@ const MAX_AUDIO: usize = 44 + 16_000 * 2 * 60;
 
 pub fn routes() -> Vec<Route> {
     vec![
-        Route::new(3941, Methods::Any, Matcher::raw("/api/health"), health),
-        Route::get(3955, Matcher::raw("/api/admin/usage"), admin_usage),
-        Route::get(3961, Matcher::raw("/api/speech/status"), speech_status),
-        Route::new(3965, Methods::One(Method::POST), Matcher::raw("/api/speech/transcribe"), speech_transcribe),
+        Route::new(3954, Methods::Any, Matcher::raw("/api/health"), health),
+        Route::get(3968, Matcher::raw("/api/admin/usage"), admin_usage),
+        Route::get(3974, Matcher::raw("/api/speech/status"), speech_status),
+        Route::new(3978, Methods::One(Method::POST), Matcher::raw("/api/speech/transcribe"), speech_transcribe),
     ]
 }
 
@@ -39,9 +39,9 @@ fn health(ctx: &mut RouteCtx) -> RouteFuture<'_> {
         let config = &ctx.state.config;
         let rules = &ctx.state.rules;
         let models = models_health(ctx);
-        // `characterCreationCatalog(LEGACY_DEFAULT_RULESET_ID)` вне `try`:
+        // `characterCreationCatalog(LEGACY_DEFAULT_RULESET_ID)` вне `try` (один раз на процесс):
         // сбой — необработанная ошибка (500).
-        let character_creation = blocking(|| crate::routes::catalog::character_creation_catalog(LEGACY_DEFAULT_RULESET_ID)).await??;
+        let character_creation = blocking(|| crate::routes::catalog::health_character_creation_catalog(LEGACY_DEFAULT_RULESET_ID)).await??;
         let body: Value = json!({
             "configured": config.model_configured(),
             "provider": "RouterAI",

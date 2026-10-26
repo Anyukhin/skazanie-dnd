@@ -230,6 +230,28 @@ export function assertCampaignPlayable(state) {
   return lifecycle
 }
 
+const LIFECYCLE_ACTION_BY_EVENT = {
+  CampaignActivated: 'activate',
+  CampaignPaused: 'pause',
+  CampaignResumed: 'resume',
+  CampaignCompleted: 'complete',
+  CampaignFailed: 'fail',
+  CampaignArchived: 'archive',
+}
+
+/**
+ * Действие жизненного цикла, которое записал коммит маршрута `/lifecycle`, —
+ * для сверки повтора ключа идемпотентности. Коммит чужого маршрута (у его
+ * события нет `event_id` вида `campaign-lifecycle:…`) — `null`.
+ */
+export function lifecycleActionForCommit(commit) {
+  const event = Array.isArray(commit?.events) ? commit.events[0] : null
+  if (!String(event?.event_id ?? '').startsWith('campaign-lifecycle:')) return null
+  const type = String(event?.event_type ?? '')
+  if (type === 'CampaignArcChainSet') return event?.payload?.enabled === true ? 'chain_arcs' : 'conclude_after_arc'
+  return Object.hasOwn(LIFECYCLE_ACTION_BY_EVENT, type) ? LIFECYCLE_ACTION_BY_EVENT[type] : null
+}
+
 export function lifecycleEventForAction(action, state, { actorId, reason, now = new Date().toISOString() } = {}) {
   const lifecycle = normalizeCampaignLifecycle(state?.mechanics?.campaign_lifecycle, state?.mechanics?.death?.campaign_status)
   const normalizedAction = String(action || '').toLowerCase()
@@ -270,7 +292,8 @@ export function lifecycleEventForAction(action, state, { actorId, reason, now = 
     fail: { from: ['active'], to: 'failed', event: 'CampaignFailed' },
     archive: { from: ['setup', 'paused', 'completed', 'failed'], to: 'archived', event: 'CampaignArchived' },
   }
-  const transition = transitions[normalizedAction]
+  // Только свои ключи: `transitions.constructor` — функция прототипа без `from`.
+  const transition = Object.hasOwn(transitions, normalizedAction) ? transitions[normalizedAction] : null
   if (!transition || !transition.from.includes(lifecycle.status)) {
     const error = new Error(`Переход lifecycle "${lifecycle.status}" → "${normalizedAction}" запрещён`)
     error.code = 'INVALID_CAMPAIGN_TRANSITION'
