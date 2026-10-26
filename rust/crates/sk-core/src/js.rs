@@ -624,6 +624,16 @@ mod more_tests {
 
 /// Число так, как его пишет `JSON.stringify`: целые без `.0`, большие —
 /// кратчайшей записью, `NaN` и бесконечность — `null`.
+/// Число JSON так, как его пишет `JSON.stringify` (для своих писателей JSON).
+pub fn push_json_number(number: &serde_json::Number, out: &mut String) {
+    stringify_number(number, out);
+}
+
+/// Строка в JSON-кавычках, как в [`stringify`] (для своих писателей JSON).
+pub fn push_json_str(text: &str, out: &mut String) {
+    push_json_string(text, out);
+}
+
 fn stringify_number(number: &serde_json::Number, out: &mut String) {
     if let Some(int) = number.as_i64() {
         if int.unsigned_abs() <= 9_007_199_254_740_991 {

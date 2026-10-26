@@ -9,6 +9,8 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 
+use sk_core::js;
+
 use crate::jsx;
 
 /// `CANONICAL_PROJECTION_FIELDS`: поля комнаты, которые целиком принадлежат
@@ -103,8 +105,133 @@ pub fn canonical_projection(state: &Value) -> Value {
 }
 
 /// `projectionHash(state)`: SHA-256 (hex) от `JSON.stringify(canonicalProjection(state))`.
+///
+/// Строка проекции пишется прямо из состояния (Ск4), без копии
+/// [`canonical_projection`] и её сортированной копии: те же поля, те же ключи
+/// в том же порядке, те же числа и экранирование — байт в байт
+/// `jsx::stringify(&canonical_projection(state))` (сторож —
+/// `tests/projection_integrity.rs`).
 pub fn projection_hash(state: &Value) -> String {
-    sk_core::hash::sha256_hex(jsx::stringify(&canonical_projection(state)))
+    sk_core::hash::sha256_hex(canonical_projection_json(state))
+}
+
+/// `JSON.stringify(canonicalProjection(state))` без промежуточных значений.
+pub fn canonical_projection_json(state: &Value) -> String {
+    enum Field<'a> {
+        Plain(&'a Value),
+        Players(&'a [Value]),
+    }
+    const NULL: Value = Value::Null;
+    let mut fields: Vec<(&str, Field<'_>)> = Vec::with_capacity(CANONICAL_PROJECTION_FIELDS.len());
+    let source = state.as_object();
+    for field in CANONICAL_PROJECTION_FIELDS {
+        let Some(value) = source.and_then(|map| map.get(*field)) else {
+            if *field == "agentInteraction" {
+                fields.push((field, Field::Plain(&NULL)));
+            }
+            continue;
+        };
+        if *field == "players" {
+            fields.push((field, Field::Players(value.as_array().map(Vec::as_slice).unwrap_or(&[]))));
+        } else {
+            fields.push((field, Field::Plain(value)));
+        }
+    }
+    fields.sort_by(|(left, _), (right, _)| stable_key_order(left, right));
+    let mut out = String::with_capacity(1 << 16);
+    out.push('{');
+    for (index, (key, field)) in fields.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        js::push_json_str(key, &mut out);
+        out.push(':');
+        match field {
+            Field::Plain(value) => write_stable(value, &mut out),
+            Field::Players(players) => {
+                out.push('[');
+                for (index, player) in players.iter().enumerate() {
+                    if index > 0 {
+                        out.push(',');
+                    }
+                    match player {
+                        // `canonicalPlayer`: игрок без `online`.
+                        Value::Object(map) => write_stable_object(map.iter().filter(|(key, _)| key.as_str() != "online"), &mut out),
+                        // `{ ...array }`: ключи-индексы, порядок по возрастанию.
+                        Value::Array(items) => {
+                            out.push('{');
+                            for (index, item) in items.iter().enumerate() {
+                                if index > 0 {
+                                    out.push(',');
+                                }
+                                js::push_json_str(&index.to_string(), &mut out);
+                                out.push(':');
+                                write_stable(item, &mut out);
+                            }
+                            out.push('}');
+                        }
+                        other => write_stable(other, &mut out),
+                    }
+                }
+                out.push(']');
+            }
+        }
+    }
+    out.push('}');
+    out
+}
+
+/// Порядок ключей `JSON.stringify(stableValue(x))`: `stableValue` сортирует
+/// ключи по единицам UTF-16, а объект JS всё равно ставит ключи-индексы
+/// первыми, по возрастанию числа.
+fn stable_key_order(left: &str, right: &str) -> std::cmp::Ordering {
+    let index = |key: &str| if js::is_array_index_key(key) { key.parse::<u64>().ok() } else { None };
+    match (index(left), index(right)) {
+        (Some(left), Some(right)) => left.cmp(&right),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        // Для ASCII порядок байтов и единиц UTF-16 один.
+        (None, None) if left.is_ascii() && right.is_ascii() => left.cmp(right),
+        (None, None) => jsx::utf16_cmp(left, right),
+    }
+}
+
+fn write_stable_object<'a>(entries: impl Iterator<Item = (&'a String, &'a Value)>, out: &mut String) {
+    let mut entries: Vec<(&String, &Value)> = entries.collect();
+    if entries.len() > 1 {
+        entries.sort_by(|(left, _), (right, _)| stable_key_order(left, right));
+    }
+    out.push('{');
+    for (index, (key, value)) in entries.into_iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        js::push_json_str(key, out);
+        out.push(':');
+        write_stable(value, out);
+    }
+    out.push('}');
+}
+
+/// `JSON.stringify(stableValue(value))`, как [`jsx::stringify`] над [`stable_value`].
+fn write_stable(value: &Value, out: &mut String) {
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(flag) => out.push_str(if *flag { "true" } else { "false" }),
+        Value::Number(number) => js::push_json_number(number, out),
+        Value::String(text) => js::push_json_str(text, out),
+        Value::Array(items) => {
+            out.push('[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                write_stable(item, out);
+            }
+            out.push(']');
+        }
+        Value::Object(map) => write_stable_object(map.iter(), out),
+    }
 }
 
 /// Итог `compareProjection`.
@@ -116,10 +243,39 @@ pub struct ProjectionComparison {
 }
 
 /// `compareProjection(authoritativeState, projectedState)`.
+///
+/// Почти всегда комната совпадает с журналом: тогда канонические поля равны
+/// значение в значение, их проекции — одна строка, и второй хеш не
+/// считается (Ск4). Равенство строже канонического (`1` и `1.0`, порядок
+/// ключей не важен, как и в проекции): несовпадение — просто второй хеш.
 pub fn compare_projection(authoritative_state: &Value, projected_state: &Value) -> ProjectionComparison {
     let authoritative_hash = projection_hash(authoritative_state);
-    let projected_hash = projection_hash(projected_state);
+    let projected_hash = if canonically_equal(authoritative_state, projected_state) { authoritative_hash.clone() } else { projection_hash(projected_state) };
     ProjectionComparison { matched: authoritative_hash == projected_hash, authoritative_hash, projected_hash }
+}
+
+/// Равны ли канонические поля двух состояний значение в значение (игроки —
+/// без `online`). `true` гарантирует одну и ту же строку проекции.
+fn canonically_equal(left: &Value, right: &Value) -> bool {
+    let (Some(left), Some(right)) = (left.as_object(), right.as_object()) else { return false };
+    CANONICAL_PROJECTION_FIELDS.iter().all(|field| match (left.get(*field), right.get(*field)) {
+        (None, None) => true,
+        (Some(Value::Array(left)), Some(Value::Array(right))) if *field == "players" => {
+            left.len() == right.len() && left.iter().zip(right).all(|(left, right)| player_equal(left, right))
+        }
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    })
+}
+
+fn player_equal(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::Object(left), Value::Object(right)) => {
+            let counted = |map: &Map<String, Value>| map.len() - usize::from(map.contains_key("online"));
+            counted(left) == counted(right) && left.iter().filter(|(key, _)| key.as_str() != "online").all(|(key, value)| right.get(key) == Some(value))
+        }
+        _ => left == right,
+    }
 }
 
 #[cfg(test)]
