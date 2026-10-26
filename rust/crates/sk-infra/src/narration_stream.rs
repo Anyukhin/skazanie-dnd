@@ -187,10 +187,6 @@ struct HubState {
     active: IndexMap<String, CampaignEntries>,
     next_seq: u64,
     next_generation: u64,
-    /// Текст записей, которые `start` заменил под тем же id, пока их снимок
-    /// ждал таймера: в JS такой таймер не отменяется и срабатывает со старым
-    /// текстом.
-    replaced: HashMap<u64, String>,
 }
 
 struct Shared<C> {
@@ -308,8 +304,10 @@ impl<C: NarrationConnection + Send + 'static> CampaignNarrationStream<C> {
         state.next_seq += 1;
         let entry = Entry { seq: state.next_seq, message_id: id.clone(), text: String::new(), updated_at: (shared.now)(), timer: None };
         let previous = state.active.get_mut(&normalized).and_then(|container| container.entries.insert(id.clone(), entry));
-        if let Some(previous) = previous.filter(|previous| previous.timer.is_some()) {
-            state.replaced.insert(previous.seq, previous.text);
+        // Повторный `start` того же сообщения начинает его заново: отложенный
+        // снимок прежнего текста отменяется и после старта не уходит.
+        if let Some(timer) = previous.and_then(|previous| previous.timer) {
+            shared.timers.clear_timer(timer);
         }
         let payload = public_payload(&id, "", "start", false)?;
         Self::broadcast(shared, &normalized, "narration.start", &payload);
@@ -331,7 +329,11 @@ impl<C: NarrationConnection + Send + 'static> CampaignNarrationStream<C> {
         let Some(entry) = container.entries.get_mut(&id) else {
             return Err(stream_error("Повествование не было начато после commit", "NARRATION_STREAM_NOT_STARTED"));
         };
-        entry.text = bounded_text(text)?.to_string();
+        // Кадр проверяется здесь, а не в таймере: слишком большой снимок
+        // отклоняется вызывающему, у клиента остаётся прежний текст до финала.
+        let next_text = bounded_text(text)?.to_string();
+        public_payload(&id, &next_text, "streaming", false)?;
+        entry.text = next_text;
         entry.updated_at = now;
         if entry.timer.is_some() {
             return Ok(());
@@ -357,22 +359,10 @@ impl<C: NarrationConnection + Send + 'static> CampaignNarrationStream<C> {
         let mut state = lock(&shared.state);
         let container = state.active.get_mut(campaign).filter(|container| container.generation == generation);
         let current = container.and_then(|container| container.entries.get_mut(message_id)).filter(|entry| entry.seq == seq);
-        let text = match current {
-            Some(entry) => {
-                entry.timer = None;
-                entry.text.clone()
-            }
-            None => match state.replaced.remove(&seq) {
-                Some(text) => text,
-                None => return,
-            },
-        };
-        let present = state.active.get(campaign).filter(|container| container.generation == generation).is_some_and(|container| container.entries.contains_key(message_id));
-        if !present {
-            return;
-        }
-        // В JS ошибка сборки кадра в обратном вызове таймера — необработанное
-        // исключение процесса; здесь кадр просто не уходит.
+        let Some(entry) = current else { return };
+        entry.timer = None;
+        let text = entry.text.clone();
+        // Кадр уже проверен в `progress`; не собрался — просто не уходит.
         if let Ok(payload) = public_payload(message_id, &text, "streaming", false) {
             Self::broadcast(shared, campaign, "narration.chunk", &payload);
         }

@@ -440,20 +440,36 @@ fn final_supports_complete_replaced_and_replayed_without_start() {
     assert_eq!(events[2]["payload"]["phase"], "replaced");
 }
 
-// Отличие от JS: снимок, который в кадре SSE выходит за 16 КБ (кавычки и
-// управляющие символы удваиваются при экранировании), в JS бросает
-// исключение из обратного вызова таймера и роняет процесс. Здесь кадр
-// просто не уходит, а финал по-прежнему отказывает явно.
+// Снимок, который в кадре SSE выходит за 16 КБ (кавычки и управляющие
+// символы удваиваются при экранировании), отклоняется самим `progress`, как
+// в JS после исправления: у клиента остаётся прежний текст до финала, а
+// финал по-прежнему отказывает явно.
 #[test]
-fn oversized_escaped_snapshot_is_dropped_without_crashing() {
+fn oversized_escaped_snapshot_is_refused_to_caller() {
     let harness = harness();
     harness.connect("alpha", "viewer");
     harness.hub.start("alpha", "narration-quotes").expect("начало");
-    let quotes = "\"".repeat(9_000);
-    harness.hub.progress("alpha", "narration-quotes", &quotes).expect("текст в пределе");
+    harness.hub.progress("alpha", "narration-quotes", "Первое.").expect("дельта");
+    let quotes = "\"".repeat(NARRATION_STREAM_TEXT_MAX_BYTES - 100);
+    assert_eq!(harness.hub.progress("alpha", "narration-quotes", &quotes).expect_err("кадр велик").code, "NARRATION_STREAM_EVENT_TOO_LARGE");
     harness.flush();
-    assert_eq!(harness.events().len(), 1, "снимок не ушёл");
+    let texts: Vec<Value> = harness.events().iter().map(|entry| json!([entry["event"], entry["payload"]["text"]])).collect();
+    assert_eq!(texts, vec![json!(["narration.start", ""]), json!(["narration.chunk", "Первое."])]);
     assert_eq!(harness.hub.complete("alpha", "narration-quotes", &quotes, None, false).expect_err("финал").code, "NARRATION_STREAM_EVENT_TOO_LARGE");
+}
+
+#[test]
+fn repeated_start_cancels_pending_snapshot_of_old_text() {
+    let harness = harness();
+    harness.connect("alpha", "viewer");
+    harness.hub.start("alpha", "narration-again").expect("начало");
+    harness.hub.progress("alpha", "narration-again", "Старый текст.").expect("дельта");
+    harness.hub.start("alpha", "narration-again").expect("повторное начало");
+    harness.flush();
+    harness.hub.progress("alpha", "narration-again", "Новый текст.").expect("дельта");
+    harness.flush();
+    let texts: Vec<Value> = harness.events().iter().map(|entry| json!([entry["event"], entry["payload"]["text"]])).collect();
+    assert_eq!(texts, vec![json!(["narration.start", ""]), json!(["narration.start", ""]), json!(["narration.chunk", "Новый текст."])]);
 }
 
 // ---------------------------------------------------------------------------

@@ -330,3 +330,44 @@ test('финал поддерживает complete, replaced и replayed без 
   assert.equal(events[0].payload.replayed, true)
   assert.equal(events[2].payload.phase, 'replaced')
 })
+
+test('снимок больше 16 КБ отклоняется вызывающему, а не из таймера: у клиента остаётся прежний текст', () => {
+  const { hub, events, connect, flush, timers } = harness()
+  connect('alpha', 'viewer')
+  hub.start('alpha', { messageId: 'narration-quotes' })
+  hub.progress('alpha', { messageId: 'narration-quotes', text: 'Первое.' })
+  // 12 КБ кавычек укладываются в предел текста, но в JSON удваиваются.
+  const quoted = '"'.repeat(NARRATION_STREAM_TEXT_MAX_BYTES - 100)
+  assert.throws(
+    () => hub.progress('alpha', { messageId: 'narration-quotes', text: quoted }),
+    (error) => error?.code === 'NARRATION_STREAM_EVENT_TOO_LARGE',
+  )
+  assert.equal(timers.length, 1, 'отложенный снимок прежнего текста остаётся один')
+  assert.doesNotThrow(flush)
+  assert.deepEqual(events.map(({ event, payload }) => [event, payload.text]), [
+    ['narration.start', ''],
+    ['narration.chunk', 'Первое.'],
+  ])
+  // Без прежнего снимка таймер не заводится вовсе.
+  hub.start('alpha', { messageId: 'narration-fresh' })
+  assert.throws(() => hub.progress('alpha', { messageId: 'narration-fresh', text: quoted }), (error) => error?.code === 'NARRATION_STREAM_EVENT_TOO_LARGE')
+  assert.equal(timers.length, 0)
+})
+
+test('повторный start того же сообщения отменяет отложенный снимок старого текста', () => {
+  const { hub, events, connect, flush, timers } = harness()
+  connect('alpha', 'viewer')
+  hub.start('alpha', { messageId: 'narration-again' })
+  hub.progress('alpha', { messageId: 'narration-again', text: 'Старый текст.' })
+  assert.equal(timers.length, 1)
+  hub.start('alpha', { messageId: 'narration-again' })
+  assert.equal(timers.length, 0, 'таймер прежней записи снят')
+  flush()
+  hub.progress('alpha', { messageId: 'narration-again', text: 'Новый текст.' })
+  flush()
+  assert.deepEqual(events.map(({ event, payload }) => [event, payload.text]), [
+    ['narration.start', ''],
+    ['narration.start', ''],
+    ['narration.chunk', 'Новый текст.'],
+  ])
+})
