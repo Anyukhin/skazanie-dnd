@@ -3,8 +3,10 @@
 //! `test/spell-acceptance-audit.test.mjs`.
 //!
 //! Отчёт читает файлы репозитория и Git: эталон снят в этом же дереве, и
-//! после правки зависимостей (сервер, клиент, тесты JS, данные) его нужно
-//! пересоздать. `revision` и `workingTreeSha256` меняются с каждым коммитом —
+//! после правки зависимостей (сервер, клиент, тесты JS, данные, `package.json`)
+//! его нужно пересоздать: `node rust/crates/sk-combat-content/fixtures/gen-spell-acceptance-audit.mjs`.
+//! Устаревший эталон сначала ловит `fixture_matches_working_tree` — с этой
+//! подсказкой, а не расхождением отчётов. `revision` и `workingTreeSha256` меняются с каждым коммитом —
 //! сверяется их форма, а значения подставляются из эталона.
 
 mod common;
@@ -44,6 +46,23 @@ fn compact(report: &Value) -> Value {
     let mut compact = report.clone();
     compact["spells"] = Value::Array(array(&report["spells"]).iter().map(|card| json!([card["spellId"], hash(Some(card))])).collect());
     compact
+}
+
+/// Эталон снят с текущего дерева: отпечатки зависимостей в эталоне — те же,
+/// что дают файлы сейчас. Иначе остальные сверки падают не по вине Rust.
+#[test]
+fn fixture_matches_working_tree() {
+    let root = m::repository_root();
+    let current = m::longstrider_dependency_fingerprints(&root).expect("отпечатки");
+    let stale: Vec<&String> = current.iter().filter(|(path, sha)| FIXTURE["longstriderFingerprints"].get(path.as_str()) != Some(*sha)).map(|(path, _)| path).collect();
+    let current_basic = m::basic_spell_dependency_fingerprints(&root).expect("отпечатки");
+    let stale_basic: Vec<&String> = current_basic.iter().filter(|(path, sha)| FIXTURE["basicFingerprints"].get(path.as_str()) != Some(*sha)).map(|(path, _)| path).collect();
+    assert!(
+        stale.is_empty() && stale_basic.is_empty(),
+        "эталон приёмки заклинаний устарел — изменились {:?} {:?}; пересоздайте: node rust/crates/sk-combat-content/fixtures/gen-spell-acceptance-audit.mjs",
+        stale,
+        stale_basic
+    );
 }
 
 #[test]
