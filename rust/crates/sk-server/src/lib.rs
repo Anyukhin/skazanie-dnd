@@ -11,7 +11,8 @@
 //! - [`http`], [`url`] — тело, cookie, заголовки, разбор адреса как в JS;
 //! - [`access`], [`idempotency`], [`limits`] — общие помощники маршрутов;
 //! - [`ai_context`] — настройки ИИ кампании на время запроса;
-//! - [`cli`] — разбор аргументов бинаря, [`legacy_import`] — подкоманда
+//! - [`cli`] — разбор аргументов бинаря, [`storage_audit`] — подкоманда
+//!   `audit-storage` (С19), [`legacy_import`] — подкоманда
 //!   `import-legacy` (С19.2);
 //! - [`room`], [`journal`], [`projection`], [`streams`] — заглушки С1/С9 с
 //!   зафиксированными сигнатурами;
@@ -57,6 +58,7 @@ pub mod serve;
 pub mod startup;
 pub mod state;
 pub mod static_files;
+pub mod storage_audit;
 pub mod streams;
 pub mod test_hooks;
 pub mod url;

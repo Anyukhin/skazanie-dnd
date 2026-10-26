@@ -180,9 +180,9 @@ fn fail(message: String) -> ! {
 
 fn main() {
     // Разбор аргументов (С19.1): справка, отказ разбора и служебные
-    // подкоманды (`journal`, `session`, `room`, `audit` набора тестов, `import-legacy`) — до
-    // `.env`, без отметки писателя storage и без порта. Сервер — только без
-    // аргументов.
+    // подкоманды (`journal`, `session`, `room`, `audit` набора тестов,
+    // `import-legacy`, `audit-storage`) — до `.env`, без отметки писателя
+    // storage и без порта. Сервер — только без аргументов.
     let args: Vec<String> = std::env::args_os().skip(1).map(|arg| arg.to_string_lossy().into_owned()).collect();
     if let Some(code) = sk_server::cli::run_tool(&sk_server::cli::parse(&args)) {
         std::process::exit(code);

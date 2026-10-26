@@ -15,13 +15,10 @@
 //! это «внешний дрейф» комнаты (`projection-postcommit-error-api`,
 //! `reconcile-access-perf-api`), который сервер обязан найти сверкой.
 //!
-//! `audit` — аудит `sk_tactics::cutover_audit` (журнал против replay,
-//! подтверждение проекции) плюс сверка записанной комнаты с головой журнала,
-//! как у `auditLegacyCutover` JS: `ROOM_PROJECTION_MISSING`,
-//! `EVENT_STREAM_MISSING`, `PROJECTION_DIVERGENCE`,
-//! `PROJECTION_VERSION_DIVERGENCE`, `RETIRED_MODE_IN_ROOM`. Накладка может
-//! держать канонические поля, которых нет в журнале, поэтому расхождение
-//! комнаты в Rust не невозможно, а находится той же сверкой.
+//! `audit` — та же сверка, что у рабочей подкоманды `audit-storage`
+//! ([`crate::storage_audit::audit_storage`]: журнал против replay,
+//! подтверждение проекции, комнаты против головы журнала), но без отказа на
+//! живом писателе и всегда с JSON-отчётом.
 //!
 //! Чтение и аудит идут и при живом сервере (SQLite в WAL). Запись требует
 //! `NODE_ENV=test` и хранилище прямо во временном каталоге. Без фичи
@@ -31,10 +28,9 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use serde_json::{json, Map, Value};
+use serde_json::Value;
 use sk_core::js;
-use sk_narration_base::projection_integrity::compare_projection;
-use sk_store::{EventStore, LoadOptions, RoomOverlaySave, RoomOverlayWrite};
+use sk_store::{EventStore, RoomOverlaySave, RoomOverlayWrite};
 
 use crate::room::{overlay_for, read_room, room_key, Room};
 
@@ -101,7 +97,7 @@ pub fn run(command: &Command, input: &str, node_env: Option<&str>, temp_dir: &Pa
             let store = open(storage)?;
             write_room(&store, campaign, state)
         }
-        Command::Audit { storage } => audit(storage),
+        Command::Audit { storage } => crate::storage_audit::audit_storage(storage),
     }
 }
 
@@ -118,91 +114,6 @@ fn write_room(store: &EventStore, campaign: &str, state: &Value) -> Result<Value
         RoomOverlaySave::Saved { .. } => Ok(room_json(&read_room(store, &key).map_err(|failure| failure.message)?)),
         RoomOverlaySave::Conflict { .. } => Err(format!("writeRoom: комнату {key} переписали одновременно — повторите")),
     }
-}
-
-/// Аудит хранилища: `sk_tactics` плюс сверка комнат с журналом.
-fn audit(storage: &Path) -> Result<Value, String> {
-    let mut report = sk_tactics::cutover_audit::audit_legacy_cutover(Some(storage))?;
-    let database = storage.join(sk_tactics::cutover_audit::STORE_FILE);
-    if !database.is_file() {
-        return Ok(report);
-    }
-    let store = open(storage)?;
-    let journal_ids: Vec<String> = report["campaigns"].as_array().map(|list| list.iter().map(|entry| js::string(entry.get("campaign_id"))).collect()).unwrap_or_default();
-    let room_ids = store.room_overlay_ids().map_err(|error| error.to_string())?;
-    let mut blockers = Vec::new();
-    let mut extra_campaigns = Vec::new();
-    for campaign_id in &journal_ids {
-        if !room_ids.contains(campaign_id) {
-            blockers.push(json!({ "code": "ROOM_PROJECTION_MISSING", "campaign_id": campaign_id }));
-        }
-    }
-    for room_id in &room_ids {
-        if !journal_ids.contains(room_id) {
-            blockers.push(json!({ "code": "EVENT_STREAM_MISSING", "campaign_id": room_id }));
-            extra_campaigns.push(json!({ "campaign_id": room_id, "room": true, "event_stream": false }));
-        }
-    }
-    let mut room_fields: Vec<(String, Map<String, Value>)> = Vec::new();
-    for campaign_id in journal_ids.iter().filter(|id| room_ids.contains(*id)) {
-        let mut fields = Map::new();
-        fields.insert("room".into(), Value::Bool(true));
-        match room_entry(&store, campaign_id) {
-            Ok((entry, found)) => {
-                fields.extend(entry);
-                blockers.extend(found);
-            }
-            Err(error) => {
-                fields.insert("room_error".into(), Value::String(error.clone()));
-                blockers.push(json!({ "code": "CAMPAIGN_AUDIT_FAILED", "campaign_id": campaign_id, "error": error }));
-            }
-        }
-        room_fields.push((campaign_id.clone(), fields));
-    }
-    if let Some(Value::Array(campaigns)) = report.get_mut("campaigns") {
-        for entry in campaigns.iter_mut() {
-            let id = js::string(entry.get("campaign_id"));
-            if let (Value::Object(map), Some((_, fields))) = (entry, room_fields.iter().find(|(candidate, _)| *candidate == id)) {
-                map.extend(fields.clone());
-            }
-        }
-        campaigns.extend(extra_campaigns);
-        let count = campaigns.len();
-        report["campaign_count"] = Value::from(count);
-    }
-    if let Some(Value::Array(existing)) = report.get_mut("blockers") {
-        existing.extend(blockers);
-        let ready = existing.is_empty();
-        report["ready"] = Value::Bool(ready);
-    }
-    Ok(report)
-}
-
-/// Сверка записанной комнаты кампании с головой журнала (как в JS:
-/// `compareProjection(loaded.state, normalizeCampaignState(room.state))`).
-fn room_entry(store: &EventStore, campaign_id: &str) -> Result<(Map<String, Value>, Vec<Value>), String> {
-    let room = read_room(store, campaign_id).map_err(|failure| failure.message)?;
-    let loaded = store.load(campaign_id, &LoadOptions::default()).map_err(|error| error.to_string())?;
-    let mut entry = Map::new();
-    let mut blockers = Vec::new();
-    let Some(state) = room.state.as_ref() else { return Ok((entry, blockers)) };
-    let normalized = sk_rules::normalize::normalize_campaign_state(state).map_err(|halt| crate::error::Failure::from(halt).message)?;
-    let comparison = compare_projection(&loaded.state, &normalized);
-    let room_version = state.get("state_version").map_or(-1.0, |value| js::number(Some(value)));
-    entry.insert("room_version".into(), js::num(room_version));
-    entry.insert("projected_sha256".into(), Value::String(comparison.projected_hash.clone()));
-    entry.insert("projection_matched".into(), Value::Bool(comparison.matched));
-    entry.insert("raw_room_engine_mode".into(), state.get("engine_mode").cloned().unwrap_or(Value::Null));
-    if !comparison.matched {
-        blockers.push(json!({ "code": "PROJECTION_DIVERGENCE", "campaign_id": campaign_id }));
-    }
-    if room_version != loaded.state_version as f64 {
-        blockers.push(json!({ "code": "PROJECTION_VERSION_DIVERGENCE", "campaign_id": campaign_id }));
-    }
-    if let Some(mode) = state.get("engine_mode").filter(|mode| !mode.is_null() && mode.as_str() != Some("enforce") && js::truthy(Some(mode))) {
-        blockers.push(json!({ "code": "RETIRED_MODE_IN_ROOM", "campaign_id": campaign_id, "value": mode }));
-    }
-    Ok((entry, blockers))
 }
 
 /// Точка входа из `main.rs` (`name` — `room` или `audit`): печатает JSON или

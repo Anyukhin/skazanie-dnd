@@ -28,6 +28,11 @@
 //! отметки — всегда замечание `STALE_CHECKPOINT_AFTER_SCHEMA_CHANGE`, как в JS
 //! при совпавшей проекции.
 //!
+//! Оговорка С19: в `sk-server` комната — журнал плюс накладка
+//! `room_overlays`, и накладка может разойтись с головой журнала. Эту сверку
+//! (коды комнаты выше) добавляет поверх этого аудита
+//! `sk_server::storage_audit` — подкоманда `skazanie-server audit-storage`.
+//!
 //! В записи кампании нет полей комнаты (`room`, `room_version`,
 //! `room_file_sha256`, `projected_sha256`, `projection_matched`,
 //! `raw_room_engine_mode`); прочие поля — как в JS.
