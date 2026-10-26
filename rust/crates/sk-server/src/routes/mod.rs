@@ -74,7 +74,7 @@ pub fn table(extra: Vec<Route>) -> Vec<Route> {
 /// `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/merchants\/([^/]+)(?:\/commands)?$/` (5449).
 pub const MERCHANT_PATH: &str = "/api/campaigns/{id}/merchants/{seg}[/commands]";
 
-/// `decodeURIComponent(merchantMatch[2]).slice(0, 120)` (5452); `None` — `URIError`.
+/// `decodeURIComponent(merchantMatch[2]).slice(0, 120)` (5453); `None` — `URIError`.
 pub fn merchant_route_id(raw: &str) -> Option<String> {
     // Срез — по единицам UTF-16, как `slice` JS (правка С14).
     crate::url::decode_uri_component(raw).map(|id| crate::merchant_guard::slice_utf16(&id, 120))

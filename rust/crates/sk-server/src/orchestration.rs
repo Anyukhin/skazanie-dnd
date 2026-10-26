@@ -54,7 +54,7 @@ use crate::error::Failure;
 use crate::state::AppState;
 
 /// Имя класса клиента модели JS (`llmClient.constructor.name`): роли пишут
-/// его в `provider` ответа. Горячий путь — `FallbackLLMClient` (303).
+/// его в `provider` ответа. Горячий путь — `FallbackLLMClient` (304).
 const HOT_CLIENT_CLASS: &str = "FallbackLLMClient";
 
 // --- журнал и реестр бросков ядра ------------------------------------------
@@ -156,20 +156,20 @@ pub struct Orchestration {
     pub rules: Arc<RefCell<RulesEngine>>,
     pub journal: Arc<CoreJournal>,
     pub rolls: Arc<CoreRolls>,
-    /// `gameOrchestrator` (2997–3010).
+    /// `gameOrchestrator` (2998–3011).
     pub game: GameOrchestrator,
     /// `autonomousCampaign` (401) — тот же экземпляр, что исполнитель
     /// свободного действия у `game` (`unknownActionHandler`, 3007).
     pub autonomous: Arc<AutonomousCampaignOrchestrator>,
-    /// `narrator` (396).
+    /// `narrator` (397).
     pub narrator: Arc<Narrator>,
-    /// `creativeDirector` (397).
+    /// `creativeDirector` (398).
     pub creative: CriticalNarrationCoordinator,
-    /// `npcController` (398): мораль врага на ходу NPC.
+    /// `npcController` (399): мораль врага на ходу NPC.
     pub npc_controller: NpcMoraleAgent,
-    /// `npcSocialController` (399).
+    /// `npcSocialController` (400).
     pub npc_social: Arc<NpcSocialController>,
-    /// `sceneArchitect` (311).
+    /// `sceneArchitect` (312).
     pub scene_architect: SceneArchitectAgent,
     /// `gameOrchestrator.clarificationRegistry` — общий с HTTP-слоем (4881).
     pub clarifications: Arc<Mutex<ClarificationRegistry>>,

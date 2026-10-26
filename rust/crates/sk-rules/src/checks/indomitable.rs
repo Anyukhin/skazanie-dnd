@@ -1,6 +1,6 @@
 //! «Несгибаемый» воина: возможности переброса (`indomitableOpportunitiesFor`). Задача Р2.
 //!
-//! JS: `server/rules-engine.mjs`, 12322–12351. `failedSavingThrowEvent` (12322)
+//! JS: `server/rules-engine.mjs`, 12344–12373. `failedSavingThrowEvent` (12344)
 //! уже перенесён вместе с костями-стенограммой (`dice_record.rs`, Р0) и
 //! здесь только вызывается.
 

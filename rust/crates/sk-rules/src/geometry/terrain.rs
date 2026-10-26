@@ -2,9 +2,9 @@
 //! `web-walker`), тяжёлая местность с множителем, единая формула цены шага
 //! для `MoveActor` и планировщика NPC, цена готового пути. Задача Р1.
 //!
-//! JS: `server/rules-engine.mjs` — `difficultTerrainLookupFor` (10106),
-//! `heavyTerrainMultiplierAt` (10144), `difficultTerrainKindsAt` (10156),
-//! `movementStepCostFor` (10187), `movementCostOfPath` (10224).
+//! JS: `server/rules-engine.mjs` — `difficultTerrainLookupFor` (10128),
+//! `heavyTerrainMultiplierAt` (10166), `difficultTerrainKindsAt` (10178),
+//! `movementStepCostFor` (10209), `movementCostOfPath` (10246).
 
 use std::collections::HashMap;
 

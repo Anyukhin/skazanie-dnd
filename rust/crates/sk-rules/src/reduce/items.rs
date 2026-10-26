@@ -1,6 +1,6 @@
 //! Ветки редьюсера `applyGameEventCurrent`: Предметы и боеприпасы: снаряжение, жизненный цикл предметов, заряды на рассвете, использование и расход, боеприпасы, снаряжение NPC, выдача, контейнеры добычи, кошель сценария. Задача Р4.
 //!
-//! JS: `server/rules-engine.mjs`, 25390–25395, 25402–25421, 25422–25424, 25425–25440, 25441–25444, 25449–25468, 25486–25491, 26144–26154, 26803–26808, 26923–26956. Таблица меток — `reduce/table.rs`
+//! JS: `server/rules-engine.mjs`, 25412–25417, 25424–25443, 25444–25446, 25447–25462, 25463–25466, 25471–25490, 25508–25513, 26166–26176, 26825–26830, 26945–26978. Таблица меток — `reduce/table.rs`
 //! (Р0). Перенося ветку, уберите её метки из [`UNPORTED`] этого файла.
 //!
 //! Жизнь вещи — `applyItemLifecycleEventToPlayers` (`sk-items-life`),
@@ -8,8 +8,8 @@
 //! в `refreshPlayerDerivedState` — `deriveCharacterSheet` (`sk-character`).
 //!
 //! Здесь же общие помощники предметов для соседних веток: `addInventoryItem`
-//! (23993; стопка — `society_helpers::inventory_stack_index`), `npcLoadoutAfterSpend` (23543) и
-//! `refreshPlayerDerivedState` (23603).
+//! (23993; стопка — `society_helpers::inventory_stack_index`), `npcLoadoutAfterSpend` (23565) и
+//! `refreshPlayerDerivedState` (23625).
 
 use std::collections::HashSet;
 
@@ -34,7 +34,7 @@ fn inventory_list(value: Option<&Value>) -> Vec<Value> {
     value.and_then(Value::as_array).cloned().unwrap_or_default()
 }
 
-/// `addInventoryItem(inventory, incoming)` (23993) — `society_helpers`.
+/// `addInventoryItem(inventory, incoming)` (24015) — `society_helpers`.
 pub(super) use crate::society_helpers::add_inventory_item;
 
 /// `{ rulesetId: state.ruleset_id }` — опции `combatSpellsFor`.
@@ -79,7 +79,7 @@ pub(super) fn put_defined(map: &mut Map<String, Value>, key: &str, value: Option
     }
 }
 
-/// `refreshPlayerDerivedState(state, actorIds)` (23603): лист героя
+/// `refreshPlayerDerivedState(state, actorIds)` (23625): лист героя
 /// выводится заново (`deriveCharacterSheet`; отказ вывода — прежний лист,
 /// как `try {} catch {}` в JS), затем заклинания, боевые действия и груз.
 ///
@@ -138,7 +138,7 @@ pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[Strin
     Ok(())
 }
 
-/// `npcLoadoutAfterSpend(loadout, payload)` (23543): остаток берётся из
+/// `npcLoadoutAfterSpend(loadout, payload)` (23565): остаток берётся из
 /// события целиком, кончившееся убирается.
 pub(super) fn npc_loadout_after_spend(loadout: Option<&Value>, payload: &Value) -> Value {
     let normalized = sk_economy::enemy_loadouts::normalize_enemy_loadout(loadout);
@@ -179,7 +179,7 @@ fn positive_quantity(item: &Value) -> bool {
 
 // --- ветки -----------------------------------------------------------------
 
-/// `EquipmentChanged` (25390–25395).
+/// `EquipmentChanged` (25412–25417).
 pub(super) fn equipment_changed(state: &mut Value, event: &Event) -> Reduced {
     let target = target_of(event);
     let payload = event.payload.clone();
@@ -218,7 +218,7 @@ pub(super) fn equipment_changed(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `ItemEquipped`, `ItemUnequipped`, `ItemTransferred`, `ItemAttunementChanged`, `ItemChargesSpent`, `ItemDestroyed`, `MagicItemActivationChanged` (25402–25421).
+/// `ItemEquipped`, `ItemUnequipped`, `ItemTransferred`, `ItemAttunementChanged`, `ItemChargesSpent`, `ItemDestroyed`, `MagicItemActivationChanged` (25424–25443).
 pub(super) fn item_lifecycle_event(state: &mut Value, event: &Event) -> Reduced {
     let event_json = event_value(event);
     let players = sk_items_life::item_lifecycle::apply_item_lifecycle_event_to_players(state.get("players"), &event_json)
@@ -247,7 +247,7 @@ pub(super) fn item_lifecycle_event(state: &mut Value, event: &Event) -> Reduced 
     Ok(())
 }
 
-/// `ItemDawnRechargeResolved` (25422–25424).
+/// `ItemDawnRechargeResolved` (25444–25446).
 pub(super) fn item_dawn_recharge_resolved(state: &mut Value, event: &Event) -> Reduced {
     let players = state.get("players").cloned().unwrap_or(Value::Null);
     state["players"] = sk_items::item_dawn_recharge::apply_item_dawn_recharge_to_players(&players, &event_value(event));
@@ -259,7 +259,7 @@ fn unchecked_actor_key(event: &Event) -> String {
     event.actor_id.clone().unwrap_or_else(|| "null".into())
 }
 
-/// `ItemUsed` (25425–25440).
+/// `ItemUsed` (25447–25462).
 pub(super) fn item_used(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let versioned = event_version(&payload) >= ACTION_ECONOMY_EVENT_VERSION;
@@ -285,7 +285,7 @@ pub(super) fn item_used(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `ItemConsumed` (25441–25444).
+/// `ItemConsumed` (25463–25466).
 pub(super) fn item_consumed(state: &mut Value, event: &Event) -> Reduced {
     let target = target_of(event);
     let payload = event.payload.clone();
@@ -312,7 +312,7 @@ pub(super) fn item_consumed(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `AmmunitionSpent` (25449–25468).
+/// `AmmunitionSpent` (25471–25490).
 pub(super) fn ammunition_spent(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let owner = match payload.get("owner_id").filter(|value| !value.is_null()) {
@@ -344,7 +344,7 @@ pub(super) fn ammunition_spent(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `NpcEquipmentSpent` (25486–25491).
+/// `NpcEquipmentSpent` (25508–25513).
 pub(super) fn npc_equipment_spent(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let owner = match payload.get("owner_id").filter(|value| !value.is_null()) {
@@ -360,13 +360,13 @@ pub(super) fn npc_equipment_spent(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `ScenarioPurseGranted` (26144–26154).
+/// `ScenarioPurseGranted` (26166–26176).
 pub(super) fn scenario_purse_granted(state: &mut Value, event: &Event) -> Reduced {
     set_hero_currency(state, event);
     Ok(())
 }
 
-/// `ItemGranted` (26803–26808).
+/// `ItemGranted` (26825–26830).
 pub(super) fn item_granted(state: &mut Value, event: &Event) -> Reduced {
     let target = target_of(event);
     let item = event.payload.get("item").cloned().unwrap_or(Value::Null);
@@ -386,7 +386,7 @@ pub(super) fn item_granted(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `LootContainerCreated`, `LootContainerTaken` (26923–26956).
+/// `LootContainerCreated`, `LootContainerTaken` (26945–26978).
 pub(super) fn loot_container_event(state: &mut Value, event: &Event) -> Reduced {
     let recipient_ids = sk_director::loot_containers::apply_loot_container_event(state, &event_value(event)).map_err(|error| module_error(error.code, error.message))?;
     let payload = &event.payload;

@@ -4,10 +4,10 @@
 //! [`crate::speed`]. Задача Р1.
 //!
 //! JS: `server/rules-engine.mjs` — `assertVoluntaryMovementPath` (3883),
-//! `longJumpMovementFor` (10230), `sizeRankByName` (10995),
-//! `completedStraightCharge` (10999), `movementForActor` (11102),
-//! `explorationMovementDurationSeconds` (11128). `ignoresDifficultTerrain`
-//! (10940) — в [`crate::core`].
+//! `longJumpMovementFor` (10252), `sizeRankByName` (11017),
+//! `completedStraightCharge` (11021), `movementForActor` (11124),
+//! `explorationMovementDurationSeconds` (11150). `ignoresDifficultTerrain`
+//! (10962) — в [`crate::core`].
 
 use serde_json::{json, Map, Value};
 use sk_core::{game, js, RuleError};

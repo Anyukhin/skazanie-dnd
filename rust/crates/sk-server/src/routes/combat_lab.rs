@@ -1,5 +1,5 @@
 //! С5: боевой стенд администратора — `/api/admin/combat-lab/*`
-//! (`server/routes/combat-lab-routes.mjs`, подключение — `index.mjs:3958`,
+//! (`server/routes/combat-lab-routes.mjs`, подключение — `index.mjs:3959`,
 //! сборка реестра — 340–344).
 //!
 //! Один маршрут [`Route::pass`] на префикс: обработчик проверяет путь и метод
@@ -57,7 +57,7 @@ pub fn routes() -> Vec<Route> {
 /// Реестры серверов процесса (в тестах их несколько).
 static LABS: Mutex<Vec<(Weak<AppState>, Arc<CombatLabRuns>)>> = Mutex::new(Vec::new());
 
-/// `combatLabRuns` этого сервера (`index.mjs:340–343`).
+/// `combatLabRuns` этого сервера (`index.mjs:341–344`).
 fn lab(state: &Shared) -> Arc<CombatLabRuns> {
     let mut labs = LABS.lock().unwrap_or_else(PoisonError::into_inner);
     labs.retain(|(app, _)| app.strong_count() > 0);

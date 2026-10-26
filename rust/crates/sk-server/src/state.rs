@@ -75,7 +75,7 @@ impl Metered {
     }
 
     /// `new FallbackLLMClient({ clients, selectableClients, probeTimeoutMs,
-    /// failureCooldownMs })` над уже учтёнными клиентами (`index.mjs:303–308`).
+    /// failureCooldownMs })` над уже учтёнными клиентами (`index.mjs:304–309`).
     /// У `MeteredLLMClient` нет `timeoutMs`, поэтому срок модели каскад берёт
     /// по умолчанию — как в JS.
     pub fn cascade(clients: Vec<Metered>, selectable: Vec<Metered>, probe_timeout_ms: f64, failure_cooldown_ms: f64) -> Result<Self, LlmError> {
@@ -104,7 +104,7 @@ impl Metered {
 /// Клиенты модели процесса.
 #[derive(Clone, Default)]
 pub struct LlmClients {
-    /// Каскад горячего пути (`llmClient`, `index.mjs:303`).
+    /// Каскад горячего пути (`llmClient`, `index.mjs:304`).
     pub llm: Option<Metered>,
     /// Летописец длинной формы (`loreLlmClient`, 412–418).
     pub lore: Option<Metered>,
@@ -144,20 +144,20 @@ pub struct AppState {
     pub accounts: Arc<Accounts>,
     /// Игровое ядро в своём потоке.
     pub core: CoreHandle,
-    /// `DurableUsageLedger` (`index.mjs:243–246`).
+    /// `DurableUsageLedger` (`index.mjs:244–247`).
     pub ledger: Arc<DurableUsageLedger>,
-    /// `ArchitectUsageStore` (`index.mjs:249–252`).
+    /// `ArchitectUsageStore` (`index.mjs:250–253`).
     pub architect_usage: Arc<ArchitectUsageStore>,
-    /// Пакеты правил, поиск и профили редакций (`index.mjs:312–324`).
+    /// Пакеты правил, поиск и профили редакций (`index.mjs:313–325`).
     pub rules: RuleCatalog,
     /// Клиенты модели (всегда через учёт расхода).
     pub models: LlmClients,
-    /// `loginAttempts` и `costlyRequests` (2894–2903).
+    /// `loginAttempts` и `costlyRequests` (2895–2904).
     pub limits: Limits,
     /// Упорядоченная таблица маршрутов (`routes::table`).
     pub routes: Vec<Route>,
     /// С12 (правка общего файла): портреты NPC, иллюстрации мест и картинки
-    /// предметов — все через учёт расхода (`index.mjs:253–269, 2971–2974`).
+    /// предметов — все через учёт расхода (`index.mjs:254–270, 2972–2975`).
     pub images: crate::routes::assets::Images,
 }
 
@@ -172,7 +172,7 @@ impl AppState {
         if let Some(refusal) = crate::legacy_import::startup_refusal(&storage) {
             return Err(refusal);
         }
-        // `mkdirSync(generatedDir, { recursive: true })` (241–242).
+        // `mkdirSync(generatedDir, { recursive: true })` (242–243).
         std::fs::create_dir_all(storage.join("generated").join("items")).map_err(|error| format!("Не удалось создать каталог хранилища: {error}"))?;
         std::fs::create_dir_all(storage.join("engine")).map_err(|error| format!("Не удалось создать каталог хранилища: {error}"))?;
         let database = storage.join("skazanie.sqlite");
@@ -190,7 +190,7 @@ impl AppState {
         };
         let dice = SharedDice::new(injected.dice.unwrap_or_else(|| Box::new(sk_dice::DiceService::system())));
         let streams: StreamFactory = injected.streams.unwrap_or_else(|| crate::streams::live_factory(database.clone(), clock.clone(), LiveOptions::default()));
-        // С13: импортёр TaleSpire для движка и библиотека карт (`index.mjs:352–356`).
+        // С13: импортёр TaleSpire для движка и библиотека карт (`index.mjs:353–357`).
         crate::routes::map_import::install(&config);
         let core = start_core(database, storage.join("engine").join("roll-registry.json"), dice, clock.clone(), streams)?;
         let images = build_images(&config, &ledger)?;

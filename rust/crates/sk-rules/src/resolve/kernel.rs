@@ -1,5 +1,5 @@
 //! Методы контекста разбора — замыкания `resolveCommandInternal`
-//! (`rules-engine.mjs`, 13061–13072, 13315–13700): вдохновение барда,
+//! (`rules-engine.mjs`, 13083–13094, 13337–13722): вдохновение барда,
 //! Сопротивление, спасброски, модификаторы спасброска области, легендарное
 //! сопротивление, урон с защитами и реакциями, «Волшебная стрела», кости
 //! количества. Задача Р5.
@@ -96,7 +96,7 @@ impl Resolve<'_> {
         (resistance_choices_object(&self.resistance_choices), from_entries(&self.elemental_reaction_choices), from_entries(&self.protective_reaction_choices))
     }
 
-    /// `spendBardicInspiration(sourceState, ownerId, trigger)` (13061):
+    /// `spendBardicInspiration(sourceState, ownerId, trigger)` (13083):
     /// кость вдохновения к проваленному броску, один раз на владельца.
     pub fn spend_bardic_inspiration(&mut self, source_state: &Value, owner_id: Option<&Value>, trigger: &str) -> Result<i64, Halt> {
         let owner = js::s(owner_id);

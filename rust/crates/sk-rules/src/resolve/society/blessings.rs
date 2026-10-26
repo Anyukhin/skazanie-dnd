@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Благословение жреца. Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 22024–22074. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 22046–22096. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -15,7 +15,7 @@ use crate::core::{command_with_rules, event_from, player_actor, slice_utf16};
 use crate::pause::{Fault, Step};
 use crate::preview_checks::{blessing_granted_events, scene_place_text, BlessingGrant};
 
-/// `ReceiveNpcBlessing` (22024–22074).
+/// `ReceiveNpcBlessing` (22046–22096).
 pub fn receive_npc_blessing(r: &mut Resolve<'_>) -> Step {
     let Some(actor) = player_actor(&r.state, r.command.get("actor_id")).cloned() else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'currency')").into());

@@ -1,7 +1,7 @@
 //! События предметов в бою: брошенная склянка, вещь противника, рассыпанная
 //! зона; порядок инициативы. Задача Р11.
 //!
-//! JS: `server/rules-engine.mjs`, 8670–8952 (кроме 8771 — `npcEquipmentSpentEvent`,
+//! JS: `server/rules-engine.mjs`, 8692–8974 (кроме 8771 — `npcEquipmentSpentEvent`,
 //! он в `combat::npc_items`, Р3), 12180 (`sortedInitiative`).
 //!
 //! В JS склянка и вещь противника получают кости, броски, разбор урона и
@@ -59,7 +59,7 @@ pub fn party_member_ids(state: &Value) -> IndexSet<String> {
     state.get("players").and_then(Value::as_array).into_iter().flatten().map(game::actor_id).collect()
 }
 
-/// `sortedInitiative(entries)` (12180): выше итог, затем модификатор, затем
+/// `sortedInitiative(entries)` (12202): выше итог, затем модификатор, затем
 /// id (`localeCompare`). Разность в JS — `NaN || …` уходит к следующему
 /// ключу, поэтому сравнитель — V8 TimSort шаг в шаг.
 pub fn sorted_initiative(entries: &[Value]) -> Vec<Value> {
@@ -91,7 +91,7 @@ pub struct FlaskItem<'a> {
     pub purpose_subject: Option<String>,
 }
 
-/// `thrownFlaskEvents(state, command, { actor, item, use, … })` (8670–8769):
+/// `thrownFlaskEvents(state, command, { actor, item, use, … })` (8692–8791):
 /// метательная склянка — спасбросок Ловкости вместо броска атаки.
 pub fn thrown_flask_events(r: &mut Resolve<'_>, state: &Value, command: &Value, actor: Option<&Value>, flask: FlaskItem<'_>, profile: &Value) -> Result<Vec<Value>, Halt> {
     let item = flask.item;
@@ -195,7 +195,7 @@ pub fn thrown_flask_events(r: &mut Resolve<'_>, state: &Value, command: &Value, 
     Ok(events)
 }
 
-/// `npcItemUseEvents(state, command, …)` (8793–8888): противник пускает в
+/// `npcItemUseEvents(state, command, …)` (8815–8910): противник пускает в
 /// ход свою вещь — `NpcItemUsed`, действие вещи и `NpcEquipmentSpent`.
 pub fn npc_item_use_events(r: &mut Resolve<'_>, state: &Value, command: &Value) -> Result<Vec<Value>, Halt> {
     let owner_id = js::string(command.get("actor_id"));
@@ -276,7 +276,7 @@ pub fn npc_item_use_events(r: &mut Resolve<'_>, state: &Value, command: &Value) 
     Ok(events)
 }
 
-/// `spilledZoneEvents(state, command, { item, use })` (8901–8951):
+/// `spilledZoneEvents(state, command, { item, use })` (8923–8973):
 /// калтропы и лужа масла — обычный площадный эффект в клетке игрока.
 pub fn spilled_zone_events(state: &Value, command: &Value, item: &Value, profile: &Value) -> Result<Vec<Value>, Halt> {
     let spill = if command.get("use_mode").and_then(Value::as_str) == Some("spill") { profile.get("spill_mode") } else { Some(profile) };

@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Особые действия монстров и легендарные действия. Задача Р8.
 //!
-//! JS: `server/rules-engine.mjs`, 15010–15066, 16675–16813. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 15032–15088, 16697–16835. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 //!
 //! Особое действие стат-блока (дыхание, плевок) — область, посчитанная
@@ -38,7 +38,7 @@ fn spread(base: &Value, fields: Vec<(&str, Value)>) -> Value {
     Value::Object(map)
 }
 
-/// `UseMonsterAction` (15010–15066).
+/// `UseMonsterAction` (15032–15088).
 pub fn use_monster_action(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();
@@ -131,7 +131,7 @@ pub fn use_monster_action(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `UseLegendaryAction` (16675–16813).
+/// `UseLegendaryAction` (16697–16835).
 pub fn use_legendary_action(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();

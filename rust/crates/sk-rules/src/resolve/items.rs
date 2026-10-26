@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Предметы: выдача, жизненный цикл (надеть, передать, настроиться, активировать), использование. Задача Р11.
 //!
-//! JS: `server/rules-engine.mjs`, 22755–22760, 22897–22931, 22932–23127. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 22777–22782, 22919–22953, 22954–23149. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -62,7 +62,7 @@ fn visibility_or(command: &Value, fallback: &str) -> Value {
     command.get("visibility").filter(|value| !value.is_null()).cloned().unwrap_or_else(|| json!(fallback))
 }
 
-/// `GrantItem` (22755–22760).
+/// `GrantItem` (22777–22782).
 pub fn grant_item(r: &mut Resolve<'_>) -> Step {
     let mut item = match r.command.get("item") {
         None | Some(Value::Null) => js::obj(),
@@ -82,7 +82,7 @@ pub fn grant_item(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `EquipItem`, `TransferItem`, `AttuneItem`, `ActivateItem` (22897–22931).
+/// `EquipItem`, `TransferItem`, `AttuneItem`, `ActivateItem` (22919–22953).
 pub fn item_lifecycle(r: &mut Resolve<'_>) -> Step {
     for item_event in item_lifecycle_events(&r.command).map_err(lifecycle_halt)? {
         let event_type = js::s(item_event.get("event_type"));
@@ -134,7 +134,7 @@ fn timed_condition(condition: &str, rounds: i64, command: &Value, item: &Value, 
     Value::Object(payload)
 }
 
-/// `UseItem` (22932–23127).
+/// `UseItem` (22954–23149).
 pub fn use_item(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();

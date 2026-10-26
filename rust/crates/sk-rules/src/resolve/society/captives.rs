@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Пленные: допрос, освобождение, сдача страже, кормление, забвение, казнь. Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 21030–21080, 21081–21132, 21133–21184, 21185–21195, 21196–21203, 21204–21244. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 21052–21102, 21103–21154, 21155–21206, 21207–21217, 21218–21225, 21226–21266. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -28,7 +28,7 @@ fn get<'a>(value: &'a Value, key: &str) -> Value {
     value.get(key).cloned().unwrap_or(Value::Null)
 }
 
-/// `InterrogateCaptive` (21030–21080).
+/// `InterrogateCaptive` (21052–21102).
 pub fn interrogate_captive(r: &mut Resolve<'_>) -> Step {
     let captive = captive_of(r, "npc_id")?;
     let actor = sk_core::game::find_actor(&r.state, &js::s(r.command.get("actor_id"))).cloned();
@@ -90,7 +90,7 @@ pub fn interrogate_captive(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ReleaseCaptive` (21081–21132).
+/// `ReleaseCaptive` (21103–21154).
 pub fn release_captive(r: &mut Resolve<'_>) -> Step {
     let captive = captive_of(r, "id")?;
     let disposition = captive_spared_disposition(&captive);
@@ -140,7 +140,7 @@ pub fn release_captive(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `HandCaptiveToGuards` (21133–21184).
+/// `HandCaptiveToGuards` (21155–21206).
 pub fn hand_captive_to_guards(r: &mut Resolve<'_>) -> Step {
     let captive = captive_of(r, "id")?;
     let Some(settlement) = captive_settlement_for(&r.state) else {
@@ -193,7 +193,7 @@ pub fn hand_captive_to_guards(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `FeedCaptive` (21185–21195).
+/// `FeedCaptive` (21207–21217).
 pub fn feed_captive(r: &mut Resolve<'_>) -> Step {
     let captive = captive_of(r, "id")?;
     let mut payload = Map::new();
@@ -207,7 +207,7 @@ pub fn feed_captive(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `NeglectCaptive` (21196–21203).
+/// `NeglectCaptive` (21218–21225).
 pub fn neglect_captive(r: &mut Resolve<'_>) -> Step {
     let captive = captive_of(r, "id")?;
     let payload = captive_neglected_payload(&captive, Some(&elapsed_minutes(&r.state)));
@@ -216,7 +216,7 @@ pub fn neglect_captive(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ExecuteCaptive` (21204–21244).
+/// `ExecuteCaptive` (21226–21266).
 pub fn execute_captive(r: &mut Resolve<'_>) -> Step {
     let captive = captive_of(r, "npc_id")?;
     let npc_id = get(&captive, "npc_id");

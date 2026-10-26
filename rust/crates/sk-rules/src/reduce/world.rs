@@ -1,6 +1,6 @@
 //! Ветки редьюсера `applyGameEventCurrent`: Кампания и мир: замена состояния (`LegacyStateImported`, `CampaignRewound` до `switch`), история и дуги кампании, решения отряда, должности. Задача Р4.
 //!
-//! JS: `server/rules-engine.mjs`, 24285–24301, 24302–24304, 24305–24347, 24357–24359, 24360–24378, 24379–24397, 24398–24415, 24416–24432, 24433–24438, 27037–27039. Таблица меток — `reduce/table.rs`
+//! JS: `server/rules-engine.mjs`, 24307–24323, 24324–24326, 24327–24369, 24379–24381, 24382–24400, 24401–24419, 24420–24437, 24438–24454, 24455–24460, 27059–27061. Таблица меток — `reduce/table.rs`
 //! (Р0). Перенося ветку, уберите её метки из [`UNPORTED`] этого файла.
 //!
 //! Не перенесены: замена состояния (нужна нормализация `normalizeCampaignState`
@@ -76,7 +76,7 @@ fn string_head(value: Option<&Value>, maximum: usize) -> String {
     head(&js::s(value), maximum)
 }
 
-/// `CampaignStoryCompleted` (24285–24301).
+/// `CampaignStoryCompleted` (24307–24323).
 pub(super) fn campaign_story_completed(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let schema = payload.get("schema_version");
@@ -109,7 +109,7 @@ pub(super) fn campaign_story_completed(state: &mut Value, event: &Event) -> Redu
     Ok(())
 }
 
-/// `CampaignArcChainSet` (24302–24304).
+/// `CampaignArcChainSet` (24324–24326).
 pub(super) fn campaign_arc_chain_set(state: &mut Value, event: &Event) -> Reduced {
     let mut concept = spread_field(state, "campaignConcept");
     concept.insert("arc_chain".into(), Value::Bool(is_true(event.payload.get("enabled"))));
@@ -122,7 +122,7 @@ fn object_like(value: Option<&Value>) -> bool {
     matches!(value, Some(Value::Object(_) | Value::Array(_)))
 }
 
-/// `CampaignArcCompleted` (24305–24347).
+/// `CampaignArcCompleted` (24327–24369).
 pub(super) fn campaign_arc_completed(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let next_arc = payload.get("next_arc").filter(|value| object_like(Some(value))).cloned();
@@ -234,7 +234,7 @@ fn required_votes(next: &mut Map<String, Value>, payload: &Value) {
     }
 }
 
-/// `PartyDecisionOpened` (24357–24359).
+/// `PartyDecisionOpened` (24379–24381).
 pub(super) fn party_decision_opened(state: &mut Value, event: &Event) -> Reduced {
     let policy = state.get("partyDecisionPolicy").cloned();
     let interaction = event.payload.get("interaction").cloned().unwrap_or(Value::Null);
@@ -243,7 +243,7 @@ pub(super) fn party_decision_opened(state: &mut Value, event: &Event) -> Reduced
     Ok(())
 }
 
-/// `PartyVoteCast` (24360–24378).
+/// `PartyVoteCast` (24382–24400).
 pub(super) fn party_vote_cast(state: &mut Value, event: &Event) -> Reduced {
     if !interaction_matches(state, event) || !is_open(state) {
         return Ok(());
@@ -271,7 +271,7 @@ pub(super) fn party_vote_cast(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `PartyDecisionAbstained` (24379–24397).
+/// `PartyDecisionAbstained` (24401–24419).
 pub(super) fn party_decision_abstained(state: &mut Value, event: &Event) -> Reduced {
     if !interaction_matches(state, event) || !is_open(state) {
         return Ok(());
@@ -356,17 +356,17 @@ fn resolve_decision(state: &mut Value, event: &Event, expired: bool) -> Reduced 
     Ok(())
 }
 
-/// `PartyDecisionResolved` (24398–24415).
+/// `PartyDecisionResolved` (24420–24437).
 pub(super) fn party_decision_resolved(state: &mut Value, event: &Event) -> Reduced {
     resolve_decision(state, event, false)
 }
 
-/// `PartyDecisionExpired` (24416–24432).
+/// `PartyDecisionExpired` (24438–24454).
 pub(super) fn party_decision_expired(state: &mut Value, event: &Event) -> Reduced {
     resolve_decision(state, event, true)
 }
 
-/// `PartyDecisionConsumed` (24433–24438).
+/// `PartyDecisionConsumed` (24455–24460).
 pub(super) fn party_decision_consumed(state: &mut Value, event: &Event) -> Reduced {
     let resolved = js::string(event.payload.get("resolved_option_id"));
     let consumed = interaction_matches(state, event)
@@ -377,7 +377,7 @@ pub(super) fn party_decision_consumed(state: &mut Value, event: &Event) -> Reduc
     Ok(())
 }
 
-/// `OfficeVacated`, `OfficeHolderInstalled`, `OfficeSuccessionSkipped` (27037–27039).
+/// `OfficeVacated`, `OfficeHolderInstalled`, `OfficeSuccessionSkipped` (27059–27061).
 pub(super) fn world_office_event(state: &mut Value, event: &Event) -> Reduced {
     let event_json = super::social::event_value(event);
     state["world_offices"] = sk_world_life::world_offices::apply_world_office_event(state.get("world_offices"), &event_json, &js::obj());

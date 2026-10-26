@@ -1,6 +1,6 @@
-//! С15: диалог и объяснение хода — `server/index.mjs:4870–4899, 5198–5214`:
-//! `GET`/`DELETE /api/campaigns/:id/dialogue` (4870),
-//! `GET /api/campaigns/:id/turns/:turn/explanation` (5198).
+//! С15: диалог и объяснение хода — `server/index.mjs:4871–4900, 5199–5215`:
+//! `GET`/`DELETE /api/campaigns/:id/dialogue` (4871),
+//! `GET /api/campaigns/:id/turns/:turn/explanation` (5199).
 //!
 //! Маршруты объявляются с номером строки `server/index.mjs`, где JS их
 //! проверяет: порядок общей таблицы (`routes::table`) выводится из этих
@@ -13,7 +13,7 @@
 //! нет. Реестр бросков — `GameCore::rolls` (`rollRegistry`).
 //!
 //! Объяснение хода — вне `try`: сбой журнала или трасс — 500 последней
-//! границы. Паритет JS (5201–5202): комната читается `getRoom` без сверки и
+//! границы. Паритет JS (5202–5203): комната читается `getRoom` без сверки и
 //! без проверки, что кампания есть; код кампании идёт в хранилище трасс и в
 //! `campaignHeroIds` как есть, без перевода в верхний регистр (`getRoom`
 //! переводит сам). Трассы — `traceStore` оркестратора
@@ -33,16 +33,16 @@ use crate::projection;
 use crate::room::{self, Room};
 use crate::routes::campaigns::Caught;
 
-/// Методы диалога: GET и DELETE (4871); прочие идут дальше, к 404.
+/// Методы диалога: GET и DELETE (4872); прочие идут дальше, к 404.
 const DIALOGUE_METHODS: &[Method] = &[Method::GET, Method::DELETE];
 
 const NO_ACCESS: &str = "Нет доступа к этой кампании";
 
 pub fn routes() -> Vec<Route> {
     vec![
-        // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/dialogue$/)` и `['GET', 'DELETE']` (4870–4871).
+        // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/dialogue$/)` и `['GET', 'DELETE']` (4871–4872).
         Route::new(4871, Methods::Set(DIALOGUE_METHODS), Matcher::path_template("/api/campaigns/{id}/dialogue"), dialogue),
-        // `…\/turns\/([A-Za-z0-9._-]+)\/explanation$/` и `GET` (5198–5199).
+        // `…\/turns\/([A-Za-z0-9._-]+)\/explanation$/` и `GET` (5199–5200).
         Route::get(5199, Matcher::path_template("/api/campaigns/{id}/turns/{turn}/explanation"), explanation),
     ]
 }

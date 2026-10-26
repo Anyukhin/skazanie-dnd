@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Уговор зверя `CalmBeast` (проверка характеристики с укусом на провале). Задача Р11.
 //!
-//! JS: `server/rules-engine.mjs`, 21245–21360. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 21267–21382. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -25,7 +25,7 @@ fn insert_present(map: &mut Map<String, Value>, key: &str, value: Option<&Value>
     }
 }
 
-/// `CalmBeast` (21245–21360).
+/// `CalmBeast` (21267–21382).
 pub fn calm_beast(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();

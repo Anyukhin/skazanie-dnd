@@ -1,12 +1,12 @@
 //! С14: жизненный цикл торговца — санитайзеры и отпечатки
-//! (`server/index.mjs:1023–1246`).
+//! (`server/index.mjs:1024–1247`).
 //!
 //! - `assertMerchantIdempotency`/`assertMerchantResultFingerprint` (1023,
 //!   1241) — сверка торговой операции игрока; отпечаток команды —
 //!   [`merchant_command_fingerprint`] из `command_fingerprints` (С16), второго
 //!   нет. Зовёт `/commands` (С18.1) и `merchants/:id/commands` (С18.2).
 //! - `lifecycle*`, `sanitizeMerchantLifecycleCommand`,
-//!   `merchantLifecycleFingerprint`, `assertMerchantLifecycle*` (1032–1215) —
+//!   `merchantLifecycleFingerprint`, `assertMerchantLifecycle*` (1033–1216) —
 //!   административные команды торговца (`merchants/commands`,
 //!   `merchants/assemble`).
 //!
@@ -107,7 +107,7 @@ pub fn utf16_len(text: &str) -> usize {
     text.encode_utf16().count()
 }
 
-/// `commandType(command)` (644–647) со строгим `String`.
+/// `commandType(command)` (645–648) со строгим `String`.
 fn command_type(command: &Value) -> Result<String, Failure> {
     let source = Some(command);
     js_string_or_empty(nullish(nullish(get(source, "command_type"), get(source, "commandType")), get(source, "type")))
@@ -117,7 +117,7 @@ fn invalid(message: impl Into<String>) -> Failure {
     policy_error(message, INVALID)
 }
 
-// --- торговля игрока (1023–1030, 1241–1246) ------------------------------------
+// --- торговля игрока (1024–1031, 1242–1247) ------------------------------------
 
 /// Выражение списка в тексте `TypeError` V8: `(duplicate.events ?? [])`.
 const DUPLICATE_EVENTS: &str = "(duplicate.events ?? [])";
@@ -146,7 +146,7 @@ fn request_fingerprints(events: Option<&Value>, expression: &str) -> GuardResult
     Ok(fingerprints)
 }
 
-/// `assertMerchantIdempotency(campaignId, idempotencyKey, command)` (1023–1030).
+/// `assertMerchantIdempotency(campaignId, idempotencyKey, command)` (1024–1031).
 pub fn assert_merchant_idempotency(journal: &dyn DuplicateLookup, campaign_id: &str, idempotency_key: &str, command: &Value) -> GuardResult<()> {
     let Some(duplicate) = journal.get_by_idempotency_key(campaign_id, idempotency_key)? else { return Ok(()) };
     let fingerprints = request_fingerprints(get(Some(&duplicate), "events"), DUPLICATE_EVENTS)?;
@@ -156,7 +156,7 @@ pub fn assert_merchant_idempotency(journal: &dyn DuplicateLookup, campaign_id: &
     Ok(())
 }
 
-/// `assertMerchantResultFingerprint(result, command)` (1241–1246).
+/// `assertMerchantResultFingerprint(result, command)` (1242–1247).
 pub fn assert_merchant_result_fingerprint(result: &Value, command: &Value) -> GuardResult<()> {
     let fingerprints = request_fingerprints(get(Some(result), "mechanics"), RESULT_MECHANICS)?;
     if fingerprints.len() != 1 || !fingerprints.contains(&merchant_command_fingerprint(command)) {
@@ -165,14 +165,14 @@ pub fn assert_merchant_result_fingerprint(result: &Value, command: &Value) -> Gu
     Ok(())
 }
 
-// --- жизненный цикл (1032–1215) -----------------------------------------------
+// --- жизненный цикл (1033–1216) -----------------------------------------------
 
-/// `lifecycleText(value, maximum)` (1032–1034): `String(value ?? '').trim().slice(0, maximum)`.
+/// `lifecycleText(value, maximum)` (1033–1035): `String(value ?? '').trim().slice(0, maximum)`.
 pub fn lifecycle_text(value: Option<&Value>, maximum: usize) -> GuardResult<String> {
     Ok(slice_utf16(sk_core::text::trim(&js_string_or_empty(value)?), maximum))
 }
 
-/// `lifecycleId(value, field)` (1036–1040).
+/// `lifecycleId(value, field)` (1037–1041).
 pub fn lifecycle_id(value: Option<&Value>, field: &str) -> GuardResult<String> {
     let id = lifecycle_text(value, 120)?;
     if id.is_empty() {
@@ -181,7 +181,7 @@ pub fn lifecycle_id(value: Option<&Value>, field: &str) -> GuardResult<String> {
     Ok(id)
 }
 
-/// `lifecycleInteger(value, field, { minimum, maximum })` (1042–1048).
+/// `lifecycleInteger(value, field, { minimum, maximum })` (1043–1049).
 pub fn lifecycle_integer(value: Option<&Value>, field: &str, minimum: i64, maximum: i64) -> GuardResult<i64> {
     let result = js_number(value)?;
     let safe = result.is_finite() && result.fract() == 0.0 && result.abs() <= MAX_SAFE_INTEGER as f64;
@@ -208,7 +208,7 @@ const PRICING_BOUNDS: [(&str, i64, i64); 7] = [
     ("agent_adjustment_limit_percent", 0, 20),
 ];
 
-/// `lifecyclePricing(input)` (1050–1069); `None` — `undefined`.
+/// `lifecyclePricing(input)` (1051–1070); `None` — `undefined`.
 fn lifecycle_pricing(input: Option<&Value>) -> GuardResult<Option<Value>> {
     if !present(input) {
         return Ok(None);
@@ -235,7 +235,7 @@ fn lifecycle_pricing(input: Option<&Value>) -> GuardResult<Option<Value>> {
     Ok(Some(Value::Object(result)))
 }
 
-/// `lifecycleStockItem(input, index)` (1071–1090).
+/// `lifecycleStockItem(input, index)` (1072–1091).
 fn lifecycle_stock_item(input: &Value, index: usize) -> GuardResult<Value> {
     let source = Some(input);
     if !is_object(source) {
@@ -268,7 +268,7 @@ fn lifecycle_stock_item(input: &Value, index: usize) -> GuardResult<Value> {
     Ok(Value::Object(item))
 }
 
-/// `merchant.services[i]` (1114–1131).
+/// `merchant.services[i]` (1115–1132).
 fn lifecycle_service(service: &Value, index: usize) -> GuardResult<Value> {
     let source = Some(service);
     if !is_object(source) {
@@ -301,7 +301,7 @@ fn lifecycle_service(service: &Value, index: usize) -> GuardResult<Value> {
     Ok(Value::Object(result))
 }
 
-/// `merchant.restock_policy` (1133–1148).
+/// `merchant.restock_policy` (1134–1149).
 fn lifecycle_restock_policy(policy: Option<&Value>) -> GuardResult<Value> {
     if !is_object(policy) {
         return Err(invalid("merchant.restock_policy должен быть объектом"));
@@ -331,7 +331,7 @@ fn lifecycle_restock_policy(policy: Option<&Value>) -> GuardResult<Value> {
     Ok(Value::Object(result))
 }
 
-/// `lifecycleMerchant(input)` (1092–1151).
+/// `lifecycleMerchant(input)` (1093–1152).
 fn lifecycle_merchant(input: Option<&Value>) -> GuardResult<Value> {
     if !is_object(input) {
         return Err(invalid("Поле merchant должно быть объектом"));
@@ -387,7 +387,7 @@ fn lifecycle_merchant(input: Option<&Value>) -> GuardResult<Value> {
     Ok(Value::Object(merchant))
 }
 
-/// `lifecycleConfiguration(input)` (1153–1163).
+/// `lifecycleConfiguration(input)` (1154–1164).
 fn lifecycle_configuration(input: Option<&Value>) -> GuardResult<Value> {
     if !is_object(input) {
         return Err(invalid("Поле configuration должно быть объектом"));
@@ -411,7 +411,7 @@ fn lifecycle_configuration(input: Option<&Value>) -> GuardResult<Value> {
     Ok(Value::Object(configuration))
 }
 
-/// `merchantLifecycleFingerprint(command)` (1165–1169): SHA-256 строки
+/// `merchantLifecycleFingerprint(command)` (1166–1170): SHA-256 строки
 /// `JSON.stringify` команды без `request_fingerprint`.
 pub fn merchant_lifecycle_fingerprint(command: &Value) -> String {
     let mut semantic = command.clone();
@@ -421,7 +421,7 @@ pub fn merchant_lifecycle_fingerprint(command: &Value) -> String {
     sk_core::hash::sha256_hex(js::stringify(&semantic).as_bytes())
 }
 
-/// `sanitizeMerchantLifecycleCommand(input)` (1171–1202).
+/// `sanitizeMerchantLifecycleCommand(input)` (1172–1203).
 pub fn sanitize_merchant_lifecycle_command(input: &Value) -> GuardResult<Value> {
     if !input.is_object() {
         return Err(invalid("Нужна одна lifecycle-команда торговца"));
@@ -483,7 +483,7 @@ fn own_fingerprint(command: &Value) -> String {
     js::s(get(Some(command), "request_fingerprint"))
 }
 
-/// `assertMerchantLifecycleIdempotency(campaignId, idempotencyKey, command)` (1204–1211).
+/// `assertMerchantLifecycleIdempotency(campaignId, idempotencyKey, command)` (1205–1212).
 pub fn assert_merchant_lifecycle_idempotency(journal: &dyn DuplicateLookup, campaign_id: &str, idempotency_key: &str, command: &Value) -> GuardResult<()> {
     let Some(duplicate) = journal.get_by_idempotency_key(campaign_id, idempotency_key)? else { return Ok(()) };
     let fingerprints = request_fingerprints(get(Some(&duplicate), "events"), DUPLICATE_EVENTS)?;
@@ -493,7 +493,7 @@ pub fn assert_merchant_lifecycle_idempotency(journal: &dyn DuplicateLookup, camp
     Ok(())
 }
 
-/// `assertMerchantLifecycleResultFingerprint(result, command)` (1213–1218).
+/// `assertMerchantLifecycleResultFingerprint(result, command)` (1214–1219).
 pub fn assert_merchant_lifecycle_result_fingerprint(result: &Value, command: &Value) -> GuardResult<()> {
     let fingerprints = request_fingerprints(get(Some(result), "mechanics"), RESULT_MECHANICS)?;
     if fingerprints.len() != 1 || !fingerprints.contains(&own_fingerprint(command)) {

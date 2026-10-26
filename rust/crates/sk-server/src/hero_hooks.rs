@@ -1,5 +1,5 @@
 //! С17: зацепки из предысторий героев на хуке проекции — перенос
-//! `server/index.mjs:2837–2892`.
+//! `server/index.mjs:2838–2893`.
 //!
 //! Стадия `hero-hooks` координатора последствий
 //! ([`crate::clocks::run_post_commit`]): когда у героя собран лист, а зацепок
@@ -55,7 +55,7 @@ pub fn pending_hero_ids(state: &Value, campaign_id: &str) -> Vec<String> {
     weaver().map(|weaver| weaver.pending_hero_ids(state, campaign_id)).unwrap_or_default()
 }
 
-/// `weaveHeroHooksFor({ campaignId })` (2850–2869): план модели — коммит на
+/// `weaveHeroHooksFor({ campaignId })` (2851–2870): план модели — коммит на
 /// героя; кому не сплелось, а попытки ещё есть — стадия не засчитывается.
 pub async fn weave_hero_hooks_for(core: &Rc<GameCore>, campaign_id: &str) -> Result<Value, String> {
     let weaver = weaver().ok_or_else(|| "игровое ядро остановлено".to_string())?;
@@ -84,7 +84,7 @@ pub async fn weave_hero_hooks_for(core: &Rc<GameCore>, campaign_id: &str) -> Res
     Ok(json!({ "hero_ids": hero_ids, "committed_hero_ids": committed_hero_ids, "provider": woven.get("provider").cloned().unwrap_or(Value::Null) }))
 }
 
-/// Хук «проекция записана» (2876–2892): ждущие герои вне уже идущего
+/// Хук «проекция записана» (2877–2893): ждущие герои вне уже идущего
 /// плетения — прогон стадии `hero-hooks`.
 fn hero_hooks_hook(core: Rc<GameCore>, campaign_id: String, room: Room) -> LocalFuture<()> {
     Box::pin(async move {

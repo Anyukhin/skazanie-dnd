@@ -1,6 +1,6 @@
-//! С6: кампании и членство — `GET /api/campaigns` (4444), `GET /api/heroes`
-//! (4472), `POST /api/campaigns` (4484–4594), `POST …/invites` (4805–4843),
-//! `POST …/join` (4846–4868).
+//! С6: кампании и членство — `GET /api/campaigns` (4445), `GET /api/heroes`
+//! (4473), `POST /api/campaigns` (4485–4595), `POST …/invites` (4806–4844),
+//! `POST …/join` (4847–4869).
 //!
 //! Маршруты объявляются с номером строки `server/index.mjs`, где JS их
 //! проверяет: порядок общей таблицы (`routes::table`) выводится из этих
@@ -179,7 +179,7 @@ fn created_hero_ids(state: &Value) -> Vec<String> {
 
 // --- GET /api/campaigns -----------------------------------------------------
 
-/// Карточка кампании списка (4451–4466).
+/// Карточка кампании списка (4452–4467).
 fn campaign_card(user: &Value, code: &str, room: &Room, state: &Value) -> Value {
     let party = state.get("partyMemberIds");
     let players = state.get("players");
@@ -219,7 +219,7 @@ fn campaign_card(user: &Value, code: &str, room: &Room, state: &Value) -> Value 
     Value::Object(card)
 }
 
-/// `GET /api/campaigns` (4444–4470): кампании, доступные пользователю, свежие
+/// `GET /api/campaigns` (4445–4471): кампании, доступные пользователю, свежие
 /// первыми; сбой — 500 с текстом ошибки.
 fn list_campaigns(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     Box::pin(async move {
@@ -255,7 +255,7 @@ fn list_campaigns(ctx: &mut RouteCtx) -> RouteFuture<'_> {
 
 // --- GET /api/heroes --------------------------------------------------------
 
-/// `GET /api/heroes` (4472–4482): только администратору — герои всех
+/// `GET /api/heroes` (4473–4483): только администратору — герои всех
 /// кампаний, один на id (поздний перекрывает значение, место — первого),
 /// по имени в русской локали.
 fn list_heroes(ctx: &mut RouteCtx) -> RouteFuture<'_> {
@@ -321,7 +321,7 @@ fn bootstrap_input(code: &str, body: &Value, bootstrap: &Value, players: Value) 
     Value::Object(input)
 }
 
-/// Импорт готового состояния администратором (4549–4575): режим кампании,
+/// Импорт готового состояния администратором (4550–4576): режим кампании,
 /// редакция и состав пакетов — серверные, выбор редакции сразу закреплён.
 fn locked_import(body: &Value, initial: Value) -> Result<Value, Caught> {
     sk_society::campaign_stories::validate_campaign_mode(initial.get("campaignConcept").and_then(|concept| concept.get("campaign_mode"))).map_err(Failure::from)?;
@@ -353,7 +353,7 @@ fn locked_import(body: &Value, initial: Value) -> Result<Value, Caught> {
     Ok(locked)
 }
 
-/// `eventStore.initializeCampaign(...)` и `saveRoom(code, ..., 0)` (4577–4592).
+/// `eventStore.initializeCampaign(...)` и `saveRoom(code, ..., 0)` (4578–4593).
 fn initialize_request(code: &str, state: &Value) -> InitializeRequest {
     let mut request = InitializeRequest::new(code, state.clone());
     let text = |key: &str| state.get(key).filter(|value| !value.is_null()).map(|value| js::s(Some(value)));
@@ -484,7 +484,7 @@ async fn create_body(ctx: &mut RouteCtx, creator: &Value) -> Result<axum::respon
             })
         })
         .await??;
-    // Первое место — создателя (4593–4605): обычный игрок всегда, а
+    // Первое место — создателя (4594–4606): обычный игрок всегда, а
     // администратор — когда мастер создания оставил места пустыми.
     let owner_hero_ids: Vec<Value> = array(state.get("partyMemberIds")).iter().take(1).cloned().collect();
     let first_id = js::string(owner_hero_ids.first());
@@ -501,7 +501,7 @@ async fn create_body(ctx: &mut RouteCtx, creator: &Value) -> Result<axum::respon
     Ok(json(StatusCode::CREATED, &js::spread(&room.to_json(), json!({ "user": user }))))
 }
 
-/// `POST /api/campaigns` (4484–4594): мастер создания (`bootstrap`) для
+/// `POST /api/campaigns` (4485–4595): мастер создания (`bootstrap`) для
 /// всех, готовое состояние (`state`) — только администратору; любое
 /// исключение — 400 `{ error, code }`.
 fn create_campaign(ctx: &mut RouteCtx) -> RouteFuture<'_> {
@@ -568,7 +568,7 @@ async fn invite_body(ctx: &mut RouteCtx, user: &Value) -> Result<axum::response:
     Ok(json(StatusCode::CREATED, &Value::Object(reply)))
 }
 
-/// `POST /api/campaigns/:id/invites` (4805–4843): приглашение владельца или
+/// `POST /api/campaigns/:id/invites` (4806–4844): приглашение владельца или
 /// администратора на свободные места; исключение — 400 `{ error }`.
 fn create_invite(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     Box::pin(async move {
@@ -605,7 +605,7 @@ async fn join_body(ctx: &mut RouteCtx, user: &Value) -> Result<axum::response::R
     Ok(json(StatusCode::OK, &Value::Object(reply)))
 }
 
-/// `POST /api/campaigns/:id/join` (4846–4868): вход по приглашению;
+/// `POST /api/campaigns/:id/join` (4847–4869): вход по приглашению;
 /// `CAMPAIGN_FULL` — 409, прочее исключение — 400 `{ error }`.
 fn join_campaign(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     Box::pin(async move {

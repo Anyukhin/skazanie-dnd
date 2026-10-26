@@ -1,8 +1,8 @@
 //! Умения классов: монах, боевой стиль, вдохновение, кара, Font of Magic, Lay on Hands, скрытая атака. Задача Р3.
 //!
 //! JS: `server/rules-engine.mjs`, 586–595 (маркеры монаха), 3188–3238,
-//! 3359–3401, 3429–3526, 5494–5503 (`assertMonkUnarmedActionAllowed`),
-//! 9516–9534, 9620.
+//! 3359–3401, 3429–3526, 5516–5525 (`assertMonkUnarmedActionAllowed`),
+//! 9538–9556, 9642.
 //!
 //! Маркеры контекста на `Symbol` (удар монаха бонусным действием, кара) —
 //! типизированные поля [`crate::context::Context`]; здесь — проверки по ним.
@@ -183,7 +183,7 @@ pub fn bardic_inspiration_for(state: &Value, actor_id: &str) -> Option<BardicIns
     Some(BardicInspiration { sides: bardic_inspiration_die_sides(bard), source_actor: source })
 }
 
-/// `bardicInspirationDieSides(bard)` (9620): к6, с 5-го к8, с 10-го к10, с 15-го к12.
+/// `bardicInspirationDieSides(bard)` (9642): к6, с 5-го к8, с 10-го к10, с 15-го к12.
 pub fn bardic_inspiration_die_sides(bard: Option<&Value>) -> i64 {
     let level = js::safe_int(at(bard, "level"), 1);
     if level >= 15 {
@@ -299,13 +299,13 @@ pub fn colossus_slayer_ready(state: &Value, actor: Option<&Value>, target: Optio
     stored != turn_key
 }
 
-/// `sneakAttackDiceCount(actor)` (9516): половина уровня вверх, 1–6 костей.
+/// `sneakAttackDiceCount(actor)` (9538): половина уровня вверх, 1–6 костей.
 pub fn sneak_attack_dice_count(actor: Option<&Value>) -> i64 {
     let level = js::safe_int(at(actor, "level"), 1).clamp(1, 12);
     (level + 1) / 2
 }
 
-/// `sneakAttackSupportingAlly(state, attackerId, targetId)` (9520–9534): союзник
+/// `sneakAttackSupportingAlly(state, attackerId, targetId)` (9542–9556): союзник
 /// атакующего в 5 футах от цели, дееспособный.
 pub fn sneak_attack_supporting_ally<'a>(state: &'a Value, attacker_id: &str, target_id: &str) -> Option<&'a Value> {
     let attacker_is_enemy = game::is_enemy_actor(state, attacker_id);
@@ -335,7 +335,7 @@ pub fn sneak_attack_supporting_ally<'a>(state: &'a Value, attacker_id: &str, tar
     })
 }
 
-/// `assertMonkUnarmedActionAllowed(state, actor, action)` (5494–5503).
+/// `assertMonkUnarmedActionAllowed(state, actor, action)` (5516–5525).
 pub fn assert_monk_unarmed_action_allowed(state: &Value, actor: Option<&Value>, action: Option<&Value>) -> Step {
     let action_id = js::s(at(action, "id"));
     if !MONK_BONUS_UNARMED_ACTION_IDS.contains(&action_id.as_str()) {

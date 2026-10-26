@@ -3,7 +3,7 @@
 //! молитвы у святыни (`shrinePrayerRefusalFor`) и события благословения
 //! (`blessingGrantedEvents`). Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 6042–6130, 11738–11837, 11937–12036.
+//! JS: `server/rules-engine.mjs`, 6064–6152, 11760–11859, 11959–12058.
 //!
 //! Предпросмотр — то, что игрок видит на карточке ручного броска: модификатор
 //! и режим кубиков считаются теми же функциями, что и исполнение команды.
@@ -126,7 +126,7 @@ pub fn preview_tavern_dice_roll(state: &Value, actor_id: Option<&Value>, approac
     Value::Object(preview)
 }
 
-/// `assertSendLetterAllowed(state, command)` (6042–6072): все отказы почты до
+/// `assertSendLetterAllowed(state, command)` (6064–6094): все отказы почты до
 /// первого события; возвращает адресата. Состояние — нормализованное.
 pub fn assert_send_letter_allowed(state: &Value, command: &Value) -> Result<Value, Halt> {
     use sk_world_life::courier_letters::{courier_addressee_for, open_courier_letters_for, COURIER_LETTER_OPEN_LIMIT};
@@ -163,7 +163,7 @@ pub fn catalog_item_owned(catalog_id: &str) -> Option<Value> {
     sk_items::item_catalog::catalog_item(catalog_id).cloned()
 }
 
-/// `validatedBeastTarget(state, command)` (6087–6130): зверь команды и всё,
+/// `validatedBeastTarget(state, command)` (6109–6152): зверь команды и всё,
 /// что проверяется раньше первого события; `{ beast_actor_id }`.
 pub fn validated_beast_target(state: &Value, command: &Value) -> Result<Value, Halt> {
     use sk_npc_world::beast_taming::{beast_food_item_for, beast_for, beast_id_for, beast_out_of_reach, beast_scare_cooldown_left, tameable_beasts};
@@ -304,7 +304,7 @@ pub fn scene_place_text(state: &Value) -> String {
     }
 }
 
-/// `blessingGrantedEvents(command, state, options)` (11993–12036): состояние
+/// `blessingGrantedEvents(command, state, options)` (12015–12058): состояние
 /// благословения и факт мира о месте.
 pub fn blessing_granted_events(command: &Value, state: &Value, grant: &BlessingGrant) -> Vec<Value> {
     use sk_npc_world::blessings::{BLESSING_ATTACK_BONUS, BLESSING_CONDITION, BLESSING_DURATION};

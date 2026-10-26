@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Сцена и карта: импорт, перестройка, смена сцены. Задача Р6.
 //!
-//! JS: `server/rules-engine.mjs`, 6843–6862, 6863–6878, 6879–6899. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6865–6884, 6885–6900, 6901–6921. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 
 use serde_json::Value;
@@ -22,7 +22,7 @@ fn set_field(command: &mut Value, key: &str, value: Value) {
     }
 }
 
-/// Блок 44 (6843–6862): импорт карты.
+/// Блок 44 (6865–6884): импорт карты.
 pub fn check_import_location_map(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "ImportLocationMap" {
         return Ok(());
@@ -52,7 +52,7 @@ pub fn check_import_location_map(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 45 (6863–6878): перестройка карты.
+/// Блок 45 (6885–6900): перестройка карты.
 pub fn check_rebuild_location_map(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "RebuildLocationMap" {
         return Ok(());
@@ -79,7 +79,7 @@ pub fn check_rebuild_location_map(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 46 (6879–6899): смена сцены.
+/// Блок 46 (6901–6921): смена сцены.
 pub fn check_advance_scene(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "AdvanceScene" {
         return Ok(());
@@ -93,7 +93,7 @@ pub fn check_advance_scene(v: &mut Validation<'_>) -> Step {
     if sk_society::law_and_order::guard_encounter_is_here(v.state, None) {
         return Err(rule("Стража стоит перед отрядом: пока ей не ответили, отряд никуда не уходит", "GUARD_ENCOUNTER_BLOCKS_SCENE"));
     }
-    // `normalizeCommand` JS (4649–4651) держит место `scene_args` и
+    // `normalizeCommand` JS (4671–4673) держит место `scene_args` и
     // `party_decision` даже без значения (`command.x = command.x ?? alias`
     // кладёт `undefined`), а каркас Rust такой ключ удаляет. От места зависит
     // порядок ключей проверенной команды: восстанавливаем его до присваиваний.

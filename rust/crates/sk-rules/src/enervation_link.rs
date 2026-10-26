@@ -1,5 +1,5 @@
 //! Связь «Обессиливания» — `enervationLinkFor` и
-//! `enervationContinuationActionFor` (`rules-engine.mjs`, 10809–10879).
+//! `enervationContinuationActionFor` (`rules-engine.mjs`, 10831–10901).
 //! Задача Р0.
 //!
 //! Связь принадлежит паре «концентрация заклинателя — состояние цели»;

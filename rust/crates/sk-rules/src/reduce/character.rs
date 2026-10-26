@@ -1,6 +1,6 @@
 //! Ветки редьюсера `applyGameEventCurrent`: Герой: выбор заклинаний и умений, броски характеристик и богатства, уровень и импорт, награды, опыт и вехи. Задача Р4.
 //!
-//! JS: `server/rules-engine.mjs`, 26809–26825, 26826–26868, 26869–26871, 26872–26874, 26876–26916, 26917–26921, 26957–26971, 26972–26987. Таблица меток — `reduce/table.rs`
+//! JS: `server/rules-engine.mjs`, 26831–26847, 26848–26890, 26891–26893, 26894–26896, 26898–26938, 26939–26943, 26979–26993, 26994–27009. Таблица меток — `reduce/table.rs`
 //! (Р0). Перенося ветку, уберите её метки из [`UNPORTED`] этого файла.
 //!
 //! Лист героя, выборы и уровень — `character-lifecycle` (крейт
@@ -82,7 +82,7 @@ fn finish_leveling_stage(state: &mut Value, key: &str) -> Reduced {
     Ok(())
 }
 
-/// `SpellSelectionsUpdated` (26809–26825).
+/// `SpellSelectionsUpdated` (26831–26847).
 pub(super) fn spell_selections_updated(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let known = js::strings_value(unique_strings(payload.get("known_spell_ids")));
@@ -98,7 +98,7 @@ pub(super) fn spell_selections_updated(state: &mut Value, event: &Event) -> Redu
     refresh_player_derived_state(state, &[key])
 }
 
-/// `CharacterChoicesUpdated` (26826–26868).
+/// `CharacterChoicesUpdated` (26848–26890).
 pub(super) fn character_choices_updated(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let field = |key: &str| payload.get(key);
@@ -181,17 +181,17 @@ fn record_creation_roll(state: &mut Value, event: &Event, key: &str) -> Reduced 
     Ok(())
 }
 
-/// `CharacterAbilitiesRolled` (26869–26871).
+/// `CharacterAbilitiesRolled` (26891–26893).
 pub(super) fn character_abilities_rolled(state: &mut Value, event: &Event) -> Reduced {
     record_creation_roll(state, event, "abilities")
 }
 
-/// `CharacterWealthRolled` (26872–26874).
+/// `CharacterWealthRolled` (26894–26896).
 pub(super) fn character_wealth_rolled(state: &mut Value, event: &Event) -> Reduced {
     record_creation_roll(state, event, "wealth")
 }
 
-/// `CharacterLeveledUp`, `CharacterImported` (26876–26916).
+/// `CharacterLeveledUp`, `CharacterImported` (26898–26938).
 pub(super) fn character_lifecycle_event(state: &mut Value, event: &Event) -> Reduced {
     let next = apply_character_lifecycle_event(state, &event_value(event)).map_err(lifecycle_error)?;
     state["players"] = next.get("players").cloned().unwrap_or(Value::Null);
@@ -272,7 +272,7 @@ fn spend_milestones(state: &mut Value) -> Reduced {
     Ok(())
 }
 
-/// `EncounterRewardsDistributed` (26917–26921).
+/// `EncounterRewardsDistributed` (26939–26943).
 pub(super) fn encounter_rewards_distributed(state: &mut Value, event: &Event) -> Reduced {
     let recipient_ids = sk_character::encounter_rewards::apply_encounter_rewards_distribution(state, &event_value(event)).map_err(|error| module_error(error.code, error.message))?;
     if !recipient_ids.is_empty() {
@@ -281,7 +281,7 @@ pub(super) fn encounter_rewards_distributed(state: &mut Value, event: &Event) ->
     Ok(())
 }
 
-/// `ExperienceAwarded` (26957–26971): опыт делится поровну, остаток — первым
+/// `ExperienceAwarded` (26979–26993): опыт делится поровну, остаток — первым
 /// в списке; поле `experience` получают все герои.
 pub(super) fn experience_awarded(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
@@ -314,7 +314,7 @@ pub(super) fn experience_awarded(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `MilestoneAwarded` (26972–26987): веха идемпотентна по `event_id`.
+/// `MilestoneAwarded` (26994–27009): веха идемпотентна по `event_id`.
 pub(super) fn milestone_awarded(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let source = event.extra.get("event_id").filter(|value| !value.is_null()).or_else(|| payload.get("milestone").filter(|value| !value.is_null()));

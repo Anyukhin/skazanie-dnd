@@ -1,4 +1,4 @@
-//! Проверка команды — `validateCommand` (`rules-engine.mjs`, 6132–7856).
+//! Проверка команды — `validateCommand` (`rules-engine.mjs`, 6154–7878).
 //! Задача Р0: порядок блоков и общий проход.
 //!
 //! В JS это не `switch`, а 80 последовательных операторов, и **порядок
@@ -45,7 +45,7 @@ pub struct Validation<'a> {
     /// Команда: после `normalizeCommand`, дополняется блоками.
     pub command: Value,
     pub context: &'a Context,
-    /// `actorFate` (6981): судьба действующего героя — её читают блоки 56 и 57.
+    /// `actorFate` (7003): судьба действующего героя — её читают блоки 56 и 57.
     pub actor_fate: Option<Value>,
 }
 

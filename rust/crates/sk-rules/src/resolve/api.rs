@@ -1,7 +1,7 @@
 //! Публичные обёртки разбора (`rules-engine.mjs`): `resolveCommand`
-//! (12808–12822), `resolveCommandWithPauses` (12994–13011), предпочтения
-//! реакций `resolveReactionPreferences` (12762–12806), план `resolveCommands`
-//! (27190–27244) и `RulesEngine` (27504–27528). Задача Р5.
+//! (12830–12844), `resolveCommandWithPauses` (13016–13033), предпочтения
+//! реакций `resolveReactionPreferences` (12784–12828), план `resolveCommands`
+//! (27212–27266) и `RulesEngine` (27526–27550). Задача Р5.
 //!
 //! Пауза боя ловится здесь (`isCombatPause`): на верхнем уровне итог — префикс
 //! и событие окна с `pending_execution ??= pendingExecutionFor(context)`, во

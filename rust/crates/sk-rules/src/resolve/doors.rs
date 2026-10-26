@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Двери: баррикада, разбор баррикады, открыть и выломать. Задача Р11.
 //!
-//! JS: `server/rules-engine.mjs`, 19120–19140, 19141–19164, 19165–19257. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 19142–19162, 19163–19186, 19187–19279. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -101,7 +101,7 @@ fn check_resolved(r: &mut Resolve<'_>, ability: &str, skill: &str, check: &Value
     r.events.push(event_from(&source, "AbilityCheckResolved", Some(Value::Object(payload)), Some(&json!([]))));
 }
 
-/// `BarricadeDoor` (19120–19140).
+/// `BarricadeDoor` (19142–19162).
 pub fn barricade_door(r: &mut Resolve<'_>) -> Step {
     let Some(map) = ensure_map(r)? else {
         return Err(rule("Для баррикады нужна тактическая карта", "TACTICAL_MAP_REQUIRED"));
@@ -165,7 +165,7 @@ pub fn barricade_door(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ClearDoorBarricade` (19141–19164).
+/// `ClearDoorBarricade` (19163–19186).
 pub fn clear_door_barricade(r: &mut Resolve<'_>) -> Step {
     let map = ensure_map(r)?;
     let Some((map, door)) = map.as_ref().and_then(|map| door_by_id(map, &js::s(r.command.get("door_id"))).map(|door| (map, door))) else {
@@ -229,7 +229,7 @@ fn reveal_beyond_door(r: &mut Resolve<'_>, map: &TacticalMap, at: sk_core::Point
     }
 }
 
-/// `OperateDoor` (19165–19257).
+/// `OperateDoor` (19187–19279).
 pub fn operate_door(r: &mut Resolve<'_>) -> Step {
     let Some(map) = ensure_map(r)? else {
         return Err(rule("Для двери нужна тактическая карта", "TACTICAL_MAP_REQUIRED"));

@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Атака: легендарное и особое действие монстра, атака оружием, смена оружия, областная атака. Задача Р8.
 //!
-//! JS: `server/rules-engine.mjs`, 6703–6705, 6706–6710, 7222–7301, 7302–7316, 7317–7324. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6725–6727, 6728–6732, 7244–7323, 7324–7338, 7339–7346. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела. Блок 30 (6711–6713, магия
 //! стат-блока) — точка входа Р9 (`validate/spell.rs`).
 
@@ -23,7 +23,7 @@ fn at<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
     value.and_then(|value| value.as_object()).and_then(|map| map.get(key))
 }
 
-/// Блок 28 (6703–6705): легендарное действие.
+/// Блок 28 (6725–6727): легендарное действие.
 pub fn check_legendary_action(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "UseLegendaryAction" {
         return Ok(());
@@ -33,7 +33,7 @@ pub fn check_legendary_action(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 29 (6706–6710): особое действие монстра.
+/// Блок 29 (6728–6732): особое действие монстра.
 pub fn check_monster_action(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "UseMonsterAction" {
         return Ok(());
@@ -55,7 +55,7 @@ fn type_error(value: Option<&Value>, method: &str) -> Halt {
     Fault::type_error(format!("Cannot read properties of {base} (reading '{method}')")).into()
 }
 
-/// Блок 66 (7222–7301): атака оружием.
+/// Блок 66 (7244–7323): атака оружием.
 pub fn check_make_attack(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "MakeAttack" {
         return Ok(());
@@ -167,7 +167,7 @@ pub fn check_make_attack(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 67 (7302–7316): смена оружия.
+/// Блок 67 (7324–7338): смена оружия.
 pub fn check_change_weapon(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "ChangeWeapon" {
         return Ok(());
@@ -194,7 +194,7 @@ pub fn check_change_weapon(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 68 (7317–7324): областная атака предметом.
+/// Блок 68 (7339–7346): областная атака предметом.
 pub fn check_make_area_attack(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "MakeAreaAttack" {
         return Ok(());

@@ -1,7 +1,7 @@
 //! Навыки и знания о противнике (`ENEMY_LORE_*`, `skillProficiencyForActor`). Задача Р2.
 //!
 //! JS: `server/rules-engine.mjs`, 709–742 (опознание противника: навык и СЛ),
-//! 4889–5053 (владение навыком, временные навыки заклинаний, базовый
+//! 4911–5075 (владение навыком, временные навыки заклинаний, базовый
 //! модификатор спасброска), 5475 (`persuasionCheckModifier`).
 //!
 //! Владение читается только из нормализованного листа; точные totals
@@ -70,7 +70,7 @@ pub fn enemy_lore_check_for(actor: Option<&Value>) -> Value {
     json!({ "skill": skill, "difficulty_category": category, "difficulty": enemy_lore_difficulty(category), "challenge_rating": js::num(challenge) })
 }
 
-// --- владение навыком (4889–5053) ---------------------------------------------
+// --- владение навыком (4911–5075) ---------------------------------------------
 
 /// `canonicalSkillId(value)`: `String(value ?? '').trim().toLocaleLowerCase('en').replace(/_/g, '-')`.
 pub fn canonical_skill_id(value: Option<&Value>) -> String {

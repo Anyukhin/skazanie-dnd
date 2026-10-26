@@ -1,6 +1,6 @@
 //! Компоненты заклинаний: свободная рука, фокус, материалы. Задача Р5.
 //!
-//! JS: `server/rules-engine.mjs`, 9175–9334 (кроме `assertRevivableHero`,
+//! JS: `server/rules-engine.mjs`, 9197–9356 (кроме `assertRevivableHero`,
 //! 9218 — Р2, `death.rs`): `spellInventoryFor`, `PHB_MATERIAL_BOOKS`,
 //! `spellMaterialPaymentFor`, `spellMaterialItemFor`, `spellComponentCostEvents`,
 //! `spellComponentAvailabilityFor`, `assertSpellComponentsAllowed`.

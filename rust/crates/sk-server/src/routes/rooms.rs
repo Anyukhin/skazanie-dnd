@@ -1,11 +1,11 @@
-//! С10: комната, общий кубик, выдача кости — `server/index.mjs:6007–6113`:
+//! С10: комната, общий кубик, выдача кости — `server/index.mjs:6008–6114`:
 //! `POST /api/rooms/:id/dice` (сырой адрес, 6010), `GET`/`PUT /api/rooms/:id`
-//! (6069, 6083), `POST /api/roll` (сырой адрес, 6093).
+//! (6070, 6084), `POST /api/roll` (сырой адрес, 6093).
 //!
 //! Маршруты объявляются с номером строки `server/index.mjs`, где JS их
 //! проверяет: порядок общей таблицы (`routes::table`) выводится из этих
-//! номеров. Комната (`roomMatch`) разбирается один раз на строке 6009, а метод
-//! JS сверяет ниже (6069 GET, 6083 PUT): здесь это один маршрут строки 6009 с
+//! номеров. Комната (`roomMatch`) разбирается один раз на строке 6010, а метод
+//! JS сверяет ниже (6069 GET, 6083 PUT): здесь это один маршрут строки 6010 с
 //! набором методов `GET`/`PUT` и выбором по методу внутри. Между 6009 и 6093
 //! других маршрутов нет, порядок проверок тот же. Кубик и `/api/roll`
 //! сравнивают сырой `req.url`: со строкой запроса они не совпадают (404),
@@ -35,16 +35,16 @@ use crate::room::{self, Room};
 use crate::routes::campaigns::Caught;
 use crate::state::AppState;
 
-/// Методы комнаты: GET (6069) и PUT (6083); прочие идут дальше, к 404.
+/// Методы комнаты: GET (6070) и PUT (6084); прочие идут дальше, к 404.
 const ROOM_METHODS: &[Method] = &[Method::GET, Method::PUT];
 
 pub fn routes() -> Vec<Route> {
     vec![
-        // `parsedUrl.pathname.match(/^\/api\/rooms\/([A-Za-z0-9-]+)$/)` (6009), GET 6069 и PUT 6083.
+        // `parsedUrl.pathname.match(/^\/api\/rooms\/([A-Za-z0-9-]+)$/)` (6010), GET 6069 и PUT 6083.
         Route::new(6010, Methods::Set(ROOM_METHODS), Matcher::path_template("/api/rooms/{id}"), room_route),
-        // `req.url?.match(/^\/api\/rooms\/([A-Za-z0-9-]+)\/dice$/)` и `POST` (6010–6011).
+        // `req.url?.match(/^\/api\/rooms\/([A-Za-z0-9-]+)\/dice$/)` и `POST` (6011–6012).
         Route::post(6011, Matcher::raw_template("/api/rooms/{id}/dice"), public_die),
-        // `req.url === '/api/roll' && req.method === 'POST'` (6093).
+        // `req.url === '/api/roll' && req.method === 'POST'` (6094).
         Route::post(6094, Matcher::raw("/api/roll"), issue_roll),
     ]
 }
@@ -101,7 +101,7 @@ fn room_route(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     })
 }
 
-/// `GET /api/rooms/:id?map_hash=` (6069–6082): отказ до сверки, сверка
+/// `GET /api/rooms/:id?map_hash=` (6070–6083): отказ до сверки, сверка
 /// проекции, права, присутствие, проекция зрителя и сжатие карты по хешу
 /// клиента. Комната без `state` — 200 как есть, но только тому, кого пустил
 /// `canAccessRoom` (без `sessionCode` — только администратору). Всё вне
@@ -172,7 +172,7 @@ async fn read_room(ctx: &mut RouteCtx) -> ApiResult {
     Ok(json(StatusCode::OK, &body))
 }
 
-/// `PUT /api/rooms/:id` (6083–6092): полная запись комнаты снята — 410
+/// `PUT /api/rooms/:id` (6084–6093): полная запись комнаты снята — 410
 /// `ROOM_MUTATION_RETIRED` тому, кому комната доступна. Тело не читается.
 async fn retired_room_write(ctx: &mut RouteCtx) -> ApiResult {
     let user = require_user(ctx).await?;
@@ -188,7 +188,7 @@ async fn retired_room_write(ctx: &mut RouteCtx) -> ApiResult {
 
 // --- POST /api/rooms/:id/dice -----------------------------------------------
 
-/// `POST /api/rooms/:id/dice` (6010–6067): общий свободный бросок владельца
+/// `POST /api/rooms/:id/dice` (6011–6068): общий свободный бросок владельца
 /// героя. Кость — из закрытого набора [`PUBLIC_DIE_SIDES`], бросает сервер,
 /// событие `PublicDieRolled` идёт производным путём с ключом
 /// `public-die:<roll_id>`. Исключение внутри — 400 с одним текстом (без кода).
@@ -236,7 +236,7 @@ async fn public_die_body(ctx: &mut RouteCtx, user: Value) -> Result<axum::respon
         .await?
 }
 
-/// Шаги кубика после проверки прав (6024–6066), в ядре.
+/// Шаги кубика после проверки прав (6025–6067), в ядре.
 fn roll_public_die(core: &std::rc::Rc<crate::core::GameCore>, code: &str, current: &Value, user: &Value, player_id: &str, sides: i64) -> Result<axum::response::Response, Caught> {
     sk_director::campaign_lifecycle::assert_campaign_playable(current).map_err(|error| Failure::new(error.message, error.code.as_deref()))?;
     let players = current.get("players").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
@@ -287,7 +287,7 @@ fn roll_public_die(core: &std::rc::Rc<crate::core::GameCore>, code: &str, curren
 
 // --- POST /api/roll ---------------------------------------------------------
 
-/// `POST /api/roll` (6093–6113): кость только под объявленную проверку
+/// `POST /api/roll` (6094–6114): кость только под объявленную проверку
 /// (`check_id` карточки первой фазы), подпись, модификатор и СЛ — из
 /// карточки. Без `check_id` — 400 `CHECK_REQUIRED`. Исключение — 400 с
 /// текстом и кодом.

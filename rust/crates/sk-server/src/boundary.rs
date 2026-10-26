@@ -1,4 +1,4 @@
-//! Последняя граница HTTP — `failUnhandledRequest` (`server/index.mjs:3885–3917`).
+//! Последняя граница HTTP — `failUnhandledRequest` (`server/index.mjs:3886–3918`).
 //!
 //! Необработанная ошибка маршрута завершает только свой запрос:
 //!

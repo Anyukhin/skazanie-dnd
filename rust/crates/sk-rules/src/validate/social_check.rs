@@ -1,7 +1,7 @@
 //! Блоки `validateCommand`: социальная проверка `MakeAbilityCheck` от
 //! контроллера NPC. Задача Р5.
 //!
-//! JS: `server/rules-engine.mjs`, 6152–6183. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6174–6205. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 //!
 //! Блок переписывает команду на месте: герой, навык, характеристика, СЛ,
@@ -15,7 +15,7 @@ use super::Validation;
 use crate::core::player_actor;
 use crate::pause::{rule, Step};
 
-/// Блок 8 (6152–6183): социальная проверка только от контроллера NPC.
+/// Блок 8 (6174–6205): социальная проверка только от контроллера NPC.
 pub fn check_social_check(v: &mut Validation<'_>) -> Step {
     if v.command.get("command_type").and_then(Value::as_str) != Some("MakeAbilityCheck") || !js::present(v.command.get("social_check")) {
         return Ok(());

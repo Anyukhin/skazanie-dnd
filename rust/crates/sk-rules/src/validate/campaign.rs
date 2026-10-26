@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Кампания: память мира, социальные NPC, сборка и жизненный цикл героя, решения отряда, финал, дуга. Задача Р6.
 //!
-//! JS: `server/rules-engine.mjs`, 6184–6193, 6194–6203, 6684–6693, 6764–6776, 6810–6813, 6814–6825, 6826–6842. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6206–6215, 6216–6225, 6706–6715, 6786–6798, 6832–6835, 6836–6847, 6848–6864. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 //!
 //! Отказ модуля (`WorldMemoryValidationError`, `NpcSocialValidationError`,
@@ -77,7 +77,7 @@ pub(crate) fn quest_decision_halt(error: sk_memory::party_decision::QuestDecisio
     Fault::new(name, error.message()).with_code(error.code()).into()
 }
 
-/// Блок 9 (6184–6193): команды памяти мира.
+/// Блок 9 (6206–6215): команды памяти мира.
 pub fn check_world_memory(v: &mut Validation<'_>) -> Step {
     if !WORLD_MEMORY_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());
@@ -87,7 +87,7 @@ pub fn check_world_memory(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 10 (6194–6203): социальные команды NPC.
+/// Блок 10 (6216–6225): социальные команды NPC.
 pub fn check_npc_social(v: &mut Validation<'_>) -> Step {
     if !NPC_SOCIAL_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());
@@ -97,7 +97,7 @@ pub fn check_npc_social(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 27 (6684–6693): сборка героя.
+/// Блок 27 (6706–6715): сборка героя.
 pub fn check_character_build(v: &mut Validation<'_>) -> Step {
     if !CHARACTER_BUILD_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());
@@ -108,7 +108,7 @@ pub fn check_character_build(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 33 (6764–6776): жизненный цикл героя.
+/// Блок 33 (6786–6798): жизненный цикл героя.
 pub fn check_character_lifecycle(v: &mut Validation<'_>) -> Step {
     let kind = command_type(v);
     if !CHARACTER_LIFECYCLE_COMMAND_TYPES.contains(&kind.as_str()) {
@@ -127,7 +127,7 @@ pub fn check_character_lifecycle(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 41 (6810–6813): решение отряда по поручению — ссылка проверяется
+/// Блок 41 (6832–6835): решение отряда по поручению — ссылка проверяется
 /// заново при каждом повторе.
 pub fn check_quest_decision(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "ResolveQuestDecision" {
@@ -151,7 +151,7 @@ fn clean_or_empty(value: Option<&Value>, max: usize) -> String {
     slice_utf16(sk_core::text::trim(&sk_core::text::nfkc(&or_text(value, ""))), max)
 }
 
-/// Блок 42 (6814–6825): финал кампании.
+/// Блок 42 (6836–6847): финал кампании.
 pub fn check_complete_campaign(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "CompleteCampaign" {
         return Ok(());
@@ -174,7 +174,7 @@ pub fn check_complete_campaign(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 43 (6826–6842): следующая дуга.
+/// Блок 43 (6848–6864): следующая дуга.
 pub fn check_advance_campaign_arc(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "AdvanceCampaignArc" {
         return Ok(());

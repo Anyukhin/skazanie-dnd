@@ -1,17 +1,17 @@
 //! С18.4: автономия кампании — `server/index.mjs`:
 //!
-//! - `POST /api/campaigns/:id/autonomy/intents` (5039–5066) — намерение
+//! - `POST /api/campaigns/:id/autonomy/intents` (5040–5067) — намерение
 //!   Режиссёра от администратора: `autonomousCampaign.runIntent`, по
 //!   `run_combat: true` — автобой (`runCombat`, ключи `${key}:combat:…`) и
 //!   завершение встречи (`${key}:completion`), проекция;
-//! - `POST /api/campaigns/:id/autonomy/advance` (5069–5197) — шаг Режиссёра от
+//! - `POST /api/campaigns/:id/autonomy/advance` (5070–5198) — шаг Режиссёра от
 //!   игрока: продолжение решения отряда по `interaction_id`
 //!   (`directorResumeKeyForInteraction`, 2575–2599), повтор ключа
 //!   (`${key}:intent`, `${key}:custom`), готовность героев
 //!   (`assertDirectorAdvanceReady`, 2563–2573), завершение встречи стадией
 //!   `encounter-completion` координатора последствий, выбор Режиссёра,
 //!   `runIntent`, строка Режиссёра и сцена после схватки в летописи;
-//! - `warnOnDeadlyEncounter` (3094–3105) — строка «Оценка угрозы» после
+//! - `warnOnDeadlyEncounter` (3095–3106) — строка «Оценка угрозы» после
 //!   смертельной встречи.
 //!
 //! Стадия `encounter-completion` координатора последствий
@@ -55,9 +55,9 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     vec![
-        // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/intents$/` и `POST` (5039–5040).
+        // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/intents$/` и `POST` (5040–5041).
         Route::post(5040, Matcher::path_template("/api/campaigns/{id}/autonomy/intents"), intents),
-        // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/advance$/` и `POST` (5069–5070).
+        // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/advance$/` и `POST` (5070–5071).
         Route::post(5070, Matcher::path_template("/api/campaigns/{id}/autonomy/advance"), advance),
     ]
 }
@@ -67,7 +67,7 @@ pub fn routes() -> Vec<Route> {
 const HOT_CLIENT_CLASS: &str = "FallbackLLMClient";
 const NOT_FOUND: &str = "Кампания не найдена";
 const NO_ACCESS: &str = "Нет доступа к этой кампании";
-/// Коды 400 обоих маршрутов (5065, 5193).
+/// Коды 400 обоих маршрутов (5066, 5194).
 const BAD_REQUEST_CODES: [&str; 2] = ["DIRECTOR_INTENT_NOT_ALLOWED", "DIRECTOR_MECHANICS_FORBIDDEN"];
 const IDEMPOTENCY_HEADER: &str = "x-idempotency-key";
 
@@ -162,7 +162,7 @@ fn playable(state: &Value) -> Result<(), Failure> {
     sk_director::campaign_lifecycle::assert_campaign_playable(state).map(|_| ()).map_err(|error| Failure::new(error.message, error.code.as_deref()))
 }
 
-/// `warnOnDeadlyEncounter(campaignId, events)` (3094–3105): строка «Оценка
+/// `warnOnDeadlyEncounter(campaignId, events)` (3095–3106): строка «Оценка
 /// угрозы» после созданной смертельной встречи; id — по событию встречи.
 pub fn warn_on_deadly_encounter(core: &Rc<GameCore>, campaign_id: &str, events: &[Value]) -> Result<(), Failure> {
     let created = events.iter().find(|event| is_type(event, "EncounterCreated") && js::s(at(Some(event), &["payload", "encounter", "difficulty"])) == "deadly");
@@ -177,7 +177,7 @@ pub fn warn_on_deadly_encounter(core: &Rc<GameCore>, campaign_id: &str, events: 
     append_room_journal(core, campaign_id, &[entry]).map(|_| ())
 }
 
-// --- POST autonomy/intents (5039–5066) -----------------------------------------
+// --- POST autonomy/intents (5040–5067) -----------------------------------------
 
 fn intents(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     Box::pin(async move {
@@ -231,7 +231,7 @@ async fn run_intents(core: Rc<GameCore>, app: Arc<AppState>, user: Value, body: 
     Ok(Value::Object(answer))
 }
 
-// --- directorResumeKeyForInteraction (2575–2599) --------------------------------
+// --- directorResumeKeyForInteraction (2576–2600) --------------------------------
 
 /// `/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u`.
 fn valid_interaction_id(id: &str) -> bool {
@@ -270,7 +270,7 @@ fn director_resume_key(core: &GameCore, campaign_id: &str, interaction_id: &str)
     Ok(intent_key)
 }
 
-// --- POST autonomy/advance (5069–5197) -----------------------------------------
+// --- POST autonomy/advance (5070–5198) -----------------------------------------
 
 fn advance(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     Box::pin(async move {
@@ -323,7 +323,7 @@ fn viewer(state: &Value, user: &Value, hero_ids: &[Value]) -> Result<Value, Fail
     Ok(viewer_state_for(state, user, Some(&Value::String(owned_viewer(hero_ids, state))))?.unwrap_or(Value::Null))
 }
 
-/// `assertDirectorAdvanceReady(campaignId, state)` (2563–2573).
+/// `assertDirectorAdvanceReady(campaignId, state)` (2564–2574).
 async fn assert_director_advance_ready(app: &Arc<AppState>, campaign_id: &str, state: &Value) -> Result<(), Caught> {
     let accounts = app.accounts.clone();
     let (code, checked) = (campaign_id.to_string(), state.clone());
@@ -516,7 +516,7 @@ fn director_narration(events: &[Value], state: &Value, intent_type: Option<&Valu
     }
 }
 
-// --- стадия encounter-completion координатора последствий (377–387) ------------
+// --- стадия encounter-completion координатора последствий (378–388) ------------
 
 /// `completeEncounter({ campaignId, stageKey })`: встреча закрыта, а
 /// завершения по ключу стадии ещё нет — `autonomousCampaign.completeEncounter`

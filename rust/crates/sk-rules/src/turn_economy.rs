@@ -1,5 +1,5 @@
-//! Экономика хода — перенос помощников `rules-engine.mjs` (9336–9509,
-//! 23645–23796, 24097–24198): кадры действия Атака (обычное, всплеск,
+//! Экономика хода — перенос помощников `rules-engine.mjs` (9358–9531,
+//! 23667–23818, 24119–24220): кадры действия Атака (обычное, всплеск,
 //! ускорение, лишнее), трата действия, перезарядка, тактический ход.
 //! Форма объекта экономики — как в JS, поэтому функции работают над JSON.
 //! Задача Р0 (сверено с JS эталоном `fixtures/turn-economy.json`).
@@ -474,7 +474,7 @@ pub fn spend_versioned_action_only(state: &mut Value, id: &str) {
     spend_versioned_action_frame(state, id, false, false);
 }
 
-/// `synchronizeTacticalTurn(state)` (24097–24112).
+/// `synchronizeTacticalTurn(state)` (24119–24134).
 pub fn synchronize_tactical_turn(state: &mut Value) {
     let combat = sk_core::game::combat(state);
     let initiative = combat.get("initiative").and_then(Value::as_array).cloned().unwrap_or_default();

@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Сцена, карта, время: переход между этажами, импорт и перестройка карты, смена сцены, время, раскрытие области, сущности. Задача Р6.
 //!
-//! JS: `server/rules-engine.mjs`, 19709–19782, 22310–22359, 22360–22462, 22463–22598, 22599–22604, 22739–22743, 22752–22754. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 19731–19804, 22332–22381, 22382–22484, 22485–22620, 22621–22626, 22761–22765, 22774–22776. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 //!
 //! Импорт слэба TaleSpire внедряется ([`crate::merchants::install_talespire_importer`]):
@@ -80,7 +80,7 @@ fn expired_summon_events(r: &mut Resolve<'_>) -> IndexSet<String> {
     expired
 }
 
-/// `UseLevelTransition` (19709–19782).
+/// `UseLevelTransition` (19731–19804).
 pub fn use_level_transition(r: &mut Resolve<'_>) -> Step {
     let Some(mut map) = crate::scene_map_sync::ensure_scene_tactical_map(&mut r.state).map_err(map_halt)? else {
         return Err(rule("Для перехода между этажами нужна тактическая карта", "TACTICAL_MAP_REQUIRED"));
@@ -203,7 +203,7 @@ fn location_name(primary: Option<&Value>, secondary: Option<&Value>, fallback: &
     }
 }
 
-/// `ImportLocationMap` (22310–22359).
+/// `ImportLocationMap` (22332–22381).
 pub fn import_location_map(r: &mut Resolve<'_>) -> Step {
     let location_id = field(&r.command, "location_id");
     let current = location_id.as_str() == Some(scene_location_id(&r.state).as_str());
@@ -243,7 +243,7 @@ pub fn import_location_map(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `RebuildLocationMap` (22360–22462).
+/// `RebuildLocationMap` (22382–22484).
 pub fn rebuild_location_map(r: &mut Resolve<'_>) -> Step {
     let location_id = scene_location_id(&r.state);
     let scene = r.state.get("scene").cloned().unwrap_or_else(|| json!({}));
@@ -403,7 +403,7 @@ fn draft_event(command: &Value, draft: &Value) -> Value {
     event_from(&source, &js::s(draft.get("event_type")), draft.get("payload").cloned(), draft.get("target_ids"))
 }
 
-/// `AdvanceScene` (22463–22598).
+/// `AdvanceScene` (22485–22620).
 pub fn advance_scene(r: &mut Resolve<'_>) -> Step {
     expired_summon_events(r);
     if js::truthy(r.command.get("party_decision")) {
@@ -543,7 +543,7 @@ pub fn advance_scene(r: &mut Resolve<'_>) -> Step {
     r.append_scenario_knight_presence(&command)
 }
 
-/// `AdvanceTime` (22599–22604).
+/// `AdvanceTime` (22621–22626).
 pub fn advance_time(r: &mut Resolve<'_>) -> Step {
     let amount = js::number(r.command.get("amount"));
     let amount = if amount.is_nan() { 0.0 } else { amount.max(0.0) };
@@ -552,7 +552,7 @@ pub fn advance_time(r: &mut Resolve<'_>) -> Step {
     r.append_world_time_consequences(&command, Some(&js::num(amount)), Some(&json!(unit)), TimeAdvanceOptions::default())
 }
 
-/// `RevealArea` (22739–22743).
+/// `RevealArea` (22761–22765).
 pub fn reveal_area(r: &mut Resolve<'_>) -> Step {
     let cells: Vec<Value> = match r.command.get("cells") {
         Some(Value::Array(cells)) => cells
@@ -571,7 +571,7 @@ pub fn reveal_area(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `SpawnEntity` (22752–22754).
+/// `SpawnEntity` (22774–22776).
 pub fn spawn_entity(r: &mut Resolve<'_>) -> Step {
     let entity = r.command.get("entity").filter(|value| !value.is_null()).cloned().unwrap_or_else(|| json!({}));
     r.events.push(event_from(&r.command, "EntitySpawned", Some(json!({ "entity": entity })), Some(&json!([]))));

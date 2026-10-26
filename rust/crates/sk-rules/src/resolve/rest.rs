@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Отдых: начало, трата кости хитов, завершение. Задача Р2.
 //!
-//! JS: `server/rules-engine.mjs`, 22605–22623, 22624–22664, 22665–22738. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 22627–22645, 22646–22686, 22687–22760. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -40,7 +40,7 @@ fn world_minutes(state: &Value) -> i64 {
     js::safe_int(at_path(Some(state), &["mechanics", "world_time", "elapsed_minutes"]), 0).max(0)
 }
 
-/// `StartRest` (22605–22623).
+/// `StartRest` (22627–22645).
 pub fn start_rest(r: &mut Resolve<'_>) -> Step {
     let started_at_minutes = world_minutes(&r.state);
     let rest_id = match r.command.get("rest_id").filter(|value| !value.is_null()) {
@@ -67,7 +67,7 @@ pub fn start_rest(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `SpendHitPointDie` (22624–22664).
+/// `SpendHitPointDie` (22646–22686).
 pub fn spend_hit_point_die(r: &mut Resolve<'_>) -> Step {
     let actor_id = r.command.get("actor_id").cloned().unwrap_or(Value::Null);
     let actor = player_actor(&r.state, Some(&actor_id)).cloned();
@@ -122,7 +122,7 @@ pub fn spend_hit_point_die(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `CompleteRest` (22665–22738).
+/// `CompleteRest` (22687–22760).
 pub fn complete_rest(r: &mut Resolve<'_>) -> Step {
     let actor_key = js::string(r.command.get("actor_id"));
     let mechanics = sk_core::game::mechanics(&r.state);

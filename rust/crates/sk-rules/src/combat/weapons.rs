@@ -724,7 +724,7 @@ pub struct OpportunityProfile {
     pub item_id: Value,
 }
 
-/// `opportunityAttackProfile(state, actor)` (4532): надетое оружие ближнего
+/// `opportunityAttackProfile(state, actor)` (4554): надетое оружие ближнего
 /// боя или собственная атака существа вплотную.
 pub fn opportunity_attack_profile(state: &Value, actor: Option<&Value>) -> Result<Option<OpportunityProfile>, Halt> {
     let equipped_melee = inventory_of(actor)
@@ -745,7 +745,7 @@ pub fn critical_damage_expression(expression: &str) -> Result<String, Halt> {
     Ok(format!("{count}d{}{}", parsed.sides, crate::core::signed(parsed.modifier)))
 }
 
-/// `weaponCoatingRiderFor(state, actorId, itemId)` (8962–8990): яд на оружии —
+/// `weaponCoatingRiderFor(state, actorId, itemId)` (8984–9012): яд на оружии —
 /// добавка урона той же формы, что у магических предметов.
 pub fn weapon_coating_rider_for(state: &Value, actor_id: Option<&Value>, item_id: Option<&Value>) -> Option<Value> {
     let condition_id = format!("weapon-coated:{}", js::s(item_id));

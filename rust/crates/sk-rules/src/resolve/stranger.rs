@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Незнакомец сценария `StageScenarioStranger` (приход и выдох). Задача Р11.
 //!
-//! JS: `server/rules-engine.mjs`, 20930–20985. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 20952–21007. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -39,7 +39,7 @@ fn with_visibility(command: &Value, visibility: Option<&Value>) -> Value {
     }
 }
 
-/// `StageScenarioStranger` (20930–20985).
+/// `StageScenarioStranger` (20952–21007).
 pub fn stage_scenario_stranger(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();

@@ -1,6 +1,6 @@
 //! Ветки редьюсера `applyGameEventCurrent`: Торговцы: создание, настройка, пополнение, часы экономики, перемещение, доступность, оценка, торг, покупка, услуги, продажа. Задача Р6.
 //!
-//! JS: `server/rules-engine.mjs`, 25492–25505, 25506–25521, 25522–25540, 25541–25550, 25551–25562, 25563–25570, 25571–25581, 25582–25605, 25606–25630, 25631–25652, 25653–25699. Таблица меток — `reduce/table.rs`
+//! JS: `server/rules-engine.mjs`, 25514–25527, 25528–25543, 25544–25562, 25563–25572, 25573–25584, 25585–25592, 25593–25603, 25604–25627, 25628–25652, 25653–25674, 25675–25721. Таблица меток — `reduce/table.rs`
 //! (Р0). Перенося ветку, уберите её метки из [`UNPORTED`] этого файла.
 //!
 //! Торговец из события проходит тот же нормализатор жизненного цикла, что и
@@ -62,7 +62,7 @@ fn stock_of(merchant: &Value) -> Vec<Value> {
     merchant.get("stock").and_then(Value::as_array).cloned().unwrap_or_default()
 }
 
-/// `MerchantCreated` (25492–25505).
+/// `MerchantCreated` (25514–25527).
 pub(super) fn merchant_created(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let merchant = lifecycle_merchant_from_canonical(payload.get("merchant"))?;
@@ -88,7 +88,7 @@ pub(super) fn merchant_created(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `MerchantConfigured` (25506–25521).
+/// `MerchantConfigured` (25528–25543).
 pub(super) fn merchant_configured(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     replace_merchant(state, &merchant_id(payload), |merchant| {
@@ -118,7 +118,7 @@ fn payload_entries(payload: &Value) -> &[Value] {
     payload.get("entries").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[])
 }
 
-/// `MerchantRestocked` (25522–25540).
+/// `MerchantRestocked` (25544–25562).
 pub(super) fn merchant_restocked(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     replace_merchant(state, &merchant_id(payload), |merchant| {
@@ -155,7 +155,7 @@ pub(super) fn merchant_restocked(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `MerchantEconomyClockAdvanced` (25541–25550).
+/// `MerchantEconomyClockAdvanced` (25563–25572).
 pub(super) fn merchant_economy_clock_advanced(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     replace_merchant(state, &merchant_id(payload), |merchant| Ok(apply_merchant_restock_plan(Some(merchant), Some(payload))))?;
@@ -171,7 +171,7 @@ pub(super) fn merchant_economy_clock_advanced(state: &mut Value, event: &Event) 
     Ok(())
 }
 
-/// `MerchantMoved` (25551–25562).
+/// `MerchantMoved` (25573–25584).
 pub(super) fn merchant_moved(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     replace_merchant(state, &merchant_id(payload), |merchant| {
@@ -198,7 +198,7 @@ pub(super) fn merchant_moved(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `MerchantAvailabilityChanged` (25563–25570).
+/// `MerchantAvailabilityChanged` (25585–25592).
 pub(super) fn merchant_availability_changed(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let available = is_true(payload.get("available_after"));
@@ -219,7 +219,7 @@ pub(super) fn merchant_availability_changed(state: &mut Value, event: &Event) ->
     Ok(())
 }
 
-/// `MerchantItemAppraised` (25571–25581).
+/// `MerchantItemAppraised` (25593–25603).
 pub(super) fn merchant_item_appraised(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let target = target_value(event);
@@ -239,7 +239,7 @@ pub(super) fn merchant_item_appraised(state: &mut Value, event: &Event) -> Reduc
     Ok(())
 }
 
-/// `MerchantBargainResolved` (25582–25605).
+/// `MerchantBargainResolved` (25604–25627).
 pub(super) fn merchant_bargain_resolved(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let success = is_true(payload.get("success"));
@@ -300,7 +300,7 @@ fn trade_entry(event: &Event, kind: &str) -> Map<String, Value> {
         .build()
 }
 
-/// `MerchantPurchaseCompleted` (25606–25630).
+/// `MerchantPurchaseCompleted` (25628–25652).
 pub(super) fn merchant_purchase_completed(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let target = target_of(event);
@@ -342,7 +342,7 @@ pub(super) fn merchant_purchase_completed(state: &mut Value, event: &Event) -> R
     Ok(())
 }
 
-/// `MerchantServicePurchased` (25631–25652).
+/// `MerchantServicePurchased` (25653–25674).
 pub(super) fn merchant_service_purchased(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let target = target_of(event);
@@ -375,7 +375,7 @@ pub(super) fn merchant_service_purchased(state: &mut Value, event: &Event) -> Re
     Ok(())
 }
 
-/// `MerchantSaleCompleted` (25653–25699).
+/// `MerchantSaleCompleted` (25675–25721).
 pub(super) fn merchant_sale_completed(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let target = target_of(event);

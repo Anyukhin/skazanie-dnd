@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Актёр, цели, полномочия и ход (`assertActorPermission`, `assertTurn`). Задача Р3.
 //!
-//! JS: `server/rules-engine.mjs`, 6955–6957, 6958–6972, 6973, 6974. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6977–6979, 6980–6994, 6995, 6996. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 
 use serde_json::{json, Value};
@@ -16,7 +16,7 @@ fn command_type(v: &Validation<'_>) -> String {
     js::s(v.command.get("command_type"))
 }
 
-/// Блок 50 (6955–6957): действующий персонаж найден.
+/// Блок 50 (6977–6979): действующий персонаж найден.
 pub fn check_actor_exists(v: &mut Validation<'_>) -> Step {
     if needs_actor(&command_type(v)) {
         let actor_id = v.command.get("actor_id");
@@ -30,7 +30,7 @@ pub fn check_actor_exists(v: &mut Validation<'_>) -> Step {
 /// Команды, для которых цели не ищутся (`break` цикла 6959).
 const TARGETS_UNCHECKED: [&str; 5] = ["RevealArea", "UpdateObjective", "SpawnEntity", "GrantItem", "RecordRuling"];
 
-/// Блок 51 (6958–6972): цели найдены.
+/// Блок 51 (6980–6994): цели найдены.
 pub fn check_targets_exist(v: &mut Validation<'_>) -> Step {
     let kind = command_type(v);
     let ids: Vec<Value> = v.command.get("target_ids").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -73,12 +73,12 @@ pub fn check_targets_exist(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 52 (6973): полномочия (`assertActorPermission`).
+/// Блок 52 (6995): полномочия (`assertActorPermission`).
 pub fn check_actor_permission(v: &mut Validation<'_>) -> Step {
     assert_actor_permission(&v.command, v.context, v.state)
 }
 
-/// Блок 53 (6974): ход и экономика хода (`assertTurn`).
+/// Блок 53 (6996): ход и экономика хода (`assertTurn`).
 pub fn check_turn(v: &mut Validation<'_>) -> Step {
     assert_turn(&v.command, v.state, v.context)
 }

@@ -1,5 +1,5 @@
 //! С16: отпечатки команд `/commands` для идемпотентности — перенос
-//! `server/index.mjs` 648–661 (`merchantCommandFingerprint`, нужен
+//! `server/index.mjs` 649–662 (`merchantCommandFingerprint`, нужен
 //! санитайзеру торговли С16; С14 берёт его отсюда же) и 662–993: отпечатки
 //! предмета, атаки, отдыха, обыска и развития героя, сверка повтора ключа
 //! (`assert*Idempotency`) и итога коммита (`assert*ResultFingerprint`).
@@ -78,7 +78,7 @@ fn sorted_unique_strings(value: Option<&Value>) -> Value {
     js::strings_value(strings)
 }
 
-/// `merchantCommandFingerprint(command)` (648–661).
+/// `merchantCommandFingerprint(command)` (649–662).
 pub fn merchant_command_fingerprint(command: &Value) -> String {
     let kind = command_type(command);
     let mut semantic = Map::new();
@@ -105,7 +105,7 @@ pub fn merchant_command_fingerprint(command: &Value) -> String {
     digest(&Value::Object(semantic))
 }
 
-/// `itemCommandFingerprint(command)` (662–688).
+/// `itemCommandFingerprint(command)` (663–689).
 pub fn item_command_fingerprint(command: &Value) -> String {
     let kind = command_type(command);
     let source = Some(command);
@@ -148,7 +148,7 @@ pub fn item_command_fingerprint(command: &Value) -> String {
     digest(&Value::Object(semantic))
 }
 
-/// `makeAttackCommandFingerprint(command)` (689–701).
+/// `makeAttackCommandFingerprint(command)` (690–702).
 pub fn make_attack_command_fingerprint(command: &Value) -> String {
     let source = Some(command);
     digest(&json!({
@@ -163,13 +163,13 @@ pub fn make_attack_command_fingerprint(command: &Value) -> String {
     }))
 }
 
-/// `makeAttackPrimaryEvent(event)` (747–750).
+/// `makeAttackPrimaryEvent(event)` (748–751).
 fn make_attack_primary_event(event: &Value) -> bool {
     let kind = get(Some(event), "event_type").and_then(Value::as_str);
     kind == Some("AttackResolved") || (kind == Some("CombatActionUsed") && get(get(Some(event), "payload"), "action_id").and_then(Value::as_str) == Some("sanctuary-blocked"))
 }
 
-/// `makeAttackEventFingerprints(events)` (758–764): отпечатки атак коммита;
+/// `makeAttackEventFingerprints(events)` (759–765): отпечатки атак коммита;
 /// удар из исследования, отложенный до хода героя, несёт `CombatStarted`.
 pub fn make_attack_event_fingerprints(events: Option<&Value>) -> Vec<String> {
     let mut found: Vec<Option<&Value>> = Vec::new();
@@ -225,7 +225,7 @@ fn make_attack_expected(commands: &[Value]) -> Vec<String> {
 }
 
 /// `assertMakeAttackIdempotency(campaignId, key, commands, { authorizeDuplicate })`
-/// (766–784): `true` — точный повтор, `false` — атак нет или ключ свободен.
+/// (767–785): `true` — точный повтор, `false` — атак нет или ключ свободен.
 /// Права проверяются до сравнения отпечатков, чтобы чужой не отличил точный
 /// ключ от конфликтующего.
 pub fn assert_make_attack_idempotency(journal: &dyn DuplicateLookup, campaign_id: &str, idempotency_key: &str, commands: &[Value], authorize: Option<&mut AuthorizeDuplicate<'_>>) -> GuardResult<bool> {
@@ -246,7 +246,7 @@ pub fn assert_make_attack_idempotency(journal: &dyn DuplicateLookup, campaign_id
     Ok(true)
 }
 
-/// `assertMakeAttackResultFingerprint(result, commands)` (786–795).
+/// `assertMakeAttackResultFingerprint(result, commands)` (787–796).
 pub fn assert_make_attack_result_fingerprint(result: &Value, commands: &[Value]) -> GuardResult<()> {
     let expected = make_attack_expected(commands);
     if expected.is_empty() {
@@ -312,12 +312,12 @@ fn assert_single_idempotency(journal: &dyn DuplicateLookup, campaign_id: &str, i
     Ok(())
 }
 
-/// `assertNpcCombatIdempotency(campaignId, key, command)` (828–839).
+/// `assertNpcCombatIdempotency(campaignId, key, command)` (829–840).
 pub fn assert_npc_combat_idempotency(journal: &dyn DuplicateLookup, campaign_id: &str, idempotency_key: &str, command: &Value) -> GuardResult<()> {
     assert_single_idempotency(journal, campaign_id, idempotency_key, NPC_COMBAT_PRIMARY_EVENT_TYPES, || sk_rules::combat::encounter::npc_combat_request_fingerprint(command), "Этот ключ идемпотентности уже использован для другого входа в бой")
 }
 
-/// `assertNpcCombatResultFingerprint(result, command)` (841–846).
+/// `assertNpcCombatResultFingerprint(result, command)` (842–847).
 pub fn assert_npc_combat_result_fingerprint(result: &Value, command: &Value) -> GuardResult<()> {
     if result_mismatch(result, NPC_COMBAT_PRIMARY_EVENT_TYPES, &sk_rules::combat::encounter::npc_combat_request_fingerprint(command)) {
         return Err(policy_error("Результат входа в бой не соответствует исходному запросу", "IDEMPOTENCY_CONFLICT"));
@@ -325,7 +325,7 @@ pub fn assert_npc_combat_result_fingerprint(result: &Value, command: &Value) -> 
     Ok(())
 }
 
-/// `restCommandFingerprint(command)` (848–856).
+/// `restCommandFingerprint(command)` (849–857).
 pub fn rest_command_fingerprint(command: &Value) -> String {
     let kind = command_type(command);
     let mut semantic = Map::new();
@@ -340,7 +340,7 @@ pub fn rest_command_fingerprint(command: &Value) -> String {
     digest(&Value::Object(semantic))
 }
 
-/// `assertRestIdempotency(campaignId, key, command)` (860–879). Как в JS,
+/// `assertRestIdempotency(campaignId, key, command)` (861–880). Как в JS,
 /// правит `command` на месте: повтор `SpendHitPointDie`/`CompleteRest` без
 /// `rest_id` получает `rest_id` единственного отдыха повтора и новый
 /// `request_fingerprint`.
@@ -370,7 +370,7 @@ pub fn assert_rest_idempotency(journal: &dyn DuplicateLookup, campaign_id: &str,
     Ok(())
 }
 
-/// `assertRestResultFingerprint(result, command)` (881–887).
+/// `assertRestResultFingerprint(result, command)` (882–888).
 pub fn assert_rest_result_fingerprint(result: &Value, command: &Value) -> GuardResult<()> {
     if result_mismatch(result, REST_PRIMARY_EVENT_TYPES, &rest_command_fingerprint(command)) {
         return Err(policy_error("Результат отдыха не соответствует исходному запросу", "IDEMPOTENCY_CONFLICT"));
@@ -378,12 +378,12 @@ pub fn assert_rest_result_fingerprint(result: &Value, command: &Value) -> GuardR
     Ok(())
 }
 
-/// `assertItemIdempotency(campaignId, key, command)` (891–902).
+/// `assertItemIdempotency(campaignId, key, command)` (892–903).
 pub fn assert_item_idempotency(journal: &dyn DuplicateLookup, campaign_id: &str, idempotency_key: &str, command: &Value) -> GuardResult<()> {
     assert_single_idempotency(journal, campaign_id, idempotency_key, ITEM_PRIMARY_EVENT_TYPES, || item_command_fingerprint(command), "Этот ключ идемпотентности уже использован для другого действия с предметом")
 }
 
-/// `assertItemResultFingerprint(result, command)` (904–909).
+/// `assertItemResultFingerprint(result, command)` (905–910).
 pub fn assert_item_result_fingerprint(result: &Value, command: &Value) -> GuardResult<()> {
     if result_mismatch(result, ITEM_PRIMARY_EVENT_TYPES, &item_command_fingerprint(command)) {
         return Err(policy_error("Результат действия с предметом не соответствует исходному запросу", "IDEMPOTENCY_CONFLICT"));
@@ -391,7 +391,7 @@ pub fn assert_item_result_fingerprint(result: &Value, command: &Value) -> GuardR
     Ok(())
 }
 
-/// `lootCommandFingerprint(command)` (918–932): строки сортируются
+/// `lootCommandFingerprint(command)` (919–933): строки сортируются
 /// (`localeCompare`), «кинжал и стрелы» и «стрелы и кинжал» — один запрос.
 pub fn loot_command_fingerprint(command: &Value) -> String {
     let source = Some(command);
@@ -410,12 +410,12 @@ pub fn loot_command_fingerprint(command: &Value) -> String {
     }))
 }
 
-/// `assertLootIdempotency(campaignId, key, command)` (939–950).
+/// `assertLootIdempotency(campaignId, key, command)` (940–951).
 pub fn assert_loot_idempotency(journal: &dyn DuplicateLookup, campaign_id: &str, idempotency_key: &str, command: &Value) -> GuardResult<()> {
     assert_single_idempotency(journal, campaign_id, idempotency_key, LOOT_PRIMARY_EVENT_TYPES, || loot_command_fingerprint(command), "Этот ключ идемпотентности уже использован для другого обыска")
 }
 
-/// `assertLootResultFingerprint(result, command)` (952–957).
+/// `assertLootResultFingerprint(result, command)` (953–958).
 pub fn assert_loot_result_fingerprint(result: &Value, command: &Value) -> GuardResult<()> {
     if result_mismatch(result, LOOT_PRIMARY_EVENT_TYPES, &loot_command_fingerprint(command)) {
         return Err(policy_error("Результат обыска не соответствует исходному запросу", "IDEMPOTENCY_CONFLICT"));
@@ -423,7 +423,7 @@ pub fn assert_loot_result_fingerprint(result: &Value, command: &Value) -> GuardR
     Ok(())
 }
 
-/// `characterBuildFingerprint(command)` (959–983).
+/// `characterBuildFingerprint(command)` (960–984).
 pub fn character_build_fingerprint(command: &Value) -> String {
     let source = Some(command);
     let semantic = if command_type(command) == "SetCharacterChoices" {
@@ -461,7 +461,7 @@ pub fn character_build_fingerprint(command: &Value) -> String {
     digest(&semantic)
 }
 
-/// `assertCharacterBuildResultFingerprint(result, commands)` (985–993):
+/// `assertCharacterBuildResultFingerprint(result, commands)` (986–994):
 /// множества отпечатков заявки и итога совпадают.
 pub fn assert_character_build_result_fingerprint(result: &Value, commands: &[Value]) -> GuardResult<()> {
     let expected: IndexSet<String> = commands.iter().map(character_build_fingerprint).collect();

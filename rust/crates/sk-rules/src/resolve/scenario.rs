@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Сценарий: кошель короля, осведомитель, авторский диалог, оружейная, договор, проклятый рыцарь. Задача Р6.
 //!
-//! JS: `server/rules-engine.mjs`, 20680–20693, 20694–20727, 20728–20847, 20848–20854, 20855–20890, 20891–20897, 20898–20929. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 20702–20715, 20716–20749, 20750–20869, 20870–20876, 20877–20912, 20913–20919, 20920–20951. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 //!
 //! Проверка навыка у перевербовки, договора, упокоения и у варианта диалога —
@@ -101,7 +101,7 @@ fn check_succeeded(events: &[Value]) -> bool {
     js::is_true(payload_of(events, "AbilityCheckResolved").and_then(|payload| payload.get("success")))
 }
 
-/// `ReceiveScenarioPurse` (20680–20693).
+/// `ReceiveScenarioPurse` (20702–20715).
 pub fn receive_scenario_purse(r: &mut Resolve<'_>) -> Step {
     let Some(rules) = sk_scenario::campaign_scenario::scenario_purse_rules(&r.state) else { return Err(missing("dice")) };
     let visibility = r.command.get("visibility").filter(|value| !value.is_null()).cloned().unwrap_or_else(|| json!("party"));
@@ -126,7 +126,7 @@ pub fn receive_scenario_purse(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ResolveScenarioInformant` (20694–20727).
+/// `ResolveScenarioInformant` (20716–20749).
 pub fn resolve_scenario_informant(r: &mut Resolve<'_>) -> Step {
     use sk_attention::scenario_attention::{SCENARIO_INFORMANT_EVENT, SCENARIO_INFORMANT_TURN_FAILED_EVENT};
     let wanted = field(&r.command, "informant_id");
@@ -164,7 +164,7 @@ pub fn resolve_scenario_informant(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// События с авторским текстом сюжетной сцены (20772–20773).
+/// События с авторским текстом сюжетной сцены (20794–20795).
 const AUTHORED_EVENTS: [&str; 7] = [
     sk_world_story::scenario_knight::SCENARIO_KNIGHT_HEAD_EVENT,
     sk_world_story::scenario_knight::SCENARIO_KNIGHT_RELEASED_EVENT,
@@ -195,7 +195,7 @@ fn check_record(option: &Value, events: &[Value]) -> Value {
     })
 }
 
-/// `ChooseDialogueOption` (20728–20847).
+/// `ChooseDialogueOption` (20750–20869).
 pub fn choose_dialogue_option(r: &mut Resolve<'_>) -> Step {
     let option = field(&r.command, "dialogue_option");
     if !option.is_object() {
@@ -328,7 +328,7 @@ pub fn choose_dialogue_option(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ChooseScenarioArmoryItem` (20848–20854).
+/// `ChooseScenarioArmoryItem` (20870–20876).
 pub fn choose_scenario_armory_item(r: &mut Resolve<'_>) -> Step {
     let item = field(&r.command, "armory_item");
     let targets = actor_targets(&r.command);
@@ -357,7 +357,7 @@ fn scenario_payload(command: &Value, npc_id: &Value, rest: &[(&str, Value)]) -> 
     Value::Object(payload)
 }
 
-/// `NegotiateScenarioTreaty` (20855–20890).
+/// `NegotiateScenarioTreaty` (20877–20912).
 pub fn negotiate_scenario_treaty(r: &mut Resolve<'_>) -> Step {
     use sk_attention::scenario_attention::{SCENARIO_TREATY_CONCLUDED_EVENT, SCENARIO_TREATY_REFUSED_EVENT};
     let rules = sk_scenario::campaign_scenario::scenario_treaty_rules(&r.state);
@@ -389,7 +389,7 @@ pub fn negotiate_scenario_treaty(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ReturnKnightHead` (20891–20897).
+/// `ReturnKnightHead` (20913–20919).
 pub fn return_knight_head(r: &mut Resolve<'_>) -> Step {
     let Some(rules) = sk_world_story::scenario_knight::scenario_knight_rules(&r.state) else { return Err(missing("npc_id")) };
     let npc_id = field(&rules, "npc_id");
@@ -400,7 +400,7 @@ pub fn return_knight_head(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ReleaseCursedKnight` (20898–20929).
+/// `ReleaseCursedKnight` (20920–20951).
 pub fn release_cursed_knight(r: &mut Resolve<'_>) -> Step {
     use sk_world_story::scenario_knight::{SCENARIO_KNIGHT_RELEASED_EVENT, SCENARIO_KNIGHT_RELEASE_FAILED_EVENT};
     let Some(rules) = sk_world_story::scenario_knight::scenario_knight_rules(&r.state) else { return Err(missing("release")) };

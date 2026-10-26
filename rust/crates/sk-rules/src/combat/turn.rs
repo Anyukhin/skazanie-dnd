@@ -1,6 +1,6 @@
 //! Ход: `assertActorPermission`, `assertTurn`, группы инициативы, план действия Атака, свой ход, траты экономики. Задача Р3.
 //!
-//! JS: `server/rules-engine.mjs`, 1853 (`initiativeGroupIds`), 5484–5492
+//! JS: `server/rules-engine.mjs`, 1853 (`initiativeGroupIds`), 5506–5514
 //! (`assertActorPermission`), 5505–5798 (`assertTurn`), 9345–9378
 //! (перезарядка: «Арбалетчик», лимит выстрела), 9404–9467
 //! (`attackActionPlan`), 10446 (`isActiveTurnActor`), 10452
@@ -111,13 +111,13 @@ pub fn initiative_group_ids(state: &Value) -> Vec<String> {
     group
 }
 
-/// `isActiveTurnActor(state, actorId)` (10446): чей сейчас ход (без группы).
+/// `isActiveTurnActor(state, actorId)` (10468): чей сейчас ход (без группы).
 pub fn is_active_turn_actor(state: &Value, actor_id: &str) -> bool {
     let combat = game::combat(state);
     js::truthy(combat.get("active")) && js::s(at(current_entry(combat), "actor_id")) == actor_id
 }
 
-/// `isOwnCombatTurn(state, id)` (10784): ход существа, в том числе в групповой фазе.
+/// `isOwnCombatTurn(state, id)` (10806): ход существа, в том числе в групповой фазе.
 pub fn is_own_combat_turn(state: &Value, id: Option<&Value>) -> bool {
     let combat = game::combat(state);
     if !js::truthy(combat.get("active")) {
@@ -133,7 +133,7 @@ pub fn is_own_combat_turn(state: &Value, id: Option<&Value>) -> bool {
     js::string(at(current_entry(combat), "actor_id")) == *id || initiative_group_ids(state).iter().any(|member| member == id)
 }
 
-/// `assertActorPermission(command, context, state)` (5484–5492).
+/// `assertActorPermission(command, context, state)` (5506–5514).
 pub fn assert_actor_permission(command: &Value, context: &Context, state: &Value) -> Step {
     if !js::truthy(command.get("actor_id")) || context.truthy("isAdmin") {
         return Ok(());
@@ -151,7 +151,7 @@ pub fn assert_actor_permission(command: &Value, context: &Context, state: &Value
     Ok(())
 }
 
-/// `crossbowExpertFor(actor)` (9345): «Арбалетчик» или выгода создания без перезарядки.
+/// `crossbowExpertFor(actor)` (9367): «Арбалетчик» или выгода создания без перезарядки.
 pub fn crossbow_expert_for(actor: Option<&Value>) -> bool {
     let mut selected: Vec<String> = Vec::new();
     for field in ["selectedFeatureIds", "selected_feature_ids"] {
@@ -164,7 +164,7 @@ pub fn crossbow_expert_for(actor: Option<&Value>) -> bool {
     selected.iter().any(|id| id == "crossbow-expert") || js::is_true(at(benefits, "ignore_loading_property"))
 }
 
-/// `crossbowProfileFor(profile)` (9355): профиль — каталожный арбалет.
+/// `crossbowProfileFor(profile)` (9377): профиль — каталожный арбалет.
 pub fn crossbow_profile_for(profile: Option<&Value>) -> bool {
     let item = at(profile, "item");
     let catalog_id = js::s(crate::core::coalesce(&[at(item, "catalog_id"), at(item, "catalogId")]));
@@ -172,7 +172,7 @@ pub fn crossbow_profile_for(profile: Option<&Value>) -> bool {
     ["light-crossbow", "hand-crossbow", "heavy-crossbow"].contains(&catalog_key) && js::truthy(at(sk_items::item_catalog::catalog_item(&catalog_id), "weapon"))
 }
 
-/// `loadingWeaponLimitApplies(state, actor, profile)` (9363): одно оружие со
+/// `loadingWeaponLimitApplies(state, actor, profile)` (9385): одно оружие со
 /// свойством «перезарядка» — один выстрел за действие (редакция 2014).
 pub fn loading_weapon_limit_applies(state: &Value, actor: Option<&Value>, profile: Option<&Value>) -> bool {
     let loading = match at(profile, "properties") {
@@ -183,7 +183,7 @@ pub fn loading_weapon_limit_applies(state: &Value, actor: Option<&Value>, profil
     sk_ruleset::rules_core::uses_dnd2014(Some(state)) && loading && !(crossbow_expert_for(actor) && crossbow_profile_for(profile))
 }
 
-/// `loadingWeaponUsed(economy, resource, itemId)` (9369).
+/// `loadingWeaponUsed(economy, resource, itemId)` (9391).
 pub fn loading_weapon_used(economy: Option<&Value>, resource: &str, item_id: Option<&Value>) -> bool {
     let ids = normalize_loading_weapon_item_ids(economy.and_then(|economy| economy.get("loading_weapon_item_ids")));
     let wanted = js::string(item_id);
@@ -225,7 +225,7 @@ fn attack_kind(value: Option<&Value>) -> Option<String> {
     ATTACK_ACTION_KINDS.contains(&kind.as_str()).then_some(kind)
 }
 
-/// `attackActionPlan(state, command, context)` (9404–9467): начинает ли удар
+/// `attackActionPlan(state, command, context)` (9426–9489): начинает ли удар
 /// новое действие Атака или продолжает начатое и сколько в нём атак.
 pub fn attack_action_plan(state: &Value, command: &Value, context: &Context) -> AttackActionPlan {
     let actor_key = key(command.get("actor_id"));
@@ -268,22 +268,22 @@ pub fn attack_action_plan(state: &Value, command: &Value, context: &Context) -> 
     AttackActionPlan { resource, boundary: Some("start"), kind: "normal".into(), extra_kind: None, id: Some(fresh_id()), limit: normal_limit, spends_action: action_free }
 }
 
-/// `hasteActionAllows(actionId)` (23798): что разрешает действие Ускорения.
+/// `hasteActionAllows(actionId)` (23820): что разрешает действие Ускорения.
 pub fn haste_action_allows(action_id: Option<&Value>) -> bool {
     matches!(js::s(action_id).as_str(), "dash" | "disengage" | "hide" | "use-object")
 }
 
-/// `hasUntouchedNormalActionFrame(economy)` (23802).
+/// `hasUntouchedNormalActionFrame(economy)` (23824).
 pub fn has_untouched_normal_action_frame(economy: Option<&Value>) -> bool {
     pending_frames(economy.unwrap_or(&Value::Null)).iter().any(|frame| frame.kind == "normal" && frame.attacks_used == 0)
 }
 
-/// `hasteOnlyActionFrame(economy)` (23806).
+/// `hasteOnlyActionFrame(economy)` (23828).
 pub fn haste_only_action_frame(economy: Option<&Value>) -> bool {
     current_frame(economy.unwrap_or(&Value::Null)).is_some_and(|frame| frame.kind == "haste") && !has_untouched_normal_action_frame(economy)
 }
 
-/// `commandRequiresNormalActionFrame(command, economy)` (23811–23836).
+/// `commandRequiresNormalActionFrame(command, economy)` (23833–23858).
 pub fn command_requires_normal_action_frame(command: &Value, economy: Option<&Value>) -> bool {
     match js::s(command.get("command_type")).as_str() {
         "LootContainer" => command.get("loot_combat_action").and_then(Value::as_str) != Some("object_interaction"),
@@ -297,7 +297,7 @@ pub fn command_requires_normal_action_frame(command: &Value, economy: Option<&Va
     }
 }
 
-/// `assertNormalActionFrameAvailable(command, economy)` (23839–23843).
+/// `assertNormalActionFrameAvailable(command, economy)` (23861–23865).
 pub fn assert_normal_action_frame_available(command: &Value, economy: Option<&Value>) -> Step {
     if haste_only_action_frame(economy) && command_requires_normal_action_frame(command, economy) {
         return Err(rule("Оставшееся действие Ускорения нельзя потратить на этот поступок", "HASTE_ACTION_LIMIT"));
@@ -333,7 +333,7 @@ fn list_includes(list: Option<&Value>, value: Option<&Value>) -> Result<bool, Ha
     crate::validate::common::js_includes(list.filter(|list| !list.is_null()), value, "action_ids")
 }
 
-/// `assertTurn(command, state, context)` (5505–5798): очередь, приказы,
+/// `assertTurn(command, state, context)` (5527–5820): очередь, приказы,
 /// дееспособность и экономика хода в бою.
 pub fn assert_turn(command: &Value, state: &Value, context: &Context) -> Step {
     let combat = game::combat(state);
@@ -608,7 +608,7 @@ pub fn assert_turn(command: &Value, state: &Value, context: &Context) -> Step {
     Ok(())
 }
 
-/// Проверка заявленной мультиатаки (5735–5760).
+/// Проверка заявленной мультиатаки (5757–5782).
 fn check_multiattack(command: &Value, _state: &Value, context: &Context, economy: Option<&Value>, actor: Option<&Value>, attacks_used: i64) -> Step {
     let field = |name: &str| economy.and_then(|economy| economy.get(name));
     let used_raw = field("multiattack_action_ids").filter(|value| !value.is_null());

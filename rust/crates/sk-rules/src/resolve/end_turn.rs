@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Конец хода `EndTurn`. Задача Р10.
 //!
-//! JS: `server/rules-engine.mjs`, 20005–20347. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 20027–20369. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 //!
 //! Конец хода: области под уходящим, повторные спасброски «в конце хода» (со
@@ -113,7 +113,7 @@ fn save_options(ability: &str, modifier: i64, purpose: String, advantage: Option
     Value::Object(options)
 }
 
-/// `EndTurn` (20005–20347).
+/// `EndTurn` (20027–20369).
 pub fn end_turn(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();

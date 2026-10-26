@@ -1,5 +1,5 @@
 //! С17: системный такт — `POST /api/campaigns/:id/system-tick`
-//! (`server/index.mjs:5958–6005`).
+//! (`server/index.mjs:5959–6006`).
 //!
 //! Устаревшая проекция переписывается из головы журнала, идущий бой
 //! продолжается стадией `combat-continuation` координатора последствий, затем
@@ -30,11 +30,11 @@ use crate::routes::campaigns::Caught;
 use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
-    // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/system-tick$/)` и `POST` (5958–5959).
+    // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/system-tick$/)` и `POST` (5959–5960).
     vec![Route::post(5959, Matcher::path_template("/api/campaigns/{id}/system-tick"), system_tick)]
 }
 
-/// Конфликты такта с чужим коммитом: ответ — комната как есть (5994–5998).
+/// Конфликты такта с чужим коммитом: ответ — комната как есть (5995–5999).
 const RACE_CODES: [&str; 2] = ["STATE_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT"];
 
 fn system_tick(ctx: &mut RouteCtx) -> RouteFuture<'_> {
@@ -58,7 +58,7 @@ struct Ticked {
     rumor_events: usize,
 }
 
-/// Тело `try` (5961–5992).
+/// Тело `try` (5962–5993).
 async fn tick(state: &std::sync::Arc<AppState>, campaign_id: &str, user: &Value) -> Result<axum::response::Response, Caught> {
     let code = campaign_id.to_string();
     let room = state.core.call(move |core| Box::pin(async move { get_room(&core, &code) })).await??;
@@ -142,7 +142,7 @@ async fn viewer_room(state: &AppState, room: &Room, campaign_id: &str, user: &Va
     Ok(body)
 }
 
-/// `catch` гонки (5994–5998): текущая комната зрителя, без счётчиков.
+/// `catch` гонки (5995–5999): текущая комната зрителя, без счётчиков.
 async fn current_room(state: &std::sync::Arc<AppState>, campaign_id: &str, user: &Value) -> ApiResult {
     let code = campaign_id.to_string();
     let outcome: Result<Value, Caught> = async {

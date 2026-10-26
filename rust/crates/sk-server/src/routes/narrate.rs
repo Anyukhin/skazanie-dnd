@@ -1,4 +1,4 @@
-//! С18.5: `POST /api/narrate` — `server/index.mjs:6143–6476` (с помощниками
+//! С18.5: `POST /api/narrate` — `server/index.mjs:6144–6477` (с помощниками
 //! 2326–2359 `explicitNarrationNpcId` и 3595–3608 `finishFailedRollReservation`).
 //!
 //! Маршрут сравнивает **сырой** `req.url`: `/api/narrate?x` — 404.
@@ -20,10 +20,10 @@
 //! - приватный ответ (служебная команда `/…`, вопрос, Хранитель знаний,
 //!   ответ одному игроку) в общий поток не идёт и пишется в летопись с
 //!   `knowledge_gate` только для спрашивающего;
-//! - `room_version` ответа перечитывается после хода (6431–6432): рассказ
+//! - `room_version` ответа перечитывается после хода (6432–6433): рассказ
 //!   может пережить чужую запись комнаты.
 //!
-//! Отказы `catch` (6463–6474): `STATE_VERSION_CONFLICT`, `IDEMPOTENCY_CONFLICT`,
+//! Отказы `catch` (6464–6475): `STATE_VERSION_CONFLICT`, `IDEMPOTENCY_CONFLICT`,
 //! `PARTY_DECISION_ALREADY_CONSUMED` — 409; `ROLL_ALREADY_USED`,
 //! `ROLL_FORBIDDEN` — 400; `LLM_*` — 502; прочее — 400.
 
@@ -57,14 +57,14 @@ use crate::state::AppState;
 use crate::streams::NarrationHub;
 
 pub fn routes() -> Vec<Route> {
-    // `req.url === '/api/narrate' && req.method === 'POST'` (6143).
+    // `req.url === '/api/narrate' && req.method === 'POST'` (6144).
     vec![Route::post(6144, Matcher::raw("/api/narrate"), narrate)]
 }
 
-/// Коды 409 (6472).
+/// Коды 409 (6473).
 const CONFLICTS: [&str; 3] = ["STATE_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT", "PARTY_DECISION_ALREADY_CONSUMED"];
 const NO_ACCESS: &str = "Нет доступа к этой кампании";
-/// `mode` всегда `enforce` (6197).
+/// `mode` всегда `enforce` (6198).
 const MODE: &str = "enforce";
 
 /// `catch` маршрута: статус по коду, `{ error: error.message, code }`.
@@ -152,7 +152,7 @@ fn index_of<'a>(list: Option<&'a Value>, index: Option<&Value>) -> Option<&'a Va
     }
 }
 
-// --- explicitNarrationNpcId (2326–2359) ---------------------------------------
+// --- explicitNarrationNpcId (2327–2360) ---------------------------------------
 
 /// Собеседник, которого игрок выбрал явно: строка безопасных символов, виден
 /// игроку, доступен, не в бою и в той же локации; пусто — не выбран.
@@ -308,7 +308,7 @@ async fn narrate_body(ctx: &mut RouteCtx, user: Value) -> Result<axum::response:
 
 // --- ход в ядре -------------------------------------------------------------------
 
-/// `narrationTransport` (6199–6205).
+/// `narrationTransport` (6200–6206).
 #[derive(Default)]
 struct Transport {
     started: bool,
@@ -344,7 +344,7 @@ async fn run_turn(core: Rc<GameCore>, turn: Turn) -> Result<Value, ApiError> {
     Err(reply(caught))
 }
 
-/// `finishFailedRollReservation(reservation, error)` (3595–3608): бросок снова
+/// `finishFailedRollReservation(reservation, error)` (3596–3609): бросок снова
 /// доступен, только если коммита по ключу нет; исход неизвестен — потреблён.
 fn finish_failed_roll_reservation(core: &GameCore, reservation: Option<&Value>, turn: &Turn, code: Option<&str>) {
     let Some(roll_id) = reservation else { return };

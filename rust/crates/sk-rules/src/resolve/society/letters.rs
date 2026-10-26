@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Почта отряда. Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 22075–22116. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 22097–22138. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -13,7 +13,7 @@ use crate::command::rules::rule_ids;
 use crate::core::{command_with_rules, event_from, player_actor, slice_utf16};
 use crate::pause::{Fault, Step};
 
-/// `SendLetter` (22075–22116).
+/// `SendLetter` (22097–22138).
 pub fn send_letter(r: &mut Resolve<'_>) -> Step {
     let Some(actor) = player_actor(&r.state, r.command.get("actor_id")).cloned() else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'currency')").into());

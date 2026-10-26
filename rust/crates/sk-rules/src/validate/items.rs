@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Предметы: предметы NPC, жизненный цикл предметов, выдача. Задача Р11.
 //!
-//! JS: `server/rules-engine.mjs`, 6714–6763, 7201–7221. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6736–6785, 7223–7243. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 
 use serde_json::Value;
@@ -31,7 +31,7 @@ fn use_profile<'a>(command: &'a Value, key: &str) -> Option<&'a Value> {
     command.get("use_profile").and_then(Value::as_object).and_then(|profile| profile.get(key))
 }
 
-/// Блок 32 (6714–6763): предметы NPC и жизненный цикл предметов (с объявлением 31).
+/// Блок 32 (6736–6785): предметы NPC и жизненный цикл предметов (с объявлением 31).
 pub fn check_item_use(v: &mut Validation<'_>) -> Step {
     let kind = command_type(v);
     let actor_id = js::s(v.command.get("actor_id"));
@@ -99,7 +99,7 @@ pub fn check_item_use(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 65 (7201–7221): выдача предмета.
+/// Блок 65 (7223–7243): выдача предмета.
 pub fn check_grant_item(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "GrantItem" {
         return Ok(());

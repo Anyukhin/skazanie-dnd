@@ -1,6 +1,6 @@
 //! Смерть и 0 хитов: спасброски от смерти, падение ничком, последствия нулевых хитов. Задача Р2.
 //!
-//! JS: `server/rules-engine.mjs`, 8992–9167 (`deathSavingThrowAtTurnStart`,
+//! JS: `server/rules-engine.mjs`, 9014–9189 (`deathSavingThrowAtTurnStart`,
 //! `fallsProneEvents`, `zeroHitPointDamageConsequences`), 9218
 //! (`assertRevivableHero`). Счётчик спасбросков и «погиб ли» — `targets.rs`
 //! (Р1).

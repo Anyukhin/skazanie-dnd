@@ -1,6 +1,6 @@
 //! Заклинание: телепорт и гром на месте ухода («Громовой шаг»). Задача Р9.
 //!
-//! JS: `server/rules-engine.mjs`, 18590–18623.
+//! JS: `server/rules-engine.mjs`, 18612–18645.
 
 use serde_json::{json, Map, Value};
 use sk_core::js;
@@ -14,7 +14,7 @@ use crate::core::{ability_modifier, spread_value};
 use crate::pause::Step;
 use crate::tactical_geometry::point_json;
 
-/// Телепорт (18590–18623).
+/// Телепорт (18612–18645).
 pub(super) fn teleport(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let state = r.state.clone();
     let spell = cast.spell.clone();

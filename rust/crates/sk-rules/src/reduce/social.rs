@@ -1,6 +1,6 @@
 //! Ветки редьюсера `applyGameEventCurrent`: Общество: пленные, звери, парлей и перемирие, стража, благословения, письма, таверна, подкуп и карманы, мир NPC. Задача Р4.
 //!
-//! JS: `server/rules-engine.mjs`, 26114–26127, 26128–26143, 26155–26163, 26168–26188, 26189–26198, 26199–26208, 26209–26220, 26221–26232, 26233–26245, 26246–26258, 26262–26282, 26283–26305, 26781–26789, 26790–26802, 27044–27051. Таблица меток — `reduce/table.rs`
+//! JS: `server/rules-engine.mjs`, 26136–26149, 26150–26165, 26177–26185, 26190–26210, 26211–26220, 26221–26230, 26231–26242, 26243–26254, 26255–26267, 26268–26280, 26284–26304, 26305–26327, 26803–26811, 26812–26824, 27066–27073. Таблица меток — `reduce/table.rs`
 //! (Р0). Перенося ветку, уберите её метки из [`UNPORTED`] этого файла.
 //!
 //! Ветки этого файла меняют только своё: кошелёк, карточку существа, бой
@@ -90,7 +90,7 @@ fn leave_combat(state: &mut Value, id: &str, flag: &str, dropped: &[&str]) {
     conditions.retain(|condition| !dropped.contains(&sk_core::game::condition_id(condition).as_str()));
 }
 
-/// `CaptiveTaken` (26114–26127).
+/// `CaptiveTaken` (26136–26149).
 pub(super) fn captive_taken(state: &mut Value, event: &Event) -> Reduced {
     let captive = event.payload.get("captive");
     let id = s(captive.and_then(|captive| captive.get("actor_id")));
@@ -104,7 +104,7 @@ pub(super) fn captive_taken(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `BeastTamed` (26128–26143).
+/// `BeastTamed` (26150–26165).
 pub(super) fn beast_tamed(state: &mut Value, event: &Event) -> Reduced {
     let id = s(event.payload.get("actor_id"));
     if id.is_empty() {
@@ -117,7 +117,7 @@ pub(super) fn beast_tamed(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `CaptiveHandedOver` (26155–26163).
+/// `CaptiveHandedOver` (26177–26185).
 pub(super) fn captive_handed_over(state: &mut Value, event: &Event) -> Reduced {
     set_hero_currency(state, event);
     Ok(())
@@ -152,7 +152,7 @@ fn payload_round(state: &Value, event: &Event) -> Value {
     safe_integer_or(event.payload.get("round"), combat(state).get("round"))
 }
 
-/// `ParleyProposed` (26168–26188).
+/// `ParleyProposed` (26190–26210).
 pub(super) fn parley_proposed(state: &mut Value, event: &Event) -> Reduced {
     apply_parley_patch(state, event);
     let payload = &event.payload;
@@ -192,7 +192,7 @@ fn string_or(value: Option<&Value>, fallback: &str) -> String {
     }
 }
 
-/// `ParleyRejected` (26189–26198).
+/// `ParleyRejected` (26211–26220).
 pub(super) fn parley_rejected(state: &mut Value, event: &Event) -> Reduced {
     let payload = &event.payload;
     let mut entry = Entry::new().set("round", combat_round_value(state)).set("type", "parley-rejected");
@@ -203,7 +203,7 @@ pub(super) fn parley_rejected(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `TruceEstablished` (26199–26208).
+/// `TruceEstablished` (26221–26230).
 pub(super) fn truce_established(state: &mut Value, event: &Event) -> Reduced {
     apply_parley_patch(state, event);
     let leader = s(event.payload.get("truce").and_then(|truce| truce.get("leader_id")));
@@ -214,7 +214,7 @@ pub(super) fn truce_established(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `TruceBroken` (26209–26220).
+/// `TruceBroken` (26231–26242).
 pub(super) fn truce_broken(state: &mut Value, event: &Event) -> Reduced {
     apply_parley_patch(state, event);
     restart_turn_clock(state, event);
@@ -233,31 +233,31 @@ pub(super) fn truce_broken(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `GuardEncounterResolved` (26221–26232).
+/// `GuardEncounterResolved` (26243–26254).
 pub(super) fn guard_encounter_resolved(state: &mut Value, event: &Event) -> Reduced {
     set_hero_currency(state, event);
     Ok(())
 }
 
-/// `NpcBlessingGranted` (26233–26245).
+/// `NpcBlessingGranted` (26255–26267).
 pub(super) fn npc_blessing_granted(state: &mut Value, event: &Event) -> Reduced {
     set_hero_currency(state, event);
     Ok(())
 }
 
-/// `CourierLetterSent` (26246–26258).
+/// `CourierLetterSent` (26268–26280).
 pub(super) fn courier_letter_sent(state: &mut Value, event: &Event) -> Reduced {
     set_hero_currency(state, event);
     Ok(())
 }
 
-/// `TavernDiceRoundOpened`, `TavernDiceRoundCancelled`, `TavernDiceRoundResolved`, `TavernDrinkOrdered` (26262–26282).
+/// `TavernDiceRoundOpened`, `TavernDiceRoundCancelled`, `TavernDiceRoundResolved`, `TavernDrinkOrdered` (26284–26304).
 pub(super) fn tavern_event(state: &mut Value, event: &Event) -> Reduced {
     set_hero_currency(state, event);
     Ok(())
 }
 
-/// `ParleySettled` (26283–26305).
+/// `ParleySettled` (26305–26327).
 pub(super) fn parley_settled(state: &mut Value, event: &Event) -> Reduced {
     apply_parley_patch(state, event);
     restart_turn_clock(state, event);
@@ -276,7 +276,7 @@ pub(super) fn parley_settled(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `NpcBribeOffered` (26781–26789).
+/// `NpcBribeOffered` (26803–26811).
 pub(super) fn npc_bribe_offered(state: &mut Value, event: &Event) -> Reduced {
     let target = target_of(event);
     let payload = &event.payload;
@@ -299,7 +299,7 @@ pub(super) fn npc_bribe_offered(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `NpcPocketPicked` (26790–26802).
+/// `NpcPocketPicked` (26812–26824).
 pub(super) fn npc_pocket_picked(state: &mut Value, event: &Event) -> Reduced {
     let target = target_of(event);
     let payload = &event.payload;
@@ -335,7 +335,7 @@ pub(super) fn apply_npc_world(state: &Value, event: &Event) -> Value {
     sk_npc_world::npc_positioning::apply_npc_world_event(state.get("npc_world"), &event_value(event), &js::obj())
 }
 
-/// `NpcPlaced`, `NpcMoved`, `NpcHarmed`, `NpcDied`, `NpcStanceChanged` (27044–27051).
+/// `NpcPlaced`, `NpcMoved`, `NpcHarmed`, `NpcDied`, `NpcStanceChanged` (27066–27073).
 pub(super) fn npc_world_event(state: &mut Value, event: &Event) -> Reduced {
     state["npc_world"] = apply_npc_world(state, event);
     let payload = &event.payload;

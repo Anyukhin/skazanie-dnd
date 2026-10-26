@@ -1,8 +1,8 @@
 //! Кто вошёл и что ему можно — перенос помощников `server/index.mjs`:
-//! `requireUser`/`requireAdmin` (498–508), членство и герои кампании
-//! (510–526), доступ к комнате и ассетам (2275–2297), отказ до сверки
-//! (2299–2324), голосующие и герои отряда (2478–2562), проекция зрителя
-//! (2545–2546).
+//! `requireUser`/`requireAdmin` (499–509), членство и герои кампании
+//! (511–527), доступ к комнате и ассетам (2276–2298), отказ до сверки
+//! (2300–2325), голосующие и герои отряда (2479–2563), проекция зрителя
+//! (2546–2547).
 //!
 //! Функции над [`Accounts`] синхронные (SQLite под одним замком, который
 //! держат и HTTP-потоки): их зовут только внутри [`crate::core::blocking`] —
@@ -64,13 +64,13 @@ pub async fn require_admin(ctx: &RouteCtx) -> ApiResult<Value> {
     Ok(user)
 }
 
-/// `campaignMembership(user, campaignId)` (510–512): членство из профиля пользователя.
+/// `campaignMembership(user, campaignId)` (511–513): членство из профиля пользователя.
 pub fn campaign_membership<'a>(user: &'a Value, campaign_id: &str) -> Option<&'a Value> {
     let wanted = string_or_empty(Some(&Value::String(campaign_id.to_string()))).to_uppercase();
     array(user.get("campaignMemberships")).iter().find(|membership| js::string(membership.get("campaignId")) == wanted)
 }
 
-/// `campaignHeroIds(user, campaignId)` (514–522) — значения как в JS.
+/// `campaignHeroIds(user, campaignId)` (515–523) — значения как в JS.
 pub fn campaign_hero_values(accounts: &Accounts, user: &Value, campaign_id: &str) -> Result<Vec<Value>, Failure> {
     let own = || array(user.get("heroIds")).to_vec();
     if sk_core::text::trim(campaign_id).is_empty() {
@@ -90,7 +90,7 @@ pub fn campaign_hero_ids(accounts: &Accounts, user: &Value, campaign_id: &str) -
     Ok(campaign_hero_values(accounts, user, campaign_id)?.iter().map(|id| js::string(Some(id))).collect())
 }
 
-/// `canUseHero(user, heroId, campaignId)` (524–526): `includes` строгий.
+/// `canUseHero(user, heroId, campaignId)` (525–527): `includes` строгий.
 pub fn can_use_hero(accounts: &Accounts, user: &Value, hero_id: Option<&Value>, campaign_id: &str) -> Result<bool, Failure> {
     if is_admin(user) {
         return Ok(true);
@@ -99,7 +99,7 @@ pub fn can_use_hero(accounts: &Accounts, user: &Value, hero_id: Option<&Value>, 
     Ok(campaign_hero_values(accounts, user, campaign_id)?.contains(&wanted))
 }
 
-/// `canManageCampaignAssets(user, room)` (2275–2280).
+/// `canManageCampaignAssets(user, room)` (2276–2281).
 pub fn can_manage_campaign_assets(accounts: &Accounts, user: Option<&Value>, room: &Room) -> Result<bool, Failure> {
     let Some(user) = user else { return Ok(false) };
     if is_admin(user) {
@@ -113,7 +113,7 @@ pub fn can_manage_campaign_assets(accounts: &Accounts, user: Option<&Value>, roo
     Ok(membership.is_some_and(|membership| membership.get("role").and_then(Value::as_str) == Some("owner")))
 }
 
-/// `canAccessRoom(user, room)` (2282–2293) с запасным путём старых кампаний
+/// `canAccessRoom(user, room)` (2283–2294) с запасным путём старых кампаний
 /// без записей о членстве: доступ по героям комнаты.
 pub fn can_access_room(accounts: &Accounts, user: Option<&Value>, room: &Room) -> Result<bool, Failure> {
     let Some(user) = user else { return Ok(false) };
@@ -134,7 +134,7 @@ pub fn can_access_room(accounts: &Accounts, user: Option<&Value>, room: &Room) -
     Ok(array(user.get("heroIds")).iter().any(|id| member_ids.contains(&js::string(Some(id)))))
 }
 
-/// `accessDeniedBeforeReconcile(user, campaignId)` (2299–2324): окончательный
+/// `accessDeniedBeforeReconcile(user, campaignId)` (2300–2325): окончательный
 /// отказ до сверки проекции. Любая ошибка — «решит прежний путь» (`false`).
 pub fn access_denied_before_reconcile(accounts: &Accounts, user: Option<&Value>, campaign_id: &str, get_room: impl FnOnce(&str) -> Result<Room, Failure>) -> bool {
     let check = || -> Result<bool, Failure> {
@@ -152,19 +152,19 @@ pub fn access_denied_before_reconcile(accounts: &Accounts, user: Option<&Value>,
     check().unwrap_or(false)
 }
 
-/// `connectedHeroIdsForCampaign(campaignId)` (2478–2482); только на потоке
+/// `connectedHeroIdsForCampaign(campaignId)` (2479–2483); только на потоке
 /// ядра (`&*core.streams`).
 pub fn connected_hero_ids_for_campaign<P: Presence + ?Sized>(presence: &P, campaign_id: &str) -> IndexSet<String> {
     presence.connected_hero_ids(campaign_id)
 }
 
-/// `partyVoterIdForAccount(campaignId, userId)` (2484–2486).
+/// `partyVoterIdForAccount(campaignId, userId)` (2485–2487).
 pub fn party_voter_id_for_account(campaign_id: &str, user_id: &str) -> String {
     let digest = sk_core::hash::sha256_hex(format!("{}\0{user_id}", campaign_id.to_uppercase()));
     format!("account:{}", &digest[..24.min(digest.len())])
 }
 
-/// `partyHeroIds(state)` (2510–2514): все герои отряда.
+/// `partyHeroIds(state)` (2511–2515): все герои отряда.
 pub fn party_hero_ids(state: &Value) -> Vec<String> {
     let party = array(state.get("partyMemberIds"));
     let ids: Vec<String> = if party.is_empty() {
@@ -187,7 +187,7 @@ fn js_ordered(entries: Vec<(String, Value)>) -> Map<String, Value> {
     indices.into_iter().chain(rest).collect()
 }
 
-/// `partyVoterSnapshot(campaignId, state, eligibleHeroIds)` (2488–2508):
+/// `partyVoterSnapshot(campaignId, state, eligibleHeroIds)` (2489–2509):
 /// `{ voterByHeroId, eligibleVoterIds }`.
 pub fn party_voter_snapshot(accounts: &Accounts, campaign_id: &str, state: &Value, eligible_hero_ids: &[String]) -> Result<Value, Failure> {
     let memberships = accounts.list_campaign_memberships(campaign_id)?;
@@ -230,7 +230,7 @@ pub fn party_voter_snapshot_with(memberships: &[Value], campaign_id: &str, state
     Value::Object(snapshot)
 }
 
-/// `campaignVoterCount(campaignId, state)` (2532–2534).
+/// `campaignVoterCount(campaignId, state)` (2533–2535).
 pub fn campaign_voter_count(accounts: &Accounts, campaign_id: &str, state: &Value) -> Result<usize, Failure> {
     let snapshot = party_voter_snapshot(accounts, campaign_id, state, &party_hero_ids(state))?;
     Ok(array(snapshot.get("eligibleVoterIds")).len())
@@ -245,13 +245,13 @@ pub fn viewer_state_for(state: &Value, user: &Value, actor_id: Option<&Value>) -
     Ok(sk_tactics::weapon_attack_view::with_weapon_attack_summaries(forecast.as_ref(), Some(state), actor_id))
 }
 
-/// `ownedViewerActorId(state, user, campaignId)` (2548–2552).
+/// `ownedViewerActorId(state, user, campaignId)` (2549–2553).
 pub fn owned_viewer_actor_id(accounts: &Accounts, state: &Value, user: &Value, campaign_id: &str) -> Result<String, Failure> {
     let players = array(state.get("players"));
     Ok(campaign_hero_ids(accounts, user, campaign_id)?.into_iter().find(|id| players.iter().any(|player| js::string(player.get("id")) == *id)).unwrap_or_default())
 }
 
-/// `assignedCampaignHeroIds(campaignId, state)` (2554–2562).
+/// `assignedCampaignHeroIds(campaignId, state)` (2555–2563).
 pub fn assigned_campaign_hero_ids(accounts: &Accounts, campaign_id: &str, state: &Value) -> Result<Vec<String>, Failure> {
     let party: IndexSet<String> = party_hero_ids(state).into_iter().collect();
     let memberships: Vec<Value> = accounts.list_campaign_memberships(campaign_id)?.into_iter().filter(|membership| membership.get("status").and_then(Value::as_str) != Some("revoked")).collect();
@@ -337,7 +337,7 @@ mod tests {
 
     /// Сторож AGENTS §5 «прогноз удара не выдаёт закрытую КД процентом
     /// попадания» на пути маршрутов: `viewer_state_for` = проекция зрителя +
-    /// прогноз (`index.mjs:2544–2546`).
+    /// прогноз (`index.mjs:2545–2547`).
     #[test]
     fn viewer_state_hides_closed_armor_from_hit_chance() {
         let player = json!({ "id": "u1", "role": "player", "heroIds": ["hero"], "campaignMemberships": [] });

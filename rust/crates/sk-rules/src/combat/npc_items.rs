@@ -1,6 +1,6 @@
 //! Предметы NPC в бою (`NPC_ITEM_USE`, `validateNpcItemUseCommand`). Задача Р3.
 //!
-//! JS: `server/rules-engine.mjs`, 5161–5290 (поля команды, цена тактики,
+//! JS: `server/rules-engine.mjs`, 5183–5312 (поля команды, цена тактики,
 //! проверка команды предмета противника) и 8771 (`npcEquipmentSpentEvent`).
 //!
 //! Тактики и вещи противника объявляет `sk-economy` (`server/npc-equipment.mjs`);
@@ -56,7 +56,7 @@ fn allowed_field(key: &str) -> bool {
     key == SERVER_AUTHORITATIVE_FIELD || NPC_ITEM_USE_COMMAND_FIELDS.contains(&key)
 }
 
-/// `validateNpcItemUseCommand(command, state, context)` (5190–5290):
+/// `validateNpcItemUseCommand(command, state, context)` (5212–5312):
 /// противник пользуется своей вещью — только руками планировщика ходов.
 pub fn validate_npc_item_use_command(command: &Value, state: &Value, context: &Context) -> Result<Value, Halt> {
     if !context.is_true("isNpcScheduler") {
@@ -165,7 +165,7 @@ pub fn validate_npc_item_use_command(command: &Value, state: &Value, context: &C
     Ok(Value::Object(result))
 }
 
-/// `npcEquipmentSpentEvent(command, payload)` (8771): служебный расход
+/// `npcEquipmentSpentEvent(command, payload)` (8793): служебный расход
 /// снаряжения противника, видимый только ведущему.
 pub fn npc_equipment_spent_event(command: &Value, payload: &Value) -> Value {
     let owner = js::string(command.get("actor_id"));

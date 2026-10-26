@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Хиты и отдых: судьба погибшего, отдых, лечение погибшего, максимум хитов, опознание. Задача Р2.
 //!
-//! JS: `server/rules-engine.mjs`, 6985–6992, 6994–7042, 7058–7060, 7061–7063, 7569–7585. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 7007–7014, 7016–7064, 7080–7082, 7083–7085, 7591–7607. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 
 use serde_json::{json, Value};
@@ -24,7 +24,7 @@ fn set_field(command: &mut Value, key: &str, value: Value) {
     }
 }
 
-/// Блок 57 (6985–6992): судьба погибшего героя.
+/// Блок 57 (7007–7014): судьба погибшего героя.
 pub fn check_resolve_hero_death(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "ResolveHeroDeath" {
         return Ok(());
@@ -59,7 +59,7 @@ fn rest_schema_current(rest: Option<&Value>) -> bool {
     js::number(rest.and_then(|rest| rest.get("schema_version"))) >= REST_EVENT_SCHEMA_VERSION as f64
 }
 
-/// Блок 58 (6994–7042): отдых.
+/// Блок 58 (7016–7064): отдых.
 pub fn check_rest(v: &mut Validation<'_>) -> Step {
     let kind_of_command = command_type(v);
     if !matches!(kind_of_command.as_str(), "StartRest" | "SpendHitPointDie" | "CompleteRest") {
@@ -129,7 +129,7 @@ pub fn check_rest(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 61 (7058–7060): лечение не поднимает погибшего.
+/// Блок 61 (7080–7082): лечение не поднимает погибшего.
 pub fn check_healing_dead_hero(v: &mut Validation<'_>) -> Step {
     if command_type(v) == "ApplyHealing" && is_dead_hero(v.state, &js::string(Some(&target_for(&v.command)))) {
         return Err(rule("Обычное лечение не возвращает погибшего героя к жизни", "HERO_DEAD_UNRESOLVED"));
@@ -137,7 +137,7 @@ pub fn check_healing_dead_hero(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 62 (7061–7063): уменьшение максимума хитов.
+/// Блок 62 (7083–7085): уменьшение максимума хитов.
 pub fn check_reduce_hit_point_maximum(v: &mut Validation<'_>) -> Step {
     if command_type(v) == "ReduceHitPointMaximum" && !v.context.truthy("isAdmin") && !v.context.truthy("serverAuthoritativeCombat") {
         return Err(rule("Уменьшать максимум ОЗ может только доверенный серверный эффект", "MAX_HP_REDUCTION_FORBIDDEN"));
@@ -145,7 +145,7 @@ pub fn check_reduce_hit_point_maximum(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 70 (7569–7585): опознание противника.
+/// Блок 70 (7591–7607): опознание противника.
 pub fn check_identify_enemy(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "IdentifyEnemy" {
         return Ok(());

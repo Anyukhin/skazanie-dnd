@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Обыск контейнера добычи. Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 21634–21645. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 21656–21667. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::Value;
@@ -11,7 +11,7 @@ use super::with_field;
 use crate::core::{event_from, spread_value};
 use crate::pause::{Fault, Halt, Step};
 
-/// `LootContainer` (21634–21645): итог проверки, уже лежащий в команде, —
+/// `LootContainer` (21656–21667): итог проверки, уже лежащий в команде, —
 /// в события.
 pub fn loot_container(r: &mut Resolve<'_>) -> Step {
     let drafts = loot_container_command_events(&r.command).map_err(|error| {

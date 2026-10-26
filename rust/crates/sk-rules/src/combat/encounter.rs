@@ -1,6 +1,6 @@
 //! Сборка встречи из состояния и нападение на NPC (`assembleEncounterFromState`, `validateAttackNpcCommand`). Задача Р3.
 //!
-//! JS: `server/rules-engine.mjs`, 5800–6024: участники должности, пустое место
+//! JS: `server/rules-engine.mjs`, 5822–6046: участники должности, пустое место
 //! героя, сборка встречи (авторский NPC со стражей и засадой сценария или
 //! сборщик по теме), вход сборщика, отпечаток нападения на NPC и проверка
 //! `AttackNpc`.
@@ -23,7 +23,7 @@ use crate::tactical_geometry::{self as tg, KeySet};
 
 const CREATURE_ENTITY_KINDS: [&str; 1] = ["enemy"];
 
-/// `authoredOfficeParticipants(state, npcId)` (5800–5803): держатель
+/// `authoredOfficeParticipants(state, npcId)` (5822–5825): держатель
 /// должности NPC и её защитники.
 pub fn authored_office_participants(state: &Value, npc_id: &str) -> Vec<String> {
     let offices = array_of(at(state.get("world_offices"), "offices"));
@@ -39,7 +39,7 @@ pub fn authored_office_participants(state: &Value, npc_id: &str) -> Vec<String> 
     crate::core::unique_string_list(&list)
 }
 
-/// `isEmptyHeroSeat(actor)` (5811): место героя без созданного героя.
+/// `isEmptyHeroSeat(actor)` (5833): место героя без созданного героя.
 pub fn is_empty_hero_seat(actor: Option<&Value>) -> bool {
     js::is_true(at(actor, "characterSetupRequired")) && at(actor, "characterSetupStage").and_then(Value::as_str) != Some("leveling")
 }
@@ -48,7 +48,7 @@ fn assembly_error(message: &str, code: &str) -> Halt {
     rule(message, code)
 }
 
-/// `validateEncounterPlacements(proposal)` (5822–5850): площадь каждого
+/// `validateEncounterPlacements(proposal)` (5844–5872): площадь каждого
 /// существа встречи не пересекает стен, реквизита и друг друга.
 fn validate_encounter_placements(state: &Value, proposal: Value) -> Result<Value, Halt> {
     let map = tg::scene_tactical_map(state);
@@ -100,7 +100,7 @@ fn ruleset_of(state: &Value) -> Value {
     state.get("ruleset_id").cloned().unwrap_or(Value::Null)
 }
 
-/// `assembleEncounterFromState(state, command)` (5815–5925).
+/// `assembleEncounterFromState(state, command)` (5837–5947).
 pub fn assemble_encounter_from_state(state: &Value, command: &Value) -> Result<Value, Halt> {
     let authored_raw = crate::core::coalesce(&[command.get("npc_id"), command.get("authored_npc_id")]);
     let authored_npc_id = text::trim(&js::s(authored_raw)).to_string();
@@ -239,7 +239,7 @@ fn strip_missing(enemy: &mut Map<String, Value>, vital: &Value) {
     }
 }
 
-/// Блок 48 `validateCommand` (6916–6920): `command.encounter`; любой отказ
+/// Блок 48 `validateCommand` (6938–6942): `command.encounter`; любой отказ
 /// сборки — `RulesValidationError` с кодом ошибки или `ENCOUNTER_ASSEMBLY_REJECTED`.
 pub fn assemble_encounter_for_command(state: &Value, command: &Value) -> Result<Value, RuleError> {
     assemble_encounter_from_state(state, command).map_err(|halt| match halt {
@@ -256,7 +256,7 @@ pub struct AssemblyInput {
     pub cells: Vec<Value>,
 }
 
-/// `encounterAssemblyInput(state, occupiedKeys)` (5935–5990): живые герои с
+/// `encounterAssemblyInput(state, occupiedKeys)` (5957–6012): живые герои с
 /// позициями и клетки сцены с отметкой занятости и стенами.
 pub fn encounter_assembly_input(state: &Value, occupied_keys: &KeySet) -> Result<AssemblyInput, Halt> {
     let players = array_of(state.get("players"));
@@ -347,7 +347,7 @@ pub fn npc_combat_request_fingerprint(command: &Value) -> String {
     sk_core::hash::sha256_hex(js::stringify(&semantic).as_bytes())
 }
 
-/// `validateAttackNpcCommand(command, state)` (5992–6024): нападение героя на
+/// `validateAttackNpcCommand(command, state)` (6014–6046): нападение героя на
 /// видимого NPC; дописывает `npc_id` и `request_fingerprint`.
 pub fn validate_attack_npc_command(command: &mut Value, state: &Value) -> Step {
     if game::combat_active(state) {

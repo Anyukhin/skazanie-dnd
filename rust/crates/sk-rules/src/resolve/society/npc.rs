@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: NPC мира: пост, перемещение, вред. Задача Р7.
 //!
-//! JS: `server/rules-engine.mjs`, 20986–21001, 21002–21018, 21019–21029. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 21008–21023, 21024–21040, 21041–21051. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -27,7 +27,7 @@ fn insert_destination(payload: &mut Map<String, Value>, command: &Value) {
     insert_present(payload, "y", to.and_then(|to| to.get("y")));
 }
 
-/// `PlaceNpc` (20986–21001).
+/// `PlaceNpc` (21008–21023).
 pub fn place_npc(r: &mut Resolve<'_>) -> Step {
     let npc_id = r.command.get("npc_id").cloned();
     let npc = social_npc(&r.state, npc_id.as_ref());
@@ -47,7 +47,7 @@ pub fn place_npc(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `MoveNpc` (21002–21018).
+/// `MoveNpc` (21024–21040).
 pub fn move_npc(r: &mut Resolve<'_>) -> Step {
     let npc_id = r.command.get("npc_id").cloned();
     let npc = social_npc(&r.state, npc_id.as_ref());
@@ -77,7 +77,7 @@ pub fn move_npc(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `HarmNpc` (21019–21029).
+/// `HarmNpc` (21041–21051).
 pub fn harm_npc(r: &mut Resolve<'_>) -> Step {
     let field = |key: &str| r.command.get(key).cloned();
     let options = NpcHarmOptions {

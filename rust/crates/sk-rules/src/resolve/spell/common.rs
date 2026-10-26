@@ -1,10 +1,10 @@
 //! Ветки `resolveCommandInternal`: концентрация (`StartConcentration`,
 //! `EndConcentration`) и заклинание `CastSpell` — общая часть авторитетного
-//! пути (16824–17219), выбор вида, дополнительные лучи (18761–18798) и
-//! неавторитетная запись (18801–18808). Виды заклинаний — соседние файлы
+//! пути (16846–17241), выбор вида, дополнительные лучи (18783–18820) и
+//! неавторитетная запись (18823–18830). Виды заклинаний — соседние файлы
 //! `spell/`. Задача Р9.
 //!
-//! JS: `server/rules-engine.mjs`, 16814–16816, 16817–16822, 16823–18810;
+//! JS: `server/rules-engine.mjs`, 16836–16838, 16839–16844, 16845–18832;
 //! прокси NPC сцены для заклинаний — 13049–13051. Диспетчер —
 //! `resolve/dispatch.rs` (Р0); ветка дописывает события в `r.events` и
 //! броски в `r.rolls`.
@@ -233,9 +233,9 @@ impl Resolve<'_> {
     }
 }
 
-// --- концентрация (16814–16822) ----------------------------------------------
+// --- концентрация (16836–16844) ----------------------------------------------
 
-/// `StartConcentration` (16814–16816).
+/// `StartConcentration` (16836–16838).
 pub fn start_concentration(r: &mut Resolve<'_>) -> Step {
     let command = &r.command;
     let effect_id = match command.get("effect_id").filter(|value| js::truthy(Some(value))).or_else(|| command.get("effectId").filter(|value| js::truthy(Some(value)))) {
@@ -248,7 +248,7 @@ pub fn start_concentration(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `EndConcentration` (16817–16822).
+/// `EndConcentration` (16839–16844).
 pub fn end_concentration(r: &mut Resolve<'_>) -> Step {
     let command = &r.command;
     let mut payload = Map::new();
@@ -263,7 +263,7 @@ pub fn end_concentration(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// Боевой лист видимого NPC сцены для заклинания 2014 (13049–13051):
+/// Боевой лист видимого NPC сцены для заклинания 2014 (13071–13073):
 /// `npcInteractionTargetForViewer(state, id)` и `npcCombatActorFor(state, id)`.
 /// `None` — NPC не цель (пропустить). Вызывается только для id, у которых нет
 /// листа в бою.
@@ -335,7 +335,7 @@ const METAMAGIC_CONDITIONS: [&str; 10] = [
     "metamagic-twinned",
 ];
 
-/// `CastSpell` (16823–18810).
+/// `CastSpell` (16845–18832).
 pub fn cast_spell(r: &mut Resolve<'_>) -> Step {
     let authoritative = js::truthy(r.command.get("server_authoritative")) || r.context.truthy("serverAuthoritativeCombat");
     if authoritative {
@@ -369,7 +369,7 @@ pub fn cast_spell(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// Авторитетный путь `CastSpell` (16824–18799).
+/// Авторитетный путь `CastSpell` (16846–18821).
 fn authoritative_cast(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let actor_id = js::s(r.command.get("actor_id"));
@@ -519,7 +519,7 @@ fn authoritative_cast(r: &mut Resolve<'_>) -> Step {
     } else {
         field(&spell, "actionType").cloned()
     };
-    // Визуальная геометрия события (16965–16974).
+    // Визуальная геометрия события (16987–16996).
     let target_kind = field(&spell, "target").and_then(Value::as_str);
     let source_point = if target_kind == Some("self") { from.map(point_json) } else { command.get("to").cloned() };
     let visual_gate = (target_kind == Some("point") && js::truthy(command.get("to"))) || (target_kind == Some("self") && ["area-save", "area-damage"].contains(&kind.as_str()) && from.is_some());
@@ -686,7 +686,7 @@ fn authoritative_cast(r: &mut Resolve<'_>) -> Step {
     super::summon::additional_beams(r, &cast)
 }
 
-/// Ветка по виду заклинания (17220–18756).
+/// Ветка по виду заклинания (17242–18778).
 fn dispatch_kind(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     let spell = cast.spell.clone();
     let kind = template(field(&spell, "kind"));
@@ -733,7 +733,7 @@ fn dispatch_kind(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
     Ok(())
 }
 
-/// Заготовленная атака на творящего заклинание (16865–16889).
+/// Заготовленная атака на творящего заклинание (16887–16911).
 fn readied_spell_window(r: &mut Resolve<'_>, state: &Value, combat: &Value, command: &Value, actor_id: &str) {
     let caster_is_enemy = sk_core::game::is_enemy_actor(state, actor_id);
     let mut order: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -790,7 +790,7 @@ fn area_probe(spell: &Value, center: &Value, minimum_radius: i64) -> Value {
     Value::Object(probe)
 }
 
-/// `SpellAreaCreated` длящейся области заклинания и гашение пламени (17042–17148).
+/// `SpellAreaCreated` длящейся области заклинания и гашение пламени (17064–17170).
 fn spell_area_created(r: &mut Resolve<'_>, state: &Value, cast: &Cast, center: &Value) -> Step {
     let spell = &cast.spell;
     let command = &cast.command;
@@ -928,7 +928,7 @@ fn spell_area_created(r: &mut Resolve<'_>, state: &Value, cast: &Cast, center: &
     Ok(())
 }
 
-/// Огонь выжигает паутину и поджигает масло (17153–17218).
+/// Огонь выжигает паутину и поджигает масло (17175–17240).
 fn burn_flammable_areas(r: &mut Resolve<'_>, state: &Value, cast: &Cast, area_center: Option<&Value>) -> Step {
     let spell = &cast.spell;
     let command = &cast.command;

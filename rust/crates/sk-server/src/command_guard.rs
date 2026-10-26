@@ -35,7 +35,7 @@ use crate::error::Failure;
 /// Итог санитайзера: команда для движка или отказ политики маршрута.
 pub type GuardResult<T> = Result<T, Failure>;
 
-// --- наборы команд (528–636) ---------------------------------------------------------
+// --- наборы команд (529–637) ---------------------------------------------------------
 
 /// Грани общего кубика (`PUBLIC_DIE_SIDES`, 528; читает и С10).
 pub const PUBLIC_DIE_SIDES: &[i64] = &[4, 6, 8, 10, 12, 20, 100];
@@ -189,7 +189,7 @@ fn party_has(state: &Value, actor: &str) -> GuardResult<bool> {
     Ok(false)
 }
 
-/// `commandType(command)` (642–644).
+/// `commandType(command)` (643–645).
 pub fn command_type(command: &Value) -> String {
     let source = Some(command);
     js::s(nn(nn(get(source, "command_type"), get(source, "commandType")), get(source, "type")))
@@ -246,7 +246,7 @@ fn put_raw(map: &mut Map<String, Value>, key: &str, value: Option<&Value>) {
     }
 }
 
-// --- кто действует (510–526) ---------------------------------------------------------
+// --- кто действует (511–527) ---------------------------------------------------------
 
 /// Есть ли у кампании записи о членстве (`campaignHasMemberships`).
 pub trait Memberships {
@@ -286,7 +286,7 @@ impl<'a> Caller<'a> {
         self.user.get("role").and_then(Value::as_str) == Some("admin")
     }
 
-    /// `campaignHeroIds(user, campaignId)` (514–522).
+    /// `campaignHeroIds(user, campaignId)` (515–523).
     fn campaign_hero_values(&self, campaign_id: Option<&Value>) -> GuardResult<Vec<Value>> {
         let own = || list(self.user.get("heroIds")).to_vec();
         let code = string_or_empty(campaign_id);
@@ -302,7 +302,7 @@ impl<'a> Caller<'a> {
         Ok(if self.memberships.campaign_has_memberships(&code)? { Vec::new() } else { own() })
     }
 
-    /// `canUseHero(user, heroId, campaignId)` (524–526): `includes` строгий.
+    /// `canUseHero(user, heroId, campaignId)` (525–527): `includes` строгий.
     pub fn can_use_hero(&self, hero_id: Option<&Value>, campaign_id: Option<&Value>) -> GuardResult<bool> {
         if self.is_admin() {
             return Ok(true);
@@ -325,7 +325,7 @@ impl<'a> Caller<'a> {
     }
 }
 
-// --- добыча (589–614) ----------------------------------------------------------------
+// --- добыча (590–615) ----------------------------------------------------------------
 
 /// `Math.max(0, Number(x) || 0)`.
 fn non_negative(value: Option<&Value>) -> Value {
@@ -334,7 +334,7 @@ fn non_negative(value: Option<&Value>) -> Value {
     js::num(number.max(0.0))
 }
 
-/// `lootTakenRecordFor(state, containerId)` (589–608): последняя запись
+/// `lootTakenRecordFor(state, containerId)` (590–609): последняя запись
 /// летописи об обыске контейнера — только названные поля.
 pub fn loot_taken_record_for(state: &Value, container_id: Option<&Value>) -> Option<Value> {
     let expected = js::s(container_id);
@@ -360,9 +360,9 @@ pub fn loot_taken_record_for(state: &Value, container_id: Option<&Value>) -> Opt
     })
 }
 
-// --- бой (702–826) -------------------------------------------------------------------
+// --- бой (703–827) -------------------------------------------------------------------
 
-/// `authoritativeCombatCommandBase(input)` (702–711).
+/// `authoritativeCombatCommandBase(input)` (703–712).
 pub fn authoritative_combat_command_base(input: &Value) -> Value {
     let mut base = Map::new();
     put(&mut base, "command_type", command_type(input));
@@ -379,7 +379,7 @@ fn either_trimmed(input: &Value, snake: &str, camel: &str) -> Option<String> {
     js::present(value).then(|| text::trim(&js::s(value)).to_string())
 }
 
-/// `normalizeMakeAttackCommand(input, base)` (713–745). `base` — `None`:
+/// `normalizeMakeAttackCommand(input, base)` (714–746). `base` — `None`:
 /// база из самого запроса (вызов администратора).
 pub fn normalize_make_attack_command(input: &Value, base: Option<Value>) -> GuardResult<Value> {
     let base = base.unwrap_or_else(|| authoritative_combat_command_base(input));
@@ -422,7 +422,7 @@ pub fn normalize_make_attack_command(input: &Value, base: Option<Value>) -> Guar
     Ok(with_fingerprint(command, make_attack_command_fingerprint))
 }
 
-/// `assertNpcCombatActorPermission(user, state, input)` (797–806).
+/// `assertNpcCombatActorPermission(user, state, input)` (798–807).
 pub fn assert_npc_combat_actor_permission(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<String> {
     let actor = actor_of(input);
     caller.require_own(&actor, state, "Напасть можно только своим героем")?;
@@ -438,7 +438,7 @@ fn is_npc_id(text: &str) -> bool {
     !text.is_empty() && text.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | ':' | '-'))
 }
 
-/// `sanitizePlayerNpcCombatCommand(user, state, input)` (808–824).
+/// `sanitizePlayerNpcCombatCommand(user, state, input)` (809–825).
 pub fn sanitize_player_npc_combat_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     if !PLAYER_NPC_COMBAT_COMMANDS.contains(&command_type(input).as_str()) {
         return Err(policy_error("Игроку доступен только безопасный вход в бой с NPC", "PLAYER_COMMAND_FORBIDDEN"));
@@ -459,7 +459,7 @@ pub fn sanitize_player_npc_combat_command(caller: &Caller<'_>, state: &Value, in
     Ok(Value::Object(command))
 }
 
-/// `combatActorFor(state, actorIdValue)` (1247–1250): герой или актёр
+/// `combatActorFor(state, actorIdValue)` (1248–1251): герой или актёр
 /// кампании; `null` в списке — `TypeError`, как в JS.
 pub fn combat_actor_for<'s>(state: &'s Value, actor_id: Option<&Value>) -> GuardResult<Option<&'s Value>> {
     let wanted = js::s(actor_id);
@@ -475,7 +475,7 @@ pub fn combat_actor_for<'s>(state: &'s Value, actor_id: Option<&Value>) -> Guard
     Ok(None)
 }
 
-/// `assertPlayerCombatActorPermission(user, state, input)` (1252–1259):
+/// `assertPlayerCombatActorPermission(user, state, input)` (1253–1260):
 /// свой герой или призванное существо своего героя.
 pub fn assert_player_combat_actor_permission<'s>(caller: &Caller<'_>, state: &'s Value, input: &Value) -> GuardResult<&'s Value> {
     let actor = actor_of(input);
@@ -516,7 +516,7 @@ fn safe_int_in(value: Option<&Value>, low: f64, high: f64) -> bool {
 }
 
 /// `sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolicy })`
-/// (1261–1430): из запроса берутся только поля своей команды.
+/// (1262–1431): из запроса берутся только поля своей команды.
 pub fn sanitize_player_combat_command(caller: &Caller<'_>, state: &Value, input: &Value, skip_attack_target_policy: bool) -> GuardResult<Value> {
     let kind = command_type(input);
     if !PLAYER_COMBAT_COMMANDS.contains(&kind.as_str()) {
@@ -592,7 +592,7 @@ pub fn sanitize_player_combat_command(caller: &Caller<'_>, state: &Value, input:
     Ok(Value::Object(command))
 }
 
-/// Ветка `CastSpell` санитайзера боя (1336–1374).
+/// Ветка `CastSpell` санитайзера боя (1337–1375).
 fn cast_spell(mut command: Map<String, Value>, input: &Value) -> GuardResult<Value> {
     let source = Some(input);
     let spell_id = sliced(nn(get(source, "spell_id"), get(source, "spellId")), 120);
@@ -664,7 +664,7 @@ fn cast_spell(mut command: Map<String, Value>, input: &Value) -> GuardResult<Val
     Ok(Value::Object(command))
 }
 
-/// Ветка `UseCombatAction` санитайзера боя (1375–1402).
+/// Ветка `UseCombatAction` санитайзера боя (1376–1403).
 fn combat_action(mut command: Map<String, Value>, input: &Value) -> GuardResult<Value> {
     let source = Some(input);
     let action_id = sliced(nn(get(source, "action_id"), get(source, "actionId")), 120);
@@ -713,7 +713,7 @@ fn combat_action(mut command: Map<String, Value>, input: &Value) -> GuardResult<
     Ok(Value::Object(command))
 }
 
-// --- отдых и развитие (1432–1546) ----------------------------------------------------
+// --- отдых и развитие (1433–1547) ----------------------------------------------------
 
 const BASE_FIELDS: &[&str] = &["command_type", "commandType", "type", "actor_id", "actorId", "expected_state_version", "expectedStateVersion"];
 
@@ -722,7 +722,7 @@ fn allowed_with(extra: &[&'static str]) -> Vec<&'static str> {
     BASE_FIELDS.iter().copied().chain(extra.iter().copied()).collect()
 }
 
-/// `sanitizePlayerRestCommand(user, state, input)` (1432–1469).
+/// `sanitizePlayerRestCommand(user, state, input)` (1433–1470).
 pub fn sanitize_player_rest_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     let kind = command_type(input);
     if !PLAYER_REST_COMMANDS.contains(&kind.as_str()) {
@@ -756,7 +756,7 @@ pub fn sanitize_player_rest_command(caller: &Caller<'_>, state: &Value, input: &
     Ok(with_fingerprint(command, rest_command_fingerprint))
 }
 
-/// `expandPlayerRestCommand(command)` (1471–1492): короткий отдых — час
+/// `expandPlayerRestCommand(command)` (1472–1493): короткий отдых — час
 /// мирового времени, долгий — восемь часов и завершение.
 pub fn expand_player_rest_command(command: &Value) -> Vec<Value> {
     if command_type(command) != "StartRest" {
@@ -791,7 +791,7 @@ fn string_list(input: &Value, snake: &str, camel: &str) -> Value {
     }
 }
 
-/// `sanitizePlayerCharacterCommand(user, state, input)` (1494–1563).
+/// `sanitizePlayerCharacterCommand(user, state, input)` (1495–1564).
 pub fn sanitize_player_character_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     let kind = command_type(input);
     if !PLAYER_CHARACTER_COMMANDS.contains(&kind.as_str()) && !PLAYER_CHARACTER_LIFECYCLE_COMMANDS.contains(&kind.as_str()) {
@@ -855,7 +855,7 @@ pub fn sanitize_player_character_command(caller: &Caller<'_>, state: &Value, inp
 }
 
 // --- общество: кража, пленный, обыск, зверь, стража, таверна, благословение,
-// разговор, письмо (1565–1957) -------------------------------------------------------
+// разговор, письмо (1566–1958) -------------------------------------------------------
 
 /// Общая форма простого санитайзера: тип, белый список, свой герой.
 struct Simple<'a> {
@@ -887,7 +887,7 @@ fn head_of(kind: String, actor: String) -> Map<String, Value> {
     command
 }
 
-/// `sanitizePlayerPickpocketCommand(user, state, input)` (1573–1597).
+/// `sanitizePlayerPickpocketCommand(user, state, input)` (1574–1598).
 pub fn sanitize_player_pickpocket_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     let spec = Simple {
         set: PLAYER_PICKPOCKET_COMMANDS,
@@ -909,7 +909,7 @@ pub fn sanitize_player_pickpocket_command(caller: &Caller<'_>, state: &Value, in
     Ok(Value::Object(command))
 }
 
-/// `sanitizePlayerCaptiveCommand(user, state, input)` (1580–1611).
+/// `sanitizePlayerCaptiveCommand(user, state, input)` (1581–1612).
 pub fn sanitize_player_captive_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     let spec = Simple {
         set: PLAYER_CAPTIVE_COMMANDS,
@@ -935,7 +935,7 @@ pub fn sanitize_player_captive_command(caller: &Caller<'_>, state: &Value, input
     Ok(Value::Object(command))
 }
 
-/// `sanitizePlayerLootCommand(user, state, input)` (1622–1675): из запроса —
+/// `sanitizePlayerLootCommand(user, state, input)` (1623–1676): из запроса —
 /// только контейнер, экземпляры и количества.
 pub fn sanitize_player_loot_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     let spec = Simple {
@@ -986,7 +986,7 @@ pub fn sanitize_player_loot_command(caller: &Caller<'_>, state: &Value, input: &
     Ok(with_fingerprint(command, loot_command_fingerprint))
 }
 
-/// `sanitizePlayerBeastCommand(user, state, input)` (1683–1711).
+/// `sanitizePlayerBeastCommand(user, state, input)` (1684–1712).
 pub fn sanitize_player_beast_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     let spec = Simple {
         set: PLAYER_BEAST_COMMANDS,
@@ -1008,7 +1008,7 @@ pub fn sanitize_player_beast_command(caller: &Caller<'_>, state: &Value, input: 
     Ok(Value::Object(command))
 }
 
-/// `sanitizePlayerLawCommand(user, state, input)` (1718–1745).
+/// `sanitizePlayerLawCommand(user, state, input)` (1719–1746).
 pub fn sanitize_player_law_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     let spec = Simple {
         set: PLAYER_LAW_COMMANDS,
@@ -1028,7 +1028,7 @@ pub fn sanitize_player_law_command(caller: &Caller<'_>, state: &Value, input: &V
     Ok(Value::Object(command))
 }
 
-/// `sanitizePlayerTavernCommand(user, state, input)` (1753–1790).
+/// `sanitizePlayerTavernCommand(user, state, input)` (1754–1791).
 pub fn sanitize_player_tavern_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     let spec = Simple {
         set: PLAYER_TAVERN_COMMANDS,
@@ -1058,7 +1058,7 @@ pub fn sanitize_player_tavern_command(caller: &Caller<'_>, state: &Value, input:
     Ok(Value::Object(command))
 }
 
-/// `sanitizePlayerBlessingCommand(user, state, input)` (1797–1822).
+/// `sanitizePlayerBlessingCommand(user, state, input)` (1798–1823).
 pub fn sanitize_player_blessing_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     let spec = Simple {
         set: PLAYER_BLESSING_COMMANDS,
@@ -1076,7 +1076,7 @@ pub fn sanitize_player_blessing_command(caller: &Caller<'_>, state: &Value, inpu
     Ok(Value::Object(command))
 }
 
-/// `sanitizePlayerDialogueCommand(user, state, input)` (1824–1851).
+/// `sanitizePlayerDialogueCommand(user, state, input)` (1825–1852).
 pub fn sanitize_player_dialogue_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     let spec = Simple {
         set: PLAYER_DIALOGUE_COMMANDS,
@@ -1096,7 +1096,7 @@ pub fn sanitize_player_dialogue_command(caller: &Caller<'_>, state: &Value, inpu
     Ok(Value::Object(command))
 }
 
-/// `sanitizePlayerLetterCommand(user, state, input)` (1865–1898).
+/// `sanitizePlayerLetterCommand(user, state, input)` (1866–1899).
 /// `reply_draft` в белый список не входит: черновик ответа ставит только
 /// сервер ([`with_courier_reply_draft`]).
 pub fn sanitize_player_letter_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
@@ -1121,7 +1121,7 @@ pub fn sanitize_player_letter_command(caller: &Caller<'_>, state: &Value, input:
     Ok(Value::Object(command))
 }
 
-// --- черновик ответа на письмо (1900–1955) -------------------------------------------
+// --- черновик ответа на письмо (1901–1956) -------------------------------------------
 
 /// Будущее ответа модели (ядро однопоточное, `Send` не нужен).
 pub type ReplyFuture<'a> = Pin<Box<dyn Future<Output = Result<Option<Value>, String>> + 'a>>;
@@ -1153,7 +1153,7 @@ impl CourierReplyModel for SocialCourierModel<'_> {
     }
 }
 
-/// `withCourierReplyDraft(state, command)` (1918–1955): ответ NPC пишется
+/// `withCourierReplyDraft(state, command)` (1919–1956): ответ NPC пишется
 /// при отправке и запечатывается в письмо вместе с тоном. Модели нет, она
 /// ошиблась или ответила своим фолбэком — команда уходит как была.
 pub async fn with_courier_reply_draft(model: &dyn CourierReplyModel, state: &Value, command: Value) -> Value {
@@ -1196,9 +1196,9 @@ pub async fn with_courier_reply_draft(model: &dyn CourierReplyModel, state: &Val
     Value::Object(drafted)
 }
 
-// --- предметы и торговля (1957–2069) -------------------------------------------------
+// --- предметы и торговля (1958–2070) -------------------------------------------------
 
-/// `sanitizePlayerItemCommand(user, state, input)` (1957–2034).
+/// `sanitizePlayerItemCommand(user, state, input)` (1958–2035).
 pub fn sanitize_player_item_command(caller: &Caller<'_>, state: &Value, input: &Value) -> GuardResult<Value> {
     let kind = command_type(input);
     if !PLAYER_ITEM_COMMANDS.contains(&kind.as_str()) {
@@ -1250,7 +1250,7 @@ pub fn sanitize_player_item_command(caller: &Caller<'_>, state: &Value, input: &
     Ok(with_fingerprint(command, item_command_fingerprint))
 }
 
-/// Ветка `UseItem` санитайзера предмета (1999–2025).
+/// Ветка `UseItem` санитайзера предмета (2000–2026).
 fn use_item(command: &mut Map<String, Value>, input: &Value, actor: &str) -> GuardResult<()> {
     let source = Some(input);
     let actor_value = Value::String(actor.to_string());
@@ -1290,7 +1290,7 @@ fn use_item(command: &mut Map<String, Value>, input: &Value, actor: &str) -> Gua
     Ok(())
 }
 
-/// `sanitizeMerchantCommand(user, state, input, routeMerchantId)` (2036–2069):
+/// `sanitizeMerchantCommand(user, state, input, routeMerchantId)` (2037–2070):
 /// торговля игрока; `route_merchant_id` — id из пути `merchants/:id/commands`.
 pub fn sanitize_merchant_command(caller: &Caller<'_>, state: &Value, input: &Value, route_merchant_id: Option<&Value>) -> GuardResult<Value> {
     let kind = command_type(input);

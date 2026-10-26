@@ -1,8 +1,8 @@
 //! Общие части HTTP — перенос помощников `server/index.mjs`:
 //!
-//! - [`json`] — `json(res, status, body)` (469–480): тело печатается как
+//! - [`json`] — `json(res, status, body)` (470–481): тело печатается как
 //!   `JSON.stringify` (`sk_core::js::stringify`: `5`, а не `5.0`; `1e+21`);
-//! - [`RequestBody`] — `readBody(req)` (2905–2922): предел — миллион единиц
+//! - [`RequestBody`] — `readBody(req)` (2906–2923): предел — миллион единиц
 //!   UTF-16 (`raw.length` JS), а не байтов; жёсткий потолок чтения — 4 МБ;
 //! - [`cookie`], [`session_cookie`] — 482–496;
 //! - [`origin_allowed`], [`apply_security_headers`] — 2254–2268;
@@ -19,7 +19,7 @@ use serde_json::Value;
 
 pub const DEV_CLIENT_ORIGIN: &str = "http://127.0.0.1:4173";
 pub const SESSION_COOKIE: &str = "skazanie_session";
-/// `raw.length > 1_000_000` (`index.mjs:2909`) — в единицах UTF-16.
+/// `raw.length > 1_000_000` (`index.mjs:2910`) — в единицах UTF-16.
 pub const MAX_BODY_UTF16_UNITS: usize = 1_000_000;
 /// Жёсткий потолок чтения тела в байтах. Любое тело больше — заведомо больше
 /// миллиона единиц UTF-16 и в JS (худший случай — три байта UTF-8 на единицу),
@@ -166,7 +166,7 @@ impl RequestBody {
     }
 }
 
-/// Разбор уже прочитанного тела по правилам `readBody` (2905–2922).
+/// Разбор уже прочитанного тела по правилам `readBody` (2906–2923).
 ///
 /// Отклонения от JS (см. отчёт С0): Node склеивает тело по кускам
 /// (`raw += chunk`), и символ на стыке кусков у него становится двумя U+FFFD;
@@ -322,7 +322,7 @@ fn percent_encode(text: &str) -> String {
         .collect()
 }
 
-/// `cookies(req)[name]` (482–490): повреждённая пара пропускается, поздняя
+/// `cookies(req)[name]` (483–491): повреждённая пара пропускается, поздняя
 /// пара с тем же именем перекрывает раннюю. Node склеивает несколько
 /// заголовков `Cookie` через `; `.
 pub fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -348,7 +348,7 @@ pub fn session_token(headers: &HeaderMap) -> Option<String> {
     cookie(headers, SESSION_COOKIE)
 }
 
-/// `sessionCookie(req, token, expired)` (492–496).
+/// `sessionCookie(req, token, expired)` (493–497).
 pub fn session_cookie(headers: &HeaderMap, token: &str, expired: bool, cookie_secure: bool) -> HeaderValue {
     let forwarded = header_text(headers, "x-forwarded-proto");
     let forwarded_https = sk_core::text::trim(forwarded.split(',').next().unwrap_or("")) == "https";
@@ -358,7 +358,7 @@ pub fn session_cookie(headers: &HeaderMap, token: &str, expired: bool, cookie_se
     HeaderValue::from_str(&text).unwrap_or_else(|_| HeaderValue::from_static("skazanie_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"))
 }
 
-/// `originAllowed(req)` (2262–2268): `new URL(origin).host === req.headers.host`
+/// `originAllowed(req)` (2263–2269): `new URL(origin).host === req.headers.host`
 /// — точное сравнение, как в JS (хост URL уже в нижнем регистре и без порта
 /// по умолчанию).
 pub fn origin_allowed(headers: &HeaderMap) -> bool {
@@ -372,7 +372,7 @@ pub fn origin_allowed(headers: &HeaderMap) -> bool {
     crate::url::origin_host(&origin).is_some_and(|host| host == header_text(headers, "host"))
 }
 
-/// Ответ на `OPTIONS` (3930).
+/// Ответ на `OPTIONS` (3931).
 pub fn preflight() -> Response<Body> {
     let mut response = Response::new(Body::empty());
     *response.status_mut() = StatusCode::NO_CONTENT;
@@ -384,7 +384,7 @@ pub fn preflight() -> Response<Body> {
     response
 }
 
-/// `applySecurityHeaders(res)` (2254–2260).
+/// `applySecurityHeaders(res)` (2255–2261).
 pub fn apply_security_headers(headers: &mut HeaderMap) {
     headers.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
     headers.insert("referrer-policy", HeaderValue::from_static("no-referrer"));

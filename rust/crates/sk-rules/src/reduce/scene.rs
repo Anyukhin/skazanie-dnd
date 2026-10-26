@@ -1,6 +1,6 @@
 //! Ветки редьюсера `applyGameEventCurrent`: Сцена и карта: смена сцены, импорт карты, этажи, встреча и начало боя, перемещение, раскрытие, двери, взлом, объекты сцены, сущности. Задача Р4.
 //!
-//! JS: `server/rules-engine.mjs`, 24439–24509, 24519–24617, 24628–24695, 26059–26089, 26090–26113, 26458–26488, 26606–26608, 26609–26611, 26612–26621, 26622–26631, 26632–26635, 26636–26641, 26642–26659, 26663–26664, 26665–26671, 26672–26676, 26677–26678, 26679–26691, 26692–26698, 26699–26705, 26706–26712, 26713–26731, 26732–26749, 26750–26760, 26764–26774. Таблица меток — `reduce/table.rs`
+//! JS: `server/rules-engine.mjs`, 24461–24531, 24541–24639, 24650–24717, 26081–26111, 26112–26135, 26480–26510, 26628–26630, 26631–26633, 26634–26643, 26644–26653, 26654–26657, 26658–26663, 26664–26681, 26685–26686, 26687–26693, 26694–26698, 26699–26700, 26701–26713, 26714–26720, 26721–26727, 26728–26734, 26735–26753, 26754–26771, 26772–26782, 26786–26796. Таблица меток — `reduce/table.rs`
 //! (Р0). Перенося ветку, уберите её метки из [`UNPORTED`] этого файла.
 //!
 //! Помощники сцены — `scene/{placement,objects,levels}.rs`; карта сцены в
@@ -95,7 +95,7 @@ use crate::normalize::scene::private_adventure_buckets;
 
 // --- смена сцены, импорт карты, этажи --------------------------------------
 
-/// `SceneAdvanced` (24439–24509).
+/// `SceneAdvanced` (24461–24531).
 pub(super) fn scene_advanced(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let previous_level = scene_level_index(state);
@@ -177,7 +177,7 @@ pub(super) fn scene_advanced(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `LocationMapImported` (24519–24617).
+/// `LocationMapImported` (24541–24639).
 pub(super) fn location_map_imported(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let location_id = head(&s(payload.get("location_id")), 120);
@@ -331,7 +331,7 @@ fn mechanics_value(state: &mut Value) -> &mut Value {
     &mut state["mechanics"]
 }
 
-/// `MapLevelChanged` (24628–24695).
+/// `MapLevelChanged` (24650–24717).
 pub(super) fn map_level_changed(state: &mut Value, event: &Event) -> Reduced {
     if !state.get("scene").is_some_and(Value::is_object) {
         return Ok(());
@@ -403,7 +403,7 @@ pub(super) fn map_level_changed(state: &mut Value, event: &Event) -> Reduced {
 /// `encounterWithoutLoadouts(encounter)` (1903) — `normalize::campaign`.
 use crate::normalize::campaign::encounter_without_loadouts;
 
-/// `EncounterCreated` (26059–26089).
+/// `EncounterCreated` (26081–26111).
 pub(super) fn encounter_created(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let encounter = payload.get("encounter").filter(|value| truthy(Some(value)) && (value.is_object() || value.is_array())).cloned().unwrap_or_else(js::obj);
@@ -469,7 +469,7 @@ pub(super) fn encounter_created(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `CombatStarted` (26090–26113).
+/// `CombatStarted` (26112–26135).
 pub(super) fn combat_started(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let initiative = payload.get("initiative").filter(|value| !value.is_null()).cloned().unwrap_or_else(|| json!([]));
@@ -511,7 +511,7 @@ pub(super) fn combat_started(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `ActorMoved` (26458–26488).
+/// `ActorMoved` (26480–26510).
 pub(super) fn actor_moved(state: &mut Value, event: &Event) -> Reduced {
     let target = target_of(event);
     let payload = event.payload.clone();
@@ -589,13 +589,13 @@ pub(super) fn actor_moved(state: &mut Value, event: &Event) -> Reduced {
 
 // --- раскрытие, двери, объекты сцены ---------------------------------------
 
-/// `AreaRevealed` (26606–26608).
+/// `AreaRevealed` (26628–26630).
 pub(super) fn area_revealed(state: &mut Value, event: &Event) -> Reduced {
     let cells = event.payload.get("cells").and_then(Value::as_array).cloned().unwrap_or_default();
     reveal_scene_cells(state, &cells)
 }
 
-/// `DoorStateChanged` (26609–26611).
+/// `DoorStateChanged` (26631–26633).
 pub(super) fn door_state_changed(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     set_scene_door_state(state, payload.get("door_id"), payload.get("state"))
@@ -606,7 +606,7 @@ fn spend_action(state: &mut Value, event: &Event) {
     spend_combat_economy(state, event.actor_id.as_deref().unwrap_or_default(), "action", false, false);
 }
 
-/// `DoorBarricaded` (26612–26621).
+/// `DoorBarricaded` (26634–26643).
 pub(super) fn door_barricaded(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let actor = event.actor_id.clone().unwrap_or_default();
@@ -624,7 +624,7 @@ pub(super) fn door_barricaded(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `DoorBarricadeCleared` (26622–26631).
+/// `DoorBarricadeCleared` (26644–26653).
 pub(super) fn door_barricade_cleared(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let restored = payload.get("restored_state");
@@ -635,13 +635,13 @@ pub(super) fn door_barricade_cleared(state: &mut Value, event: &Event) -> Reduce
     Ok(())
 }
 
-/// `DoorBarricadeForced` (26632–26635).
+/// `DoorBarricadeForced` (26654–26657).
 pub(super) fn door_barricade_forced(state: &mut Value, event: &Event) -> Reduced {
     spend_action(state, event);
     Ok(())
 }
 
-/// `DoorForced` (26636–26641).
+/// `DoorForced` (26658–26663).
 pub(super) fn door_forced(state: &mut Value, event: &Event) -> Reduced {
     spend_action(state, event);
     if is_true(event.payload.get("success")) {
@@ -690,7 +690,7 @@ fn actor_string(event: &Event) -> String {
     event.actor_id.clone().unwrap_or_else(|| "null".into())
 }
 
-/// `DoorLockpicked` (26642–26659).
+/// `DoorLockpicked` (26664–26681).
 pub(super) fn door_lockpicked(state: &mut Value, event: &Event) -> Reduced {
     spend_action(state, event);
     if !is_true(event.payload.get("success")) {
@@ -709,7 +709,7 @@ pub(super) fn door_lockpicked(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `LockpickNoticed` (26663–26664): след в летописи, не в механике.
+/// `LockpickNoticed` (26685–26686): след в летописи, не в механике.
 pub(super) fn lockpick_noticed(_state: &mut Value, _event: &Event) -> Reduced {
     Ok(())
 }
@@ -725,7 +725,7 @@ fn touch_interaction(state: &mut Value, event: &Event, extra: impl FnOnce(&mut M
     })
 }
 
-/// `SceneObjectOperated` (26665–26671).
+/// `SceneObjectOperated` (26687–26693).
 pub(super) fn scene_object_operated(state: &mut Value, event: &Event) -> Reduced {
     touch_interaction(state, event, |_| {});
     if is_true(event.payload.get("action_spent")) {
@@ -734,7 +734,7 @@ pub(super) fn scene_object_operated(state: &mut Value, event: &Event) -> Reduced
     Ok(())
 }
 
-/// `ScenarioKnightHeadReturned` (26672–26676): загадка — в реестре рыцаря.
+/// `ScenarioKnightHeadReturned` (26694–26698): загадка — в реестре рыцаря.
 pub(super) fn scenario_knight_head_returned(state: &mut Value, event: &Event) -> Reduced {
     if is_true(event.payload.get("action_spent")) {
         spend_action(state, event);
@@ -742,12 +742,12 @@ pub(super) fn scenario_knight_head_returned(state: &mut Value, event: &Event) ->
     Ok(())
 }
 
-/// `SceneObjectCheckResolved` (26677–26678).
+/// `SceneObjectCheckResolved` (26699–26700).
 pub(super) fn scene_object_check_resolved(_state: &mut Value, _event: &Event) -> Reduced {
     Ok(())
 }
 
-/// `SceneObjectInspected` (26679–26691).
+/// `SceneObjectInspected` (26701–26713).
 pub(super) fn scene_object_inspected(state: &mut Value, event: &Event) -> Reduced {
     let success = is_true(event.payload.get("success"));
     let trap = is_true(event.payload.get("trap_detected"));
@@ -764,7 +764,7 @@ pub(super) fn scene_object_inspected(state: &mut Value, event: &Event) -> Reduce
     Ok(())
 }
 
-/// `SceneObjectUseRecorded` (26692–26698).
+/// `SceneObjectUseRecorded` (26714–26720).
 pub(super) fn scene_object_use_recorded(state: &mut Value, event: &Event) -> Reduced {
     let actor = actor_string(event);
     touch_interaction(state, event, |current| {
@@ -774,7 +774,7 @@ pub(super) fn scene_object_use_recorded(state: &mut Value, event: &Event) -> Red
     Ok(())
 }
 
-/// `SceneObjectKnowledgeRevealed` (26699–26705).
+/// `SceneObjectKnowledgeRevealed` (26721–26727).
 pub(super) fn scene_object_knowledge_revealed(state: &mut Value, event: &Event) -> Reduced {
     let knowledge = js::string(event.payload.get("knowledge_id"));
     touch_interaction(state, event, |current| {
@@ -785,7 +785,7 @@ pub(super) fn scene_object_knowledge_revealed(state: &mut Value, event: &Event) 
     Ok(())
 }
 
-/// `SceneObjectLootRevealed` (26706–26712).
+/// `SceneObjectLootRevealed` (26728–26734).
 pub(super) fn scene_object_loot_revealed(state: &mut Value, event: &Event) -> Reduced {
     touch_interaction(state, event, |current| {
         current.insert("loot_revealed".into(), json!(true));
@@ -793,7 +793,7 @@ pub(super) fn scene_object_loot_revealed(state: &mut Value, event: &Event) -> Re
     Ok(())
 }
 
-/// `SceneObjectStateChanged` (26713–26731).
+/// `SceneObjectStateChanged` (26735–26753).
 pub(super) fn scene_object_state_changed(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let wanted = payload.get("state").and_then(Value::as_str).map(str::to_string);
@@ -821,7 +821,7 @@ pub(super) fn scene_object_state_changed(state: &mut Value, event: &Event) -> Re
     Ok(())
 }
 
-/// `SceneObjectLootGranted` (26732–26749).
+/// `SceneObjectLootGranted` (26754–26771).
 pub(super) fn scene_object_loot_granted(state: &mut Value, event: &Event) -> Reduced {
     touch_interaction(state, event, |current| {
         current.insert("loot_claimed".into(), json!(true));
@@ -840,7 +840,7 @@ pub(super) fn scene_object_loot_granted(state: &mut Value, event: &Event) -> Red
     Ok(())
 }
 
-/// `SceneObjectEffectApplied` (26750–26760).
+/// `SceneObjectEffectApplied` (26772–26782).
 pub(super) fn scene_object_effect_applied(state: &mut Value, event: &Event) -> Reduced {
     touch_interaction(state, event, |current| {
         current.insert("used".into(), json!(true));
@@ -853,7 +853,7 @@ pub(super) fn scene_object_effect_applied(state: &mut Value, event: &Event) -> R
     Ok(())
 }
 
-/// `EntitySpawned` (26764–26774): существо карты не меняет, предмет — да.
+/// `EntitySpawned` (26786–26796): существо карты не меняет, предмет — да.
 pub(super) fn entity_spawned(state: &mut Value, event: &Event) -> Reduced {
     let entity = event.payload.get("entity").filter(|value| !value.is_null()).cloned().unwrap_or_else(js::obj);
     // `{ x: entity.x, y: entity.y }`: отсутствующее поле — `undefined` (NaN),

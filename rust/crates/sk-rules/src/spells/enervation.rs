@@ -2,10 +2,10 @@
 //! триггеров; «Серебряная удача»; закрытие отработавших усилений. Задача Р5.
 //!
 //! JS: `server/rules-engine.mjs` — `enervationContinuationInvalidReason`,
-//! `silveryFortuneFor`, `removeSilveryFortuneEvent` (10887–10918),
+//! `silveryFortuneFor`, `removeSilveryFortuneEvent` (10909–10940),
 //! `hasEnervationContinuation`, `closeEnervationAfterOtherAction`,
 //! `enervationTriggerReason`, `closeEnervationAfterTriggers`,
-//! `closeFinishedSpellBuffs` (12592–12709), `refreshEnervationActionState` (23635).
+//! `closeFinishedSpellBuffs` (12614–12731), `refreshEnervationActionState` (23657).
 //!
 //! Закрытие связи — пост-обработка итога команды в `resolveCommandWithPauses`
 //! (`resolve/api.rs`): ветки атаки, предметов и заклинаний своих копий правила

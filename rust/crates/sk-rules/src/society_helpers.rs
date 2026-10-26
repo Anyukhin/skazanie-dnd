@@ -1,8 +1,8 @@
 //! Общество в разборе команд: отношения NPC, стойка скупщика, карманная
 //! кража, таверна при уходе из зала, уход NPC из сцены. Задача Р4б.
 //!
-//! JS: `server/rules-engine.mjs`, 667, 5455, 7911 (`npcRelationshipEventsFrom`),
-//! 10746–10769 (`fenceStanceFor`, `pickpocketSpentCondition`,
+//! JS: `server/rules-engine.mjs`, 667, 5477, 7933 (`npcRelationshipEventsFrom`),
+//! 10768–10791 (`fenceStanceFor`, `pickpocketSpentCondition`,
 //! `livingPartySize`), 11881–11920 (`tavernRoundCancelledEvent`,
 //! `tavernRoundsClosedByDeparture`), 13013–13030 (`NPC_DEPARTURE_FIELDS`,
 //! `npcDepartureEvents`), 23993 (`addInventoryItem` — ветка редьюсера держит
@@ -19,7 +19,7 @@ use crate::pause::{Fault, Halt};
 
 pub use crate::constants::PICKPOCKET_CAUGHT_RELATIONSHIP_DELTA;
 
-/// `inventoryStackIndex(inventory, incoming)` (5455): стопка того же вида
+/// `inventoryStackIndex(inventory, incoming)` (5477): стопка того же вида
 /// среди ненадетых вещей; надетая входящая вещь в стопку не идёт.
 pub fn inventory_stack_index(inventory: &[Value], incoming: &Value) -> Option<usize> {
     if !truthy(Some(incoming)) || is_true(incoming.get("equipped")) {
@@ -29,7 +29,7 @@ pub fn inventory_stack_index(inventory: &[Value], incoming: &Value) -> Option<us
     inventory.iter().position(|item| !is_true(item.get("equipped")) && sk_economy::merchant_economy::inventory_stack_key(Some(item)) == key)
 }
 
-/// `addInventoryItem(inventory, incoming)` (23993): вещь в стопку того же
+/// `addInventoryItem(inventory, incoming)` (24015): вещь в стопку того же
 /// вида (не больше `MAX_STOCK_QUANTITY`) или новой строкой.
 pub fn add_inventory_item(inventory: Option<&Value>, incoming: &Value) -> Value {
     let current: Vec<Value> = match inventory {
@@ -60,7 +60,7 @@ pub fn add_inventory_item(inventory: Option<&Value>, incoming: &Value) -> Value 
 }
 
 /// `npcRelationshipEventsFrom(command, state, { npcId, heroId, delta, reason })`
-/// (7911): сдвиг отношения в границах социального движка и смена ступени.
+/// (7933): сдвиг отношения в границах социального движка и смена ступени.
 pub fn npc_relationship_events_from(command: &Value, state: &Value, npc_id: Option<&Value>, hero_id: Option<&Value>, delta: Option<&Value>, reason: Option<&Value>) -> Vec<Value> {
     let npc = js::s(npc_id);
     let hero = js::s(hero_id);
@@ -96,7 +96,7 @@ pub fn npc_relationship_events_from(command: &Value, state: &Value, npc_id: Opti
     events
 }
 
-/// `fenceStanceFor(state, merchantId, item)` (10746): краденое, скупщик ли
+/// `fenceStanceFor(state, merchantId, item)` (10768): краденое, скупщик ли
 /// торговец, скидка и отказ — одно чтение для проверки и для расчёта.
 pub fn fence_stance_for(state: &Value, merchant_id: Option<&Value>, item: Option<&Value>) -> Value {
     let stolen = js::s(item.and_then(|item| item.get("origin"))) == "stolen";
@@ -129,7 +129,7 @@ pub fn living_party_size(state: &Value) -> usize {
 }
 
 /// `tavernRoundCancelledEvent(command, state, round, minutes, npcPurseBeforeCp)`
-/// (11881): закрытый раунд — ставка уезжает сопернику. `purse_before` `None`
+/// (11903): закрытый раунд — ставка уезжает сопернику. `purse_before` `None`
 /// — касса из состояния (`null` в JS); `Some(None)` — `undefined`.
 pub fn tavern_round_cancelled_event(command: &Value, state: &Value, round: &Value, minutes: &Value, purse_before: Option<Option<i64>>) -> Value {
     let purse_before = match purse_before {
@@ -161,7 +161,7 @@ pub fn tavern_round_cancelled_event(command: &Value, state: &Value, round: &Valu
     event_from(&command_with_rules(&acting, &[rule_ids::ECONOMY_COINS]), "TavernDiceRoundCancelled", Some(Value::Object(payload)), Some(&targets))
 }
 
-/// `tavernRoundsClosedByDeparture(command, state, minutes)` (11906): столы,
+/// `tavernRoundsClosedByDeparture(command, state, minutes)` (11928): столы,
 /// закрытые уходом из зала; касса соседа идёт бегущим числом.
 pub fn tavern_rounds_closed_by_departure(command: &Value, state: &Value, minutes: &Value) -> Vec<Value> {
     let mut running: IndexMap<String, Option<i64>> = IndexMap::new();
@@ -181,13 +181,13 @@ pub fn tavern_rounds_closed_by_departure(command: &Value, state: &Value, minutes
         .collect()
 }
 
-/// `NPC_DEPARTURE_FIELDS` (13013).
+/// `NPC_DEPARTURE_FIELDS` (13035).
 pub const NPC_DEPARTURE_FIELDS: [&str; 17] = [
     "id", "name", "role", "location", "location_id", "public_summary", "voice", "speech_profile", "goals", "beliefs", "known_fact_ids", "social_dcs", "visibility",
     "reveal_on_presence", "tags", "schedule", "inventory",
 ];
 
-/// `npcDepartureEvents(command, state, npcId)` (13023): собеседник уходит из
+/// `npcDepartureEvents(command, state, npcId)` (13045): собеседник уходит из
 /// сцены — профиль остаётся, но недоступен. Отказ социальной проверки JS не
 /// переводит в отказ правила: это `NpcSocialValidationError` с его кодом.
 pub fn npc_departure_events(command: &Value, state: &Value, npc_id: &str) -> Result<Vec<Value>, Halt> {

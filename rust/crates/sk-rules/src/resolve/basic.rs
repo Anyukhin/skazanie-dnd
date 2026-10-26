@@ -2,9 +2,9 @@
 //! спасбросок, урон и лечение по команде, временные хиты, предпочтения бонуса
 //! и реакций, решение ведущего, неизвестный тип (`default`). Задача Р5.
 //!
-//! JS: `server/rules-engine.mjs`, 13703–13705, 13706–13798, 13799–13856,
-//! 15151–15157, 15158–15166, 15216–15221, 15314–15319, 15320–15340,
-//! 23128–23130, 23131–23132. Диспетчер — `resolve/dispatch.rs` (Р0); ветка
+//! JS: `server/rules-engine.mjs`, 13725–13727, 13728–13820, 13821–13878,
+//! 15173–15179, 15180–15188, 15238–15243, 15336–15341, 15342–15362,
+//! 23150–23152, 23153–23154. Диспетчер — `resolve/dispatch.rs` (Р0); ветка
 //! дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -33,7 +33,7 @@ fn supplied_modifier(command: &Value) -> Option<f64> {
     js::is_safe_integer_number(value).then(|| js::number(value))
 }
 
-/// `DeclareAction` (13703–13705).
+/// `DeclareAction` (13725–13727).
 pub fn declare_action(r: &mut Resolve<'_>) -> Step {
     let action = r.command.get("action").filter(|value| js::truthy(Some(value))).map(|value| js::string(Some(value))).unwrap_or_default();
     let event = event_from(&r.command, "ActionDeclared", Some(json!({ "action": crate::core::slice_utf16(&action, 1000) })), Some(&json!([])));
@@ -41,7 +41,7 @@ pub fn declare_action(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `MakeAbilityCheck` (13706–13798).
+/// `MakeAbilityCheck` (13728–13820).
 pub fn make_ability_check(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();
@@ -197,7 +197,7 @@ pub fn make_ability_check(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `MakeSavingThrow` (13799–13856).
+/// `MakeSavingThrow` (13821–13878).
 pub fn make_saving_throw(r: &mut Resolve<'_>) -> Step {
     let state = r.state.clone();
     let command = r.command.clone();
@@ -296,7 +296,7 @@ pub fn make_saving_throw(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ApplyDamage` (15151–15157).
+/// `ApplyDamage` (15173–15179).
 pub fn apply_damage(r: &mut Resolve<'_>) -> Step {
     let amount = r.roll_amount("damage", 0.0)?;
     let state = r.state.clone();
@@ -317,7 +317,7 @@ pub fn apply_damage(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ApplyHealing` (15158–15166).
+/// `ApplyHealing` (15180–15188).
 pub fn apply_healing(r: &mut Resolve<'_>) -> Step {
     let target_id = js::s(Some(&r.target_id));
     let rolled = r.roll_amount("healing", 0.0)?;
@@ -340,7 +340,7 @@ pub fn apply_healing(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `GrantTemporaryHitPoints` (15216–15221).
+/// `GrantTemporaryHitPoints` (15238–15243).
 pub fn grant_temporary_hit_points(r: &mut Resolve<'_>) -> Step {
     let amount = r.roll_amount("temporary_hit_points", 0.0)?;
     let key = js::string(Some(&r.target_id));
@@ -351,7 +351,7 @@ pub fn grant_temporary_hit_points(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `SetSpellBonusPreference` (15314–15319).
+/// `SetSpellBonusPreference` (15336–15341).
 pub fn set_spell_bonus_preference(r: &mut Resolve<'_>) -> Step {
     let enabled = r.command.get("enabled");
     if r.command.get("spell_id").and_then(Value::as_str) != Some("bless") || !matches!(enabled, Some(Value::Bool(_))) || !condition_ids_for(&r.state, &js::s(r.command.get("actor_id"))).contains("bless-d4") {
@@ -363,7 +363,7 @@ pub fn set_spell_bonus_preference(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `SetReactionPreference` (15320–15340).
+/// `SetReactionPreference` (15342–15362).
 pub fn set_reaction_preference(r: &mut Resolve<'_>) -> Step {
     let reaction_id = js::s(r.command.get("reaction_id"));
     let actor = r.command.get("actor_id");
@@ -387,7 +387,7 @@ pub fn set_reaction_preference(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `RecordRuling` (23128–23130).
+/// `RecordRuling` (23150–23152).
 pub fn record_ruling(r: &mut Resolve<'_>) -> Step {
     let ruling = crate::core::coalesce(&[r.command.get("ruling")]).cloned().unwrap_or_else(js::obj);
     let event = event_from(&r.command, "RulingRecorded", Some(json!({ "ruling": ruling })), Some(&json!([])));
@@ -395,7 +395,7 @@ pub fn record_ruling(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// неизвестный тип (`default`) (23131–23132).
+/// неизвестный тип (`default`) (23153–23154).
 pub fn default_branch(_r: &mut Resolve<'_>) -> Step {
     Err(rule("Команда пока не реализована", "COMMAND_NOT_IMPLEMENTED"))
 }

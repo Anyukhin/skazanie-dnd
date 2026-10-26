@@ -1,6 +1,6 @@
 //! Урон, КД и защиты: `effectiveArmorClass`, сопротивления, `damagePayload`, порог хитов, уклонение. Задача Р2.
 //!
-//! JS: `server/rules-engine.mjs`, 3105 (`resolvedHealingRoll`), 7989–8088
+//! JS: `server/rules-engine.mjs`, 3105 (`resolvedHealingRoll`), 8011–8110
 //! (`effectiveArmorClass`, пул хитов заклинания, иммунитет ко сну, защиты
 //! стат-блока, `defenseFor`), 8090–8205 (`damagePayload`,
 //! `damagePayloadWithHpFloor`; `knightDistanceFeet` 8185 — в `targets.rs`, Р1),

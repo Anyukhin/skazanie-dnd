@@ -1,6 +1,6 @@
 //! Монстры и NPC в бою: магия стат-блока, легендарные действия, перезарядка, мультиатака, синхронизация хитов NPC мира. Задача Р3.
 //!
-//! JS: `server/rules-engine.mjs`, 5293–5398 (`monsterSpellUsesSpent`,
+//! JS: `server/rules-engine.mjs`, 5315–5420 (`monsterSpellUsesSpent`,
 //! `validateMonsterSpellCommand`, `validateLegendaryActionCommand`),
 //! 8601–8658 (перезарядка и сброс легендарных действий в начале хода), 10728
 //! (`npcDamageContext`), 10971–10993 (последовательность мультиатаки),
@@ -28,7 +28,7 @@ pub fn monster_spell_uses_spent(state: &Value, actor_id: &str, spell_id: &str) -
     sk_combat_content::combat_spells::monster_spell_uses_spent_in(condition_ids_for(state, actor_id), spell_id)
 }
 
-/// `validateMonsterSpellCommand(command, state, context)` (5306–5326): магия
+/// `validateMonsterSpellCommand(command, state, context)` (5328–5348): магия
 /// стат-блока — только руками планировщика; итог — `{ monster_spell_use }`.
 pub fn validate_monster_spell_command(command: &Value, state: &Value, context: &Context) -> Result<Value, Halt> {
     if !context.is_true("isNpcScheduler") {
@@ -54,7 +54,7 @@ pub fn validate_monster_spell_command(command: &Value, state: &Value, context: &
     Ok(json!({ "monster_spell_use": null }))
 }
 
-/// `validateLegendaryActionCommand(command, state, context)` (5340–5397):
+/// `validateLegendaryActionCommand(command, state, context)` (5362–5419):
 /// легендарное действие вне своего хода и только руками планировщика.
 pub fn validate_legendary_action_command(command: &Value, state: &Value, context: &Context) -> Result<Value, Halt> {
     if !context.is_true("isNpcScheduler") {
@@ -134,7 +134,7 @@ pub struct TurnStartRolls {
 }
 
 /// `monsterRechargeAtTurnStart(state, command, actorId, diceService)`
-/// (8601–8629): приёмы «Перезарядка X–6» в начале хода существа.
+/// (8623–8651): приёмы «Перезарядка X–6» в начале хода существа.
 pub fn monster_recharge_at_turn_start(state: &Value, command: &Value, actor_id: Option<&Value>, dice: &mut dyn RulesDice) -> Result<TurnStartRolls, Halt> {
     let id = js::s(actor_id);
     let mut result = TurnStartRolls::default();
@@ -178,7 +178,7 @@ pub fn monster_recharge_at_turn_start(state: &Value, command: &Value, actor_id: 
     Ok(result)
 }
 
-/// `legendaryActionsResetAtTurnStart(state, command, actorId)` (8643–8658):
+/// `legendaryActionsResetAtTurnStart(state, command, actorId)` (8665–8680):
 /// запас легендарных действий возвращается в начале хода существа.
 pub fn legendary_actions_reset_at_turn_start(state: &Value, command: &Value, actor_id: Option<&Value>) -> Vec<Value> {
     let id = js::s(actor_id);
@@ -204,7 +204,7 @@ pub fn legendary_actions_reset_at_turn_start(state: &Value, command: &Value, act
     events
 }
 
-/// `npcDamageContext(state, npcId)` (10728–10737): социальный NPC получает
+/// `npcDamageContext(state, npcId)` (10750–10759): социальный NPC получает
 /// урон своей боевой формой; без неё — то же состояние.
 pub fn npc_damage_context<'a>(state: &'a Value, npc_id: &str) -> Cow<'a, Value> {
     if game::find_actor(state, npc_id).is_some() {
@@ -227,7 +227,7 @@ pub fn npc_damage_context<'a>(state: &'a Value, npc_id: &str) -> Cow<'a, Value> 
     Cow::Owned(Value::Object(next))
 }
 
-/// `monsterMultiattackActionCounts(multiattack)` (10971–10977): счётчики
+/// `monsterMultiattackActionCounts(multiattack)` (10993–10999): счётчики
 /// действий мультиатаки, по id в порядке `localeCompare`.
 pub fn monster_multiattack_action_counts(multiattack: Option<&Value>) -> IndexMap<String, i64> {
     let Some(Value::Object(counts)) = at(multiattack, "action_counts").filter(|value| js::truthy(Some(value))) else { return IndexMap::new() };
@@ -241,7 +241,7 @@ pub fn monster_multiattack_action_counts(multiattack: Option<&Value>) -> IndexMa
 }
 
 /// `monsterMultiattackActionIds(actor, fallbackActionId, usedActionIds)`
-/// (10979–10993): какие действия и в каком порядке объявляет мультиатака.
+/// (11001–11015): какие действия и в каком порядке объявляет мультиатака.
 pub fn monster_multiattack_action_ids(actor: Option<&Value>, fallback_action_id: Option<&Value>, used_action_ids: Option<&Value>) -> Result<Vec<String>, Halt> {
     let Some(multiattack) = monster_trait_for(actor, "multiattack") else { return Ok(Vec::new()) };
     let action_counts = monster_multiattack_action_counts(Some(multiattack));
@@ -286,7 +286,7 @@ pub struct VitalFallback {
     pub alive: bool,
 }
 
-/// `syncNpcWorldVital(state, npcId, { hp, maxHp, fallback })` (23572–23581):
+/// `syncNpcWorldVital(state, npcId, { hp, maxHp, fallback })` (23594–23603):
 /// живучесть именного NPC в `state.npc_world.vitals`.
 pub fn sync_npc_world_vital(state: &mut Value, npc_id: &str, hp: Option<&Value>, max_hp: Option<&Value>, fallback: Option<Value>) {
     if npc_id.is_empty() {
@@ -323,7 +323,7 @@ fn js_min(a: f64, b: f64) -> f64 {
     }
 }
 
-/// `syncAuthoredNpcVital(state, targetId, { hp, maxHp })` (23583–23591):
+/// `syncAuthoredNpcVital(state, targetId, { hp, maxHp })` (23605–23613):
 /// противник, порождённый именным NPC.
 pub fn sync_authored_npc_vital(state: &mut Value, target_id: &str, hp: Option<&Value>, max_hp: Option<&Value>) {
     let Some(enemy) = array_of(state.get("enemies")).iter().find(|candidate| game::actor_id(candidate) == target_id).cloned() else { return };
@@ -335,7 +335,7 @@ pub fn sync_authored_npc_vital(state: &mut Value, target_id: &str, hp: Option<&V
     sync_npc_world_vital(state, &npc_id, hp, max_hp, Some(fallback));
 }
 
-/// `syncSocialNpcVital(state, targetId, { hp, maxHp, npcId })` (23594–23601):
+/// `syncSocialNpcVital(state, targetId, { hp, maxHp, npcId })` (23616–23623):
 /// старый `HealingApplied` не трогает живучесть обычного социального NPC.
 pub fn sync_social_npc_vital(state: &mut Value, target_id: &str, hp: Option<&Value>, max_hp: Option<&Value>, npc_id: Option<&Value>) {
     if js::s(npc_id) != target_id {

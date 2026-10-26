@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Объекты сцены `OperateSceneObject` и импровизированное действие. Задача Р11.
 //!
-//! JS: `server/rules-engine.mjs`, 15284–15294, 19258–19701. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 15306–15316, 19280–19723. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -45,7 +45,7 @@ fn with_field(mut event: Value, key: &str, value: Value) -> Value {
     event
 }
 
-/// `ResolveImprovisedAction` (15284–15294).
+/// `ResolveImprovisedAction` (15306–15316).
 pub fn resolve_improvised_action(r: &mut Resolve<'_>) -> Step {
     if !game::combat_active(&r.state) {
         return Ok(());
@@ -173,7 +173,7 @@ fn apply_object_damage(r: &mut Resolve<'_>, state: &Value, target_id: &str, amou
     Ok(())
 }
 
-/// `OperateSceneObject` (19258–19701).
+/// `OperateSceneObject` (19280–19723).
 pub fn operate_scene_object(r: &mut Resolve<'_>) -> Step {
     let Some(map) = ensure_map(r)? else {
         return Err(rule("Для объекта нужна тактическая карта", "TACTICAL_MAP_REQUIRED"));

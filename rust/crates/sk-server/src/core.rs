@@ -34,7 +34,7 @@
 //! - фоновая работа ядра (хуки «проекция записана», толчки боя и часов) —
 //!   только через [`spawn_in_context`]: задача учитывается, получает
 //!   настройки ИИ кампании постановщика (как `queueMicrotask` в JS,
-//!   `index.mjs:2829–2835`) и при остановке дожидается до предела;
+//!   `index.mjs:2830–2836`) и при остановке дожидается до предела;
 //! - остановка: приём заданий закрывается, задачи в работе дожидаются до
 //!   [`DRAIN_LIMIT`], остальные отменяются (вызывающий получает
 //!   [`CoreError::Stopped`], а не `Panicked`), блокирующие — до
@@ -90,13 +90,13 @@ impl std::error::Error for CoreError {}
 /// (оркестраторы) добавляют свои поля сюда же — через ведущего, как и в
 /// `AppState`.
 pub struct GameCore {
-    /// Журнал кампаний (`FileEventStore`, `index.mjs:327–337`): редьюсер
+    /// Журнал кампаний (`FileEventStore`, `index.mjs:328–338`): редьюсер
     /// движка, карты по хешу, один файл `skazanie.sqlite`. Вызывается
     /// синхронно на потоке ядра (см. шапку модуля).
     pub events: std::sync::Arc<sk_store::EventStore>,
-    /// `RollRegistry` (`index.mjs:292–295`), файл `engine/roll-registry.json`.
+    /// `RollRegistry` (`index.mjs:293–296`), файл `engine/roll-registry.json`.
     pub rolls: RefCell<sk_infra::roll_registry::RollRegistry>,
-    /// Общие кости ядра (`diceService`, `index.mjs:291`).
+    /// Общие кости ядра (`diceService`, `index.mjs:292`).
     pub dice: crate::state::SharedDice,
     /// Живые потоки кампаний (`campaignStreams`); в С0 — заглушка. Только на
     /// потоке ядра: рассылка, отзыв и присутствие — без замков.

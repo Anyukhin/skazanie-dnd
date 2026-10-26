@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Сценарий: кошель, осведомитель, диалог, оружейная, договор, рыцарь, незнакомец. Задача Р6.
 //!
-//! JS: `server/rules-engine.mjs`, 6466–6479, 6480–6502, 6503–6526, 6527–6549, 6550–6579, 6580–6619, 6620–6640. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6488–6501, 6502–6524, 6525–6548, 6549–6571, 6572–6601, 6602–6641, 6642–6662. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 //!
 //! Данные сценария читают модули `campaign-scenario` (`sk-scenario`),
@@ -64,7 +64,7 @@ fn actor_key(v: &Validation<'_>) -> String {
     js::string(v.command.get("actor_id"))
 }
 
-/// Блок 18 (6466–6479): кошель короля.
+/// Блок 18 (6488–6501): кошель короля.
 pub fn check_scenario_purse(v: &mut Validation<'_>) -> Step {
     if !SCENARIO_PURSE_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());
@@ -88,7 +88,7 @@ pub fn check_scenario_purse(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 19 (6480–6502): осведомитель.
+/// Блок 19 (6502–6524): осведомитель.
 pub fn check_scenario_informant(v: &mut Validation<'_>) -> Step {
     if !SCENARIO_INFORMANT_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());
@@ -135,7 +135,7 @@ fn place(value: Option<&Value>) -> String {
     sk_core::text::lower(sk_core::text::trim(&js::s(value)))
 }
 
-/// Блок 20 (6503–6526): авторский диалог.
+/// Блок 20 (6525–6548): авторский диалог.
 pub fn check_dialogue(v: &mut Validation<'_>) -> Step {
     if command_type(v) != DIALOGUE_COMMAND_TYPE {
         return Ok(());
@@ -192,7 +192,7 @@ fn gifted_item(item: &Value, id_fallback: &str) -> Value {
     normalized
 }
 
-/// Блок 21 (6527–6549): оружейная.
+/// Блок 21 (6549–6571): оружейная.
 pub fn check_scenario_armory(v: &mut Validation<'_>) -> Step {
     if !SCENARIO_ARMORY_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());
@@ -231,7 +231,7 @@ pub fn check_scenario_armory(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 22 (6550–6579): договор.
+/// Блок 22 (6572–6601): договор.
 pub fn check_scenario_treaty(v: &mut Validation<'_>) -> Step {
     if !SCENARIO_TREATY_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());
@@ -274,7 +274,7 @@ pub fn check_scenario_treaty(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 23 (6580–6619): проклятый рыцарь.
+/// Блок 23 (6602–6641): проклятый рыцарь.
 pub fn check_scenario_knight(v: &mut Validation<'_>) -> Step {
     let kind = command_type(v);
     if !SCENARIO_KNIGHT_COMMAND_TYPES.contains(&kind.as_str()) {
@@ -351,7 +351,7 @@ pub fn check_scenario_knight(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 24 (6620–6640): незнакомец.
+/// Блок 24 (6642–6662): незнакомец.
 pub fn check_scenario_stranger(v: &mut Validation<'_>) -> Step {
     if !SCENARIO_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());

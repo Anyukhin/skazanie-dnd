@@ -1,7 +1,7 @@
-//! Раздача собранного клиента — `serveStatic` (`server/index.mjs:3798–3833`):
+//! Раздача собранного клиента — `serveStatic` (`server/index.mjs:3799–3834`):
 //! файлы из `dist/`, неизвестный путь — `index.html` (маршруты клиента),
 //! слабый ETag по размеру и времени, вечный кэш для собранных vite-чанков с
-//! хешем, час — для `public/`. Отвечает на **любой** метод (6478): не-API
+//! хешем, час — для `public/`. Отвечает на **любой** метод (6479): не-API
 //! `POST`/`DELETE` с разрешённого источника получают клиента, как в JS.
 //! Без `dist` — 404 «Сначала выполните pnpm build», битый процентный код
 //! пути — 400 «Некорректный путь».
@@ -57,7 +57,7 @@ fn normalize(path: &Path) -> PathBuf {
     parts.iter().collect()
 }
 
-/// `resolve(dist, requested)` с проверкой «внутри `dist`» (3803–3804):
+/// `resolve(dist, requested)` с проверкой «внутри `dist`» (3804–3805):
 /// путь собирается от `dist` (абсолютный `requested` его заменяет, как в
 /// `resolve`), нормализуется целиком — вместе с компонентами самого `dist`
 /// — и только потом сравнивается с `dist` по компонентам
@@ -206,7 +206,7 @@ pub fn serve(dist: &Path, raw_path: &str, headers: &HeaderMap) -> Response<Body>
         "public, max-age=3600"
     };
     let last_modified = http_date(modified_ms / 1000);
-    // `String(req.headers['if-none-match'] || '')`, `Date.parse(req.headers['if-modified-since'] || '')` (3825–3826).
+    // `String(req.headers['if-none-match'] || '')`, `Date.parse(req.headers['if-modified-since'] || '')` (3826–3827).
     let none_match = crate::http::header_text(headers, "if-none-match");
     let fresh = if !none_match.is_empty() {
         none_match.split(',').any(|tag| sk_core::text::trim(tag) == etag)

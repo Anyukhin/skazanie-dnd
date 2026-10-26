@@ -1,6 +1,6 @@
 //! Отдых: минимум минут, кости хитов, прошедшее время отдыха. Задача Р2.
 //!
-//! JS: `server/rules-engine.mjs`, 958 (`restMinimumMinutesFor`), 7971–7987
+//! JS: `server/rules-engine.mjs`, 958 (`restMinimumMinutesFor`), 7993–8009
 //! (`hitPointDicePoolForActor`, `elapsedRestMinutes`). Константы отдыха —
 //! `crate::constants` (Р0).
 

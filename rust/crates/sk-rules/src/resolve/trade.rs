@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Торговля: торг, оценка, покупка, услуги, продажа, жизненный цикл торговцев, карманная кража. Задача Р6.
 //!
-//! JS: `server/rules-engine.mjs`, 20348–20378, 20379–20395, 20396–20444, 20445–20475, 20476–20541, 20542–20549, 20550–20559, 20560–20568, 20569–20581, 20582–20592, 20609–20679. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 20370–20400, 20401–20417, 20418–20466, 20467–20497, 20498–20563, 20564–20571, 20572–20581, 20582–20590, 20591–20603, 20604–20614, 20631–20701. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 //!
 //! Допустимость сделки (наличие героя, торговца, товара, денег) проверил блок
@@ -61,7 +61,7 @@ fn parties(r: &Resolve<'_>) -> (Option<Value>, Option<Value>) {
     (actor, merchant)
 }
 
-/// `BargainWithMerchant` (20348–20378).
+/// `BargainWithMerchant` (20370–20400).
 pub fn bargain_with_merchant(r: &mut Resolve<'_>) -> Step {
     let (actor, merchant) = parties(r);
     let modifier = crate::checks::skills::persuasion_check_modifier(actor.as_ref());
@@ -100,7 +100,7 @@ pub fn bargain_with_merchant(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `AppraiseItem` (20379–20395).
+/// `AppraiseItem` (20401–20417).
 pub fn appraise_item(r: &mut Resolve<'_>) -> Step {
     let (actor, merchant) = parties(r);
     let item = inventory_item(actor.as_ref(), r.command.get("item_id")).cloned();
@@ -122,7 +122,7 @@ pub fn appraise_item(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `BuyItem` (20396–20444).
+/// `BuyItem` (20418–20466).
 pub fn buy_item(r: &mut Resolve<'_>) -> Step {
     let (actor, merchant) = parties(r);
     let (Some(actor), Some(merchant)) = (actor, merchant) else { return Err(missing("id")) };
@@ -177,7 +177,7 @@ pub fn buy_item(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `PurchaseMerchantService` (20445–20475).
+/// `PurchaseMerchantService` (20467–20497).
 pub fn purchase_merchant_service(r: &mut Resolve<'_>) -> Step {
     let (actor, merchant) = parties(r);
     let (Some(actor), Some(merchant)) = (actor, merchant) else { return Err(missing("id")) };
@@ -221,7 +221,7 @@ fn name_or(value: Option<&Value>, fallback: &Value, max: usize) -> String {
     slice_utf16(&text, max)
 }
 
-/// `SellItem` (20476–20541).
+/// `SellItem` (20498–20563).
 pub fn sell_item(r: &mut Resolve<'_>) -> Step {
     let (actor, merchant) = parties(r);
     let item = inventory_item(actor.as_ref(), r.command.get("item_id")).cloned();
@@ -325,7 +325,7 @@ fn lifecycle_event(r: &mut Resolve<'_>, event_type: &str, mut payload: Map<Strin
     r.events.push(event_from(&r.command, event_type, Some(Value::Object(payload)), Some(&json!([]))));
 }
 
-/// `CreateMerchant` (20542–20549).
+/// `CreateMerchant` (20564–20571).
 pub fn create_merchant(r: &mut Resolve<'_>) -> Step {
     let merchant = r.command.get("merchant").cloned();
     let Some(merchant) = merchant.filter(|merchant| !merchant.is_null()) else { return Err(missing("id")) };
@@ -336,7 +336,7 @@ pub fn create_merchant(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `ConfigureMerchant` (20550–20559).
+/// `ConfigureMerchant` (20572–20581).
 pub fn configure_merchant(r: &mut Resolve<'_>) -> Step {
     let configuration = r.command.get("configuration").cloned().unwrap_or(Value::Null);
     let Some(fields) = configuration.as_object() else { return Err(Fault::type_error("Cannot convert undefined or null to object").into()) };
@@ -350,7 +350,7 @@ pub fn configure_merchant(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `RestockMerchant` (20560–20568).
+/// `RestockMerchant` (20582–20590).
 pub fn restock_merchant(r: &mut Resolve<'_>) -> Step {
     let items = r.command.get("items").cloned().unwrap_or(Value::Null);
     let Some(entries) = items.as_array() else { return Err(missing("reduce")) };
@@ -363,7 +363,7 @@ pub fn restock_merchant(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `MoveMerchant` (20569–20581).
+/// `MoveMerchant` (20591–20603).
 pub fn move_merchant(r: &mut Resolve<'_>) -> Step {
     let Some(merchant) = find_merchant(&r.state, r.command.get("merchant_id")).cloned() else { return Err(missing("location")) };
     let mut payload = Map::new();
@@ -376,7 +376,7 @@ pub fn move_merchant(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `SetMerchantAvailability` (20582–20592).
+/// `SetMerchantAvailability` (20604–20614).
 pub fn set_merchant_availability(r: &mut Resolve<'_>) -> Step {
     let Some(merchant) = find_merchant(&r.state, r.command.get("merchant_id")).cloned() else { return Err(missing("available")) };
     let mut payload = Map::new();
@@ -387,7 +387,7 @@ pub fn set_merchant_availability(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `PickpocketNpc` (20609–20679).
+/// `PickpocketNpc` (20631–20701).
 pub fn pickpocket_npc(r: &mut Resolve<'_>) -> Step {
     use sk_items::pickpocket::{PICKPOCKET_ABILITY, PICKPOCKET_POLICY_ID, PICKPOCKET_SKILL};
     let Some(declared) = r.command.get("pickpocket").filter(|value| !value.is_null()).cloned() else { return Err(missing("npc_id")) };

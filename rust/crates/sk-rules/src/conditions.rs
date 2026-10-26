@@ -1,7 +1,7 @@
 //! Состояния: преимущество и помеха проверок, модификаторы спасбросков, страх, истощение, состояния заклинаний. Задача Р2.
 //!
-//! JS: `server/rules-engine.mjs`, 10487–10490 («Свобода перемещения»),
-//! 10516–10556 (области: кого щадит, кого держит, автоспасбросок), 10775
+//! JS: `server/rules-engine.mjs`, 10509–10512 («Свобода перемещения»),
+//! 10538–10578 (области: кого щадит, кого держит, автоспасбросок), 10797
 //! (`blessBonusEnabled`), 10945 (`checkAdvantageConditionFor`), 11162–11235
 //! (автопровал, надбавки, кости урона, преимущество и помеха спасбросков),
 //! 11347–11448 (длительность заклинания 2014, истощение, прибавка к максимуму
@@ -68,7 +68,7 @@ fn first_table_condition(state: &Value, id: &str, test: impl Fn(&str, &Value) ->
     table_keys().into_iter().find(|key| conditions.contains(key.as_str()) && table.get(key.as_str()).is_some_and(|effect| test(key, effect))).cloned()
 }
 
-// --- «Свобода перемещения» (10487–10490) ------------------------------------
+// --- «Свобода перемещения» (10509–10512) ------------------------------------
 
 /// `FREEDOM_BLOCKED_SPELL_CONDITIONS`.
 pub const FREEDOM_BLOCKED_SPELL_CONDITIONS: [&str; 3] = ["paralyzed", "restrained", "rime-encased"];
@@ -79,7 +79,7 @@ pub fn freedom_blocks_spell_condition(state: &Value, target_id: &str, condition:
     FREEDOM_BLOCKED_SPELL_CONDITIONS.contains(&condition) && condition_ids_for(state, target_id).contains("freedom-of-movement")
 }
 
-// --- области (10516–10556) ----------------------------------------------------
+// --- области (10538–10578) ----------------------------------------------------
 
 /// `areaEffectSparesActor(effect, actorId)`: заклинатель назначил существо незатронутым.
 pub fn area_effect_spares_actor(effect: Option<&Value>, actor_id: &str) -> bool {
@@ -136,7 +136,7 @@ pub fn area_effect_automatic_save(state: &Value, actor_id: &str, effect: Option<
     json!({ "saved": false, "reason": null })
 }
 
-// --- благословение и преимущество проверок (10775, 10945) -------------------
+// --- благословение и преимущество проверок (10797, 10967) -------------------
 
 /// `blessBonusEnabled(state, id)`: у получателя «Благословения» бонус не выключен.
 pub fn bless_bonus_enabled(state: &Value, id: &str) -> bool {
@@ -154,7 +154,7 @@ pub fn check_advantage_condition_for(state: &Value, id: &str, ability: Option<&V
     first_table_condition(state, id, |_, effect| includes_str(effect.get("checkAdvantageAbilities"), &ability))
 }
 
-// --- спасброски и надбавки (11162–11235) ------------------------------------
+// --- спасброски и надбавки (11184–11257) ------------------------------------
 
 /// `autoFailedSaveConditionFor(state, id, ability)`: состояние автопровала спасброска.
 pub fn auto_failed_save_condition_for(state: &Value, id: &str, ability: Option<&Value>) -> Option<String> {
@@ -262,7 +262,7 @@ pub fn save_advantage_against_condition_for(state: &Value, id: &str, condition: 
     first_table_condition(state, id, |_, effect| includes_str(effect.get("saveAdvantageAgainstConditions"), &base))
 }
 
-// --- длительность заклинания 2014, истощение, максимум хитов (11347–11448) ----
+// --- длительность заклинания 2014, истощение, максимум хитов (11369–11470) ----
 
 /// `safeInteger(value, fallback)` с дробным запасом (запас JS — любое число).
 pub(crate) fn safe_int_or(value: Option<&Value>, fallback: f64) -> f64 {

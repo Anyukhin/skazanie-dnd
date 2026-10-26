@@ -1,7 +1,7 @@
-//! С11: решения отряда и задания — `server/index.mjs:4283–4424`:
-//! `POST /api/campaigns/:id/quests/{abandon|accept}` (4283),
-//! `POST /api/campaigns/:id/party-decisions/:decision/votes` (4312),
-//! `POST /api/campaigns/:id/party-decisions/:decision/roll` (4374).
+//! С11: решения отряда и задания — `server/index.mjs:4284–4425`:
+//! `POST /api/campaigns/:id/quests/{abandon|accept}` (4284),
+//! `POST /api/campaigns/:id/party-decisions/:decision/votes` (4313),
+//! `POST /api/campaigns/:id/party-decisions/:decision/roll` (4375).
 //!
 //! Маршруты объявляются с номером строки `server/index.mjs`, где JS их
 //! проверяет: порядок общей таблицы (`routes::table`) выводится из этих
@@ -13,7 +13,7 @@
 //! Аккаунты — только через [`blocking`], журнал, присутствие и проекция —
 //! заданием ядра. Решение (коммит, проверка повтора, проекция, ответ) — одно
 //! задание ядра: между чтением ключа и коммитом чужое задание не встаёт.
-//! Гонку повтора (`index.mjs:4352–4358`) это не отменяет: коммит может
+//! Гонку повтора (`index.mjs:4353–4359`) это не отменяет: коммит может
 //! вернуть чужой коммит того же ключа (`IDEMPOTENCY_CONFLICT` журнала →
 //! прежний коммит), и голос по-прежнему сверяется с записанным после
 //! коммита.
@@ -41,20 +41,20 @@ use crate::routes::campaigns::Caught;
 
 pub fn routes() -> Vec<Route> {
     vec![
-        // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/quests\/(abandon|accept)$/)` и `POST` (4283–4284).
+        // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/quests\/(abandon|accept)$/)` и `POST` (4284–4285).
         Route::post(4284, Matcher::path_template("/api/campaigns/{id}/quests/{abandon|accept}"), quest_decision),
-        // `…\/party-decisions\/([A-Za-z0-9._:-]+)\/votes$/` и `POST` (4312–4313).
+        // `…\/party-decisions\/([A-Za-z0-9._:-]+)\/votes$/` и `POST` (4313–4314).
         Route::post(4313, Matcher::path_template("/api/campaigns/{id}/party-decisions/{decision}/votes"), party_vote),
-        // `…\/party-decisions\/([A-Za-z0-9._:-]+)\/roll$/` и `POST` (4374–4375).
+        // `…\/party-decisions\/([A-Za-z0-9._:-]+)\/roll$/` и `POST` (4375–4376).
         Route::post(4375, Matcher::path_template("/api/campaigns/{id}/party-decisions/{decision}/roll"), party_roll),
     ]
 }
 
-/// Коды 409 решения по заданию (4306).
+/// Коды 409 решения по заданию (4307).
 const QUEST_CONFLICTS: &[&str] = &["IDEMPOTENCY_CONFLICT", "PARTY_DECISION_CONFLICT", "WORLD_QUEST_CLOSED", "WORLD_QUEST_ALREADY_ACCEPTED", "CAMPAIGN_NOT_ACTIVE", "QUEST_DECISION_DURING_COMBAT"];
-/// Коды 409 голоса (4368).
+/// Коды 409 голоса (4369).
 const VOTE_CONFLICTS: &[&str] = &["STATE_VERSION_CONFLICT", "PARTY_DECISION_CONFLICT", "PARTY_DECISION_CLOSED", "PARTY_DECISION_ABSTAINED", "IDEMPOTENCY_CONFLICT"];
-/// Коды 409 общего броска (4420): без `IDEMPOTENCY_CONFLICT`.
+/// Коды 409 общего броска (4421): без `IDEMPOTENCY_CONFLICT`.
 const ROLL_CONFLICTS: &[&str] = &["STATE_VERSION_CONFLICT", "PARTY_DECISION_CONFLICT", "PARTY_DECISION_CLOSED", "PARTY_DECISION_ABSTAINED"];
 const FORBIDDEN: &[&str] = &["ACTOR_FORBIDDEN"];
 
@@ -98,7 +98,7 @@ struct Admitted {
     body: Value,
 }
 
-/// Общие шаги трёх маршрутов (4285–4292, 4314–4323, 4376–4387) до
+/// Общие шаги трёх маршрутов (4286–4293, 4315–4324, 4377–4388) до
 /// `canUseHero`: отказ до сверки и после неё — 403 без кода, нет состояния —
 /// 404, `null` от сверки — `TypeError` (400 по `catch`).
 async fn admit(ctx: &mut RouteCtx, user: Value) -> Result<Admitted, Caught> {
@@ -172,7 +172,7 @@ fn commit_fields(committed: &CommitResult) -> Vec<(&'static str, Value)> {
 
 // --- POST /api/campaigns/:id/quests/{abandon|accept} -------------------------
 
-/// Предложить отряду отказаться от задания или принять его (4283–4310):
+/// Предложить отряду отказаться от задания или принять его (4284–4311):
 /// событие `PartyDecisionOpened` с голосующими всего отряда, повтор по
 /// ключу — тот же коммит, другой запрос под тем же ключом — 409. Затем
 /// сверка проекции (она же исполняет решённое задание).
@@ -239,7 +239,7 @@ fn open_quest_decision(core: &Rc<GameCore>, campaign_id: &str, user: &Value, bod
 
 // --- POST /api/campaigns/:id/party-decisions/:decision/votes ----------------
 
-/// Голос или воздержание героя (4312–4372). Кворум — по подключённым героям
+/// Голос или воздержание героя (4313–4373). Кворум — по подключённым героям
 /// отряда (живые потоки), без них — по `online` героев; события
 /// пересобираются против свежего состояния. Ключ сверяется с записанным
 /// голосом и после коммита: чужой коммит под тем же ключом — 409.
@@ -319,7 +319,7 @@ fn cast_vote(core: &Rc<GameCore>, campaign_id: &str, user: &Value, body: &Value,
 
 // --- POST /api/campaigns/:id/party-decisions/:decision/roll -----------------
 
-/// Общий бросок отряда (4374–4424): `1d20` бросает серверный кубик
+/// Общий бросок отряда (4375–4425): `1d20` бросает серверный кубик
 /// (назначение `party_decision`, видимость `party`) до разбора решения;
 /// исход и `DieRolled` — производным коммитом. Повтор по ключу отдаёт
 /// найденный коммит без сверки с запросом (как в JS).

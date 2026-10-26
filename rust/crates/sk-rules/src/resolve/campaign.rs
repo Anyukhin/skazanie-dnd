@@ -1,6 +1,6 @@
 //! Ветки `resolveCommandInternal`: Кампания и память мира: решение отряда, цель, 15 команд памяти мира, финал, дуга, социальные профили NPC. Задача Р6.
 //!
-//! JS: `server/rules-engine.mjs`, 22744–22748, 22749–22751, 22775–22799, 22800–22814, 22815–22837, 22840–22857. Диспетчер — `resolve/dispatch.rs`
+//! JS: `server/rules-engine.mjs`, 22766–22770, 22771–22773, 22797–22821, 22822–22836, 22837–22859, 22862–22879. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
 use serde_json::{json, Map, Value};
@@ -43,7 +43,7 @@ fn draft_event(command: &Value, draft: &Value) -> Value {
     event_from(&source, &js::s(draft.get("event_type")), draft.get("payload").cloned(), draft.get("target_ids"))
 }
 
-/// `ResolveQuestDecision` (22744–22748).
+/// `ResolveQuestDecision` (22766–22770).
 pub fn resolve_quest_decision(r: &mut Resolve<'_>) -> Step {
     let drafts = sk_memory::party_decision::quest_decision_events(&r.command, &r.state, &r.context.json()).map_err(quest_decision_halt)?;
     for draft in drafts {
@@ -52,14 +52,14 @@ pub fn resolve_quest_decision(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `UpdateObjective` (22749–22751).
+/// `UpdateObjective` (22771–22773).
 pub fn update_objective(r: &mut Resolve<'_>) -> Step {
     let objective = objective_within_limit(r.command.get("objective"), 120);
     r.events.push(event_from(&r.command, "ObjectiveUpdated", Some(json!({ "objective": objective })), Some(&json!([]))));
     Ok(())
 }
 
-/// Команды памяти мира (22760–22799): событие памяти и награда за найденную
+/// Команды памяти мира (22782–22821): событие памяти и награда за найденную
 /// тайну сценария (оберег Ломара).
 pub fn world_memory(r: &mut Resolve<'_>) -> Step {
     let Some(world_event) = sk_memory::world_memory::world_memory_event(&r.command) else {
@@ -102,7 +102,7 @@ fn or_null(value: Option<&Value>) -> Value {
     value.filter(|value| js::truthy(Some(value))).cloned().unwrap_or(Value::Null)
 }
 
-/// `CompleteCampaign` (22800–22814).
+/// `CompleteCampaign` (22822–22836).
 pub fn complete_campaign(r: &mut Resolve<'_>) -> Step {
     let ending = sk_scenario::campaign_scenario::scenario_ending(&r.state);
     let mut payload = Map::new();
@@ -123,7 +123,7 @@ pub fn complete_campaign(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `AdvanceCampaignArc` (22815–22837).
+/// `AdvanceCampaignArc` (22837–22859).
 pub fn advance_campaign_arc(r: &mut Resolve<'_>) -> Step {
     let Some(closing) = sk_story::campaign_loop_policy::campaign_arc_plan(&r.state) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'seed')").into());
@@ -157,7 +157,7 @@ pub fn advance_campaign_arc(r: &mut Resolve<'_>) -> Step {
     Ok(())
 }
 
-/// `UpsertNpcSocialProfile`, `RecordNpcSocialTurn`, `ResolveNpcPromise` (22838–22857).
+/// `UpsertNpcSocialProfile`, `RecordNpcSocialTurn`, `ResolveNpcPromise` (22860–22879).
 pub fn npc_social(r: &mut Resolve<'_>) -> Step {
     let mut added = Vec::new();
     for social in sk_social::npc_social::npc_social_events(&r.command, &r.state) {

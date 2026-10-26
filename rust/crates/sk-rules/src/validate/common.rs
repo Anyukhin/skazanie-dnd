@@ -2,7 +2,7 @@
 //! недособранный герой, статус кампании, погибший герой, провенанс,
 //! количества. Задача Р0.
 //!
-//! JS: `server/rules-engine.mjs`, 6135–6151, 6777–6809, 6981–6984, 7819–7832.
+//! JS: `server/rules-engine.mjs`, 6157–6173, 6799–6831, 7003–7006, 7841–7854.
 
 use serde_json::Value;
 use sk_core::js;
@@ -46,7 +46,7 @@ pub fn js_includes(container: Option<&Value>, item: Option<&Value>, what: &str) 
     }
 }
 
-/// Блок 2 (6135–6137): тип команды разрешён.
+/// Блок 2 (6157–6159): тип команды разрешён.
 pub fn check_command_allowed(v: &mut Validation<'_>) -> Step {
     if !is_allowed_command_type(&command_type(v)) {
         return Err(rule("Тип команды не разрешён", "COMMAND_NOT_ALLOWED"));
@@ -54,7 +54,7 @@ pub fn check_command_allowed(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 3 (6138–6140): версия состояния совпадает.
+/// Блок 3 (6160–6162): версия состояния совпадает.
 pub fn check_state_version(v: &mut Validation<'_>) -> Step {
     if !strict_equal(v.command.get("expected_state_version"), v.state.get("state_version")) {
         return Err(rule("Состояние кампании изменилось; ход нужно повторить", "STATE_VERSION_CONFLICT"));
@@ -62,7 +62,7 @@ pub fn check_state_version(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Команды, которые не могут перебить ожидающее продолжение (6148–6149).
+/// Команды, которые не могут перебить ожидающее продолжение (6170–6171).
 const CONTINUATION_BLOCKED: [&str; 14] = [
     "CastSpell", "MakeAttack", "MakeAreaAttack", "UseMonsterAction", "UseLegendaryAction", "MoveActor", "ChangeWeapon", "EquipItem", "UseItem", "ActivateItem",
     "UseCombatAction", "EndTurn", "EndCombat", "StartRest",
@@ -120,7 +120,7 @@ pub fn check_campaign_paused(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 40 (6807–6809): завершённая кампания только для чтения.
+/// Блок 40 (6829–6831): завершённая кампания только для чтения.
 pub fn check_campaign_read_only(v: &mut Validation<'_>) -> Step {
     if matches!(lifecycle_status(v).and_then(Value::as_str), Some("completed" | "failed" | "archived")) && command_type(v) != "EndCombat" {
         return Err(rule("Завершённая или архивная кампания доступна только для чтения", "CAMPAIGN_READ_ONLY"));
@@ -145,7 +145,7 @@ pub fn check_dead_hero(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Команды без провенанса по природе (7819).
+/// Команды без провенанса по природе (7841).
 const PROVENANCE_FREE: [&str; 14] = [
     "DeclareAction", "RevealArea", "UpdateObjective", "SpawnEntity", "GrantItem", "RecordRuling", "AdvanceScene", "ImportLocationMap", "RebuildLocationMap",
     "UseLevelTransition", "CreateEncounter", "CompleteCampaign", "AdvanceCampaignArc", "ScareWithBeast",
@@ -162,7 +162,7 @@ fn provenance_free(kind: &str) -> bool {
         || CHARACTER_LIFECYCLE_COMMAND_TYPES.contains(&kind)
 }
 
-/// Блок 74 (7819–7821): у механического решения есть провенанс.
+/// Блок 74 (7841–7843): у механического решения есть провенанс.
 pub fn check_provenance(v: &mut Validation<'_>) -> Step {
     let rules = match v.command.get("source_rule_ids") {
         Some(Value::Array(items)) => items.len(),
@@ -176,7 +176,7 @@ pub fn check_provenance(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 75 (7822–7825): неотрицательное количество или формула.
+/// Блок 75 (7844–7847): неотрицательное количество или формула.
 pub fn check_amount(v: &mut Validation<'_>) -> Step {
     if matches!(command_type(v).as_str(), "ApplyDamage" | "ApplyHealing" | "ReduceHitPointMaximum" | "GrantTemporaryHitPoints") {
         let amount = js::number(v.command.get("amount"));
@@ -192,7 +192,7 @@ fn string_or_empty(value: Option<&Value>) -> String {
     if js::truthy(value) { js::string(value) } else { String::new() }
 }
 
-/// Блок 76 (7826–7829): ресурс назван, количество — положительное целое.
+/// Блок 76 (7848–7851): ресурс назван, количество — положительное целое.
 pub fn check_resource(v: &mut Validation<'_>) -> Step {
     if matches!(command_type(v).as_str(), "SpendResource" | "RestoreResource") {
         if sk_core::text::trim(&string_or_empty(v.command.get("resource"))).is_empty() {
@@ -206,7 +206,7 @@ pub fn check_resource(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 77 (7830–7832): у `AddCondition` названо состояние.
+/// Блок 77 (7852–7854): у `AddCondition` названо состояние.
 pub fn check_condition_required(v: &mut Validation<'_>) -> Step {
     if command_type(v) == "AddCondition" && sk_core::text::trim(&string_or_empty(v.command.get("condition"))).is_empty() {
         return Err(rule("Не указано состояние", "CONDITION_REQUIRED"));

@@ -1,14 +1,14 @@
 //! С14: торговцы — управление и сборка (`server/index.mjs`):
 //!
-//! - `POST /api/campaigns/:id/merchants/commands` (5221–5249) — одна
+//! - `POST /api/campaigns/:id/merchants/commands` (5222–5250) — одна
 //!   lifecycle-команда ведущего (`CreateMerchant`, `ConfigureMerchant`,
 //!   `RestockMerchant`, `MoveMerchant`, `SetMerchantAvailability`), лимит 60;
-//! - `POST /api/campaigns/:id/merchants/assemble` (5251–5304) — торговец
+//! - `POST /api/campaigns/:id/merchants/assemble` (5252–5305) — торговец
 //!   текущей сцены от `ShopAssembler`, лимит 30;
-//! - `GET /api/campaigns/:id/merchants/:merchantId?actor_id=` (5449–5471) —
+//! - `GET /api/campaigns/:id/merchants/:merchantId?actor_id=` (5450–5472) —
 //!   витрина торговца для своего героя.
 //!
-//! Обе команды идут `executeMerchantLifecycleCommand` (1220–1239):
+//! Обе команды идут `executeMerchantLifecycleCommand` (1221–1240):
 //! санитайзер (`merchant_guard`) → сверка повтора ключа →
 //! `GameOrchestrator::handle` → сверка отпечатка итога → проекция в комнату.
 //! Ответ — итог оркестратора как есть (без проекции зрителя), с
@@ -54,20 +54,20 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     vec![
-        // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/merchants\/commands$/` и `POST` (5222–5223).
+        // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/merchants\/commands$/` и `POST` (5223–5224).
         Route::post(5224, Matcher::path_template("/api/campaigns/{id}/merchants/commands"), lifecycle),
-        // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/merchants\/assemble$/` и `POST` (5252–5253).
+        // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/merchants\/assemble$/` и `POST` (5253–5254).
         Route::post(5254, Matcher::path_template("/api/campaigns/{id}/merchants/assemble"), assemble),
-        // Общая регулярка торговца (5449) и `GET` без хвоста `/commands` (5455).
+        // Общая регулярка торговца (5450) и `GET` без хвоста `/commands` (5456).
         Route::pass(5456, Methods::One(Method::GET), Matcher::path_template(MERCHANT_PATH), merchant_view),
     ]
 }
 
-/// Коды 409 обоих маршрутов (5243, 5300).
+/// Коды 409 обоих маршрутов (5244, 5301).
 const CONFLICT_CODES: &[&str] = &["STATE_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT", "MERCHANT_ALREADY_EXISTS"];
-/// Коды 403 `merchants/commands` (5245).
+/// Коды 403 `merchants/commands` (5246).
 const FORBIDDEN_CODES: &[&str] = &["ACTOR_FORBIDDEN", "PLAYER_COMMAND_FORBIDDEN", "MERCHANT_LIFECYCLE_COMMAND_FORBIDDEN"];
-/// Ключи тела сборки (5263).
+/// Ключи тела сборки (5264).
 const ASSEMBLE_KEYS: &[&str] = &["expected_state_version", "settlement_type", "theme", "seed", "budget_cp", "director_intent", "idempotency_key"];
 
 fn get<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
@@ -113,7 +113,7 @@ fn idempotency_key(body: &Value, ctx: &RouteCtx) -> Result<String, Caught> {
     Ok(key)
 }
 
-// --- executeMerchantLifecycleCommand (1220–1239) ---------------------------------
+// --- executeMerchantLifecycleCommand (1221–1240) ---------------------------------
 
 /// Вход `executeMerchantLifecycleCommand`.
 struct Lifecycle {
@@ -175,7 +175,7 @@ async fn run_lifecycle(core: Rc<GameCore>, app: Arc<AppState>, job: Lifecycle, c
     Ok(result)
 }
 
-// --- POST merchants/commands (5221–5249) ---------------------------------------
+// --- POST merchants/commands (5222–5250) ---------------------------------------
 
 fn lifecycle(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     Box::pin(async move {
@@ -209,7 +209,7 @@ async fn lifecycle_try(ctx: &mut RouteCtx, admin: Value, campaign_id: String) ->
     execute_lifecycle(&state, Lifecycle { campaign_id, room, admin, command, idempotency_key, message: "Административное изменение торговца" }).await
 }
 
-// --- POST merchants/assemble (5251–5304) ---------------------------------------
+// --- POST merchants/assemble (5252–5305) ---------------------------------------
 
 fn assemble(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     Box::pin(async move {
@@ -223,7 +223,7 @@ fn assemble(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     })
 }
 
-/// Предложение `ShopAssembler` для текущей сцены (5270–5286): торговец и
+/// Предложение `ShopAssembler` для текущей сцены (5271–5287): торговец и
 /// команда `CreateMerchant` для него.
 fn shop_proposal(core: &GameCore, campaign_id: &str, room: &Room, body: &Value) -> Result<Value, Failure> {
     let authoritative = latest_campaign_state(core, campaign_id, room.state.as_ref())?;
@@ -259,7 +259,7 @@ async fn assemble_try(ctx: &mut RouteCtx, admin: Value, campaign_id: String) -> 
         return Err(reply(StatusCode::TOO_MANY_REQUESTS, "Слишком много запросов сборки магазинов. Подождите немного и повторите попытку", "SHOP_ASSEMBLY_RATE_LIMITED"));
     }
     // `readBody` отказывает сам, если тело не объект (`INVALID_JSON_BODY`):
-    // проверка `INVALID_SHOP_INPUT` (5261) до ответа не доходит.
+    // проверка `INVALID_SHOP_INPUT` (5262) до ответа не доходит.
     let body = ctx.json_body().await?;
     if body.as_object().is_some_and(|map| map.keys().any(|key| !ASSEMBLE_KEYS.contains(&key.as_str()))) {
         return Err(Failure::new("Запрос сборки содержит неизвестное поле", Some("UNEXPECTED_SHOP_FIELD")).into());
@@ -283,7 +283,7 @@ async fn assemble_try(ctx: &mut RouteCtx, admin: Value, campaign_id: String) -> 
     Ok(result)
 }
 
-// --- GET merchants/:id (5455–5471) ---------------------------------------------
+// --- GET merchants/:id (5456–5472) ---------------------------------------------
 
 fn merchant_view(ctx: &mut RouteCtx) -> PassFuture<'_> {
     Box::pin(async move {
@@ -325,7 +325,7 @@ async fn view(ctx: &RouteCtx, user: Value) -> Result<Response, ApiError> {
     Ok(json(status, &body))
 }
 
-/// Витрина и доступность торговца (5462–5470).
+/// Витрина и доступность торговца (5463–5471).
 fn merchant_view_reply(core: &GameCore, campaign_id: &str, room: &Room, merchant_id: &str, actor: &str, version: i64) -> Result<(StatusCode, Value), Failure> {
     let state = latest_campaign_state(core, campaign_id, room.state.as_ref())?;
     let Some(view) = sk_economy::merchant_economy::merchant_view_for(&state, Some(&Value::String(merchant_id.to_string())), Some(&Value::String(actor.to_string()))) else {

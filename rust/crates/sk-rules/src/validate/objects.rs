@@ -1,6 +1,6 @@
 //! Блоки `validateCommand`: Объекты и двери: баррикада, объект сцены. Задача Р11.
 //!
-//! JS: `server/rules-engine.mjs`, 6976–6979, 7833–7854. Порядок блоков задаёт
+//! JS: `server/rules-engine.mjs`, 6998–7001, 7855–7876. Порядок блоков задаёт
 //! `validate/mod.rs` (Р0); здесь — только тела.
 
 use serde_json::Value;
@@ -14,10 +14,10 @@ fn command_type(v: &Validation<'_>) -> String {
     js::s(v.command.get("command_type"))
 }
 
-/// Глаголы объекта сцены (7835).
+/// Глаголы объекта сцены (7857).
 const SCENE_OBJECT_INTENTS: [&str; 8] = ["inspect", "open", "lockpick", "take", "use", "topple", "ignite", "pray"];
 
-/// Блок 54 (6976–6979): с баррикадой работает дееспособный живой.
+/// Блок 54 (6998–7001): с баррикадой работает дееспособный живой.
 pub fn check_barricade_actor(v: &mut Validation<'_>) -> Step {
     if !matches!(command_type(v).as_str(), "BarricadeDoor" | "ClearDoorBarricade") {
         return Ok(());
@@ -30,7 +30,7 @@ pub fn check_barricade_actor(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
-/// Блок 78 (7833–7854): взаимодействие с объектом сцены.
+/// Блок 78 (7855–7876): взаимодействие с объектом сцены.
 pub fn check_scene_object(v: &mut Validation<'_>) -> Step {
     if command_type(v) != "OperateSceneObject" {
         return Ok(());
