@@ -173,7 +173,6 @@ test/combat-critical-turn-api.test.mjs # крит врага без модели
 test/combat-journal-order-api.test.mjs # порядок хроники при атаке по возможности, restart, повтор (кости данными)
 test/shillelagh-api.test.mjs           # «Дубинка» друида через API, restart (кости данными)
 test/sneak-attack-http.test.mjs        # Скрытая атака: права, ключ, журнал через readJournal, restart
-test/mass-cure-wounds-api.test.mjs     # «Множественное лечение ран»: два владельца, права, повтор, restart
 # Дрейф комнаты мимо сервера и сверка хранилища — test/kit/rooms.mjs (readRoom, writeRoom,
 # auditStorage; подкоманды skazanie-server room и audit). В Rust комната — проекция журнала
 # плюс накладка, но накладка может держать канонические поля, и сверка их находит так же.
