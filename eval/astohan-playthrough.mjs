@@ -27,6 +27,7 @@
  *   node eval/astohan-playthrough.mjs --live          # с моделью из .env, бюджет и темп
  *   node eval/astohan-playthrough.mjs --live --judge  # плюс оценка текста моделью-судьёй
  *   node eval/astohan-playthrough.mjs --minutes 20 --out tmp/astohan-playtest/run1
+ *   SKAZANIE_RUST_SERVER_BIN=… node eval/astohan-playthrough.mjs --impl rust --seed 7   # бинарь переноса
  *
  * Итог — `<out>/report.md` (оценка и находки), `<out>/transcript.md`
  * (хроника: реплика → ответ), `<out>/narration-sample.md` (выборка текста
@@ -51,6 +52,7 @@ import { planHeroCombatCommand } from '../server/party-tactics.mjs'
 import { isDirectorPartyDecision } from '../src/director-continuation.mjs'
 import { findNarratorCliches } from '../server/narrator-craft-quality.mjs'
 import { measureNarratorCraft } from './narrator-craft-metrics.mjs'
+import { freePort, rustCutoverAudit, spawnRustStand, standImpl } from './stand-server.mjs'
 import { judgeContext, narrationConsistency, sceneContinuity, sceneMapConsistency } from './consistency-checks.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -75,10 +77,16 @@ const PARTY = option('party', 'fighter,cleric,wizard,rogue').split(',').map((ent
 // отряда 7-го уровня шёл по 14 раундов, и кампания не успевала до финала.
 const TACTICS = option('tactics', 'server')
 const SEED = option('seed', null)
+// Реализация сервера: `js` (по умолчанию) или бинарь Rust-переноса (`eval/stand-server.mjs`).
+const IMPL = standImpl(argv)
+if (IMPL === 'rust' && (LIVE || JUDGE)) {
+  console.error('--impl rust: только без модели (--live и --judge — для JS-сервера)')
+  process.exit(2)
+}
 const MINUTES = Number(option('minutes', LIVE ? 25 : 20))
-const PORT = Number(option('port', 8900 + Math.floor(Math.random() * 90)))
+const PORT = Number(option('port', IMPL === 'rust' ? await freePort() : 8900 + Math.floor(Math.random() * 90)))
 const STAMP = new Date().toISOString().replace(/[:.]/gu, '-').slice(0, 19)
-const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP}${LIVE ? '-live' : ''}`)))
+const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP}${LIVE ? '-live' : ''}${IMPL === 'rust' ? '-rust' : ''}`)))
 const CODE = 'ASTOHAN-RUN'
 const TEMPLATE_ID = 'astohan-plains'
 const RULESET_ID = 'dnd_5e_2014'
@@ -172,7 +180,9 @@ function startServer() {
   // Без --live ключ обнуляется явно: dotenv не перекрывает уже заданные
   // переменные, и пустая строка выигрывает у ключа из .env.
   if (!LIVE) env.ROUTERAI_API_KEY = ''
-  child = spawn(process.execPath, [...preload, 'server/index.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  child = IMPL === 'rust'
+    ? spawnRustStand({ port: PORT, storage, setupToken, env: { DND_COMBAT_TURN_TIMEOUT_MS: env.DND_COMBAT_TURN_TIMEOUT_MS, ...(SEED == null ? {} : { PLAYTEST_DICE_SEED: String(SEED) }) } })
+    : spawn(process.execPath, [...preload, 'server/index.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] })
   child.stdout.on('data', (chunk) => { logs += chunk })
   child.stderr.on('data', (chunk) => { logs += chunk })
 }
@@ -1421,6 +1431,20 @@ function runCutoverAudit() {
   return { status: audit.status, output: short(output, 2000) }
 }
 
+// Хранилище Rust — SQLite, `tools/audit-cutover.mjs` его не читает: та же
+// сверка снимков с replay подкомандой бинаря плюс перекрёстный replay журнала
+// Rust JS-редьюсером (`eval/stand-server.mjs`).
+async function runRustCutoverAudit() {
+  const audit = await rustCutoverAudit(storage, CODE)
+  if (audit.status !== 0) finding('critical', 'replay-audit', `аудит журнала Rust упал: ${short(audit.output, 400)}`)
+  else if (!audit.report.replay_matched) finding('critical', 'replay-audit', `журнал Rust: загрузка со снимками и replay расходятся (${audit.report.hashes.loaded.slice(0, 12)} ≠ ${audit.report.hashes.replayed.slice(0, 12)})`)
+  if (audit.status === 0 && !audit.report.cross_replay_matched) {
+    const where = audit.report.cross_replay_error ? `JS-редьюсер отказал на версии ${audit.report.cross_replay_error.at_version}: ${audit.report.cross_replay_error.message}` : `первое расхождение ${JSON.stringify(audit.report.first_difference)}`
+    finding('critical', 'cross-replay', `журнал Rust, переигранный JS-редьюсером, даёт другое состояние: ${short(where, 500)}`)
+  }
+  return { status: audit.status, output: short(audit.output, 2000) }
+}
+
 // ---------------------------------------------------------------------------
 // Сценарий
 
@@ -1891,7 +1915,7 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
   const findingLines = [...grouped.values()].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.count - a.count)
     .map((entry) => `- **${entry.severity}** \`${entry.kind}\` ×${entry.count}\n${entry.examples.map((line) => `  - ${line}`).join('\n')}`)
   const md = [
-    `# Прогон «Асстоханские равнины» — ${STAMP}`,
+    `# Прогон «Асстоханские равнины» — ${STAMP}${IMPL === 'rust' ? ' · сервер Rust' : ''}`,
     '',
     `Режим: **${LIVE ? 'с моделью' : 'без модели'}**${SEED != null ? `, сид костей ${SEED}` : ''} · длительность ${minutes} мин · исход кампании **${scorecard.status}** · итоговая оценка **${scorecard.overall}/10**`,
     `Блокеров ${scorecard.blockers}, критичных ${scorecard.critical}, серьёзных ${scorecard.major}, мелких ${findings.length - scorecard.blockers - scorecard.critical - scorecard.major}.`,
@@ -1963,7 +1987,7 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
     }),
   ].join('\n') + '\n')
   writeFileSync(join(OUT, 'transcript.md'), `# Хроника прогона ${STAMP}\n${transcript.join('\n')}\n`)
-  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, narration: { quality, judge }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
+  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, impl: IMPL, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, narration: { quality, judge }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
   const serverErrors = logs.split('\n').filter((line) => /error|ошибк|exception|unhandled/iu.test(line) && !/ROUTERAI|api[_-]?key/iu.test(line)).slice(0, 60)
   writeFileSync(join(OUT, 'server-errors.log'), serverErrors.join('\n'))
 }
@@ -2046,7 +2070,7 @@ try {
   finding('blocker', 'run-aborted', short(error?.stack ?? error, 600))
 }
 await stopServer()
-const audit = runCutoverAudit()
+const audit = IMPL === 'rust' ? await runRustCutoverAudit() : runCutoverAudit()
 let usage = null
 if (LIVE) {
   startServer()
