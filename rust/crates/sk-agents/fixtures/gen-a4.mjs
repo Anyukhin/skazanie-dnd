@@ -291,9 +291,9 @@ async function explore(prefix, state, perState) {
     await runCase(`${prefix}#${index}`, state, input, script, pick(models))
     if (index < 2) {
       try {
-        leadCases.push({ stateRef: ref, profile: plain(profile), message, out: plain(conversationLeads(structuredClone(state), structuredClone(profile), message)) })
+        leadCases.push({ stateRef: ref, profile: plain(profile), message, playerId, out: plain(conversationLeads(structuredClone(state), structuredClone(profile), message, undefined, playerId)) })
       } catch (error) {
-        leadCases.push({ stateRef: ref, profile: plain(profile), message, err: errorOf(error) })
+        leadCases.push({ stateRef: ref, profile: plain(profile), message, playerId, err: errorOf(error) })
       }
       othersCases.push({ stateRef: ref, profile: plain(profile), out: plain(othersSaidNearby(structuredClone(state), structuredClone(state.social ?? {}), structuredClone(profile))) })
       const earlier = earlierRepliesOf(state, persisted.id)

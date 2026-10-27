@@ -1785,8 +1785,9 @@ fn public_autonomy_for(autonomy: Option<&Value>) -> Option<Value> {
 }
 
 /// `PROJECTED_STATE_KEYS`: ключи состояния, по которым у проекции есть
-/// осознанное решение (своя публичная форма или «отдаём как есть»).
-pub const PROJECTED_STATE_KEYS: [&str; 63] = [
+/// осознанное решение (своя публичная форма или «отдаём как есть»). Это
+/// белый список комнаты игрока: ключа нет в списке — игроку он не уходит.
+pub const PROJECTED_STATE_KEYS: [&str; 64] = [
     "scene",
     "adventure",
     "worldMap",
@@ -1795,6 +1796,7 @@ pub const PROJECTED_STATE_KEYS: [&str; 63] = [
     "merchants",
     "scene_npcs",
     "npc_world",
+    "world_offices",
     "world_deeds",
     "offscreen_world",
     "courier_letters",
@@ -2126,6 +2128,9 @@ fn player_room(raw_state: &Value, user: Option<&Value>, actor: &Value) -> R<Valu
     ] {
         public_state.shift_remove(key);
     }
+    // Белый список: ключ состояния без решения в `PROJECTED_STATE_KEYS`
+    // (например `locationLevels` — этажи всех локаций) игроку не уходит.
+    public_state.retain(|key, _| PROJECTED_STATE_KEYS.contains(&key.as_str()));
     let raw_scene = get(source, "scene");
     let current_location = js::s(coalesce(coalesce(get(raw_scene, "location_id"), get(raw_scene, "locationId")), get(get(source, "worldMap"), "currentLocationId")));
     let scene = public_scene_for(raw_scene, get(get(source, "locationLevels"), &current_location))?;
@@ -3026,7 +3031,13 @@ pub fn turn_result_for_viewer(result: Option<&Value>, user: Option<&Value>, acto
             out.shift_remove("effects");
         }
     }
-    match mechanics_for_viewer(get(source_ref, "mechanics"), user, Some(&actor), authoritative)? {
+    // События — проекцией каждого события; не массив — только тем, что
+    // оставила общая проекция результата, а не сырым `result.mechanics`.
+    let mechanics = match get(source_ref, "mechanics") {
+        events @ Some(Value::Array(_)) => mechanics_for_viewer(events, user, Some(&actor), authoritative)?,
+        _ => get(Some(&visible), "mechanics").cloned(),
+    };
+    match mechanics {
         Some(mechanics) => {
             out.insert("mechanics".into(), mechanics);
         }
@@ -3034,7 +3045,9 @@ pub fn turn_result_for_viewer(result: Option<&Value>, user: Option<&Value>, acto
             out.shift_remove("mechanics");
         }
     }
-    if let Some(Value::Array(rolls)) = get(source_ref, "rolls") {
+    // Броски — из уже спроецированного результата: закрытые корзины внутри
+    // броска вырезает общая проекция.
+    if let Some(Value::Array(rolls)) = get(Some(&visible), "rolls") {
         out.insert("rolls".into(), Value::Array(rolls.iter().filter(|roll| roll_visible_for(roll, user)).cloned().collect()));
     }
     if let Some(changes @ Value::Array(_)) = get(Some(&visible), "visible_state_changes") {

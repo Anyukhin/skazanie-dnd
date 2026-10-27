@@ -1534,10 +1534,12 @@ function publicAutonomyFor(autonomy) {
  * Ключи состояния, для которых у проекции есть осознанное решение: либо своя
  * публичная форма, либо явное «отдаём как есть, здесь нечего скрывать».
  *
- * Сторож существует потому, что проекция собирается спредом с последующим
- * переопределением по доменам: новый ключ верхнего уровня проходит **сырым**,
- * и никто этого не замечает. Ровно так утёк `autonomy`. Появился новый ключ —
- * тест падает и требует решения, а не молчаливой утечки.
+ * Это **белый список** комнаты игрока: ключ верхнего уровня, которого здесь
+ * нет, игроку не уходит вовсе (`campaignStateForViewer`). Раньше комната
+ * собиралась спредом «всё, кроме закрытого», и новый ключ проходил сырым —
+ * так утекли `autonomy` и `locationLevels` (этажи всех локаций с планами).
+ * Сторож в `test/autonomy-projection.test.mjs` по-прежнему требует решения
+ * для каждого ключа состояния, но молчаливой утечки больше нет.
  */
 export const PROJECTED_STATE_KEYS = Object.freeze([
   // Своя публичная форма.
@@ -1545,6 +1547,9 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // Внутренний реестр точных HP и всех location posts наружу не копируется:
   // вместо него ниже собирается bounded `scene_npcs` только текущей сцены.
   'npc_world',
+  // Должности мира: своя публичная форма (`officesForViewer`) без плана
+  // преемства; сырой реестр наружу не идёт.
+  'world_offices',
   // Летопись поступков отряда со свидетелями и сроком рождения молвы. Наружу не
   // копируется вовсе: игрок узнаёт слух в игре, из уст NPC, а не читая
   // состояние. Публичной формы у неё нет и не должно быть.
@@ -1655,6 +1660,8 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   'isNarrating', 'pendingCheck', 'agentInteraction', 'lastDiceRoll',
   'actors', 'economyLog', 'state_projector_version', 'presence', 'turn_clock', 'locationMaps',
 ])
+
+const PROJECTED_STATE_KEY_SET = new Set(PROJECTED_STATE_KEYS)
 
 /**
  * @param {LooseState | null | undefined} state
@@ -1956,8 +1963,12 @@ export function campaignStateForViewer(state, user, actorId = '') {
     scenario_attention: _scenarioAttention,
     scenario_knight: _scenarioKnight,
     dialogues: _dialogues,
-    ...publicState
+    ...openState
   } = visible
+  // Белый список: ключ состояния без решения в `PROJECTED_STATE_KEYS` (например
+  // `locationLevels` — этажи всех локаций) игроку не уходит. Этажи текущей
+  // локации едут в `scene.levels` через `publicSceneFor` ниже.
+  const publicState = Object.fromEntries(Object.entries(openState).filter(([key]) => PROJECTED_STATE_KEY_SET.has(key)))
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
   const scene = publicSceneFor(state.scene, state.locationLevels?.[currentLocationId])
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
@@ -2782,9 +2793,15 @@ export function turnResultForViewer(result, user, actorId = '') {
   return {
     ...publicResult,
     effects,
-    mechanics: mechanicsForViewer(result.mechanics, user, actorId, result.authoritative_state),
-    ...(Array.isArray(result.rolls) ? {
-      rolls: result.rolls.filter((roll) => rollVisibleFor(roll, user)),
+    // События — проекцией каждого события; не массив — только тем, что
+    // оставила общая проекция результата, а не сырым `result.mechanics`.
+    mechanics: Array.isArray(result.mechanics)
+      ? mechanicsForViewer(result.mechanics, user, actorId, result.authoritative_state)
+      : visible.mechanics,
+    // Броски — из уже спроецированного результата: закрытые корзины внутри
+    // броска (`gm_only`, `hidden_information`) вырезает `projectVisibleState`.
+    ...(Array.isArray(visible.rolls) ? {
+      rolls: visible.rolls.filter((/** @type {Loose} */ roll) => rollVisibleFor(roll, user)),
     } : {}),
     ...(Array.isArray(visible.visible_state_changes) ? {
       visible_state_changes: mechanicsForViewer(visible.visible_state_changes, user, actorId, result.authoritative_state),

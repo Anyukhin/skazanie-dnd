@@ -162,6 +162,40 @@ fn deterministic_narration_verifier_accepts_only_evidenced_mechanics() {
 }
 
 #[test]
+fn cyrillic_markers_use_unicode_word_boundaries() {
+    let empty = build_narration_brief(Some(&json!({ "viewer": { "playerId": "p1", "isPartyMember": true }, "events": [] }))).expect("brief");
+    let check = |narration: &str| verify_narration(Some(&json!(narration)), Some(&empty), None).expect("проверка");
+    for (narration, code) in [
+        ("У гоблина осталось мало хп.", "HP_NOT_IN_BRIEF"),
+        ("Хиты героя тают.", "HP_NOT_IN_BRIEF"),
+        ("ОЗ стражника на исходе.", "HP_NOT_IN_BRIEF"),
+        ("Магу не хватает ресурсов.", "RESOURCE_NOT_IN_BRIEF"),
+        ("Она потратила ячейку заклинаний.", "RESOURCE_SPEND_NOT_IN_BRIEF"),
+        ("Посох восстановил заряды.", "RESOURCE_RESTORE_NOT_IN_BRIEF"),
+        ("Бросок удачен.", "ROLL_NOT_IN_BRIEF"),
+        ("Кубики катятся по столу.", "ROLL_NOT_IN_BRIEF"),
+        ("Выпало семь.", "ROLL_NOT_IN_BRIEF"),
+        ("Осталось 7хп.", "HP_NOT_IN_BRIEF"),
+        ("Потрачено 5заряд.", "RESOURCE_NOT_IN_BRIEF"),
+    ] {
+        let result = check(narration);
+        assert!(codes(&result).contains(&code), "«{narration}» → {code}: {:?}", codes(&result));
+    }
+    assert!(codes(&check("Озеро блестит, руки дрожат.")).is_empty());
+    // Обычная речь без броска: глагол «бросил» и «выпал» без числа.
+    assert!(codes(&check("Он бросил взгляд на дверь, выпал первый снег, меч выпал из рук.")).is_empty());
+    assert!(codes(&check("Выпала единица.")).contains(&"ROLL_NOT_IN_BRIEF"));
+    assert!(valid("Герой теряет 5 хитов, его хп теперь 7. Бросок: выпало 14.", &mechanical_brief(), None));
+    // Строка движка об опознании врага законно называет ОЗ: событие открывает здоровье.
+    let lore = build_narration_brief(Some(&json!({
+        "viewer": { "playerId": "p1", "isPartyMember": true },
+        "events": [{ "event_type": "EnemyKnowledgeRevealed", "visibility": "public", "payload": { "enemy_id": "ogre", "scope": "party", "facts": { "health": "exact", "armor_class": "exact" } } }],
+    })))
+    .expect("brief");
+    assert!(valid("Огр опознан: отряд знает точные ОЗ и КД.", &lore, None));
+}
+
+#[test]
 fn brief_forbids_unconfirmed_free_movement_talk_and_testimony() {
     let brief = build_narration_brief(Some(&json!({
         "known_environment": {

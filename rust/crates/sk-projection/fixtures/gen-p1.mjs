@@ -411,6 +411,9 @@ for (const [user, actor] of [...secretUsers, [ADMIN, 'hero']]) {
   call('turnResultForViewer', [{ authoritative_state: base, mechanics: secretEvents, locationMaps: { a: 'SECRET-result-maps' }, debug: { gm_only: 'SECRET-debug' },
     effects: { roll: { roll_id: 'r', actor_id: 'goblin', total: 9, modifier: 9873, label: 'Удар' }, scene: { scene: base.scene, adventure: base.adventure, worldMap: base.worldMap, transition: 'Переход', secret: 'SECRET-transition' } },
     rolls: [{ roll_id: 'a', visibility: 'gm_only', total: 9874 }, { roll_id: 'b', total: 3 }], visible_state_changes: secretEvents }, user, actor], { leaks: true, strict })
+  // Закрытые корзины внутри броска и механика не массивом: проходят только через проекцию.
+  call('turnResultForViewer', [{ authoritative_state: base, mechanics: { summary: 'Удар', gm_only: { villain: 'SECRET-result-mechanics' } },
+    rolls: [{ roll_id: 'c', total: 4, gm_only: { note: 'SECRET-roll-basket' }, hidden_information: { dc: 9875 } }] }, user, actor], { leaks: true, strict })
 }
 // Варианты знания: точные ОЗ, КД, стат-блок, known_by.
 const knowledgeVariants = [
