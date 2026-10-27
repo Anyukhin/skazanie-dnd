@@ -123,3 +123,14 @@ test('ведущий видит стат-блок целиком, поэтому
   const shot = view.combatForecast.targets.goblin.find((entry) => entry.item_id === 'sword')
   assert.deepEqual({ ac: shot.armor_class, hit: shot.hit_chance, known: shot.armor_known }, { ac: 18, hit: 40, known: true })
 })
+
+test('враг с id `__proto__` — неизвестный ключ, а не TypeError прогноза', () => {
+  const state = fixture(13)
+  state.enemies.push({ ...state.enemies[0], id: '__proto__', x: 1, y: 1 })
+  state.mechanics.combat.initiative.push({ actor_id: '__proto__' })
+  const projected = { players: [{ id: 'hero' }], enemies: [{ id: 'goblin' }, { id: '__proto__' }] }
+  const view = withCombatForecast(projected, state, 'hero')
+  // Прогноз по остальным врагам цел; ключа прототипа в целях нет.
+  assert.ok(view.combatForecast.targets.goblin.length > 0)
+  assert.deepEqual(Object.keys(view.combatForecast.targets), ['goblin'])
+})

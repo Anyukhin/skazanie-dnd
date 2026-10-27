@@ -934,3 +934,40 @@ test('массив клеток и карта скрывают одно и то 
   assert.equal(cellAt(visible, 1, 0)?.material, 'stone', 'карта обнуляет материал нераскрытой клетки')
   assert.equal(cellAt(visible, 1, 0)?.variant, 0)
 })
+
+test('комната игрока — белый список ключей: этажи других локаций и ключи без решения не уходят', () => {
+  const state = {
+    sessionCode: 'WHITELIST', partyMemberIds: ['hero'], players: [{ id: 'hero', character: 'Ада', hp: 5, maxHp: 5, inventory: [] }],
+    scene: { title: 'Склеп', location: 'Склеп', location_id: 'crypt', cells: [{ x: 0, y: 0, type: 'floor', revealed: true }] },
+    worldMap: { currentLocationId: 'crypt', locations: [{ id: 'crypt', name: 'Склеп', known: true }] },
+    locationLevels: {
+      crypt: [{ index: 0, label: 'Вход' }, { index: -1, label: 'Подвал', plan: 'SECRET-level' }],
+      vault: [{ index: 0, label: 'SECRET-vault-level' }],
+    },
+    levelEntities: { crypt: { '-1': { enemies: [{ id: 'SECRET-deep', hp: 9 }] } } },
+    gm_scratch: { note: 'SECRET-scratch' },
+  }
+  const room = campaignStateForViewer(state, user, 'hero')
+  assert.equal('locationLevels' in room, false, 'сырые записи этажей игроку не уходят')
+  assert.equal('levelEntities' in room, false)
+  assert.equal('gm_scratch' in room, false, 'ключ без решения в PROJECTED_STATE_KEYS отбрасывается')
+  assert.doesNotMatch(JSON.stringify(room), /SECRET-/u)
+  assert.equal(room.sessionCode, 'WHITELIST', 'открытые ключи из списка остаются')
+  const admin = campaignStateForViewer(state, { role: 'admin' }, 'hero')
+  assert.match(JSON.stringify(admin.locationLevels), /SECRET-level/u, 'ведущий видит этажи целиком')
+})
+
+test('итог хода: броски и не-массив механики идут через проекцию, а не сырыми', () => {
+  const state = { partyMemberIds: ['hero'], players: [{ id: 'hero' }], scene: { cells: [] } }
+  const result = turnResultForViewer({
+    authoritative_state: state,
+    rolls: [
+      { roll_id: 'a', total: 12, visibility: 'public', gm_only: { note: 'SECRET-roll-basket' }, hidden_information: { dc: 'SECRET-roll-dc' } },
+      { roll_id: 'b', total: 3, visibility: 'gm_only' },
+    ],
+    mechanics: { summary: 'Удар', gm_only: { villain: 'SECRET-mechanics' }, hidden_information: 'SECRET-mechanics-hidden' },
+  }, user, 'hero')
+  assert.deepEqual(result.rolls, [{ roll_id: 'a', total: 12, visibility: 'public' }])
+  assert.deepEqual(result.mechanics, { summary: 'Удар' })
+  assert.doesNotMatch(JSON.stringify(result), /SECRET-/u)
+})

@@ -275,3 +275,18 @@ test('лава — огонь: прыжок в трещину с лавой об
     assert.equal(resolveHazardContact(lava, 'hero', text, { risk: 'minor' }), null, text)
   }
 })
+
+test('скрытый ведущим костёр на раскрытой клетке — не доступная опасность', async () => {
+  const { confirmedHazardNear } = await import('../server/free-action-adjudication.mjs')
+  const open = state()
+  assert.equal(confirmedHazardNear(open, 'hero', 'fire'), true)
+  const hidden = state()
+  // Разборщик карты отбрасывает эти поля; закрытость берётся из сырой записи.
+  hidden.scene.map.props.find((prop) => prop.id === 'campfire-1').visibility = 'gm_only'
+  assert.equal(confirmedHazardNear(hidden, 'hero', 'fire'), false)
+  const text = 'Сажусь жопой в огонь'
+  assert.equal(resolveHazardContact(hidden, 'hero', text, { effect: 'hazard_damage', hazard: 'fire', effect_target: 'hero', risk: 'serious' })?.status, 'unavailable')
+  const unrevealed = state()
+  unrevealed.scene.map.props.find((prop) => prop.id === 'campfire-1').revealed = false
+  assert.equal(confirmedHazardNear(unrevealed, 'hero', 'fire'), false)
+})

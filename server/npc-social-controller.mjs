@@ -554,7 +554,8 @@ function alreadySaidForBrief(social, profile, playerId) {
 // место заготовки без хранителя и публичные зацепки карты. Текст самой тайны в
 // бриф не идёт никогда — только её тема (`about`).
 
-const LEAD_STOP_WORDS = new Set(['знаешь', 'знаете', 'скажи', 'скажите', 'расскажи', 'расскажите', 'кто-нибудь', 'что-нибудь'])
+// Разбор слов режет по дефису: «кто-нибудь» приходит как «кто» и «нибудь».
+const LEAD_STOP_WORDS = new Set(['знаешь', 'знаете', 'скажи', 'скажите', 'расскажи', 'расскажите', 'нибудь'])
 
 function leadStems(value, profile = null) {
   const nameParts = plainWords(profile?.name, 200)
@@ -576,9 +577,12 @@ function revealedFactIds(state) {
  * и его цена. `match`: `question` — по словам героя, `objective` — по цели
  * сцены, `nearby` — не по вопросу, но рядом (на случай, если ответить нечего).
  *
+ * `playerId` — герой-собеседник: `asked_before` считается только по беседам,
+ * которые видел он или весь отряд, а не по чужим личным.
+ *
  * @returns {Array<{ kind: 'person'|'place'|'hook'|'self', match: 'question'|'objective'|'nearby', name?: string, role?: string, where?: string, about?: string, text?: string }>}
  */
-export function conversationLeads(state = {}, profile = {}, message = '', social = ensureNpcSocialState(state.social, state)) {
+export function conversationLeads(state = {}, profile = {}, message = '', social = ensureNpcSocialState(state.social, state), playerId = '') {
   const asked = leadStems(message, profile)
   const objective = leadStems(state.scene?.objective, profile)
   const sceneKey = clean(state.scene?.location, 180).toLocaleLowerCase('ru')
@@ -594,8 +598,10 @@ export function conversationLeads(state = {}, profile = {}, message = '', social
   // по кругу — «спроси Ивена» у Мары, «спроси Мару» у Ивена (плейтест
   // 2026-10-10). Такой знаток уходит вниз списка и помечается: собеседник
   // скажет, что тот знает больше, чем сказал, а не пошлёт к нему заново.
+  // Чужая личная беседа сюда не входит: иначе бриф выдавал бы, что другой
+  // герой говорил с этим знатоком наедине.
   const askedBefore = new Set((social.conversations ?? [])
-    .filter((entry) => entry?.visibility === 'party' || entry?.hero_id)
+    .filter((entry) => entry && conversationVisibleTo(entry, playerId))
     .map((entry) => String(entry?.npc_id ?? '')).filter(Boolean))
   const candidates = []
   for (const fact of state.worldMemory?.facts ?? []) {
@@ -1091,7 +1097,7 @@ export class NpcSocialController {
     const contextMetadata = agentContextMetadata(state, { role: 'npc_social', actorId: playerId, targetId: profile.id, contractVersion: NPC_SOCIAL_PROMPT_VERSION })
     const facts = npcFacts(state, profile, message)
     const heroId = String(playerId)
-    const leads = conversationLeads(state, profile, message, social)
+    const leads = conversationLeads(state, profile, message, social, heroId)
     if (!this.llmClient) return {
       ...normalizedResult({}, profile, state, heroId, message, turnId, checkOutcome, { leads }),
       context_metadata: contextMetadata,

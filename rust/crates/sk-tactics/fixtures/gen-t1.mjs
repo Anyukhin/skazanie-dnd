@@ -428,9 +428,9 @@ const junk = [
   [goodProjection, variant({ players: [null, ...base.players] }), 'hero'], [goodProjection, variant({ players: 'x' }), 'hero'], [goodProjection, variant({ actors: { id: 'hero' } }), 'hero'],
   [goodProjection, variant({ players: [{ ...base.players[0], inventory: 'x' }] }), 'hero'], [goodProjection, variant({ players: [{ ...base.players[0], inventory: [null, 'x', { equipped: true, combat: { kind: 'melee' } }] }] }), 'hero'],
   [{ ...goodProjection, enemies: [{ id: 'goblin', armor: null }] }, base, 'hero'], [goodProjection, base, 5], [goodProjection, base, null],
-  // Замечено в JS: `conditionIdsFor('__proto__')` читает Object.prototype, и attackForecast бросает
-  // TypeError; sk_rules считает ключ неизвестным. Случай помечен `known`.
-  [{ players: [], enemies: [{ id: '__proto__' }] }, variant({ enemies: [{ ...base.enemies[0], id: '__proto__' }] }), 'hero', 'sk_rules: conditionIdsFor("__proto__") в JS — Object.prototype'],
+  // Ключ прототипа как id врага: `conditionIdsFor` читает только собственный ключ
+  // (исправлено 2026-10-26, раньше attackForecast бросал TypeError).
+  [{ players: [], enemies: [{ id: '__proto__' }] }, variant({ enemies: [{ ...base.enemies[0], id: '__proto__' }] }), 'hero'],
 ]
 for (const [projected, state, actor, known] of junk) {
   forecast.push({ ...(known ? { known } : {}), state: state === undefined ? -1 : stateIndex(state), ...argsOf([projected, actor]), ...outcome(() => withCombatForecast(plain(projected), state === undefined ? undefined : JSON.parse(JSON.stringify(state)), actor)) })

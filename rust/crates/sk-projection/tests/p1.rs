@@ -197,9 +197,8 @@ fn calls_match_js() {
 }
 
 /// Синтетика с закрытыми полями: игроку, зрителю и гостю без доступа не
-/// уходит ни один закрытый маркер. Исключения — известная утечка JS
-/// (`locationLevels` сырым ключом, «Замечено в JS» отчёта) и собственные
-/// режимы реакций героя-зрителя `ally`.
+/// уходит ни один закрытый маркер. Исключение — собственные режимы реакций
+/// героя-зрителя `ally`.
 #[test]
 fn closed_fields_do_not_leak() {
     let mut strict = 0;
@@ -208,7 +207,7 @@ fn closed_fields_do_not_leak() {
         let name = entry["fn"].as_str().unwrap_or("");
         let Ok(Some(value)) = run(name, &list) else { panic!("{name}: проекция не собралась") };
         let own_ally = arg(&list, 2).and_then(Value::as_str) == Some("ally");
-        let leaks: Vec<String> = leaks_of(&value).into_iter().filter(|marker| marker != "SECRET-level" && !(own_ally && marker == "SECRET-pref")).collect();
+        let leaks: Vec<String> = leaks_of(&value).into_iter().filter(|marker| !(own_ally && marker == "SECRET-pref")).collect();
         assert!(leaks.is_empty(), "{name} для {:?}: утекло {leaks:?}", arg(&list, 1));
         strict += 1;
     }

@@ -497,7 +497,7 @@ const FALLBACK_QUESTION_STOP_WORDS: &[&str] = &[
 ];
 
 const LEAD_STOP_WORDS: &[&str] = &[
-    "знаешь", "знаете", "скажи", "скажите", "расскажи", "расскажите", "кто-нибудь", "что-нибудь",
+    "знаешь", "знаете", "скажи", "скажите", "расскажи", "расскажите", "нибудь",
 ];
 
 /// Основы значимых слов для сверки отзвука.
@@ -940,7 +940,9 @@ struct Candidate {
 /// Зацепки для разговора (`conversationLeads`): кто ещё знает (`person`), где
 /// искать (`place`), что говорят открыто (`hook`) и `self` — ответ знает сам
 /// собеседник. `social` — `None`, как в JS, — `ensureNpcSocialState(state.social, state)`.
-pub fn conversation_leads(state: &Value, profile: &Value, message: Option<&Value>, social: Option<&Value>) -> Result<Vec<Value>, NpcSocialError> {
+/// `player_id` — герой-собеседник: `asked_before` — только по беседам, которые
+/// видел он или весь отряд.
+pub fn conversation_leads(state: &Value, profile: &Value, message: Option<&Value>, social: Option<&Value>, player_id: &str) -> Result<Vec<Value>, NpcSocialError> {
     let owned;
     let social = match social {
         Some(social) => social,
@@ -976,7 +978,8 @@ pub fn conversation_leads(state: &Value, profile: &Value, message: Option<&Value
     }
     let asked_before: HashSet<String> = conversations(social)
         .iter()
-        .filter(|entry| is_str(get(Some(entry), "visibility"), "party") || js::truthy(get(Some(entry), "hero_id")))
+        // Чужая личная беседа сюда не входит.
+        .filter(|entry| conversation_visible_to(entry, player_id))
         .map(|entry| js::s(get(Some(entry), "npc_id")))
         .filter(|id| !id.is_empty())
         .collect();
@@ -1763,7 +1766,7 @@ impl NpcSocialController {
         );
         let facts = npc_facts(state, &profile, message, 500, false)?;
         let hero_id = js::string(Some(player_id));
-        let leads = conversation_leads(state, &profile, message, Some(&social))?;
+        let leads = conversation_leads(state, &profile, message, Some(&social), &hero_id)?;
         let request = RespondInput { state, hero_id, message, turn_id, check, just_seen };
         let Some(client) = self.llm_client.as_ref() else {
             let mut out = normalized_result(&json!({}), &profile, state, &request.hero_id, message, turn_id, check, &leads)?;

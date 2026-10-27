@@ -169,9 +169,16 @@ function nearestHazardAt(state, actorId) {
       if (!cell?.revealed || !hazardId) continue
       candidates.push({ hazard_id: hazardId, source: { kind: 'cell', x, y, cells: [{ x, y }], hazard_id: String(rawHazard) }, distance: distanceToCell({ x, y }) })
     }
+    // Разборщик карты отбрасывает `visibility` и `revealed` предмета, поэтому
+    // закрытость читается из сырой записи `scene.map.props` по id: скрытый
+    // ведущим костёр не должен считаться доступной опасностью.
+    const rawProps = new Map((Array.isArray(state?.scene?.map?.props) ? state.scene.map.props : [])
+      .filter((raw) => raw && typeof raw === 'object')
+      .map((raw) => [String(raw.id ?? ''), raw]))
     for (const prop of map.props ?? []) {
-      const propVisibility = String(prop?.visibility ?? prop?.interaction?.visibility ?? '').toLowerCase()
-      if (['gm_only', 'npc_private'].includes(propVisibility) || prop?.revealed === false) continue
+      const raw = rawProps.get(String(prop?.id ?? '')) ?? prop
+      const propVisibility = String(raw?.visibility ?? raw?.interaction?.visibility ?? '').toLowerCase()
+      if (['gm_only', 'npc_private'].includes(propVisibility) || raw?.revealed === false) continue
       const tags = sceneHazardTagsFor(prop?.assetId)
       const stateId = String(state?.mechanics?.scene_interactions?.[String(prop?.id ?? '')]?.state ?? prop?.state ?? '').toLowerCase()
       const cells = hazardPropCells(prop)
@@ -336,19 +343,19 @@ const APPROACH_PATTERNS = Object.freeze([
   { test: /(?:протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*|войд\p{L}*|вхож\p{L}*|проник\p{L}*)[^.!?]{0,100}внутр\p{L}*/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'plausible', risk: 'minor', obstacle: 'проход' },
   { test: /(?<![\p{L}\p{M}])(?:сальто|кувырк\p{L}*|кувырок|кульбит\p{L}*|фляк\p{L}*|рондат\p{L}*|балансир\p{L}*|пируэт\p{L}*|акробатическ\p{L}*\s+(?:трюк|переворот))(?![\p{L}\p{M}])/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'minor', obstacle: 'равновесие и точность движения' },
   { test: /(?:отвле[кч]|переключ\p{L}*\s+внимани|шум\p{L}*\s+приманк)/iu, ability: 'cha', skill: 'performance', plausibility: 'plausible', risk: 'minor', obstacle: 'внимание собеседника' },
-  { test: /(подпира|баррикад|завал|подпер|держ\w+\s+двер)/iu, ability: 'str', skill: 'athletics', plausibility: 'plausible', risk: 'minor', obstacle: 'дверь' },
+  { test: /(подпира|баррикад|завал|подпер|держ\p{L}+\s+двер)/iu, ability: 'str', skill: 'athletics', plausibility: 'plausible', risk: 'minor', obstacle: 'дверь' },
   { test: /(взлам|выбива|выломать|ломаю)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'преграда' },
   { test: /(опрокид|сбива|толка|рывк|поднож|жаровн|спотык|оступить)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'противник' },
-  { test: /(поджиг|зажиг|подпал|факел\w*\s+к)/iu, ability: 'dex', skill: 'sleight-of-hand', plausibility: 'plausible', risk: 'serious', obstacle: 'огонь' },
+  { test: /(поджиг|зажиг|подпал|факел\p{L}*\s+к)/iu, ability: 'dex', skill: 'sleight-of-hand', plausibility: 'plausible', risk: 'serious', obstacle: 'огонь' },
   // «Скрыва» — с начала слова: «раскрывает тетрадь» и «вскрывает замок» не
   // прятки; «тихо» — только с движением: «тихо говорит Борину» — реплика.
   // Без модели вопрос хозяйке «раскрывает тетрадь… «Скажите…»» получал
   // Скрытность (замер 19, 2026-10-11).
   { test: /(?:крад|незамет|бесшумн|прячусь|затаи|пригиба\p{L}*\s+(?:за|у|в)\s|укрыва\p{L}*\s+(?:за|у|в)\s|залега\p{L}*|(?<![\p{L}\p{M}])скрыва|(?<![\p{L}\p{M}])тих\p{L}*\s+(?:\p{L}+\s+)?(?:пробир|проскаль|проход|прокрад|ступа|двига|обход|ид[уеёт]))/iu, ability: 'dex', skill: 'stealth', plausibility: 'plausible', risk: 'minor', obstacle: 'наблюдатели' },
   { test: /(запуг|угрож|пригрож)/iu, ability: 'cha', skill: 'intimidation', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
-  { test: /(убежда|уговар|догова|прош\w+\s+помощ)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
+  { test: /(убежда|уговар|догова|прош\p{L}+\s+помощ)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
   { test: /(обман|вру|соврать|притвор)/iu, ability: 'cha', skill: 'deception', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
-  { test: /(крич|зову|окликa|подзыва)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'окружающие' },
+  { test: /(крич|зову|оклика|подзыва)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'окружающие' },
   // Поиск тайника руками: «простукивает бочки — нет ли тайника». Без модели
   // такая заявка уходила в «Чего Борин хочет добиться…», и вопрос попадал в
   // летопись голосом рассказчика (замер 10, 2026-10-10).
@@ -767,7 +774,7 @@ export function contextualResolutionFor(state = {}, actorId = '', reading = {}, 
     index += 1
     factors.push('environmental_pressure')
   }
-  if (/(незаперт|прост\w+\s+задач|без\s+спешк|много\s+времен)/iu.test(text)) {
+  if (/(незаперт|прост\p{L}+\s+задач|без\s+спешк|много\s+времен)/iu.test(text)) {
     index -= 1
     factors.push('favorable_conditions')
   }

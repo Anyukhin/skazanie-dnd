@@ -9,7 +9,7 @@
 //! что в JS (ключи в том же порядке). Текст игрока — `&str`, идентификатор
 //! героя — уже приведённое `String(actorId)`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
@@ -437,10 +437,20 @@ fn nearest_hazard_at(state: &Value, actor_id: &str) -> Vec<HazardCandidate> {
             let source = json!({ "kind": "cell", "x": js::num(x), "y": js::num(y), "cells": [point_json(x, y)], "hazard_id": raw_hazard });
             candidates.push(HazardCandidate { hazard_id: hazard, source, distance: distance_to_cell(x, y) });
         }
+        // Разборщик карты отбрасывает `visibility` и `revealed` предмета, поэтому
+        // закрытость читается из сырой записи `scene.map.props` по id (поздняя
+        // запись с тем же id побеждает, как `new Map` в JS).
+        let mut raw_props: HashMap<String, &Value> = HashMap::new();
+        for raw in arr(at(Some(state), &["scene", "map", "props"])).iter().filter(|raw| raw.is_object()) {
+            raw_props.insert(js::s(prop(Some(raw), "id")), raw);
+        }
         for tactical_prop in &map.props {
-            // Разобранная карта не несёт `visibility` и `revealed` предмета:
-            // отбор по ним в JS здесь всегда пропускает предмет.
             let prop_value = tactical_prop.to_json();
+            let raw = raw_props.get(&tactical_prop.id).copied().unwrap_or(&prop_value);
+            let visibility = text::lower(&js::s(nullish(prop(Some(raw), "visibility"), at(Some(raw), &["interaction", "visibility"]))));
+            if visibility == "gm_only" || visibility == "npc_private" || prop(Some(raw), "revealed") == Some(&Value::Bool(false)) {
+                continue;
+            }
             let tags = scene_hazard_tags_for(prop_value.get("assetId"));
             let interaction_state = at(Some(state), &["mechanics", "scene_interactions"]).and_then(|all| prop(Some(all), &tactical_prop.id)).and_then(|entry| prop(Some(entry), "state"));
             let state_id = text::lower(&js::s(nullish(interaction_state, prop_value.get("state"))));
@@ -667,18 +677,17 @@ static APPROACH_PATTERNS: LazyLock<Vec<ApproachPattern>> = LazyLock::new(|| {
         entry(re!(r"(?:протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*|войд\p{L}*|вхож\p{L}*|проник\p{L}*)[^.!?]{0,100}внутр\p{L}*", "iu"), "dex", "acrobatics", "plausible", "minor", "проход"),
         entry(re!(r"(?<![\p{L}\p{M}])(?:сальто|кувырк\p{L}*|кувырок|кульбит\p{L}*|фляк\p{L}*|рондат\p{L}*|балансир\p{L}*|пируэт\p{L}*|акробатическ\p{L}*\s+(?:трюк|переворот))(?![\p{L}\p{M}])", "iu"), "dex", "acrobatics", "strenuous", "minor", "равновесие и точность движения"),
         entry(re!(r"(?:отвле[кч]|переключ\p{L}*\s+внимани|шум\p{L}*\s+приманк)", "iu"), "cha", "performance", "plausible", "minor", "внимание собеседника"),
-        entry(re!(r"(подпира|баррикад|завал|подпер|держ\w+\s+двер)", "iu"), "str", "athletics", "plausible", "minor", "дверь"),
+        entry(re!(r"(подпира|баррикад|завал|подпер|держ\p{L}+\s+двер)", "iu"), "str", "athletics", "plausible", "minor", "дверь"),
         entry(re!(r"(взлам|выбива|выломать|ломаю)", "iu"), "str", "athletics", "strenuous", "serious", "преграда"),
         entry(re!(r"(опрокид|сбива|толка|рывк|поднож|жаровн|спотык|оступить)", "iu"), "str", "athletics", "strenuous", "serious", "противник"),
-        entry(re!(r"(поджиг|зажиг|подпал|факел\w*\s+к)", "iu"), "dex", "sleight-of-hand", "plausible", "serious", "огонь"),
+        entry(re!(r"(поджиг|зажиг|подпал|факел\p{L}*\s+к)", "iu"), "dex", "sleight-of-hand", "plausible", "serious", "огонь"),
         // «Скрыва» — с начала слова: «раскрывает тетрадь» и «вскрывает замок» не
         // прятки; «тихо» — только с движением: «тихо говорит Борину» — реплика.
         entry(re!(r"(?:крад|незамет|бесшумн|прячусь|затаи|пригиба\p{L}*\s+(?:за|у|в)\s|укрыва\p{L}*\s+(?:за|у|в)\s|залега\p{L}*|(?<![\p{L}\p{M}])скрыва|(?<![\p{L}\p{M}])тих\p{L}*\s+(?:\p{L}+\s+)?(?:пробир|проскаль|проход|прокрад|ступа|двига|обход|ид[уеёт]))", "iu"), "dex", "stealth", "plausible", "minor", "наблюдатели"),
         entry(re!(r"(запуг|угрож|пригрож)", "iu"), "cha", "intimidation", "plausible", "minor", "собеседник"),
-        entry(re!(r"(убежда|уговар|догова|прош\w+\s+помощ)", "iu"), "cha", "persuasion", "plausible", "minor", "собеседник"),
+        entry(re!(r"(убежда|уговар|догова|прош\p{L}+\s+помощ)", "iu"), "cha", "persuasion", "plausible", "minor", "собеседник"),
         entry(re!(r"(обман|вру|соврать|притвор)", "iu"), "cha", "deception", "plausible", "minor", "собеседник"),
-        // «окликa» — с латинской «a», как в JS.
-        entry(re!(r"(крич|зову|окликa|подзыва)", "iu"), "cha", "persuasion", "plausible", "minor", "окружающие"),
+        entry(re!(r"(крич|зову|оклика|подзыва)", "iu"), "cha", "persuasion", "plausible", "minor", "окружающие"),
         // Поиск тайника руками: «простукивает бочки — нет ли тайника».
         entry(re!(r"(?<![\p{L}\p{M}])(?:простук\p{L}*|ощупыва\p{L}*|обшари\p{L}*|тайник\p{L}*|тайничок\p{L}*)", "iu"), "int", "investigation", "plausible", "none", "тайник"),
         entry(re!(r"(осматр|разгляд|изуча|ищу\s+след|обыск)", "iu"), "wis", "perception", "trivial", "none", "обстановка"),
@@ -1239,7 +1248,7 @@ pub fn contextual_resolution_for(state: &Value, actor_id: &str, reading: &Value,
         index += 1;
         factors.push("environmental_pressure");
     }
-    if text::test(re!(r"(незаперт|прост\w+\s+задач|без\s+спешк|много\s+времен)", "iu"), value) {
+    if text::test(re!(r"(незаперт|прост\p{L}+\s+задач|без\s+спешк|много\s+времен)", "iu"), value) {
         index -= 1;
         factors.push("favorable_conditions");
     }

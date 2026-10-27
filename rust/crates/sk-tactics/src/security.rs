@@ -1308,7 +1308,7 @@ pub fn verify_narration(narration: Option<&Value>, brief: Option<&Value>, option
         add_violation(&mut violations, "PROMISE_RESOLUTION_NOT_IN_BRIEF", "Narrator объявил обещание исполненным или нарушенным без подтверждённого события", None);
     }
 
-    let hp_marker = text::test(re!(r"\b(?:hp|хп|оз)\b|\bхит(?:ы|ов|а)?\b|очк\w*\s+здоровья|(?:здоровье|хиты)\s+(?:сниз|уменьш|восстанов|остал|стало)", "iu"), &source);
+    let hp_marker = text::test(re!(r"(?<!\p{L})(?:hp|хп|оз|хит(?:ы|ов|а)?)(?!\p{L})|очк\p{L}*\s+здоровья|(?:здоровье|хиты)\s+(?:сниз|уменьш|восстанов|остал|стало)", "iu"), &source);
     if hp_marker && !evidence.has_hp && evidence.hp_numbers.is_empty() {
         add_violation(&mut violations, "HP_NOT_IN_BRIEF", "Narrator упомянул изменение HP без подтверждённого события", None);
     }
@@ -1323,7 +1323,7 @@ pub fn verify_narration(narration: Option<&Value>, brief: Option<&Value>, option
         &[
             re!(r"(?:hp|хп|оз)\s*[:=]?\s*(\d+)", "giu"),
             re!(r"(?:hp|хп|оз)[^.!?\d]{0,30}(\d+)", "giu"),
-            re!(r"(\d+)\s*(?:hp|хп|оз|хит(?:а|ов|ы)?|очк\w*\s+здоровья)", "giu"),
+            re!(r"(\d+)\s*(?:hp|хп|оз|хит(?:а|ов|ы)?|очк\p{L}*\s+здоровья)", "giu"),
             re!(r"(?:остал\w*|стало|сниз\w*|восстанов\w*|потер\w*)[^.!?\d]{0,30}(\d+)[^.!?]{0,15}(?:hp|хп|оз|хит|здоров)", "giu"),
         ],
     );
@@ -1334,17 +1334,17 @@ pub fn verify_narration(narration: Option<&Value>, brief: Option<&Value>, option
         }
     }
 
-    let resource_marker = text::test(re!(r"\b(?:ресурс\w*|заряд\w*|ячейк\w*(?:\s+заклинаний)?|мана|ки|ци)\b", "iu"), &source);
+    let resource_marker = text::test(re!(r"(?<!\p{L})(?:ресурс\p{L}*|заряд\p{L}*|ячейк\p{L}*(?:\s+заклинаний)?|мана|ки|ци)(?!\p{L})", "iu"), &source);
     if resource_marker && !evidence.has_resource && evidence.resource_numbers.is_empty() {
         add_violation(&mut violations, "RESOURCE_NOT_IN_BRIEF", "Narrator объявил расход или восстановление ресурса без события", None);
     }
-    if text::test(re!(r"(?:потра(?:т|ч)|расход|использовал\w*\s+заряд)", "iu"), &source) && resource_marker && !evidence.has_resource_spent {
+    if text::test(re!(r"(?:потра(?:т|ч)|расход|использовал\p{L}*\s+заряд)", "iu"), &source) && resource_marker && !evidence.has_resource_spent {
         add_violation(&mut violations, "RESOURCE_SPEND_NOT_IN_BRIEF", "Narrator объявил расход ресурса без события", None);
     }
-    if text::test(re!(r"(?:восстанов|вернул|получил\w*\s+заряд)", "iu"), &source) && resource_marker && !evidence.has_resource_restored {
+    if text::test(re!(r"(?:восстанов|вернул|получил\p{L}*\s+заряд)", "iu"), &source) && resource_marker && !evidence.has_resource_restored {
         add_violation(&mut violations, "RESOURCE_RESTORE_NOT_IN_BRIEF", "Narrator объявил восстановление ресурса без события", None);
     }
-    let resource_numbers = capture_numbers(&source, &[re!(r"(\d+)\s*(?:заряд\w*|ячейк\w*|единиц\w*\s+ресурс\w*)", "giu"), re!(r"(?:ресурс\w*|заряд\w*|ячейк\w*|мана)\s*[:=]?\s*(\d+)", "giu")]);
+    let resource_numbers = capture_numbers(&source, &[re!(r"(\d+)\s*(?:заряд\p{L}*|ячейк\p{L}*|единиц\p{L}*\s+ресурс\p{L}*)", "giu"), re!(r"(?:ресурс\p{L}*|заряд\p{L}*|ячейк\p{L}*|мана)\s*[:=]?\s*(\d+)", "giu")]);
     for value in resource_numbers {
         if !evidence.resource_numbers.contains(&value) {
             let shown = js::f64_string(value);
@@ -1352,7 +1352,7 @@ pub fn verify_narration(narration: Option<&Value>, brief: Option<&Value>, option
         }
     }
 
-    let roll_marker = text::test(re!(r"\b(?:брос(?:ок|ка|ке|ил|ила)|кубик\w*|выпал[оа]?|натуральн\w+)\b|\b\d*d\d+(?:[+-]\d+)?\b", "iu"), &source);
+    let roll_marker = text::test(re!(r"(?<!\p{L})(?:брос(?:ок|ка|ке|ил|ила)|кубик\p{L}*|выпал[оа]?|натуральн\p{L}+)(?!\p{L})|\b\d*d\d+(?:[+-]\d+)?\b", "iu"), &source);
     if roll_marker && !evidence.has_roll {
         add_violation(&mut violations, "ROLL_NOT_IN_BRIEF", "Narrator придумал бросок, которого нет в NarrationBrief", None);
     }
@@ -1364,7 +1364,7 @@ pub fn verify_narration(narration: Option<&Value>, brief: Option<&Value>, option
             add_violation(&mut violations, "ROLL_EXPRESSION_NOT_IN_BRIEF", format!("Формула {formula} отсутствует в подтверждённых бросках"), Some(formula));
         }
     }
-    let roll_numbers = capture_numbers(&source, &[re!(r"(?:выпал[оа]?|натуральн\w*|итог(?:ом)?|бросок\w*)\s*[:=]?\s*(\d+)", "giu")]);
+    let roll_numbers = capture_numbers(&source, &[re!(r"(?:выпал[оа]?|натуральн\p{L}*|итог(?:ом)?|бросок\p{L}*)\s*[:=]?\s*(\d+)", "giu")]);
     for value in roll_numbers {
         if !evidence.roll_numbers.contains(&value) {
             let shown = js::f64_string(value);
@@ -1391,7 +1391,7 @@ pub fn verify_narration(narration: Option<&Value>, brief: Option<&Value>, option
         }
     }
 
-    if text::test(re!(r"hidden_information|gm_only|npc_private|секрет\s+ведущего|скрыт\w*\s+(?:характеристик|статистик|информац)", "iu"), &source) {
+    if text::test(re!(r"hidden_information|gm_only|npc_private|секрет\s+ведущего|скрыт\p{L}*\s+(?:характеристик|статистик|информац)", "iu"), &source) {
         add_violation(&mut violations, "HIDDEN_INFORMATION_DISCLOSED", "Narrator сослался на закрытую информацию", None);
     }
     // Физический канон сцены принадлежит серверу так же, как HP.

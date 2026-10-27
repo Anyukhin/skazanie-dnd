@@ -160,13 +160,7 @@ fn combat_forecast_matches_js() {
     let states = section("states");
     let cases = section("forecast");
     let mut failures = Vec::new();
-    let mut known = 0;
     for (index, entry) in cases.iter().enumerate() {
-        // Расхождение движка правил на ключе прототипа, а не этого модуля (отчёт Т1).
-        if entry.get("known").is_some() {
-            known += 1;
-            continue;
-        }
         let args = args(entry);
         let state = entry["state"].as_i64().filter(|index| *index >= 0).map(|index| &states[index as usize]);
         let got = match with_combat_forecast(arg(&args, 0), state, arg(&args, 1)) {
@@ -182,7 +176,6 @@ fn combat_forecast_matches_js() {
             failures.push(format!("#{index} actor {}: {mismatch}", js::stringify(&entry["args"][1])));
         }
     }
-    assert_eq!(known, 1, "известных расхождений движка — одно");
     report("forecast", failures, cases.len());
 }
 

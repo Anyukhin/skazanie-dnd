@@ -742,7 +742,11 @@ export function verifyNarration(narration, brief, {
     addViolation(violations, 'PROMISE_RESOLUTION_NOT_IN_BRIEF', 'Narrator объявил обещание исполненным или нарушенным без подтверждённого события')
   }
 
-  const hpMarker = /\b(?:hp|хп|оз)\b|\bхит(?:ы|ов|а)?\b|очк\w*\s+здоровья|(?:здоровье|хиты)\s+(?:сниз|уменьш|восстанов|остал|стало)/iu.test(text)
+  // Граница слова — явная, по буквам Юникода: `\b` и `\w` в JS только ASCII, и
+  // `\bхп\b`, `ресурс\w*\b`, `\bбросок\b` на русском тексте срабатывали лишь
+  // рядом с цифрой (та же ошибка, что раньше в проверке изменений мира). Цифра
+  // границей остаётся: «7хп» — тот же маркер, что «7 хп».
+  const hpMarker = /(?<!\p{L})(?:hp|хп|оз|хит(?:ы|ов|а)?)(?!\p{L})|очк\p{L}*\s+здоровья|(?:здоровье|хиты)\s+(?:сниз|уменьш|восстанов|остал|стало)/iu.test(text)
   if (hpMarker && !evidence.hasHp && evidence.hpNumbers.size === 0) {
     addViolation(violations, 'HP_NOT_IN_BRIEF', 'Narrator упомянул изменение HP без подтверждённого события')
   }
@@ -755,28 +759,28 @@ export function verifyNarration(narration, brief, {
   const hpNumbers = captureNumbers(text, [
     /(?:hp|хп|оз)\s*[:=]?\s*(\d+)/giu,
     /(?:hp|хп|оз)[^.!?\d]{0,30}(\d+)/giu,
-    /(\d+)\s*(?:hp|хп|оз|хит(?:а|ов|ы)?|очк\w*\s+здоровья)/giu,
+    /(\d+)\s*(?:hp|хп|оз|хит(?:а|ов|ы)?|очк\p{L}*\s+здоровья)/giu,
     /(?:остал\w*|стало|сниз\w*|восстанов\w*|потер\w*)[^.!?\d]{0,30}(\d+)[^.!?]{0,15}(?:hp|хп|оз|хит|здоров)/giu,
   ])
   for (const value of hpNumbers) if (!evidence.hpNumbers.has(value)) addViolation(violations, 'HP_VALUE_NOT_IN_BRIEF', `Значение HP ${value} отсутствует в подтверждённых событиях`, String(value))
 
-  const resourceMarker = /\b(?:ресурс\w*|заряд\w*|ячейк\w*(?:\s+заклинаний)?|мана|ки|ци)\b/iu.test(text)
+  const resourceMarker = /(?<!\p{L})(?:ресурс\p{L}*|заряд\p{L}*|ячейк\p{L}*(?:\s+заклинаний)?|мана|ки|ци)(?!\p{L})/iu.test(text)
   if (resourceMarker && !evidence.hasResource && evidence.resourceNumbers.size === 0) {
     addViolation(violations, 'RESOURCE_NOT_IN_BRIEF', 'Narrator объявил расход или восстановление ресурса без события')
   }
-  if (/(?:потра(?:т|ч)|расход|использовал\w*\s+заряд)/iu.test(text) && resourceMarker && !evidence.hasResourceSpent) {
+  if (/(?:потра(?:т|ч)|расход|использовал\p{L}*\s+заряд)/iu.test(text) && resourceMarker && !evidence.hasResourceSpent) {
     addViolation(violations, 'RESOURCE_SPEND_NOT_IN_BRIEF', 'Narrator объявил расход ресурса без события')
   }
-  if (/(?:восстанов|вернул|получил\w*\s+заряд)/iu.test(text) && resourceMarker && !evidence.hasResourceRestored) {
+  if (/(?:восстанов|вернул|получил\p{L}*\s+заряд)/iu.test(text) && resourceMarker && !evidence.hasResourceRestored) {
     addViolation(violations, 'RESOURCE_RESTORE_NOT_IN_BRIEF', 'Narrator объявил восстановление ресурса без события')
   }
   const resourceNumbers = captureNumbers(text, [
-    /(\d+)\s*(?:заряд\w*|ячейк\w*|единиц\w*\s+ресурс\w*)/giu,
-    /(?:ресурс\w*|заряд\w*|ячейк\w*|мана)\s*[:=]?\s*(\d+)/giu,
+    /(\d+)\s*(?:заряд\p{L}*|ячейк\p{L}*|единиц\p{L}*\s+ресурс\p{L}*)/giu,
+    /(?:ресурс\p{L}*|заряд\p{L}*|ячейк\p{L}*|мана)\s*[:=]?\s*(\d+)/giu,
   ])
   for (const value of resourceNumbers) if (!evidence.resourceNumbers.has(value)) addViolation(violations, 'RESOURCE_VALUE_NOT_IN_BRIEF', `Значение ресурса ${value} отсутствует в событиях`, String(value))
 
-  const rollMarker = /\b(?:брос(?:ок|ка|ке|ил|ила)|кубик\w*|выпал[оа]?|натуральн\w+)\b|\b\d*d\d+(?:[+-]\d+)?\b/iu.test(text)
+  const rollMarker = /(?<!\p{L})(?:брос(?:ок|ка|ке|ил|ила)|кубик\p{L}*|выпал[оа]?|натуральн\p{L}+)(?!\p{L})|\b\d*d\d+(?:[+-]\d+)?\b/iu.test(text)
   if (rollMarker && !evidence.hasRoll) addViolation(violations, 'ROLL_NOT_IN_BRIEF', 'Narrator придумал бросок, которого нет в NarrationBrief')
   for (const match of lower.matchAll(/\b(\d*d\d+(?:[+-]\d+)?)\b/g)) {
     const expression = match[1].startsWith('d') ? `1${match[1]}` : match[1]
@@ -786,7 +790,7 @@ export function verifyNarration(narration, brief, {
     }
   }
   const rollNumbers = captureNumbers(text, [
-    /(?:выпал[оа]?|натуральн\w*|итог(?:ом)?|бросок\w*)\s*[:=]?\s*(\d+)/giu,
+    /(?:выпал[оа]?|натуральн\p{L}*|итог(?:ом)?|бросок\p{L}*)\s*[:=]?\s*(\d+)/giu,
   ])
   for (const value of rollNumbers) if (!evidence.rollNumbers.has(value)) addViolation(violations, 'ROLL_VALUE_NOT_IN_BRIEF', `Результат броска ${value} отсутствует в событиях`, String(value))
 
@@ -798,7 +802,7 @@ export function verifyNarration(narration, brief, {
     if (!evidence.ruleIds.has(id)) addViolation(violations, 'RULE_ID_NOT_IN_BRIEF', `Rule ID ${id} не был подтверждён`, id)
   }
 
-  if (/hidden_information|gm_only|npc_private|секрет\s+ведущего|скрыт\w*\s+(?:характеристик|статистик|информац)/iu.test(text)) {
+  if (/hidden_information|gm_only|npc_private|секрет\s+ведущего|скрыт\p{L}*\s+(?:характеристик|статистик|информац)/iu.test(text)) {
     addViolation(violations, 'HIDDEN_INFORMATION_DISCLOSED', 'Narrator сослался на закрытую информацию')
   }
   // Физический канон сцены — час, небо, крыша, сырость — принадлежит серверу

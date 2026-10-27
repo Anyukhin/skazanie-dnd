@@ -236,7 +236,7 @@ fn conversation_leads_match_js() {
     let mut failures = Vec::new();
     for (index, case) in cases.iter().enumerate() {
         let state = state_of(&case["stateRef"]).expect("состояние");
-        match (conversation_leads(state, &case["profile"], Some(&case["message"]), None), case.get("err")) {
+        match (conversation_leads(state, &case["profile"], Some(&case["message"]), None, &sk_core::js::string(case.get("playerId"))), case.get("err")) {
             (Ok(leads), None) => {
                 if let Some(diff) = first_diff("leads", &json!(leads), &case["out"]) {
                     failures.push(format!("leads[{index}]: {diff}"));

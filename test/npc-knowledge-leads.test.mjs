@@ -385,3 +385,34 @@ test('без модели NPC не зачитывает находку отря�
   })
   assert.match(told.reply, /без огней|чужак/u, told.reply)
 })
+
+test('чужая личная беседа со знатоком не ставит `asked_before`: бриф не выдаёт её', async () => {
+  const { conversationLeads } = await import('../server/npc-social-controller.mjs')
+  const state = greyPier()
+  // Гарет говорил с Борсом наедине — Тарвин этого не видел.
+  state.social.conversations.push({ id: 'conversation:bors-private', npc_id: 'npc:bors', hero_id: 'fighter', visibility: 'specific_player', player_message: 'Чей это баркас «Чайка»?', npc_reply: 'Не знаю.', stance: 'neutral' })
+  const helga = state.social.npcs.find((npc) => npc.id === 'npc:helga')
+  const message = 'Кто правил «Чайкой» той ночью?'
+  const bors = (playerId) => conversationLeads(state, helga, message, undefined, playerId).find((lead) => lead.name === 'Борс')
+  assert.ok(bors('wizard'), 'Борс остаётся в зацепках')
+  assert.equal(bors('wizard').asked_before, undefined, 'чужая личная беседа не видна Тарвину')
+  assert.equal(bors('fighter').asked_before, true, 'свою беседу Гарет помнит')
+  const llm = scriptedLlm([replyWith('Не моё это дело.')])
+  await new NpcSocialController({ llmClient: llm }).respond({ state, playerId: 'wizard', npcId: 'npc:helga', message, turnId: 'helga-private' })
+  const brief = untrustedPayload(llm.calls[0].input.messages[1].content, 'npc_social_brief')
+  assert.equal(brief.leads.find((lead) => lead.name === 'Борс')?.asked_before, undefined)
+})
+
+test('«кто-нибудь» и «что-нибудь» не становятся темой зацепки', async () => {
+  const { conversationLeads } = await import('../server/npc-social-controller.mjs')
+  const state = greyPier()
+  state.scene.objective = ''
+  state.scene.location = 'Нигде'
+  state.worldMemory.facts.push({
+    id: 'fact:secret:nibud', subject_id: 'loc:pier', predicate: 'gm_secret',
+    object: JSON.stringify({ topic: 'нибудь', holder: 'Марен' }), summary: 'Служебная тема.', visibility: 'gm_only', status: 'active', source_event_ids: [], recorded_at_minutes: 0,
+  })
+  const helga = state.social.npcs.find((npc) => npc.id === 'npc:helga')
+  const leads = conversationLeads(state, helga, 'Знает кто-нибудь что-нибудь?', undefined, 'wizard')
+  assert.equal(leads.some((lead) => lead.name === 'Марен'), false, JSON.stringify(leads))
+})
