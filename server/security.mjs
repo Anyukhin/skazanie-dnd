@@ -783,7 +783,9 @@ export function verifyNarration(narration, brief, {
   ])
   for (const value of resourceNumbers) if (!evidence.resourceNumbers.has(value)) addViolation(violations, 'RESOURCE_VALUE_NOT_IN_BRIEF', `Значение ресурса ${value} отсутствует в событиях`, String(value))
 
-  const rollMarker = /(?<!\p{L})(?:брос(?:ок|ка|ке|ил|ила)|кубик\p{L}*|выпал[оа]?|натуральн\p{L}+)(?!\p{L})|\b\d*d\d+(?:[+-]\d+)?\b/iu.test(text)
+  // Глаголы «бросил/бросила» и «выпал» без числа — обычная речь («бросил взгляд»,
+  // «выпал снег»): бросок выдают существительное, кубик и «выпало» с числом.
+  const rollMarker = /(?<!\p{L})(?:брос(?:ок|ка|ке)|кубик\p{L}*|натуральн\p{L}+)(?!\p{L})|(?<!\p{L})выпал[оа]?[\s:=]+(?:\d|(?:один|одна|одно|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|одиннадцать|двенадцать|тринадцать|четырнадцать|пятнадцать|шестнадцать|семнадцать|восемнадцать|девятнадцать|двадцать|единиц\p{L}*|двойк\p{L}*|двадцатк\p{L}*)(?!\p{L}))|\b\d*d\d+(?:[+-]\d+)?\b/iu.test(text)
   if (rollMarker && !evidence.hasRoll) addViolation(violations, 'ROLL_NOT_IN_BRIEF', 'Narrator придумал бросок, которого нет в NarrationBrief')
   for (const match of lower.matchAll(/\b(\d*d\d+(?:[+-]\d+)?)\b/g)) {
     const expression = match[1].startsWith('d') ? `1${match[1]}` : match[1]

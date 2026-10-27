@@ -182,6 +182,9 @@ fn cyrillic_markers_use_unicode_word_boundaries() {
         assert!(codes(&result).contains(&code), "«{narration}» → {code}: {:?}", codes(&result));
     }
     assert!(codes(&check("Озеро блестит, руки дрожат.")).is_empty());
+    // Обычная речь без броска: глагол «бросил» и «выпал» без числа.
+    assert!(codes(&check("Он бросил взгляд на дверь, выпал первый снег, меч выпал из рук.")).is_empty());
+    assert!(codes(&check("Выпала единица.")).contains(&"ROLL_NOT_IN_BRIEF"));
     assert!(valid("Герой теряет 5 хитов, его хп теперь 7. Бросок: выпало 14.", &mechanical_brief(), None));
     // Строка движка об опознании врага законно называет ОЗ: событие открывает здоровье.
     let lore = build_narration_brief(Some(&json!({
