@@ -177,11 +177,17 @@ test('кириллические маркеры хитов, ресурса и б
     // Цифра вплотную — по-прежнему маркер, как было с ASCII `\b`.
     ['Осталось 7хп.', 'HP_NOT_IN_BRIEF'],
     ['Потрачено 5заряд.', 'RESOURCE_NOT_IN_BRIEF'],
-  ])assert.ok(codes(narration).includes(code), `«${narration}» → ${code}: ${codes(narration)}`)
+  ]) assert.ok(codes(narration).includes(code), `«${narration}» → ${code}: ${codes(narration)}`)
   // Внутри другого слова маркер не срабатывает: «оз» в «озеро», «ки» в «руки».
   assert.deepEqual(codes('Озеро блестит, руки дрожат.'), [])
   // С подтверждённым событием те же слова законны.
   assert.equal(verifyNarration('Герой теряет 5 хитов, его хп теперь 7. Бросок: выпало 14.', mechanicalBrief()).valid, true)
+  // Строка движка об опознании врага законно называет ОЗ: событие открывает здоровье.
+  const lore = buildNarrationBrief({
+    viewer: { playerId: 'p1', isPartyMember: true },
+    events: [{ event_type: 'EnemyKnowledgeRevealed', visibility: 'public', payload: { enemy_id: 'ogre', scope: 'party', facts: { health: 'exact', armor_class: 'exact' } } }],
+  })
+  assert.equal(verifyNarration('Огр опознан: отряд знает точные ОЗ и КД.', lore).valid, true)
 })
 
 test('NarrationBrief не позволяет объявить свободное перемещение, разговор и новые показания без событий', () => {

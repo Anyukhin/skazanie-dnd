@@ -759,6 +759,11 @@ fn visit(evidence: &mut Evidence, value: Option<&Value>, path: &mut Vec<String>,
         evidence.has_hp = true;
         evidence.has_healing = true;
     }
+    // Опознание врага открывает его ОЗ: строка движка «отряд знает точные ОЗ»
+    // упоминает здоровье законно, хотя чисел и изменения HP в событии нет.
+    if event_type == "EnemyKnowledgeRevealed" && js::truthy(prop(prop(prop(Some(value), "payload"), "facts"), "health")) {
+        evidence.has_hp = true;
+    }
     if event_is_resource {
         evidence.has_resource = true;
     }

@@ -345,6 +345,9 @@ function evidenceFromBrief(brief, extraRuleIds = []) {
     }
     if (eventIsDamage) { evidence.hasHp = true; evidence.hasDamage = true }
     if (eventIsHealing) { evidence.hasHp = true; evidence.hasHealing = true }
+    // Опознание врага открывает его ОЗ: строка движка «отряд знает точные ОЗ»
+    // упоминает здоровье законно, хотя чисел и изменения HP в событии нет.
+    if (eventType === 'EnemyKnowledgeRevealed' && value.payload?.facts?.health) evidence.hasHp = true
     if (eventIsResource) evidence.hasResource = true
     if (/resourcespent/i.test(eventType)) evidence.hasResourceSpent = true
     if (/resourcerestored|restcompleted/i.test(eventType)) evidence.hasResourceRestored = true
