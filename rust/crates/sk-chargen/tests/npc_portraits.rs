@@ -509,7 +509,7 @@ async fn preparation_inventory_shows_who_has_no_portrait_yet() {
 }
 
 #[tokio::test]
-async fn unsupported_generator_file_is_settled_then_refused_like_js() {
+async fn unsupported_generator_file_fails_reservation_before_settle() {
     let directory = tempfile::tempdir().expect("каталог");
     let ledger_file = directory.path().join("engine").join("usage.json");
     let usage = ledger(&ledger_file, 10_000.0, NOW);
@@ -517,7 +517,12 @@ async fn unsupported_generator_file_is_settled_then_refused_like_js() {
     let npc = merchant_profile("npc:marta", "Марта");
     let error = service.prepare("PREP", &npc).await.expect_err("отказ");
     assert_eq!(error.to_string(), "Генератор портретов вернул неподдерживаемый файл");
-    // В JS у портретов формат проверяется после списания (см. «Замечено в JS»).
-    assert_eq!(usage.report().expect("отчёт")["completed_requests"], 1);
+    assert_eq!(error.code(), Some("IMAGE_FORMAT_REJECTED"));
+    // Формат проверяется до списания, как у иллюстраций: пустой портрет не
+    // записан успешной генерацией, его расход не считается.
+    let report = usage.report().expect("отчёт");
+    assert_eq!(report["completed_requests"], 0);
+    assert_eq!(report["failed_requests"], 1);
+    assert_eq!(report["committed_tokens"], 0);
     assert_eq!(service.cached("PREP", &npc["id"]).await.expect("кеш"), None);
 }

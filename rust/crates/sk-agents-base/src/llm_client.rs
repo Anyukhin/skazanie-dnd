@@ -321,6 +321,16 @@ pub(crate) fn node_timer_delay(milliseconds: f64) -> std::time::Duration {
     std::time::Duration::from_secs_f64(milliseconds / 1000.0)
 }
 
+/// Наибольшая задержка таймера Node (2^31 − 1 мс).
+const MAX_TIMER_DELAY_MS: f64 = 2_147_483_647.0;
+
+/// Срок запроса к модели (`setTimeout(…, timerDelay(ms))` в JS): срок больше
+/// 2^31 − 1 мс ограничивается им, а не становится таймером на 1 мс, от
+/// которого запрос падал по таймауту мгновенно.
+pub(crate) fn llm_timer_delay(milliseconds: f64) -> std::time::Duration {
+    node_timer_delay(milliseconds.min(MAX_TIMER_DELAY_MS))
+}
+
 // ---------------------------------------------------------------------------
 // Строгий JSON
 // ---------------------------------------------------------------------------

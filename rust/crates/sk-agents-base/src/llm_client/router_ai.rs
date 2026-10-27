@@ -429,6 +429,10 @@ impl LlmClient for RouterAiClient {
         Some(Value::from(self.max_tokens))
     }
 
+    fn model_timeout_ms(&self) -> Option<f64> {
+        Some(self.timeout_ms as f64)
+    }
+
     fn complete<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
         // Контекст кампании снимается при вызове; крючки — из области вызова.
         let at_call = CampaignSnapshot::capture();

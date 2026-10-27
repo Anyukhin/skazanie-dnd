@@ -297,8 +297,11 @@ impl DurableUsageLedger {
             return Err(UsageLedgerError::Type("estimatedTokens must be a positive integer".into()));
         }
         let requested = requested as i64;
-        let scope = clean_str(request.scope.as_deref().unwrap_or("global"), 120);
-        let model = clean_str(request.model.as_deref().unwrap_or("unknown"), 160);
+        // Повтор сравнивается с тем, что записано: пустые scope и model
+        // хранятся как 'global' и 'unknown' (прежде повтор такого резерва
+        // всегда давал USAGE_IDEMPOTENCY_CONFLICT).
+        let scope = Some(clean_str(request.scope.as_deref().unwrap_or("global"), 120)).filter(|scope| !scope.is_empty()).unwrap_or_else(|| "global".into());
+        let model = Some(clean_str(request.model.as_deref().unwrap_or("unknown"), 160)).filter(|model| !model.is_empty()).unwrap_or_else(|| "unknown".into());
         let now = self.now();
         let mut ledger = self.read()?;
         self.prune(&mut ledger, now)?;
@@ -318,8 +321,8 @@ impl DurableUsageLedger {
         let entry = json!({
             "request_id": id,
             "day": day_key(now),
-            "scope": if scope.is_empty() { "global".to_string() } else { scope },
-            "model": if model.is_empty() { "unknown".to_string() } else { model },
+            "scope": scope,
+            "model": model,
             "status": "reserved",
             "estimated_tokens": requested,
             "reserved_tokens": requested,
@@ -516,6 +519,10 @@ pub trait LlmClient: Send + Sync {
     fn max_tokens(&self) -> Option<Value> {
         None
     }
+    /// `client.timeoutMs` — лимит модели, который читает каскад, если есть.
+    fn model_timeout_ms(&self) -> Option<f64> {
+        None
+    }
     /// `client.complete(input, options)`.
     fn complete<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>>;
     /// `client.probe()`.
@@ -555,6 +562,10 @@ impl<T: LlmClient + ?Sized> LlmClient for Arc<T> {
 
     fn max_tokens(&self) -> Option<Value> {
         (**self).max_tokens()
+    }
+
+    fn model_timeout_ms(&self) -> Option<f64> {
+        (**self).model_timeout_ms()
     }
 
     fn complete<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
@@ -670,6 +681,12 @@ impl<C: LlmClient> LlmClient for MeteredLLMClient<C> {
 
     fn models(&self) -> Option<Value> {
         self.client.models()
+    }
+
+    /// `get timeoutMs()`: лимит обёрнутого клиента. Без него каскад не видел
+    /// лимита модели за обёрткой учёта.
+    fn model_timeout_ms(&self) -> Option<f64> {
+        self.client.model_timeout_ms()
     }
 
     fn complete<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {

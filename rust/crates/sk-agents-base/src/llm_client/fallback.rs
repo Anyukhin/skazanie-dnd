@@ -12,7 +12,7 @@ use sk_core::js;
 
 use super::abort::{race, AbortController, AbortScope, SignalLink};
 use super::{
-    coalesce, node_timer_delay, option_fields, positive_integer_number, prop, spread_object, utf16_head, CallHooks, CallScope, CampaignSnapshot, DeltaHandler, LlmClient, LlmError, LlmErrorExt, LlmFuture, RouterAiClient,
+    coalesce, llm_timer_delay, option_fields, positive_integer_number, prop, spread_object, utf16_head, CallHooks, CallScope, CampaignSnapshot, DeltaHandler, LlmClient, LlmError, LlmErrorExt, LlmFuture, RouterAiClient,
 };
 
 /// Ответы с изъяном содержания: модель отвечает, остывать ей незачем.
@@ -21,9 +21,9 @@ const CONTENT_FAILURE_CODES: [&str; 3] = ["LLM_JSON_INVALID", "LLM_RESPONSE_INVA
 /// Часы каскада (`now`), миллисекунды.
 pub type FallbackClock = Arc<dyn Fn() -> f64 + Send + Sync>;
 
-/// Клиент в каскаде и его `timeoutMs` (лимит горячего пути модели). У
-/// контракта `LlmClient` такого поля нет, поэтому оно рядом с клиентом; у
-/// `MeteredLLMClient` в JS его тоже нет — `None`.
+/// Клиент в каскаде и его `timeoutMs` (лимит горячего пути модели) —
+/// `client.model_timeout_ms()`: у `RouterAIClient` и `FakeLLM` свой срок,
+/// `MeteredLLMClient` показывает срок обёрнутого клиента.
 #[derive(Clone)]
 pub struct FallbackMember {
     pub client: Arc<dyn LlmClient>,
@@ -32,7 +32,8 @@ pub struct FallbackMember {
 
 impl FallbackMember {
     pub fn new(client: Arc<dyn LlmClient>) -> Self {
-        FallbackMember { client, timeout_ms: None }
+        let timeout_ms = client.model_timeout_ms();
+        FallbackMember { client, timeout_ms }
     }
 
     pub fn with_timeout(mut self, timeout_ms: f64) -> Self {
@@ -289,7 +290,7 @@ impl FallbackLlmClient {
         let deadline_controller = has_deadline.then(AbortController::new);
         let _timer = TimerGuard(deadline_controller.clone().map(|controller| {
             tokio::spawn(async move {
-                tokio::time::sleep(node_timer_delay(requested_timeout)).await;
+                tokio::time::sleep(llm_timer_delay(requested_timeout)).await;
                 controller.abort(LlmError::timeout(requested_timeout));
             })
         }));
@@ -303,15 +304,30 @@ impl FallbackLlmClient {
         let mut attempts: Vec<Value> = Vec::new();
         for (index, member) in candidates.iter().enumerate() {
             let emitted = Arc::new(AtomicBool::new(false));
+            // Закончившаяся попытка в живой поток больше не пишет: снятая по
+            // сроку модель не вклинивает текст после переключения на резервную.
+            let open = Arc::new(AtomicBool::new(true));
             let on_delta = scope.hooks.on_delta.clone().map(|requested| {
                 let emitted = Arc::clone(&emitted);
+                let open = Arc::clone(&open);
                 DeltaHandler::new(move |delta| {
-                    emitted.store(true, Ordering::SeqCst);
+                    let live = open.load(Ordering::SeqCst);
+                    if live {
+                        emitted.store(true, Ordering::SeqCst);
+                    }
                     let requested = requested.clone();
-                    async move { requested.call(delta).await }
+                    async move {
+                        if live {
+                            requested.call(delta).await
+                        } else {
+                            Ok(())
+                        }
+                    }
                 })
             });
-            match self.attempt(member, index, candidates.len(), input, options, &scope, deadline, shared_signal.as_ref(), on_delta).await {
+            let outcome = self.attempt(member, index, candidates.len(), input, options, &scope, deadline, shared_signal.as_ref(), on_delta).await;
+            open.store(false, Ordering::SeqCst);
+            match outcome {
                 Ok(mut result) => {
                     if let Value::Object(map) = &mut result {
                         map.insert("fallback_attempts".into(), Value::Array(attempts.clone()));

@@ -164,6 +164,10 @@ impl LlmClient for FakeLlm {
         None
     }
 
+    fn model_timeout_ms(&self) -> Option<f64> {
+        Some(self.timeout_ms as f64)
+    }
+
     fn complete<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
         // Запрос записывается при вызове, как в JS.
         let request = normalize_request(input, options).inspect(|request| lock(&self.requests).push(Value::Object(request.clone())));

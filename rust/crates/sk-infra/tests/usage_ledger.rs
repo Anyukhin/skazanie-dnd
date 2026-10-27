@@ -81,6 +81,22 @@ fn expired_and_failed_reservations_release_quota() {
 }
 
 #[test]
+fn repeated_reserve_with_blank_scope_and_model_returns_same_entry() {
+    // Пустые scope и model хранятся как 'global' и 'unknown'; повтор
+    // сравнивался с сырым значением и всегда давал USAGE_IDEMPOTENCY_CONFLICT.
+    let fixture = fixture(100.0);
+    let ledger = &fixture.ledger;
+    let blank = |scope: &str, model: &str| ReserveRequest { request_id: Some("blank".into()), estimated_tokens: 10.0, scope: Some(scope.into()), model: Some(model.into()) };
+    let first = ledger.reserve(&blank("", "   ")).expect("резерв");
+    assert_eq!(first["scope"], "global");
+    assert_eq!(first["model"], "unknown");
+    assert_eq!(ledger.reserve(&blank("", "   ")).expect("повтор"), first);
+    assert_eq!(ledger.reserve(&blank("global", "unknown")).expect("повтор"), first);
+    assert_eq!(ledger.report().expect("отчёт")["reserved_tokens"], 10);
+    assert_eq!(ledger.reserve(&blank("campaign:a", "")).expect_err("конфликт").code(), Some("USAGE_IDEMPOTENCY_CONFLICT"));
+}
+
+#[test]
 fn reused_request_id_with_other_parameters_conflicts() {
     let fixture = fixture(1_000.0);
     let ledger = &fixture.ledger;
