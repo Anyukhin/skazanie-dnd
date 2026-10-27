@@ -300,7 +300,6 @@ impl LocationIllustrationService {
             model: &self.image_model,
             scope: "location-illustration",
             max_bytes: LOCATION_ILLUSTRATION_MAX_BYTES,
-            check_before_settle: true,
             unsupported: "Генератор изображений вернул неподдерживаемый файл",
             unsupported_code: Some("IMAGE_FORMAT_REJECTED"),
         })

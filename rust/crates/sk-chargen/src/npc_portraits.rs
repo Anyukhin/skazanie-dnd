@@ -508,8 +508,8 @@ pub enum ImageServiceError {
     /// Генератор не дал картинку.
     #[error(transparent)]
     Generator(GeneratorError),
-    /// Генератор прислал не webp или слишком большой файл; `code` —
-    /// `IMAGE_FORMAT_REJECTED` у иллюстраций, у портретов кода нет.
+    /// Генератор прислал не webp или слишком большой файл
+    /// (`IMAGE_FORMAT_REJECTED`).
     #[error("{message}")]
     UnsupportedFile { message: String, code: Option<&'static str> },
     /// Сбой учёта расхода.
@@ -568,8 +568,8 @@ pub(crate) async fn write_cached(location: &ImageCacheLocation, bytes: &[u8]) ->
     Ok(result?)
 }
 
-/// Резерв, генерация, учёт: общий путь портретов и иллюстраций. `check_before_settle`
-/// — проверять формат до списания (иллюстрации) или после (портреты, как в JS).
+/// Резерв, генерация, учёт: общий путь портретов и иллюстраций. Формат
+/// проверяется до списания: брак уходит в леджер неудачей со своим кодом.
 pub(crate) struct GenerationRequest<'a> {
     pub generator: &'a dyn ImageGenerator,
     pub ledger: Option<&'a dyn ImageUsageLedger>,
@@ -577,7 +577,6 @@ pub(crate) struct GenerationRequest<'a> {
     pub model: &'a str,
     pub scope: &'static str,
     pub max_bytes: usize,
-    pub check_before_settle: bool,
     pub unsupported: &'static str,
     pub unsupported_code: Option<&'static str>,
 }
@@ -600,9 +599,9 @@ pub(crate) async fn generate_metered(request: GenerationRequest<'_>) -> Result<G
     let unsupported = || ImageServiceError::UnsupportedFile { message: request.unsupported.into(), code: request.unsupported_code };
     let valid = |bytes: &[u8]| is_webp(bytes) && bytes.len() <= request.max_bytes;
     let generated = match request.generator.generate(request.prompt, request.model).await {
-        // У иллюстраций формат проверяется до списания, и брак уходит в леджер
-        // неудачей со своим кодом (`IMAGE_FORMAT_REJECTED`).
-        Ok(generated) if request.check_before_settle && !valid(&generated.bytes) => Err((unsupported(), request.unsupported_code.unwrap_or("Error").to_string())),
+        // Формат проверяется до списания, и брак уходит в леджер неудачей со
+        // своим кодом (`IMAGE_FORMAT_REJECTED`).
+        Ok(generated) if !valid(&generated.bytes) => Err((unsupported(), request.unsupported_code.unwrap_or("Error").to_string())),
         Ok(generated) => Ok(generated),
         Err(error) => {
             let code = error.ledger_code();
@@ -620,9 +619,6 @@ pub(crate) async fn generate_metered(request: GenerationRequest<'_>) -> Result<G
     };
     if let (Some(ledger), Some(id)) = (request.ledger, reservation.as_deref()) {
         ledger.settle(id, &Value::Object(generated.usage.clone())).map_err(ImageServiceError::Ledger)?;
-    }
-    if !request.check_before_settle && !valid(&generated.bytes) {
-        return Err(unsupported());
     }
     Ok(generated)
 }
@@ -816,9 +812,8 @@ impl NpcPortraitService {
             model: &self.image_model,
             scope: "npc-portrait",
             max_bytes: NPC_PORTRAIT_MAX_BYTES,
-            check_before_settle: false,
             unsupported: "Генератор портретов вернул неподдерживаемый файл",
-            unsupported_code: None,
+            unsupported_code: Some("IMAGE_FORMAT_REJECTED"),
         })
         .await?;
         write_cached(location, &generated.bytes).await?;

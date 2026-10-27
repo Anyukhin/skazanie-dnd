@@ -76,8 +76,8 @@ impl Metered {
 
     /// `new FallbackLLMClient({ clients, selectableClients, probeTimeoutMs,
     /// failureCooldownMs })` над уже учтёнными клиентами (`index.mjs:304–309`).
-    /// У `MeteredLLMClient` нет `timeoutMs`, поэтому срок модели каскад берёт
-    /// по умолчанию — как в JS.
+    /// Срок модели каскад берёт у обёрнутого клиента через учёт расхода
+    /// (`MeteredLLMClient.timeoutMs`).
     pub fn cascade(clients: Vec<Metered>, selectable: Vec<Metered>, probe_timeout_ms: f64, failure_cooldown_ms: f64) -> Result<Self, LlmError> {
         let member = |client: Metered| FallbackMember::new(client.0);
         let cascade = FallbackLlmClient::new(FallbackLlmClientConfig {

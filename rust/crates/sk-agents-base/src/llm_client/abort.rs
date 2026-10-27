@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, Weak};
 
 use tokio::sync::Notify;
 
-use super::{node_timer_delay, LlmError, LlmErrorExt};
+use super::{llm_timer_delay, LlmError, LlmErrorExt};
 
 #[derive(Default)]
 struct SignalInner {
@@ -145,7 +145,7 @@ impl AbortScope {
             let controller = controller.clone();
             let timed_out = Arc::clone(&timed_out);
             tokio::spawn(async move {
-                tokio::time::sleep(node_timer_delay(timeout_ms)).await;
+                tokio::time::sleep(llm_timer_delay(timeout_ms)).await;
                 timed_out.store(true, Ordering::SeqCst);
                 controller.abort(LlmError::timeout(timeout_ms));
             })
@@ -218,6 +218,6 @@ pub(crate) async fn sleep_with_signal(milliseconds: f64, signal: &AbortSignal) -
     tokio::select! {
         biased;
         reason = signal.wait() => Err(reason),
-        () = tokio::time::sleep(node_timer_delay(milliseconds)) => Ok(()),
+        () = tokio::time::sleep(llm_timer_delay(milliseconds)) => Ok(()),
     }
 }

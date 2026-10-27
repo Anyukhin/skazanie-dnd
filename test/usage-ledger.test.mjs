@@ -69,6 +69,22 @@ test('expired and failed reservations release quota without storing prompts', (t
   assert.equal(ledger.report().reserved_tokens, 0)
 })
 
+test('повтор резерва с пустыми scope и model возвращает прежнюю запись', (t) => {
+  // Запись хранит пустые scope и model как 'global' и 'unknown'; повтор
+  // сравнивался с сырым `clean(...)` и всегда давал USAGE_IDEMPOTENCY_CONFLICT.
+  const { ledger } = fixture(t)
+  const first = ledger.reserve({ requestId: 'blank', estimatedTokens: 10, scope: '', model: '   ' })
+  assert.equal(first.scope, 'global')
+  assert.equal(first.model, 'unknown')
+  assert.deepEqual(ledger.reserve({ requestId: 'blank', estimatedTokens: 10, scope: '', model: '   ' }), first)
+  assert.deepEqual(ledger.reserve({ requestId: 'blank', estimatedTokens: 10, scope: 'global', model: 'unknown' }), first)
+  assert.equal(ledger.report().reserved_tokens, 10)
+  assert.throws(
+    () => ledger.reserve({ requestId: 'blank', estimatedTokens: 10, scope: 'campaign:a', model: '' }),
+    (error) => error.code === 'USAGE_IDEMPOTENCY_CONFLICT',
+  )
+})
+
 test('metered client rejects over-budget requests before provider invocation', async (t) => {
   const { ledger } = fixture(t)
   let calls = 0

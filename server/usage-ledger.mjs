@@ -158,9 +158,14 @@ export class DurableUsageLedger {
     const requested = positiveInteger(estimatedTokens, null, 'estimatedTokens')
     const now = Number(this.now())
     const ledger = this._prune(this._read(), now)
+    // Повтор сравнивается с тем, что записано: пустые scope и model хранятся
+    // как 'global' и 'unknown', и прежнее сравнение с сырым `clean(...)` давало
+    // конфликт на каждом повторе такого резерва.
+    const entryScope = clean(scope, 120) || 'global'
+    const entryModel = clean(model, 160) || 'unknown'
     const existing = ledger.requests[id]
     if (existing) {
-      if (existing.scope !== clean(scope, 120) || existing.model !== clean(model, 160) || existing.estimated_tokens !== requested) {
+      if (existing.scope !== entryScope || existing.model !== entryModel || existing.estimated_tokens !== requested) {
         throw new UsageLedgerError(`Usage request id ${id} was reused with different parameters`, 'USAGE_IDEMPOTENCY_CONFLICT')
       }
       return structuredClone(existing)
@@ -170,8 +175,8 @@ export class DurableUsageLedger {
     const entry = {
       request_id: id,
       day: dayKey(now),
-      scope: clean(scope, 120) || 'global',
-      model: clean(model, 160) || 'unknown',
+      scope: entryScope,
+      model: entryModel,
       status: 'reserved',
       estimated_tokens: requested,
       reserved_tokens: requested,
@@ -280,6 +285,13 @@ export class MeteredLLMClient {
     this.model = client.model
     this.models = client.models
   }
+
+  /**
+   * Лимит модели для каскада (`FallbackLLMClient` читает `client.timeoutMs`).
+   * Без него обёртка учёта прятала лимит горячего пути, и основная модель
+   * ждала до 60 % общего срока вместо своего.
+   */
+  get timeoutMs() { return this.client.timeoutMs }
 
   async complete(input, options = {}) {
     const request = Array.isArray(input) ? { messages: input } : input ?? {}

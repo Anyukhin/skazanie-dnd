@@ -1342,6 +1342,97 @@ async fn cost01_cascade_keeps_usage_of_every_attempt() {
 }
 
 // ---------------------------------------------------------------------------
+// Сроки каскада: test/llm-client-timers.test.mjs
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn cascade_sees_model_limit_through_usage_wrapper() {
+    let fixture = ledger(100_000.0);
+    let server = scripted_provider(vec![]).await;
+    let primary = Arc::new(sk_infra::usage_ledger::MeteredLLMClient::new(
+        RouterAiClient::with_env(RouterAiClientConfig { api_key: Some(KEY.into()), base_url: Some(format!("{}/api/v1", server.origin)), model: Some("test/primary".into()), timeout_ms: Some(40.0), ..RouterAiClientConfig::default() }, |_| None).expect("клиент"),
+        Arc::clone(&fixture.ledger),
+    ));
+    // Каскад читает лимит модели у клиента; обёртка учёта его прятала.
+    assert_eq!(primary.model_timeout_ms(), Some(40.0));
+    assert_eq!(FallbackMember::new(primary).timeout_ms, Some(40.0));
+    let fake: Arc<dyn LlmClient> = Arc::new(FakeLlm::new(FakeLlmConfig::default()));
+    assert_eq!(FallbackMember::new(fake).timeout_ms, Some(45_000.0), "как `FakeLLM.timeoutMs` в JS");
+    let log = calls();
+    assert_eq!(FallbackMember::new(scripted("bare", &log, |_, _, _| async { answer("", "bare") })).timeout_ms, None);
+
+    // Без явного срока основная снимается своим лимитом за обёрткой, и
+    // запрос уходит резервной.
+    let hanging = FakeLlm::new(FakeLlmConfig { handler: Some(Arc::new(|_, _| -> HookFuture<Value> { Box::pin(std::future::pending()) })), timeout_ms: Some(json!(40)), ..FakeLlmConfig::default() });
+    let reserve = FakeLlm::new(FakeLlmConfig { responses: vec![FakeReply::Value(json!("резерв"))], ..FakeLlmConfig::default() });
+    let chain = FallbackLlmClient::new(FallbackLlmClientConfig {
+        clients: vec![
+            FallbackMember::new(Arc::new(sk_infra::usage_ledger::MeteredLLMClient::new(hanging, Arc::clone(&fixture.ledger)))),
+            FallbackMember::new(Arc::new(sk_infra::usage_ledger::MeteredLLMClient::new(reserve, Arc::clone(&fixture.ledger)))),
+        ],
+        ..FallbackLlmClientConfig::default()
+    })
+    .expect("каскад");
+    let result = chain.complete(&input(), &json!({})).await.expect("ответ");
+    assert_eq!(result["content"], "резерв");
+    assert_eq!(result["fallback_attempts"][0]["code"], "LLM_TIMEOUT");
+    let report = fixture.ledger.report().expect("отчёт");
+    assert_eq!((report["completed_requests"].clone(), report["failed_requests"].clone(), report["reserved_tokens"].clone()), (json!(1), json!(1), json!(0)));
+}
+
+#[tokio::test]
+async fn late_delta_of_attempt_cut_by_deadline_does_not_reach_live_stream() {
+    let log = calls();
+    let deltas = Arc::new(Mutex::new(Vec::<String>::new()));
+    let late_sent = Arc::new(AtomicUsize::new(0));
+    let sent = Arc::clone(&late_sent);
+    // Клиент, чья работа переживает снятую попытку (как незаслушанный сигнал в JS).
+    let slow = scripted("test/slow", &log, move |_, _, hooks: CallHooks| {
+        let sent = Arc::clone(&sent);
+        async move {
+            if let Some(on_delta) = hooks.on_delta {
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    let _ = on_delta.call("поздний текст основной модели".into()).await;
+                    sent.fetch_add(1, Ordering::SeqCst);
+                });
+            }
+            std::future::pending::<()>().await;
+            answer("никогда", "test/slow")
+        }
+    });
+    let reserve = scripted("test/reserve", &log, |_, _, hooks: CallHooks| async move {
+        if let Some(on_delta) = hooks.on_delta {
+            on_delta.call("ответ резервной".into()).await?;
+        }
+        answer("ответ резервной", "test/reserve")
+    });
+    let sink = {
+        let deltas = Arc::clone(&deltas);
+        DeltaHandler::sync(move |delta| {
+            deltas.lock().expect("дельты").push(delta.to_string());
+            Ok(())
+        })
+    };
+    let result = cascade(vec![slow, reserve]).complete_streaming(&input(), &json!({ "timeoutMs": 100 }), sink).await.expect("ответ");
+    assert_eq!(result["content"], "ответ резервной");
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    assert_eq!(late_sent.load(Ordering::SeqCst), 1, "основная дошла до поздней дельты");
+    assert_eq!(*deltas.lock().expect("дельты"), ["ответ резервной"]);
+}
+
+#[tokio::test]
+async fn deadline_beyond_node_timer_is_not_a_one_millisecond_timer() {
+    let beyond = 2_f64.powi(31);
+    let fake = FakeLlm::new(FakeLlmConfig { responses: vec![FakeReply::Value(json!("ответ без спешки"))], delay_ms: Some(json!(30)), ..FakeLlmConfig::default() });
+    let direct = fake.complete(&input(), &json!({ "timeoutMs": beyond })).await.expect("ответ");
+    assert_eq!(direct["content"], "ответ без спешки");
+    let inner: Arc<dyn LlmClient> = Arc::new(FakeLlm::new(FakeLlmConfig { responses: vec![FakeReply::Value(json!("ответ каскада"))], delay_ms: Some(json!(30)), ..FakeLlmConfig::default() }));
+    let cascaded = cascade(vec![inner]).complete(&input(), &json!({ "timeoutMs": beyond + 5.0 })).await.expect("ответ");
+    assert_eq!(cascaded["content"], "ответ каскада");
+}
+
+// ---------------------------------------------------------------------------
 // Глубина и одиночные суррогаты
 // ---------------------------------------------------------------------------
 
