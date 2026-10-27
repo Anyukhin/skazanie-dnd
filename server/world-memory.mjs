@@ -1285,6 +1285,12 @@ export function validateWorldMemoryCommand(command, state, context = {}) {
       if (!valid) throw new WorldMemoryValidationError('Продвижение квеста требует свежего доказательства этой цели', 'WORLD_QUEST_PROGRESS_PROOF_INVALID')
       result.proof_fact_ids = proofFactIds
       result.proof_source_event_ids = [...new Set(candidates.filter((fact) => proofFactIds.includes(fact.id)).flatMap((fact) => fact.source_event_ids))]
+    } else {
+      // Пустые после очистки id (`['', ' ']`) — это не доказательство. Сырые
+      // поля команды не доходят до события: иначе редьюсер записал бы чужие
+      // `proof_source_event_ids` использованными, ничего не проверив.
+      delete result.proof_fact_ids
+      delete result.proof_source_event_ids
     }
     result.visibility = quest.visibility
   }

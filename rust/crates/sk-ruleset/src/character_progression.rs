@@ -104,9 +104,9 @@ pub fn character_class_key(actor: Option<&Value>) -> Option<String> {
         ("rogue", re!(r"плут|разбойник|rogue", "u")),
         ("sorcerer", re!(r"чарод|sorcer", "u")),
         ("warlock", re!(r"колдун|warlock", "u")),
-        // `маг\b` в JS — граница ASCII-слова: «маг» в конце строки или перед
-        // кириллицей её не даёт (см. отчёт переноса), перенесено как есть.
-        ("wizard", re!(r"волшеб|wizard|маг\b", "u")),
+        // «маг» — отдельным словом, граница по буквам и цифрам Юникода
+        // (прежний ASCII-`\b` не узнавал «Маг» и «Маг огня»).
+        ("wizard", re!(r"волшеб|wizard|(?<![\p{L}\p{N}])маг(?![\p{L}\p{N}])", "u")),
     ];
     patterns.iter().find(|(_, pattern)| text::test(pattern, &role)).map(|(key, _)| key.to_string())
 }
@@ -357,8 +357,10 @@ mod tests {
         assert_eq!(catalog_skill_id(Some(&json!("animal-handling"))), "animal_handling");
         assert_eq!(skill_ability(Some(&json!("Sleight-Of-Hand"))), Some(json!("dex")));
         assert_eq!(skill_ability(Some(&json!("unknown"))), None);
-        // `маг\b` — граница ASCII-слова, как в JS.
-        assert_eq!(character_class_key(Some(&json!({ "role": "маг" }))), None);
+        // «маг» — отдельным словом, граница по буквам Юникода.
+        assert_eq!(character_class_key(Some(&json!({ "role": "маг" }))), Some("wizard".into()));
+        assert_eq!(character_class_key(Some(&json!({ "role": "Маг огня" }))), Some("wizard".into()));
+        assert_eq!(character_class_key(Some(&json!({ "role": "магистр" }))), None);
         assert_eq!(character_class_key(Some(&json!({ "role": "Волшебник" }))), Some("wizard".into()));
     }
 }

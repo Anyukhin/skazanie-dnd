@@ -86,9 +86,11 @@ pub fn calm_beast(r: &mut Resolve<'_>) -> Step {
     insert_present(&mut payload, "stage_before", policy.get("stage"));
     insert_present(&mut payload, "stage_after", policy.get("stage_after"));
     insert_present(&mut payload, "difficulty_parts", policy.get("parts"));
-    // `...roll` после полей события: `actor_id` броска (герой) встаёт на
-    // место `actor_id` зверя — так в JS.
+    // `...roll` после полей события, затем `actor_id` зверя ещё раз: у броска
+    // своё `actor_id` (герой), и спред не должен подменять зверя. Ключ остаётся
+    // на прежнем (втором) месте.
     payload.extend(spread_value(Some(&roll)));
+    insert_present(&mut payload, "actor_id", command.get("beast_actor_id"));
     insert_present(&mut payload, "success", success.as_ref());
     payload.insert("at_minutes".into(), minutes.clone());
     payload.insert("policy_id".into(), json!(BEAST_TAMING_POLICY_ID));

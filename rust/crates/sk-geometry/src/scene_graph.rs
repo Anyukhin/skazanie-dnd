@@ -258,8 +258,11 @@ pub fn reachable_zones(graph: &SceneGraph, from_zone_id: Option<&str>) -> Reacha
     while grew {
         grew = false;
         rounds += 1;
-        let mut queue: Vec<String> = vec![start.clone()];
         zones.insert(start.clone());
+        // Повторный обход раскрывает заново все уже достигнутые зоны, а не
+        // только вход (как JS после исправления): иначе дверь, проверенная до
+        // находки ключа, оставалась закрытой. Вход вставлен первым.
+        let mut queue: Vec<String> = zones.iter().cloned().collect();
         for key in by_id.get(start.as_str()).map(|zone| zone.keys.as_slice()).unwrap_or_default() {
             if keys.insert(key.clone()) {
                 grew = true;
@@ -485,6 +488,29 @@ mod tests {
         assert_eq!(sorted(&reached.zones), ["hall", "kitchen", "store", "yard"]);
         assert_eq!(reached.keys.iter().collect::<Vec<_>>(), ["store-key"]);
         assert!(reached.rounds >= 2, "кладовая открывается только после ключа");
+    }
+
+    /// Запертая связь объявлена раньше связи к ключу: ключ находится уже после
+    /// проверки двери, и следующий обход обязан раскрыть зал заново.
+    #[test]
+    fn key_found_after_door_check_opens_it_next_round() {
+        let graph = graph(json!({
+            "entranceZoneId": "yard",
+            "goalZoneId": "store",
+            "zones": [
+                { "id": "yard", "kind": "exterior", "label": "Участок" },
+                { "id": "hall", "kind": "interior", "required": true, "label": "Общий зал" },
+                { "id": "kitchen", "kind": "interior", "keys": ["store-key"], "label": "Кухня" },
+                { "id": "store", "kind": "interior", "label": "Кладовая" },
+            ],
+            "links": [
+                { "id": "front", "from": "yard", "to": "hall", "kind": "door" },
+                { "id": "to-store", "from": "hall", "to": "store", "kind": "locked", "keyId": "store-key" },
+                { "id": "to-kitchen", "from": "hall", "to": "kitchen", "kind": "open" },
+            ],
+        }));
+        assert!(reachable_zones(&graph, None).zones.contains("store"));
+        assert_eq!(validate_scene_graph(&graph).errors, []);
     }
 
     #[test]

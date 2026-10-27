@@ -134,6 +134,12 @@ test('скрытая смерть удерживает прежний стату
   assert.deepEqual(officesForViewer({ ...revealed, world_offices: installed }, { playerId: 'hero' })[0], {
     office_id: OFFICE_ID, title: 'Корона Валедора', status: 'held', holder_npc_id: MARSHAL_ID,
   })
+  // Находка переноса (docs/rust-port-js-findings.md): ведущему читалось
+  // несуществующее `holder`, и держатель должности ему не приходил.
+  assert.deepEqual(officesForViewer({ ...initial, world_offices: installed }, { isAdmin: true })[0], {
+    office_id: OFFICE_ID, title: 'Корона Валедора', status: 'held', holder_npc_id: MARSHAL_ID,
+  })
+  assert.equal(officesForViewer({ ...initial, world_offices: vacant }, { isAdmin: true })[0].holder_npc_id, null)
 })
 
 test('публичная смерть меняет статус должности и запись летописи для всего отряда', () => {

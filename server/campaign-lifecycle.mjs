@@ -66,8 +66,10 @@ export function collectEpilogueFacts(state = {}, outcomeOrOptions = undefined) {
     }))
     .filter((quest) => quest.quest_id && quest.title)
 
+  // Лямбда, а не `filter(visibleToParty)`: номер элемента иначе становился
+  // запасной видимостью, и NPC без поля видимости выпадал из эпилога.
   const visibleNpcs = new Map((Array.isArray(state?.social?.npcs) ? state.social.npcs : [])
-    .filter(visibleToParty)
+    .filter((npc) => visibleToParty(npc))
     .map((npc) => [clean(npc?.id, 120), npc]))
   const promises = (Array.isArray(state?.social?.promises) ? state.social.promises : [])
     .filter((promise) => visibleToParty(promise)
@@ -493,7 +495,7 @@ export function buildEpilogueNarrationBrief(state = {}, outcomeOrOptions = undef
       faction_reputations: facts.faction_reputations,
       visited_locations: facts.visited_locations,
       confirmed_scene_history: (Array.isArray(state.adventure?.history) ? state.adventure.history : [])
-        .filter(visibleToParty)
+        .filter((entry) => visibleToParty(entry))
         .slice(-12)
         .map((entry) => ({
         chapter: Math.max(1, Number(entry.chapter) || 1),

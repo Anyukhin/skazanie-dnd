@@ -320,8 +320,8 @@ const CLASS_PROFILES: [ClassProfile; 12] = [
     ClassProfile { key: "wizard", weapon: "dagger", gear: &[], abilities: [8, 14, 13, 16, 15, 10] },
 ];
 
-/// Слово роли, по которому узнаётся класс прежнего набора. Образцы — из JS
-/// без правок (`маг\b` — граница ASCII-слова, см. «Замечено в JS» в отчёте).
+/// Слово роли, по которому узнаётся класс прежнего набора. Образцы — из JS;
+/// «маг» — отдельным словом, граница по буквам Юникода.
 fn class_pattern(key: &str) -> &'static sk_core::fancy_regex::Regex {
     match key {
         "barbarian" => re!(r"варвар|barbarian", "u"),
@@ -335,7 +335,7 @@ fn class_pattern(key: &str) -> &'static sk_core::fancy_regex::Regex {
         "bard" => re!(r"бард|bard", "u"),
         "sorcerer" => re!(r"чарод|sorcer", "u"),
         "warlock" => re!(r"колдун|warlock", "u"),
-        _ => re!(r"волшеб|wizard|маг\b", "u"),
+        _ => re!(r"волшеб|wizard|(?<![\p{L}\p{N}])маг(?![\p{L}\p{N}])", "u"),
     }
 }
 

@@ -7206,7 +7206,9 @@ export function validateCommand(input, rawState, context = {}) {
     const distanceFeet = actorAt && npcPlacement
       ? footprintDistanceFeet(actor, [npcPlacement], actorAt)
       : Number.POSITIVE_INFINITY
-    if (distanceFeet > 5) {
+    // Неизвестное расстояние (`null`) — не «вплотную»: как у `MakeAttack`,
+    // без клеток обеих площадей кража издалека не разрешается.
+    if (distanceFeet == null || distanceFeet > 5) {
       throw new RulesValidationError('До кармана надо дойти: встаньте вплотную, в пределах 5 футов', 'PICKPOCKET_OUT_OF_REACH')
     }
     if (conditionIdsFor(state, npcId).has(pickpocketSpentCondition(npcId))) {
@@ -9710,6 +9712,18 @@ function shieldConditionEvent(command, targetId) {
   }, [targetId])
 }
 
+/**
+ * Вид урона добавки «Поглощения стихий». Условие без `rider_damage_type`
+ * (мусор старого сохранения) называет вид своим id `absorbing-element-rider:<вид>`;
+ * прежде удар оружием брал шаблон другого условия (`absorbing-element:`) и
+ * получал весь id видом урона, а удар заклинанием — склейку «elementalfire».
+ * @param {any} condition
+ */
+function absorbedRiderDamageType(condition) {
+  if (condition?.rider_damage_type != null) return String(condition.rider_damage_type)
+  return String(condition?.id ?? condition ?? '').replace(/^absorbing-element-rider:/u, '') || 'elemental'
+}
+
 function absorbElementsConditionEvents(command, targetId, damageType, slotLevel = 1) {
   const source = commandWithRules({ ...command, actor_id: targetId }, RULE_IDS.conditions)
   return [eventFrom(source, 'ConditionAdded', {
@@ -9984,6 +9998,17 @@ function circularAreaMetadata(spell, center) {
     spell_id: spell.id,
     spreadsAroundCorners: spreadsAroundCorners(spell),
   } : {}
+}
+
+/**
+ * Цель в радиусе, только если расстояние известно. `footprintDistanceFeet`
+ * возвращает `null` без клеток площади, а `null <= r` в JS истинно — так
+ * взрыв задевал фигуру, чьё место неизвестно. Отказ — как у `MakeAttack`.
+ * @param {number|null} distanceFeet
+ * @param {number} radiusFeet
+ */
+function withinFeet(distanceFeet, radiusFeet) {
+  return distanceFeet != null && distanceFeet <= radiusFeet
 }
 
 function positionInArea(position, center, radiusFeet, shape = 'sphere', sideFeet = null, geometryVersion = null) {
@@ -11735,7 +11760,9 @@ function litByLightCantrip(state, actorIdValue) {
   return listActors(state).some((candidate) => {
     const bearerId = actorId(candidate)
     if (bearerId === id || !conditionIdsFor(state, bearerId).has(LIGHT_CONDITION)) return false
-    return distanceBetweenActors(state, id, bearerId) <= radius
+    // Без позиции одного из двух расстояние неизвестно (`null`), и свет
+    // заговора не достаёт — иначе `null <= радиус` освещал бы всю карту.
+    return withinFeet(distanceBetweenActors(state, id, bearerId), radius)
   })
 }
 
@@ -14063,7 +14090,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
       }
       const protectedBy = protectionChoice?.use === true ? String(protectionChoice.reactor_id ?? '') : null
-      let attack = rollD20WithSpeciesLuck(state, diceService, command.actor_id, { modifier, purpose: 'attack', actorId: command.actor_id, advantage, disadvantage: disadvantage || Boolean(protectedBy), visibility: command.visibility })
+      // Помеху даёт принятая реакция, а не известность защитника: выбор без
+      // `reactor_id` (старое окно) уже оплачен реакцией и обязан мешать удару.
+      let attack = rollD20WithSpeciesLuck(state, diceService, command.actor_id, { modifier, purpose: 'attack', actorId: command.actor_id, advantage, disadvantage: disadvantage || protectedBy != null, visibility: command.visibility })
       if (protectedBy) attack = { ...attack, protected_by: protectedBy }
       // Чемпион критует на 19–20: такой удар попадает, как и натуральная 20.
       const criticalThreshold = weaponCriticalThreshold(state, actor)
@@ -14886,7 +14915,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             if (!isLivingActor(candidate)) return false
             if (burst.excludesTarget === true && actorId(candidate) === String(targetId)) return false
             const position = actorPosition(hitEffectState, actorId(candidate))
-            return position && footprintDistanceFeet(candidate, findActor(hitEffectState, targetId), position, targetPosition) <= Math.max(0, safeInteger(burst.radius, 5))
+            return position && withinFeet(footprintDistanceFeet(candidate, findActor(hitEffectState, targetId), position, targetPosition), Math.max(0, safeInteger(burst.radius, 5)))
           }) : []
           const expression = scaledDiceExpression(burst.damage, extraLevels, burst.upcastDicePerLevel, burst.maximumDice)
           const burstRoll = diceService.roll(expression, `spell:next-weapon-hit-burst:${pendingWeaponHitSpell.id}`, command.actor_id, command.visibility ?? 'public')
@@ -14925,7 +14954,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       }
       if (landed && absorbingElementMatches && absorbingElementCondition) {
         const conditionId = String(absorbingElementCondition.id)
-        const damageType = String(absorbingElementCondition.rider_damage_type ?? conditionId.replace(/^absorbing-element:/u, 'elemental'))
+        const damageType = absorbedRiderDamageType(absorbingElementCondition)
         const slotLevel = Math.max(1, safeInteger(absorbingElementCondition.slot_level, 1))
         const extraLevels = Math.max(0, slotLevel - 1)
         const baseExpression = scaledDiceExpression(String(absorbingElementCondition.rider_damage ?? '1d6'), extraLevels, 1)
@@ -16713,7 +16742,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             return Boolean(toward) && hasClearActorTrajectory(state, command.actor_id, candidateId, centre, at)
               && actorInArea(state, candidateId, at, toward, action.radiusFeet, 'cone', command.actor_id, centre)
           }
-          return footprintDistanceFeet(candidate, actor, at, centre) <= action.radiusFeet
+          return withinFeet(footprintDistanceFeet(candidate, actor, at, centre), action.radiusFeet)
         })
         : [target].filter(Boolean)
       for (let ordinal = declared.uses_before + 1; ordinal <= declared.uses_after; ordinal += 1) {
@@ -17630,7 +17659,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               .find((condition) => String(condition?.id ?? condition).startsWith('absorbing-element-rider:'))
             if (spell.attackKind === 'melee' && absorbingElementCondition?.absorb_elements_rider_armed === true) {
               const conditionId = String(absorbingElementCondition.id)
-              const riderDamageType = String(absorbingElementCondition.rider_damage_type ?? conditionId.replace(/^absorbing-element-rider:/u, 'elemental'))
+              const riderDamageType = absorbedRiderDamageType(absorbingElementCondition)
               const slotLevel = Math.max(1, safeInteger(absorbingElementCondition.slot_level, 1))
               const baseExpression = scaledDiceExpression(String(absorbingElementCondition.rider_damage ?? '1d6'), Math.max(0, slotLevel - 1), 1)
               const expression = critical ? criticalDamageExpression(baseExpression) : baseExpression
@@ -17718,7 +17747,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             const center = actorPosition(burstState, resolvedTargetId) ?? actorPosition(state, resolvedTargetId)
             const burstTargets = listActors(burstState).filter((candidate) => {
               const at = actorPosition(burstState, actorId(candidate))
-              return at && center && footprintDistanceFeet(candidate, findActor(burstState, resolvedTargetId), at, center) <= Math.max(0, safeInteger(burst.radius, 5))
+              return at && center && withinFeet(footprintDistanceFeet(candidate, findActor(burstState, resolvedTargetId), at, center), Math.max(0, safeInteger(burst.radius, 5)))
                 && (isLivingActor(candidate) || actorId(candidate) === resolvedTargetId)
             })
             for (const burstTarget of burstTargets) {
@@ -18621,7 +18650,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             const caught = listActors(state).filter((candidate) => {
               if (!isLivingActor(candidate) || actorId(candidate) === command.actor_id) return false
               const at = actorPosition(state, actorId(candidate))
-              return at && footprintDistanceFeet(candidate, actor, at, from) <= radiusFeet
+              return at && withinFeet(footprintDistanceFeet(candidate, actor, at, from), radiusFeet)
             })
             if (caught.length) {
               const blastExpression = scaledSpellDice(spell, actor, command.slot_level) ?? spell.damage
@@ -19901,7 +19930,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       for (const id of [...partyIds, ...enemyIds]) {
         const actor = findActor(state, id)
         if (!actor) throw new RulesValidationError(`Участник ${id} не найден`, 'TARGET_NOT_FOUND')
-        const modifier = actor?.creationBenefits ? abilityModifier(actor.abilities?.dex) + Number(actor.creationBenefits.initiative_bonus ?? 0) : Number.isSafeInteger(Number(actor?.initiativeBonus))
+        // Нечисловая прибавка старого листа (`"5"` прошёл бы, `"x"` — нет) не
+        // роняет весь старт боя ошибкой кости: считается нулём, как запас.
+        const modifier = actor?.creationBenefits ? abilityModifier(actor.abilities?.dex) + safeInteger(actor.creationBenefits.initiative_bonus, 0) : Number.isSafeInteger(Number(actor?.initiativeBonus))
           ? Math.max(-30, Math.min(30, Number(actor.initiativeBonus)))
           : abilityModifier(actor?.abilities?.dex)
         const initiativeItemSources = activeItemMechanicEffects(actor)
@@ -21330,6 +21361,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           stage_after: policy.stage_after,
           difficulty_parts: policy.parts,
           ...roll,
+          // У броска своё `actor_id` — герой; поле события называет зверя, и
+          // спред броска не должен его подменять (герой уже в `hero_id`).
+          actor_id: command.beast_actor_id,
           success: roll.success,
           at_minutes: minutes,
           policy_id: BEAST_TAMING_POLICY_ID,

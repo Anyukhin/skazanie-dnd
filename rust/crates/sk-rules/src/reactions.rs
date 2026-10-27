@@ -432,6 +432,22 @@ pub fn shield_condition_event(command: &Value, target_id: &str) -> Value {
 
 /// `absorbElementsConditionEvents(command, targetId, damageType, slotLevel = 1)`.
 /// `slot_level: None` — значение по умолчанию `1`.
+/// `absorbedRiderDamageType(condition)`: вид урона добавки «Поглощения
+/// стихий». Без `rider_damage_type` (мусор старого сохранения) вид — хвост id
+/// `absorbing-element-rider:<вид>`, пустой — `elemental`.
+pub fn absorbed_rider_damage_type(condition: &Value) -> String {
+    if let Some(kind) = condition.get("rider_damage_type").filter(|value| !value.is_null()) {
+        return js::string(Some(kind));
+    }
+    let id = match condition.get("id").filter(|value| !value.is_null()) {
+        Some(id) => js::string(Some(id)),
+        None if condition.is_null() => String::new(),
+        None => js::string(Some(condition)),
+    };
+    let kind = id.strip_prefix("absorbing-element-rider:").unwrap_or(&id);
+    if kind.is_empty() { "elemental".to_string() } else { kind.to_string() }
+}
+
 pub fn absorb_elements_condition_events(command: &Value, target_id: &str, damage_type: Option<&Value>, slot_level: Option<&Value>) -> Vec<Value> {
     let source = command_with_rules(&command_with(command, "actor_id", Value::String(target_id.into())), &[rule_ids::CONDITIONS]);
     let kind = js::string(damage_type);

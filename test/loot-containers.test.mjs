@@ -10,9 +10,11 @@ import {
   MAX_LOOT_CONTAINERS,
   lootCommitTouchesContainers,
   lootContainerList,
+  lootContainerReachFor,
   lootContainersForViewer,
   lootContainersInScene,
   lootItemForViewer,
+  normalizeLootContainer,
   normalizeLootContainersState,
   sceneLootLocationKey,
 } from '../server/loot-containers.mjs'
@@ -1314,4 +1316,16 @@ test('«обыскивает поверженных» — тела, а не об
   const crouching = searchAloud(both.state, 'hero', 'Мирель приседает у тел, осторожно обыскивает одежду и мешочек с компонентами')
   assert.ok(crouching?.narration.includes('Разбойник 2'), crouching?.narration)
   assert.doesNotMatch(crouching.narration, /Тело: /u, 'подпись панели не звучит в рассказе')
+})
+
+// Находка переноса (docs/rust-port-js-findings.md): `coordinate(null)` давал
+// 0, и контейнер без места вставал в угол карты на 0:0.
+test('контейнер без места — без координат и без расстояния, а не на клетке 0:0', () => {
+  const container = normalizeLootContainer({ id: 'corpse-1', kind: 'corpse', x: null, y: '', items: [] })
+  assert.equal(container.x, null)
+  assert.equal(container.y, null)
+  const reach = lootContainerReachFor({ mechanics: { positions: { hero: { x: 3, y: 3 } } } }, { id: 'hero', x: 3, y: 3 }, container)
+  assert.equal(reach.distance_feet, null)
+  assert.equal(reach.reachable, true, 'померить нечем — досягаемо по сцене')
+  assert.equal(normalizeLootContainer({ id: 'corpse-2', kind: 'corpse', x: 0, y: 0, items: [] }).x, 0, 'настоящий ноль остаётся нулём')
 })

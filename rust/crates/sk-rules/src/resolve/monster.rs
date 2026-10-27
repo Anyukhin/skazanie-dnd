@@ -166,8 +166,8 @@ pub fn use_legendary_action(r: &mut Resolve<'_>) -> Step {
                         && crate::geometry::forced::has_clear_actor_trajectory(&state, &actor_id, &candidate_id, Some(centre), Some(at_point), false)
                         && crate::areas::shape::actor_in_area(&state, &candidate_id, Some(at_point), toward, radius, "cone", Some(&actor_id), Some(centre));
                 }
-                // `null <= radius`: неизвестное расстояние — ноль.
-                sk_geometry::actor_footprint::footprint_distance_feet(Some(candidate), actor, Some(&point_json(at_point)), Some(&point_json(centre))).unwrap_or(0.0) <= radius
+                // Неизвестное расстояние — цель не в области (как у `MakeAttack`).
+                sk_geometry::actor_footprint::footprint_distance_feet(Some(candidate), actor, Some(&point_json(at_point)), Some(&point_json(centre))).is_some_and(|distance| distance <= radius)
             })
             .cloned()
             .collect()

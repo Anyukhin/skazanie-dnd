@@ -146,3 +146,18 @@ test('StartCombat в versioned group phase выдаёт Haste каждому у�
   assert.equal(legacyTurn.mechanics.combat.action_economy.bob.action_economy_version, undefined)
   assert.equal(legacyTurn.mechanics.combat.action_economy.bob.attack_action_kind, undefined)
 })
+
+// Находка переноса (docs/rust-port-js-findings.md): нечисловая прибавка
+// `creationBenefits.initiative_bonus` старого листа роняла весь StartCombat
+// ошибкой кости d20 («Некорректный модификатор»).
+test('нечисловая прибавка к инициативе считается нулём и не роняет старт боя', () => {
+  const state = field()
+  state.mechanics.combat = { active: false }
+  state.players[0].creationBenefits = { initiative_bonus: 'быстрый' }
+  state.players[1].creationBenefits = { initiative_bonus: 5 }
+  const started = resolveCommand(authoritative({ command_type: 'StartCombat', command_id: 'odd-initiative', actor_id: 'ann' }), normalizeCampaignState(state), options(dice([10, 10, 10, 10])))
+  const rolls = started.rolls.filter((roll) => roll.purpose === 'initiative')
+  const byActor = Object.fromEntries(rolls.map((roll) => [roll.actor_id, roll.modifier]))
+  assert.equal(byActor.ann, 1, 'Ловкость 12 даёт +1, «быстрый» — ноль')
+  assert.equal(byActor.bob, 6, 'числовая прибавка работает как прежде')
+})

@@ -403,7 +403,8 @@ export function outsideEntranceFor(map, spawn) {
   /** @type {{x: number, y: number, score: number}|null} */
   let best = null
   for (const door of map.doors ?? []) {
-    if (door.locked === true || door.barricade) continue
+    // У двери карты замок — в `state` (`DOOR_STATES`); поля `locked` нет.
+    if (door.state === 'locked' || door.barricade) continue
     const first = { x: Number(door.x), y: Number(door.y) }
     const second = door.dir === 'e' ? { x: first.x + 1, y: first.y } : { x: first.x, y: first.y + 1 }
     const sides = [first, second].map((position) => ({ position, cell: cellAt(map, position.x, position.y) }))

@@ -124,6 +124,23 @@ test('подтверждения прогресса версионированы
   assert.deepEqual(quest.progress_fact_ids, ['clue'], 'проекция не меняет источник')
 })
 
+// Находка переноса (docs/rust-port-js-findings.md): пустые id доказательства
+// пропускали проверку, а сырые поля команды доходили до события.
+test('пустые id доказательства не превращаются в подтверждение прогресса', () => {
+  const prepared = runWorldMemoryCommands(campaign(), [
+    { command_type: 'UpsertQuest', quest: { id: 'supplies', title: 'Найти припасы', clock: { current: 0, max: 3 } } },
+  ]).state
+  const progressed = runWorldMemoryCommands(prepared, [{
+    command_type: 'AdvanceQuestClock', quest_id: 'supplies', amount: 1, proof_fact_ids: ['', ' '], proof_source_event_ids: ['someone-else-check'],
+  }])
+  const payload = progressed.events[0].payload
+  assert.equal(Object.hasOwn(payload, 'schema_version'), false, 'событие — как у шага без доказательства')
+  assert.equal(Object.hasOwn(payload, 'proof_fact_ids'), false)
+  const quest = progressed.state.worldMemory.quests.find((entry) => entry.id === 'supplies')
+  assert.equal(quest.clock.current, 1)
+  assert.equal(Object.hasOwn(quest, 'progress_source_event_ids'), false, 'чужой источник не помечен использованным')
+})
+
 test('старый QuestClockAdvanced не получает новый смысл подтверждения при replay', () => {
   const memory = buildMemory().state.worldMemory
   const legacy = applyWorldMemoryEvent(memory, { event_type: 'QuestClockAdvanced', payload: {

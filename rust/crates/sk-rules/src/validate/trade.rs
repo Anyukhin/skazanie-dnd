@@ -284,7 +284,8 @@ pub fn check_pickpocket(v: &mut Validation<'_>) -> Step {
     let distance = match (actor_at, placement) {
         (Some(at), Some(placement)) => {
             let anchor = json!({ "x": at.x, "y": at.y });
-            sk_geometry::actor_footprint::footprint_distance_feet(Some(actor), Some(&json!([placement])), Some(&anchor), None).unwrap_or(0.0)
+            // Неизвестное расстояние — не «вплотную» (как у `MakeAttack`).
+            sk_geometry::actor_footprint::footprint_distance_feet(Some(actor), Some(&json!([placement])), Some(&anchor), None).unwrap_or(f64::INFINITY)
         }
         _ => f64::INFINITY,
     };

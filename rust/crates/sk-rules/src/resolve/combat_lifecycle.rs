@@ -143,8 +143,9 @@ fn initiative_entry(r: &mut Resolve<'_>, state: &Value, id: &str) -> Result<Valu
     };
     let dex = at(actor.get("abilities"), "dex");
     let modifier = if js::truthy(actor.get("creationBenefits")) {
-        let bonus = at(actor.get("creationBenefits"), "initiative_bonus").filter(|value| !value.is_null()).cloned().unwrap_or(json!(0));
-        ability_modifier(dex) as f64 + js::number(Some(&bonus))
+        // Нечисловая прибавка старого листа — ноль (`safeInteger(…, 0)`), а не
+        // отказ кости на весь старт боя.
+        ability_modifier(dex) as f64 + js::safe_int(at(actor.get("creationBenefits"), "initiative_bonus"), 0) as f64
     } else if js::is_safe_integer_number(actor.get("initiativeBonus")) {
         js::number(actor.get("initiativeBonus")).clamp(-30.0, 30.0)
     } else {

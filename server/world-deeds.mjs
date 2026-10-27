@@ -225,16 +225,27 @@ function digest(...parts) {
   return createHash('sha256').update(parts.map((part) => String(part ?? '')).join('\0')).digest('hex').slice(0, 20)
 }
 
+/**
+ * Статья вида поступка — только собственный ключ таблицы: `constructor`,
+ * `toString` и прочие ключи `Object.prototype` иначе проходили как законный
+ * вид, а такт молвы падал на `RUMOR_PHRASES[kind]` — функции вместо фраз.
+ * @param {unknown} kind
+ */
+function deedKindEntry(kind) {
+  const key = String(kind ?? '')
+  return Object.hasOwn(DEED_KINDS, key) ? DEED_KINDS[/** @type {keyof typeof DEED_KINDS} */ (key)] : null
+}
+
 function severityOf(kind) {
-  return DEED_KINDS[kind]?.severity ?? 'minor'
+  return deedKindEntry(kind)?.severity ?? 'minor'
 }
 
 function alignmentOf(kind) {
-  return DEED_KINDS[kind]?.alignment ?? 'dark'
+  return deedKindEntry(kind)?.alignment ?? 'dark'
 }
 
 function safeDeed(value = {}) {
-  const kind = DEED_KINDS[text(value.kind, 40)] ? text(value.kind, 40) : ''
+  const kind = deedKindEntry(text(value.kind, 40)) ? text(value.kind, 40) : ''
   if (!kind) return null
   const id = text(value.id, 120)
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u.test(id)) return null
@@ -656,7 +667,7 @@ export function worldDeedsFeed(state = {}, { limit = 30 } = {}) {
     .slice(0, Math.max(1, Math.min(200, integer(limit, 30))))
     .map((deed) => ({
       ...clone(deed),
-      label: DEED_KINDS[deed.kind]?.label ?? deed.kind,
+      label: deedKindEntry(deed.kind)?.label ?? deed.kind,
       witness_count: deed.witness_ids.length,
     }))
 }
@@ -736,7 +747,7 @@ export function rumorClaimId(deed, npcId) {
 
 /** Формулировка слуха по дальности пересказа: 0 — точно, 2 — уже небыль. */
 export function rumorWording(deed = {}, hop = 0) {
-  const variants = RUMOR_PHRASES[deed.kind] ?? FALLBACK_RUMOR_PHRASES
+  const variants = (Object.hasOwn(RUMOR_PHRASES, String(deed.kind ?? '')) ? RUMOR_PHRASES[deed.kind] : null) ?? FALLBACK_RUMOR_PHRASES
   const index = Math.max(0, Math.min(variants.length - 1, integer(hop, 0)))
   return text(variants[index]
     .replaceAll('{place}', deed.location_name || 'дальних краях')

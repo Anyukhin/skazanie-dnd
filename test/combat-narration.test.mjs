@@ -552,3 +552,18 @@ test('укрытие в строке боя — словом, а не служе
   assert.match(shot('mystery_prop_42'), /сквозь укрытие/u)
   assert.doesNotMatch(shot('tree_oak'), /tree_oak/u)
 })
+
+// Находка порта на Rust (docs/rust-port-js-findings.md): запись состояния без
+// двоеточия печаталась как «атакующий undefined».
+test('запись состояния без стороны не печатает undefined в причине преимущества', () => {
+  const malformed = combatNarration([
+    event('AttackResolved', { target_id: 'wolf', total: 18, armor_class: 12, hit: true, condition_advantage: ['prone'] }, ['wolf']),
+  ], state)
+  assert.doesNotMatch(malformed, /undefined/)
+  assert.doesNotMatch(malformed, /с преимуществом \(\)/)
+  const mixed = combatNarration([
+    event('AttackResolved', { target_id: 'wolf', total: 18, armor_class: 12, hit: true, condition_advantage: ['prone', 'target:prone'] }, ['wolf']),
+  ], state)
+  assert.match(mixed, /с преимуществом \(цель [^)]+\)/)
+  assert.doesNotMatch(mixed, /undefined/)
+})

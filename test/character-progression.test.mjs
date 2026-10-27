@@ -130,3 +130,16 @@ test('сервер отклоняет чужой, недоступный и бо
     (error) => error instanceof RulesValidationError && error.code === 'CHARACTER_BUILD_DURING_COMBAT',
   )
 })
+
+// Находка переноса (docs/rust-port-js-findings.md): образец `маг\b` с
+// ASCII-границей не узнавал «Маг» и «Маг огня» ни в одном из четырёх модулей.
+test('роль «Маг» узнаётся волшебником во всех узнавателях класса по роли', async () => {
+  const { characterClassKey } = await import('../server/character-progression.mjs')
+  const { heroSpellcastingSummaryFor } = await import('../server/combat-spells.mjs')
+  for (const role of ['Маг', 'Маг огня', 'боевой маг']) {
+    assert.equal(characterClassKey({ role }), 'wizard', role)
+    assert.ok(combatActionsFor({ role, level: 2 }).some((entry) => entry.id === 'arcane-recovery'), role)
+    assert.equal(heroSpellcastingSummaryFor({ role, level: 1, abilities: { int: 16 } })?.ability, 'int', role)
+  }
+  assert.equal(characterClassKey({ role: 'Магистр' }), null)
+})

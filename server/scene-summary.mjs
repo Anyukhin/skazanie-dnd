@@ -83,7 +83,10 @@ export function notableSceneMoments(events = []) {
         break
       }
       case 'QuestResolved': {
-        add(`квест завершён: ${payload.summary || payload.outcome}`)
+        // Без итога и исхода — просто факт: прежде в память сцены уходило
+        // «квест завершён: undefined».
+        const result = payload.summary || payload.outcome
+        add(result ? `квест завершён: ${result}` : 'квест завершён')
         break
       }
       case 'MerchantPurchaseCompleted': {

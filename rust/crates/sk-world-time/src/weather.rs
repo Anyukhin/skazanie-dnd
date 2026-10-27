@@ -595,20 +595,23 @@ pub fn weather_effect_labels(state: &Value, actor_id: Option<&Value>) -> Vec<&'s
 }
 
 /// `weatherCheckSwing(state, skill, actorId)`: `{ swing, reason, effect_id }`
-/// либо `None`, когда небо в проверке не участвует. Герой не подставляется по
-/// умолчанию: без него крыша — по сцене целиком.
+/// либо `None`, когда небо в проверке не участвует. Без героя — активный
+/// (`resolvedWeatherActorId`), как у шапки `worldClockFor`.
 pub fn weather_check_swing(state: &Value, skill: Option<&Value>, actor_id: Option<&Value>) -> Option<Value> {
     let id = text::lower(text::trim(&js::s(skill))).replace('_', "-");
     if !WEATHER_AFFECTED_SKILLS.contains(&id.as_str()) {
         return None;
     }
-    let effect = active_effects(state, actor_id).into_iter().find(|candidate| candidate.skills.contains(&id.as_str()))?;
+    let resolved = resolved_weather_actor_id(state, actor_id);
+    let effect = active_effects(state, resolved.as_ref()).into_iter().find(|candidate| candidate.skills.contains(&id.as_str()))?;
     Some(json!({ "swing": effect.swing, "reason": effect.reason, "effect_id": effect.id }))
 }
 
-/// `weatherRangedPenalty(state, actorId)`: `{ reason, effect_id }` либо `None`.
+/// `weatherRangedPenalty(state, actorId)`: `{ reason, effect_id }` либо `None`;
+/// без героя — активный, как у шапки.
 pub fn weather_ranged_penalty(state: &Value, actor_id: Option<&Value>) -> Option<Value> {
-    let effect = active_effects(state, actor_id).into_iter().find(|candidate| candidate.ranged)?;
+    let resolved = resolved_weather_actor_id(state, actor_id);
+    let effect = active_effects(state, resolved.as_ref()).into_iter().find(|candidate| candidate.ranged)?;
     Some(json!({ "reason": effect.reason, "effect_id": effect.id }))
 }
 

@@ -395,7 +395,7 @@ fn caster_profile(actor: Option<&Value>) -> Option<CasterProfile> {
         (re!(r"бард|bard", "u"), BARD),
         (re!(r"чарод|sorcer", "u"), SORCERER),
         (re!(r"колдун|warlock", "u"), WARLOCK),
-        (re!(r"волшеб|wizard|маг\b", "u"), WIZARD),
+        (re!(r"волшеб|wizard|(?<![\p{L}\p{N}])маг(?![\p{L}\p{N}])", "u"), WIZARD),
         (re!(r"следопыт|ranger", "u"), RANGER),
         (re!(r"паладин|paladin", "u"), PALADIN),
     ];

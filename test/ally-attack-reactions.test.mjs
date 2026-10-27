@@ -98,6 +98,20 @@ test('Оборона: окно защитнику со щитом до брос�
   assert.equal(replayEvents(paused, used.events).mechanics.combat.action_economy.knight.reaction, false)
 })
 
+// Находка переноса (docs/rust-port-js-findings.md): принятая «Оборона» из
+// сохранённых выборов без `reactor_id` (старое окно) уже оплачена реакцией,
+// но помехи удару не давала.
+test('Оборона: принятый выбор без reactor_id всё равно даёт помеху', () => {
+  const start = battle({ bard: false, protector: true })
+  const choices = { 'protection:swing:mage': { key: 'protection:swing:mage', kind: 'protection', use: true } }
+  const attack = resolveCommand({ command_type: 'MakeAttack', command_id: 'swing', actor_id: 'enemy', target_id: 'mage', server_authoritative: true },
+    start, { ...options([18, 3]), context: { serverAuthoritativeCombat: true, protectiveReactionChoices: choices } })
+  const resolved = attack.events.find((event) => event.event_type === 'AttackResolved')
+  assert.equal(resolved.payload.mode, 'disadvantage')
+  assert.equal(resolved.payload.kept, 3)
+  assert.equal(resolved.payload.protected_by, undefined, 'безымянного защитника не выдумываем')
+})
+
 test('Оборона: без щита, без стиля или вне 5 футов — окна нет; вне окна действие не исполняется', () => {
   for (const setup of [{ protectorShield: false }, { protectorStyle: 'fighting-style-defense' }]) {
     const attack = swing(battle({ bard: false, protector: true, ...setup }), [18, 3], `no-protection-${JSON.stringify(setup)}`)

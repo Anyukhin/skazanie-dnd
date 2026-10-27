@@ -186,3 +186,10 @@ test('без scene_summary движок сохраняет прежнее пов
   const summaryEvent = resolved.events.find((entry) => entry.event_type === 'NarrativeSummaryRecorded')
   assert.equal(summaryEvent.payload.summary.summary, 'Отряд покинул трактир.')
 })
+
+// Находка порта на Rust (docs/rust-port-js-findings.md): квест без итога и
+// исхода попадал в память сцены как «квест завершён: undefined».
+test('квест без итога и исхода заметен без undefined', () => {
+  assert.deepEqual(notableSceneMoments([event('QuestResolved', { quest_id: 'q1' })]), ['квест завершён'])
+  assert.deepEqual(notableSceneMoments([event('QuestResolved', { outcome: 'success' })]), ['квест завершён: success'])
+})
