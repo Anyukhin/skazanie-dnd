@@ -270,7 +270,7 @@ export function lifecycleEventForAction(action, state, { actorId, reason, now = 
     fail: { from: ['active'], to: 'failed', event: 'CampaignFailed' },
     archive: { from: ['setup', 'paused', 'completed', 'failed'], to: 'archived', event: 'CampaignArchived' },
   }
-  const transition = transitions[normalizedAction]
+  const transition = ownEntry(transitions, normalizedAction)
   if (!transition || !transition.from.includes(lifecycle.status)) {
     const error = new Error(`Переход lifecycle "${lifecycle.status}" → "${normalizedAction}" запрещён`)
     error.code = 'INVALID_CAMPAIGN_TRANSITION'
@@ -338,7 +338,7 @@ export function buildDeterministicEpilogue(state, outcomeOrOptions = undefined) 
     honoured: 'чтит отряд',
   }
   const reputationOutcomes = facts.faction_reputations
-    .map((entry) => `${entry.faction_name} ${tierLabels[entry.tier] || 'помнит отряд'}`)
+    .map((entry) => `${entry.faction_name} ${ownEntry(tierLabels, entry.tier) || 'помнит отряд'}`)
   const visited = facts.visited_locations.map((entry) => entry.name)
 
   return [
@@ -486,4 +486,9 @@ export function buildEpilogueNarrationBrief(state = {}, outcomeOrOptions = undef
       'do-not-decide-for-player-heroes',
     ],
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

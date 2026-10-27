@@ -117,36 +117,12 @@ const LOOT_HINT_PHRASES: [(&str, &str); 5] = [
     ("dropped", "подобрать брошенное оружие"),
 ];
 
-/// Свойства `Object.prototype`, которые `LOOT_HINT_PHRASES[kind]` находит у
-/// любого объекта.
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
-/// `LOOT_HINT_PHRASES[kind] ?? 'обыскать добычу'`. Ключ прототипа JS находит
-/// у объекта: функцию (в строке — её текст V8) или `Object.prototype`
-/// (`[object Object]`); так же и здесь.
+/// `LOOT_HINT_PHRASES[kind] ?? 'обыскать добычу'` по собственному ключу.
 fn loot_phrase(kind: &str) -> String {
     if let Some((_, phrase)) = LOOT_HINT_PHRASES.iter().find(|(key, _)| *key == kind) {
         return (*phrase).to_string();
     }
-    match kind {
-        "__proto__" => "[object Object]".to_string(),
-        "constructor" => "function Object() { [native code] }".to_string(),
-        key if OBJECT_PROTOTYPE_KEYS.contains(&key) => format!("function {key}() {{ [native code] }}"),
-        _ => "обыскать добычу".to_string(),
-    }
+    "обыскать добычу".to_string()
 }
 
 // --- приведения JS -------------------------------------------------------------
@@ -555,20 +531,15 @@ fn letter_hints(room: &Value) -> Result<Vec<Hint>, ActionHintsError> {
 /// `beastReachRow(entry, actorId).out_of_reach === true`: строка досягаемости
 /// героя-читателя; отсутствующей строке подсказка не верит — «далеко».
 ///
-/// `rows[key]` в JS находит и ключи прототипа: `__proto__` даёт объект
-/// (`Object.prototype` или `Array.prototype`), и зверь считается досягаемым;
-/// прочие ключи прототипа — функции, то есть «далеко». У массива строк — индекс.
+/// Строка — только собственная (`Object.hasOwn`): ключ прототипа — «далеко».
+/// У массива строк — индекс.
 fn beast_out_of_reach(entry: &Value, actor_id: &str) -> bool {
     let row = match field(Some(entry), "reach_by_hero") {
         Some(Value::Object(rows)) => match rows.get(actor_id) {
             Some(row) => Some(row),
-            None if actor_id == "__proto__" => return false,
             None => None,
         },
         Some(Value::Array(rows)) => {
-            if actor_id == "__proto__" {
-                return false;
-            }
             if js::is_array_index_key(actor_id) {
                 actor_id.parse::<usize>().ok().and_then(|index| rows.get(index))
             } else {

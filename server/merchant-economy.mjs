@@ -402,7 +402,7 @@ export function normalizeMerchantPurseCp(value, fallback = DEFAULT_MERCHANT_PURS
 
 export function resolveCatalogPrice(input = {}) {
   const catalogId = cleanId(input?.catalog_id ?? input?.catalogId)
-  const catalog = SRD_EQUIPMENT_CATALOG[catalogId]
+  const catalog = ownEntry(SRD_EQUIPMENT_CATALOG, catalogId)
   if (catalog) return { ...catalog, provenance: 'catalog' }
   // Snapshot markers are not authority. Homebrew values remain unavailable
   // until a dedicated server-side appraisal event can attest their price.
@@ -1207,4 +1207,9 @@ export function merchantViewFor(state, merchantId, actorId) {
     } : null,
     pricing_explanation: `Базовые цены: ${pricing.catalog_id}. Покупка и продажа рассчитаны сервером; продажа округляется вниз, а минимальная выплата 1 мм. является политикой ${ECONOMY_POLICY_ID}.`,
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

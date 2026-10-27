@@ -312,12 +312,8 @@ fn normalize_with(input: Option<&Value>, keep_infinite: bool) -> Value {
 
 /// `serverReputationDelta({ severity, outcome })`: поправка репутации по
 /// исходу и тяжести. Пропущенное поле — значение по умолчанию JS (`minor`,
-/// `neutral`).
-///
-/// Ключ `Object.prototype` в тяжести (`constructor`, `toString`, …) в JS
-/// находит унаследованную функцию и возвращает её; здесь — пустой объект
-/// (так функция выглядит в эталоне). Собственные свойства функций (`length`,
-/// `name`, `call` при исходе — ключе прототипа) не повторяются.
+/// `neutral`). Таблица читается по собственным ключам: незнакомые исход или
+/// тяжесть (и ключи прототипа) — 0.
 pub fn server_reputation_delta(options: &Value) -> Value {
     let key = |name: &str, fallback: &str| match get(Some(options), name) {
         None => fallback.to_string(),
@@ -331,23 +327,12 @@ pub fn server_reputation_delta(options: &Value) -> Value {
         "neutral" => Some([0, 0]),
         _ => None,
     };
-    let inherited = OBJECT_PROTOTYPE_KEYS.contains(&severity.as_str());
     match row {
         Some(row) => match severity.as_str() {
             "minor" => json!(row[0]),
             "major" => json!(row[1]),
-            _ if inherited => json!({}),
             _ => json!(0),
         },
-        // Исход — ключ прототипа: у найденной функции (или самого прототипа)
-        // тяжесть-ключ прототипа снова находит функцию; `__proto__.__proto__` — `null`.
-        None if OBJECT_PROTOTYPE_KEYS.contains(&outcome.as_str()) && inherited => {
-            if outcome == "__proto__" && severity == "__proto__" {
-                json!(0)
-            } else {
-                json!({})
-            }
-        }
         None => json!(0),
     }
 }

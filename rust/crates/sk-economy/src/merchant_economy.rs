@@ -24,7 +24,7 @@ use sk_social::npc_social::npc_profile_at_world_time;
 use sk_society::reputation_policy::reputation_standing_for;
 use sk_society::underworld::{npc_is_fence, STOLEN_DISCOUNT_BPS};
 
-use crate::support::{array, ceil_div, clamp_int, clamp_num, clean_id, clean_text, coalesce, copy_field, empty, floor_div, get, is_object_like, is_prototype_key, js_order, num, plain, safe_int, sha256_hex, spread_of, stable_value, string_or_empty, stringify, utf16_cmp};
+use crate::support::{array, ceil_div, clamp_int, clamp_num, clean_id, clean_text, coalesce, copy_field, empty, floor_div, get, is_object_like, js_order, num, plain, safe_int, sha256_hex, spread_of, stable_value, string_or_empty, stringify, utf16_cmp};
 
 pub const ECONOMY_POLICY_ID: &str = "skazanie:economy:merchant-policy-v1";
 pub const ECONOMY_CATALOG_VERSION: &str = "srd_5_2_1";
@@ -524,8 +524,7 @@ fn catalog_price_by_id(catalog_id: &str) -> Option<Value> {
         price.insert("provenance".into(), json!("catalog"));
         return Some(Value::Object(price));
     }
-    // `{ ...Object.prototype[key], provenance }`: у функции своих полей нет.
-    is_prototype_key(catalog_id).then(|| json!({ "provenance": "catalog" }))
+    None
 }
 
 fn catalog_base_price_by_id(catalog_id: &str) -> i64 {

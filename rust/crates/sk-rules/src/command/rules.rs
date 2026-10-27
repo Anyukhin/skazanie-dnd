@@ -6,7 +6,7 @@ use sk_ruleset::ruleset_config::{ruleset_rule_id, INSTALLED_RULESET_IDS};
 use sk_ruleset::rules_core::DEFAULT_RULESET_ID;
 
 use crate::core::unique_strings;
-use crate::pause::{rule, Fault, Halt};
+use crate::pause::{rule, Halt};
 
 /// `RULE_IDS`: правила редакции `srd_5_2_1` (для кампании 2014 переводятся
 /// `rulesetRuleId` при записи события).
@@ -183,13 +183,6 @@ pub fn command_rules_for(command_type: &str) -> Option<&'static [&'static str]> 
     COMMAND_RULES.iter().find(|(kind, _)| *kind == command_type).map(|(_, rules)| *rules)
 }
 
-/// Ключи `Object.prototype`: `COMMAND_RULES[key]` находит у них функцию или
-/// сам прототип, и `.map` падает `TypeError` (см. «Замечено в JS» отчёта Р0).
-pub const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor", "__defineGetter__", "__defineSetter__", "hasOwnProperty", "__lookupGetter__", "__lookupSetter__",
-    "isPrototypeOf", "propertyIsEnumerable", "toString", "valueOf", "__proto__", "toLocaleString",
-];
-
 /// `sourceIdsFor(command, state)`: явные правила команды (без чужой редакции)
 /// или правила её типа в редакции кампании.
 pub fn source_ids_for(command: &serde_json::Map<String, Value>, state: &Value) -> Result<Vec<String>, Halt> {
@@ -211,9 +204,6 @@ pub fn source_ids_for(command: &serde_json::Map<String, Value>, state: &Value) -
     let command_type = sk_core::js::s(command.get("command_type"));
     match command_rules_for(&command_type) {
         Some(rules) => Ok(rules.iter().map(|rule_id| ruleset_rule_id(rule_id, &ruleset_id)).collect()),
-        None if OBJECT_PROTOTYPE_KEYS.contains(&command_type.as_str()) => {
-            Err(Fault::type_error("(COMMAND_RULES[command.command_type] ?? []).map is not a function").into())
-        }
         None => Ok(Vec::new()),
     }
 }

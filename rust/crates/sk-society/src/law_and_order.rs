@@ -735,12 +735,10 @@ fn add_crime(normalized: Value, crime: Option<Value>) -> Value {
 /// уже применённой летописью поступков.
 pub fn apply_law_event(input: Option<&Value>, event: &Value, state: &Value) -> Value {
     let kind = s(get(Some(event), "event_type"));
-    let normalized = match input {
-        Some(value) if strict_eq(get(Some(value), "schema_version"), Some(&json!(LAW_SCHEMA_VERSION))) && matches!(get(Some(value), "crimes"), Some(Value::Array(_))) => {
-            value.clone()
-        }
-        other => normalize_law_state(other),
-    };
+    // Нормализуется всегда: сохранение с верной версией и массивом `crimes`
+    // всё равно может нести мусор (`escape_attempts: "2"`). Нормализация
+    // идемпотентна и чистое состояние не меняет.
+    let normalized = normalize_law_state(input);
     let payload = coalesce(get(Some(event), "payload"), None);
     match kind.as_str() {
         "GuardEncounterStarted" => match safe_encounter(get(payload, "encounter")) {

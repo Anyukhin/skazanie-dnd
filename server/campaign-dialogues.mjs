@@ -503,7 +503,9 @@ const CHECK_SKILL_LABELS = Object.freeze({
  */
 export function dialogueCheckLine(check) {
   if (!check) return ''
-  const label = CHECK_SKILL_LABELS[/** @type {keyof typeof CHECK_SKILL_LABELS} */ (clean(check.skill, 40))] ?? clean(check.skill, 40)
+  const skill = clean(check.skill, 40)
+  // Только собственный ключ: навык `constructor` печатается как есть, а не исходником функции.
+  const label = (Object.hasOwn(CHECK_SKILL_LABELS, skill) ? CHECK_SKILL_LABELS[/** @type {keyof typeof CHECK_SKILL_LABELS} */ (skill)] : undefined) ?? skill
   const total = Number(check.total)
   return `Проверка «${label}»: ${check.success === true ? 'успех' : 'провал'}${Number.isFinite(total) ? ` (${total})` : ''}.`
 }

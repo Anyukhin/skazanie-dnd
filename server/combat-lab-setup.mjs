@@ -96,7 +96,7 @@ function classCatalog() {
   const catalog = starterEquipmentCatalogFor(COMBAT_LAB_RULESET.id)
   return (catalog?.classes ?? []).map((entry) => ({
     id: String(entry.class_id),
-    name: CLASS_NAMES[entry.class_id] || String(entry.class_id),
+    name: ownEntry(CLASS_NAMES, entry.class_id) || String(entry.class_id),
   })).sort((left, right) => Number(left.id !== 'fighter') - Number(right.id !== 'fighter') || left.id.localeCompare(right.id))
 }
 
@@ -184,7 +184,7 @@ function classSpells(classId, level, abilities) {
 }
 
 function trainingHero(classId, level, position, index) {
-  if (!CLASS_NAMES[classId]) throw new CombatLabSetupError(`Класс ${classId} не входит в профиль 2014`, 'UNKNOWN_COMBAT_LAB_CLASS')
+  if (!ownEntry(CLASS_NAMES, classId)) throw new CombatLabSetupError(`Класс ${classId} не входит в профиль 2014`, 'UNKNOWN_COMBAT_LAB_CLASS')
   const abilities = standardAbilities(classId)
   const hitDie = CLASS_HIT_DICE[classId]
   const con = abilityModifier(abilities.con)
@@ -328,7 +328,7 @@ export async function combatLabHeroes({ loadCampaign = null } = {}) {
         id,
         campaignId: String(campaignId).toUpperCase(),
         name: String(hero.name || hero.character || id),
-        className: CLASS_NAMES[hero.characterClass] || String(hero.role || 'Герой').split('·')[0].trim(),
+        className: ownEntry(CLASS_NAMES, hero.characterClass) || String(hero.role || 'Герой').split('·')[0].trim(),
         level: Math.max(1, Math.min(12, Number(hero.level) || 1)),
       })
     }
@@ -359,7 +359,7 @@ function normalizeEncounterSeed(value) {
 function normalizeEncounterTheme(value) {
   if (value != null && typeof value !== 'string') throw new CombatLabSetupError('Тема автоматической стычки должна быть строкой', 'UNKNOWN_COMBAT_LAB_THEME')
   const raw = String(value ?? 'generic').trim().toLowerCase()
-  const theme = ENCOUNTER_THEME_ALIASES[raw]
+  const theme = ownEntry(ENCOUNTER_THEME_ALIASES, raw)
   if (!theme) throw new CombatLabSetupError('Неизвестная тема автоматической стычки', 'UNKNOWN_COMBAT_LAB_THEME')
   return theme
 }
@@ -435,7 +435,7 @@ async function resolveEncounterParty(party, { loadCampaign = null } = {}) {
   const usedSourceHeroes = new Set()
   for (const entry of entries) {
     if (entry.source === 'class') {
-      if (!CLASS_NAMES[String(entry.classId)]) throw new CombatLabSetupError(`Класс ${entry.classId} не входит в профиль 2014`, 'UNKNOWN_COMBAT_LAB_CLASS')
+      if (!ownEntry(CLASS_NAMES, entry.classId)) throw new CombatLabSetupError(`Класс ${entry.classId} не входит в профиль 2014`, 'UNKNOWN_COMBAT_LAB_CLASS')
       const level = entry.level ?? 1
       canonical.push({ ...entry, classId: String(entry.classId), level })
       levels.push(level)
@@ -754,3 +754,8 @@ export async function buildCombatLabState(config, { loadCampaign = null } = {}) 
 }
 
 export { CombatLabSetupError }
+
+/** Значение таблицы только по собственному ключу: класс или тема `constructor` — незнакомые. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
+}

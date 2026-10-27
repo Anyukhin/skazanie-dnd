@@ -7,7 +7,7 @@
 //! и без обращений к модели; свободная фраза распознаётся закрытым списком
 //! выражений.
 
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use sk_core::{js, re, text as sk_text};
 
 use crate::common::{array, coalesce, digest, get, integer, js_string, pick, s, text_squash, tpl, utf16_cmp};
@@ -287,23 +287,6 @@ pub fn parley_attempts(state: &Value) -> i64 {
     integer(get(get(get(Some(state), "mechanics"), "combat"), "parley_attempts"), 0).max(0)
 }
 
-/// Свойства `Object.prototype`: поиск по ним в таблице-объекте JS находит не
-/// запись, а встроенную функцию (или сам прототип), и `{ ...term }` даёт `{}`.
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
 /// Условия перемирия карточкой (`parleyTermsFor`).
 pub fn parley_terms_for(truce: &Value) -> Vec<Value> {
     array(get(Some(truce), "outcomes"))
@@ -313,7 +296,7 @@ pub fn parley_terms_for(truce: &Value) -> Vec<Value> {
             if let Some(term) = PARLEY_TERMS.iter().find(|term| term.id == key) {
                 return Some(term.to_json());
             }
-            OBJECT_PROTOTYPE_KEYS.contains(&key.as_str()).then(|| Value::Object(Map::new()))
+            None
         })
         .collect()
 }

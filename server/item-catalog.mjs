@@ -1974,7 +1974,7 @@ export const SRD_EQUIPMENT_CATALOG = deepFreeze(Object.fromEntries(
 
 export function catalogItem(catalogId) {
   const id = String(catalogId ?? '')
-  return ITEM_CATALOG[id] ?? SCENARIO_ITEM_CATALOG[id] ?? null
+  return ownEntry(ITEM_CATALOG, id) ?? ownEntry(SCENARIO_ITEM_CATALOG, id) ?? null
 }
 
 export function catalogIdsFor(channel) {
@@ -2219,4 +2219,9 @@ export function itemViewerCapabilities(item = {}, { rulesetId = '' } = {}) {
       ? `${entry.limitation ? `${entry.limitation} ` : ''}В профиле D&D 5e 2014 предмет требует основное действие.`
       : entry.limitation,
   })
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

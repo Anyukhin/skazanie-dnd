@@ -422,8 +422,9 @@ export function themeFromMapRequest({ pattern = '', layout = '' } = {}) {
   }
   /** @type {Record<string, string>} */
   const byLayout = { cavern: 'cave', streets: 'settlement', winding: 'road' }
-  const id = byPattern[String(pattern).toLocaleLowerCase('en')]
-    ?? byLayout[String(layout).toLocaleLowerCase('en')]
+  // Только собственные ключи: узор `constructor` — не тема, а незнакомое слово.
+  const id = ownEntry(byPattern, String(pattern).toLocaleLowerCase('en'))
+    ?? ownEntry(byLayout, String(layout).toLocaleLowerCase('en'))
     ?? ''
   return id ? SCENE_THEMES.find((candidate) => candidate.id === id) ?? null : null
 }
@@ -571,7 +572,7 @@ export function resolveSceneTheme({ location = '', theme = '', sceneKind = '', s
     || (!explicitlyNotSettlement && SETTLEMENT_WORLD_KINDS.has(String(worldKind ?? '').toLocaleLowerCase('en')))
   if (settlementSignal && (!byName || byName.id === 'road')) return themeById('settlement')
   if (byName) return byName
-  const byWorld = WORLD_KIND_THEMES[String(worldKind ?? '').toLocaleLowerCase('en')] ?? ''
+  const byWorld = ownEntry(WORLD_KIND_THEMES, String(worldKind ?? '').toLocaleLowerCase('en')) ?? ''
   // Подземная сцена в замке или крепости — темница под ним: караульная,
   // коридор, камеры. Прежде она падала в склеп, и «Замок барона» встречал
   // отряд погребальной залой.
@@ -2570,4 +2571,16 @@ export function buildThemedScene({
     })
   }
   return { map, theme: definition.id, warnings: [] }
+}
+
+/**
+ * Значение таблицы только по собственному ключу: `constructor`, `toString` и
+ * прочие свойства `Object.prototype` — «нет записи».
+ *
+ * @param {Record<string, any>} table
+ * @param {unknown} key
+ * @returns {any}
+ */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

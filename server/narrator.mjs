@@ -1088,7 +1088,7 @@ function reactionMatchesPermit(clause, permit) {
   const refusal = /не\s+(?:соглаша[а-яё]*|убежд[её]н[а-яё]*|принима[а-яё]*\s+довод)|отверга[а-яё]*/iu.test(clause)
   if (reaction === 'persuaded' && refusal) return false
   if (reaction === 'unconvinced' && !refusal && NPC_REACTION_MATCHERS.persuaded.test(clause)) return false
-  const matcher = NPC_REACTION_MATCHERS[reaction]
+  const matcher = ownEntry(NPC_REACTION_MATCHERS, reaction)
   if (matcher?.test(clause)) return true
   return sharedRootCount(clause, permit?.description) >= 2
 }
@@ -2663,4 +2663,9 @@ export class Narrator {
       if (deadline) clearTimeout(deadline)
     }
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

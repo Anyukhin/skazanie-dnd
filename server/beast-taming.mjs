@@ -159,7 +159,7 @@ function statBlockIdOf(enemy = {}) {
  */
 export function beastDietFor(enemy = {}) {
   if (creatureTypeOf(enemy) !== 'beast') return null
-  return BEAST_TAMING_DIETS[statBlockIdOf(enemy)] ?? null
+  return ownEntry(BEAST_TAMING_DIETS, statBlockIdOf(enemy)) ?? null
 }
 
 /** Приручаемость — единственный вход: `beastDietFor` уже проверил и тип, и список. */
@@ -214,7 +214,7 @@ export function beastIsWounded(enemy = {}) {
 }
 
 function conditionIds(state, actorId) {
-  return new Set((state?.mechanics?.conditions?.[String(actorId)] ?? [])
+  return new Set(actorConditionList(state, actorId)
     .map((condition) => String(condition?.id ?? condition)))
 }
 
@@ -319,7 +319,9 @@ function actorCell(state = {}, id = '') {
   if (!expected) return null
   const actor = [...(Array.isArray(state?.players) ? state.players : []), ...(Array.isArray(state?.enemies) ? state.enemies : [])]
     .find((candidate) => String(candidate?.id ?? '') === expected)
-  const stored = state?.mechanics?.positions?.[expected] ?? actor
+  const positions = state?.mechanics?.positions
+  // Позиция — собственный ключ словаря: id `__proto__` не находит прототип.
+  const stored = (positions && typeof positions === 'object' ? ownEntry(positions, expected) : undefined) ?? actor
   const x = Number(stored?.x)
   const y = Number(stored?.y)
   return Number.isSafeInteger(x) && Number.isSafeInteger(y) ? { x, y } : null
@@ -666,11 +668,11 @@ const BEAST_STAGE_LABELS = Object.freeze({
 })
 
 export function beastDietLabel(diet) {
-  return BEAST_DIET_LABELS[String(diet ?? '')] ?? ''
+  return ownEntry(BEAST_DIET_LABELS, String(diet ?? '')) ?? ''
 }
 
 export function beastStageLabel(stage) {
-  return BEAST_STAGE_LABELS[String(stage ?? '')] ?? ''
+  return ownEntry(BEAST_STAGE_LABELS, String(stage ?? '')) ?? ''
 }
 
 /**
@@ -898,4 +900,21 @@ export function applyBeastEvent(input, event, state = {}) {
     }))
   }
   return normalized
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
+}
+
+/**
+ * Состояния актора: только собственный список словаря `mechanics.conditions`.
+ * Id вида `constructor` или `__proto__` и не-массив дают пустой список, а не
+ * метод прототипа (как `sk_core::game::conditions` в Rust).
+ */
+function actorConditionList(state, actorId) {
+  const conditions = state?.mechanics?.conditions
+  const key = String(actorId)
+  const list = conditions && typeof conditions === 'object' && Object.hasOwn(conditions, key) ? conditions[key] : undefined
+  return Array.isArray(list) ? list : []
 }

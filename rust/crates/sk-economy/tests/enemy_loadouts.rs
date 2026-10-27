@@ -222,10 +222,10 @@ fn legacy_loadouts_normalize_to_empty_and_drop_garbage() {
 }
 
 #[test]
-fn prototype_action_id_fails_like_js() {
+fn prototype_action_id_has_no_weapon() {
+    // `constructor` — не действие с оружием: в наборе остаётся только скимитар.
     let block = json!({ "action_profiles": [{ "id": "scimitar" }, { "id": "constructor" }] });
-    let error = enemy_loadout_for(Some(&json!({ "statBlockId": "srd_5_2_1:bandit", "block": block, "ownerId": "foe", "seed": "x" }))).expect_err("прототип");
-    let EnemyLoadoutFailure::Loadout(error) = error else { panic!("ожидался отказ границы") };
-    assert_eq!(error.code, "ENEMY_LOADOUT_CATALOG_UNKNOWN");
-    assert_eq!(error.message, "Предмета function Object() { [native code] } нет в каталоге");
+    let loadout = enemy_loadout_for(Some(&json!({ "statBlockId": "srd_5_2_1:bandit", "block": block, "ownerId": "foe", "seed": "x" }))).expect("набор");
+    let catalog: Vec<&str> = loadout["items"].as_array().expect("вещи").iter().map(|item| item["catalog_id"].as_str().expect("код")).collect();
+    assert_eq!(catalog, ["srd_5_2_1:scimitar"]);
 }

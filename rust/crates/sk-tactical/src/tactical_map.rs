@@ -76,16 +76,9 @@ pub fn size_class(name: &str) -> Option<SizeClass> {
     SIZE_CLASSES.iter().find(|(key, _)| *key == name).map(|(_, limits)| *limits)
 }
 
-/// Ключи `Object.prototype`: `SIZE_CLASSES[key]` в JS находит их у любого
-/// объекта, и `sizeClass: 'constructor'` проходит проверку «класс известен».
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor", "__defineGetter__", "__defineSetter__", "hasOwnProperty", "__lookupGetter__", "__lookupSetter__", "isPrototypeOf",
-    "propertyIsEnumerable", "toString", "valueOf", "__proto__", "toLocaleString",
-];
-
-/// `SIZE_CLASSES[key]` истинно: известный класс или ключ прототипа.
+/// `ownEntry(SIZE_CLASSES, key)` истинно: известный класс.
 fn size_class_key_truthy(key: &str) -> bool {
-    size_class(key).is_some() || OBJECT_PROTOTYPE_KEYS.contains(&key)
+    size_class(key).is_some()
 }
 
 /// Паттерны старого генератора — для обратного преобразования.
@@ -2649,9 +2642,8 @@ pub fn validate_tactical_map(map: &TacticalMap) -> ValidationReport {
             fail("SPAWN_POINT_IMPASSABLE", format!("Точка появления {} стоит на непроходимой клетке", point.id), Some(&point.id));
         }
     }
-    // Ключ прототипа (`constructor`) даёт в JS объект без пределов: ни одна
-    // проверка бюджета не срабатывает.
-    let limits = if OBJECT_PROTOTYPE_KEYS.contains(&map.size_class.as_str()) { None } else { Some(size_class(&map.size_class).unwrap_or(REGION)) };
+    // Незнакомый класс (и ключ прототипа) — пределы области.
+    let limits = Some(size_class(&map.size_class).unwrap_or(REGION));
     if let Some(limits) = limits {
         if length as i64 > limits.max_cells {
             fail("CELL_BUDGET_EXCEEDED", format!("Клеток {length}, бюджет класса {} — {}", map.size_class, limits.max_cells), None);

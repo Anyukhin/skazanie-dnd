@@ -2,9 +2,8 @@
 //!
 //! - [`slice_utf16`] — `text.slice(0, n)` по единицам UTF-16, как в JS
 //!   (`sk_core::text::head` режет по символам);
-//! - [`table_lookup`] — `TABLE[key]` над замороженным объектом JS: ключ
-//!   прототипа (`constructor`, `toString`, `__proto__`…) находит функцию или
-//!   сам прототип, и шаблонная строка печатает её текст;
+//! - [`table_lookup`] — `ownEntry(TABLE, key)`: только собственный ключ
+//!   таблицы, ключ прототипа (`constructor`, `toString`…) — «нет записи»;
 //! - [`JsTypeError`] — исключение `TypeError`, которое JS бросает на мусоре
 //!   старых сохранений (`null` в списке событий, строка вместо массива);
 //!   Rust возвращает его ошибкой, а не паникой.
@@ -144,30 +143,9 @@ pub fn n(value: f64) -> String {
     js::f64_string(value)
 }
 
-/// `String(value)` над ключом прототипа `Object.prototype`: функции печатаются
-/// исходником `[native code]`, `__proto__` — сам прототип.
-pub fn object_prototype_text(key: &str) -> Option<&'static str> {
-    Some(match key {
-        "constructor" => "function Object() { [native code] }",
-        "__defineGetter__" => "function __defineGetter__() { [native code] }",
-        "__defineSetter__" => "function __defineSetter__() { [native code] }",
-        "hasOwnProperty" => "function hasOwnProperty() { [native code] }",
-        "__lookupGetter__" => "function __lookupGetter__() { [native code] }",
-        "__lookupSetter__" => "function __lookupSetter__() { [native code] }",
-        "isPrototypeOf" => "function isPrototypeOf() { [native code] }",
-        "propertyIsEnumerable" => "function propertyIsEnumerable() { [native code] }",
-        "toString" => "function toString() { [native code] }",
-        "valueOf" => "function valueOf() { [native code] }",
-        "toLocaleString" => "function toLocaleString() { [native code] }",
-        "__proto__" => "[object Object]",
-        _ => return None,
-    })
-}
-
-/// `TABLE[key]` над замороженным объектом JS со строковыми значениями: своё
-/// поле, иначе поле прототипа (оно истинно и печатается своим текстом).
+/// `ownEntry(TABLE, key)` над таблицей подписей: только своё поле.
 pub fn table_lookup(table: &[(&str, &'static str)], key: &str) -> Option<&'static str> {
-    table.iter().find(|(id, _)| *id == key).map(|(_, value)| *value).or_else(|| object_prototype_text(key))
+    own_lookup(table, key)
 }
 
 /// Только своё поле таблицы (`Object.hasOwn`, `Map`, `Set`).
@@ -204,10 +182,10 @@ mod tests {
     }
 
     #[test]
-    fn prototype_keys_are_found_in_frozen_tables() {
+    fn prototype_keys_are_not_table_entries() {
         let table = [("acid", "Кислота")];
         assert_eq!(table_lookup(&table, "acid"), Some("Кислота"));
-        assert_eq!(table_lookup(&table, "constructor"), Some("function Object() { [native code] }"));
+        assert_eq!(table_lookup(&table, "constructor"), None);
         assert_eq!(own_lookup(&table, "constructor"), None);
     }
 }

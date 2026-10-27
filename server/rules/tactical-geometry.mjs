@@ -684,7 +684,7 @@ export function coverBetween(state, attackerId, targetId, from, to) {
         .map((point) => {
           const cell = cells.get(positionKey(point))
           const feature = String(cell?.feature ?? '')
-          const fromFeature = TERRAIN_COVER[feature] ? { level: TERRAIN_COVER[feature], name: feature } : null
+          const fromFeature = ownEntry(TERRAIN_COVER, feature) ? { level: ownEntry(TERRAIN_COVER, feature), name: feature } : null
           const prop = props.get(positionKey(point))
           const fromProp = prop ? { level: prop.level, name: prop.assetId || feature } : null
           return fromFeature?.level === 'three-quarters' ? fromFeature : fromProp ?? fromFeature
@@ -728,4 +728,9 @@ export function creatureSizeRank(actor) {
   if (raw.includes('small') || raw.includes('мал')) return 1
   if (raw.includes('tiny') || raw.includes('крош')) return 0
   return 2
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

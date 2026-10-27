@@ -33,7 +33,7 @@ const SWING_PROPS = Object.freeze({
 
 export function swingPropProfileFor(assetId) {
   const key = hazardAssetKey(assetId)
-  const profile = SWING_PROPS[key]
+  const profile = ownEntry(SWING_PROPS, key)
   return profile ? { ...profile, check: { ...profile.check } } : null
 }
 
@@ -154,7 +154,7 @@ export function sceneHazardVerbsFor(assetId) {
 }
 
 export function toppleDefinitionFor(assetId) {
-  const entry = HEAVY_PROPS[hazardAssetKey(assetId)]
+  const entry = ownEntry(HEAVY_PROPS, hazardAssetKey(assetId))
   if (!entry) return null
   return {
     ability: 'str',
@@ -170,7 +170,7 @@ export function toppleDefinitionFor(assetId) {
 }
 
 export function igniteDefinitionFor(assetId) {
-  const entry = FLAMMABLE_PROPS[hazardAssetKey(assetId)]
+  const entry = ownEntry(FLAMMABLE_PROPS, hazardAssetKey(assetId))
   if (!entry) return null
   return {
     damage: entry.damage,
@@ -250,4 +250,9 @@ export function burningPropEffect({ propId, commandId, cells, definition, source
     concentration: false,
     expires_round: Math.max(1, Number(round) || 1) + Math.max(1, Number(definition.rounds) || 2),
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import {
-  ensureNpcSocialState, implicitSecretHolderIds, npcBehaviorPolicy, npcKnownFactIds, npcProfileAtWorldTime, npcSecretMeta, relationshipTier,
+  ensureNpcSocialState, implicitSecretHolderIds, npcBehaviorPolicy, npcKnownFactIds, npcProfileAtWorldTime, npcRelationshipScore, npcSecretMeta, relationshipTier,
 } from './npc-social.mjs'
 import { agentContextMetadata, boundedSelectionMetadata, campaignConceptForAgent, heroCardForAgent, sceneCanonFor, sceneContextForAgent } from './agent-context.mjs'
 import { NPC_SOCIAL_RESPONSE_JSON_SCHEMA } from './llm-json-schemas.mjs'
@@ -752,11 +752,11 @@ function briefFor(state, profile, playerId, message, checkOutcome = null, { lead
       id: profile.id, name: profile.name, role: profile.role,
       public_summary: profile.public_summary, voice: profile.voice,
       speech_profile: profile.speech_profile,
-      behavior_policy: npcBehaviorPolicy(profile, social.relationships[profile.id]?.[playerId] ?? 0),
+      behavior_policy: npcBehaviorPolicy(profile, npcRelationshipScore(social, profile.id, playerId)),
     },
     relationship: {
-      score: social.relationships[profile.id]?.[playerId] ?? 0,
-      tier: relationshipTier(social.relationships[profile.id]?.[playerId] ?? 0),
+      score: npcRelationshipScore(social, profile.id, playerId),
+      tier: relationshipTier(npcRelationshipScore(social, profile.id, playerId)),
     },
     // Кто перед собеседником: имя, класс, предыстория и привязанности героя
     // (лист героя виден отряду). Живой NPC слышит личное за вопросом — сестру,

@@ -150,10 +150,10 @@ fn normalization_is_a_fixed_point() {
 }
 
 #[test]
-fn prototype_keys_behave_like_js() {
-    // Снимок свойства прототипа — пустой объект, создание падает на `undefined`.
-    assert_eq!(item_instance_snapshot(Some(&json!("constructor"))).expect("снимок"), json!({}));
-    let error = create("toString", json!({})).expect_err("прототип");
-    assert_eq!((error.code.as_str(), error.message.as_str()), ("ITEM_INSTANCE_CATALOG_UNKNOWN", "Предмета undefined нет в каталоге"));
-    assert_eq!(create("toString", json!({ "instanceId": "" })).expect_err("без id").code, "ITEM_INSTANCE_ID_REQUIRED");
+fn prototype_keys_are_unknown_catalog_ids() {
+    // Ключ прототипа — неизвестный код каталога, как в JS после `Object.hasOwn`.
+    let error = item_instance_snapshot(Some(&json!("constructor"))).expect_err("прототип");
+    assert_eq!((error.code.as_str(), error.message.as_str()), ("ITEM_INSTANCE_CATALOG_UNKNOWN", "Предмета constructor нет в каталоге"));
+    let error = create("toString", json!({ "instanceId": "" })).expect_err("прототип");
+    assert_eq!((error.code.as_str(), error.message.as_str()), ("ITEM_INSTANCE_CATALOG_UNKNOWN", "Предмета toString нет в каталоге"));
 }

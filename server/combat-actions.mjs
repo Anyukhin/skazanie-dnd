@@ -285,7 +285,7 @@ const SUBCLASS_ACTIONS = Object.freeze({
 function curatedActionsFor(actor, classKey, subclass) {
   // Умение подкласса с тем же id заменяет умение класса (Боевой дикий облик
   // Круга луны — та же «Дикая форма», только бонусным действием).
-  const subclassActions = SUBCLASS_ACTIONS[normalizedName(subclass)] ?? []
+  const subclassActions = ownEntry(SUBCLASS_ACTIONS, normalizedName(subclass)) ?? []
   const subclassIds = new Set(subclassActions.map((entry) => entry.id))
   const curated = classKey
     ? [
@@ -409,7 +409,7 @@ export function combatActionsFor(actor) {
     .filter((entry) => !entry.requiresOffHandWeapon || holdsOffHandWeapon)
     .map((entry) => ({
       ...clone(entry),
-      sourceUrl: entry.sourceUrl ?? CLASS_URL[classKey] ?? 'https://www.dnd.su/articles/actions-in-combat/',
+      sourceUrl: entry.sourceUrl ?? ownEntry(CLASS_URL, classKey) ?? 'https://www.dnd.su/articles/actions-in-combat/',
       exploration: explorationUseFor(entry),
       // Звери Дикого облика, доступные друиду по кругу и уровню: панель даёт
       // выбрать, Rules Engine сверяет `form_id` тем же списком.
@@ -590,4 +590,9 @@ export function combatResourceRecoveryFor(actor, { classResources2024 = false } 
   }
   if (actor?.speciesBenefits?.mechanics?.breath_weapon === true) recovery.species_breath_weapon = 'short_or_long'
   return recovery
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

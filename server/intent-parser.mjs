@@ -306,7 +306,7 @@ function socialAliasesFor(actor) {
     .map((value) => String(value ?? '').trim())
     .filter((value) => value && !value.includes(':'))
   const translated = [...new Set([role, ...tags].flatMap((value) => (
-    ROLE_ALIASES[value.toLocaleLowerCase('ru')] ?? []
+    ownEntry(ROLE_ALIASES, value.toLocaleLowerCase('ru')) ?? []
   )))]
   return [...new Set([
     ...namesFor(actor),
@@ -649,4 +649,9 @@ export function buildRuleQueries(intent, state) {
   if (/плыв|вод|тон\w*|удуш|swim|drown|suffocat/iu.test(intent?.raw_message ?? '')) queries.push('swimming rough water suffocation hazard exhaustion')
   if (state?.mechanics?.combat?.active) queries.push('combat turn action bonus action reaction')
   return [...new Set(queries.map(normalizedText).filter(Boolean))]
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

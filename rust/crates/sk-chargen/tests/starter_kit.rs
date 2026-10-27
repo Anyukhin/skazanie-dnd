@@ -44,34 +44,10 @@ fn kit_options(options: Option<&Value>) -> StarterKitOptions {
     }
 }
 
-/// Ключи `Object.prototype`: JS падает `TypeError` на `kit.items`, Rust
-/// считает такой класс неизвестным.
-const PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
 fn run(name: &str, args: &Args) -> Outcome {
     match name {
         "const:STARTER_KIT_2024_POLICY" => ok(STARTER_KIT_2024_POLICY.to_json()),
-        "starterKit2024Preview" => {
-            let key = js::string(args.get(0));
-            if PROTOTYPE_KEYS.contains(&key.as_str()) {
-                assert_eq!(m::starter_kit_2024_preview(&key), None, "{key}");
-                return Err(type_error("ключ прототипа"));
-            }
-            ok_or_null(m::starter_kit_2024_preview(&key))
-        }
+        "starterKit2024Preview" => ok_or_null(m::starter_kit_2024_preview(&js::string(args.get(0)))),
         "starterEquipmentCatalogFor" => ok_or_null(m::starter_equipment_catalog_for(&ruleset_arg(args, 0), js::truthy(args.option(1, "complete")))),
         "defaultStarterEquipmentChoices" => ok_or_null(m::default_starter_equipment_choices(args.get(0), &ruleset_arg(args, 1), js::truthy(args.option(2, "complete")))),
         "resolveStarterEquipmentChoices" => ok(m::resolve_starter_equipment_choices(args.get(0), args.get(1), &ruleset_arg(args, 2), js::truthy(args.option(3, "complete")))),

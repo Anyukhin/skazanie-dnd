@@ -110,8 +110,8 @@ function phbToolCatalogId(toolId) {
 
 function phbToolOption(toolId, kind) {
   const catalogId = phbToolCatalogId(toolId)
-  const name = catalogItem(catalogId)?.name ?? PHB_TOOL_NAMES[toolId] ?? toolId
-  const weight = Number(PHB_TOOL_WEIGHTS[toolId] ?? 0)
+  const name = catalogItem(catalogId)?.name ?? ownEntry(PHB_TOOL_NAMES, toolId) ?? toolId
+  const weight = Number(ownEntry(PHB_TOOL_WEIGHTS, toolId) ?? 0)
   if (catalogId) return { id: toolId, label: name, summary: `${name} · ${weight} фнт`, items: [{ catalog_id: catalogId, quantity: 1 }] }
   return { id: toolId, label: name, summary: `${name} · ${weight} фнт`, narrative_items: [{ name, type: 'tool', weight, quantity: 1, proficiency: kind }] }
 }
@@ -237,7 +237,7 @@ function kit2024For(classKey, abilities = {}) {
  * говорит подпись.
  */
 export function starterKit2024Preview(classKey) {
-  const kit = KITS_2024[classKey]
+  const kit = ownEntry(KITS_2024, classKey)
   if (!kit) return null
   return {
     class_id: classKey,
@@ -329,8 +329,8 @@ function classicStarterItem(heroId, item, index, prefix = 'class', { complete = 
     ...(presentation.imagePosition ? { imagePosition: String(presentation.imagePosition) } : {}),
     imageStatus: 'ready',
   })
-  return complete && PHB_PACK_CONTENTS[item.catalog_id]
-    ? { ...materialized, contents: structuredClone(PHB_PACK_CONTENTS[item.catalog_id]) }
+  return complete && ownEntry(PHB_PACK_CONTENTS, item.catalog_id)
+    ? { ...materialized, contents: structuredClone(ownEntry(PHB_PACK_CONTENTS, item.catalog_id)) }
     : materialized
 }
 
@@ -395,7 +395,7 @@ function phbWeaponOption(weaponId, { quantity = 1, equipped = true, optionId = w
     summary: `Обычное оружие PHB 2014 · ${entry.weight} фнт за единицу`,
     items: [{ catalog_id: catalogId, quantity, ...(equipped ? { equipped: true } : {}) }],
   }
-  const missing = PHB_MISSING_ITEMS[catalogId]
+  const missing = ownEntry(PHB_MISSING_ITEMS, catalogId)
   if (!missing) throw new TypeError(`Полный набор 2014 ссылается на неизвестное оружие ${catalogId}`)
   return {
     id: optionId,
@@ -768,4 +768,9 @@ export function withStarterKit(hero, { rulesetId = LEGACY_DEFAULT_RULESET_ID, st
       starterEquipmentChoices: structuredClone(selectedStarterChoices ?? {}),
     } : {}),
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

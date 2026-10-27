@@ -74,10 +74,12 @@ fn duplicate_spell_targets_are_refused() {
 }
 
 #[test]
-fn prototype_command_types_fail_like_js() {
+fn prototype_command_types_have_no_rules() {
+    // Тип-ключ прототипа — незнакомый тип без правил, а не `TypeError`; дальше
+    // его отвергает проверка команды.
     let mut uuid = sequence_uuids("u");
     for kind in ["constructor", "toString", "__proto__"] {
-        let result = normalize_command(&json!({ "command_type": kind }), &json!({}), &mut uuid);
-        assert!(matches!(result, Err(Halt::Fault(ref fault)) if fault.name == "TypeError"), "{kind}");
+        let command = normalize_command(&json!({ "command_type": kind }), &json!({}), &mut uuid).expect(kind);
+        assert_eq!(command["source_rule_ids"], json!([]), "{kind}");
     }
 }

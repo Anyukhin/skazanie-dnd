@@ -401,7 +401,7 @@ function transitiveAttackVerbs(payload) {
   const natural = lookupWeapon(NATURAL_ATTACK_VERBS, payload?.action_name)
   if (natural) return natural
   const instrument = lookupWeapon(MELEE_WEAPON_INSTRUMENTAL, weaponName)
-  const verbs = MELEE_VERBS[/** @type {keyof typeof MELEE_VERBS} */ (String(payload?.damage_type ?? ''))] ?? MELEE_VERBS.default
+  const verbs = ownEntry(MELEE_VERBS, String(payload?.damage_type ?? '')) ?? MELEE_VERBS.default
   // Оружие называется там, где глагол оставляет ему место: «рубит Волка
   // длинным мечом», но не «обрушивает удар на Волка длинным мечом».
   return verbs.map((verb) => (instrument && !/ (?:в|на)$/u.test(verb) ? `${verb} {target} ${instrument}` : verb))
@@ -624,7 +624,7 @@ const TACTIC_LEADS = Object.freeze({
 
 /** @param {unknown} tactic */
 export function tacticLead(tactic) {
-  return TACTIC_LEADS[/** @type {keyof typeof TACTIC_LEADS} */ (String(tactic ?? ''))] ?? ''
+  return ownEntry(TACTIC_LEADS, String(tactic ?? '')) ?? ''
 }
 
 /**
@@ -636,7 +636,7 @@ export function tacticLead(tactic) {
 export function movePhrase(book, { actor, feet, tactic, mode }, event) {
   if (String(mode ?? '') === 'long_jump') return `${actor} прыгает на ${feet} фт.`
   if (String(mode ?? '') === 'swing') return `${actor} перелетает на люстре ${feet} фт.`
-  const tacticVariants = TACTIC_MOVES[/** @type {keyof typeof TACTIC_MOVES} */ (String(tactic ?? ''))]
+  const tacticVariants = ownEntry(TACTIC_MOVES, String(tactic ?? ''))
   const variants = tacticVariants ?? ['{actor} перемещается на {feet} фт.', '{actor} проходит {feet} фт.', '{actor} смещается на {feet} фт.']
   return book.pick(tacticVariants ? 'move-tactic' : 'move', variants, event)
     .replace('{actor}', actor)
@@ -731,4 +731,17 @@ export function encounterEndPhrase(book, { endText }, event) {
     `Бой стихает: ${endText}.`,
     `Всё кончено: ${endText}.`,
   ], event)
+}
+
+/**
+ * Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`,
+ * `toString`…) записями не считаются.
+ *
+ * @template T
+ * @param {Readonly<Record<string, T>>} table
+ * @param {unknown} key
+ * @returns {T | undefined}
+ */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

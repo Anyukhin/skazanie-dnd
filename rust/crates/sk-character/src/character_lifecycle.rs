@@ -199,22 +199,6 @@ const IMPORT_V0_ALIASES: [(&str, &str); 8] = [
     ("prepared_spell_ids", "preparedSpellIds"),
 ];
 
-/// Ключи `Object.prototype`: `obj[key]` в JS находит их у любого объекта.
-const PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
 // ---------------------------------------------------------------------------
 // Ошибки
 // ---------------------------------------------------------------------------
@@ -1844,7 +1828,7 @@ pub fn validate_character_ability_roll_command(command: Option<&Value>, state: O
     let rolls = prop(Some(actor), "characterCreationRolls");
     if is_str(prop(Some(command), "command_type"), "RollCharacterWealth") {
         let key = property_key(prop(Some(command), "character_class"));
-        let known = PHB_STARTING_WEALTH.iter().any(|entry| entry.class_id == key) || PROTOTYPE_KEYS.contains(&key.as_str());
+        let known = PHB_STARTING_WEALTH.iter().any(|entry| entry.class_id == key);
         if !known {
             return invalid("Выберите класс PHB 2014", "CHARACTER_CLASS_UNSUPPORTED");
         }

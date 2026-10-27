@@ -299,7 +299,7 @@ const CONTAINER_TITLES = Object.freeze({
 })
 
 function containerName(kind, enemyName) {
-  const title = CONTAINER_TITLES[kind] ?? 'Добыча'
+  const title = ownEntry(CONTAINER_TITLES, kind) ?? 'Добыча'
   const name = text(enemyName, 100)
   return kind === 'abandoned' || !name ? title : `${title}: ${name}`
 }
@@ -1005,7 +1005,7 @@ export function inventoryItemFromInstance(instance, { id, quantity, containerKin
   const declared = String(instance?.origin?.kind ?? '')
   const origin = declared && declared !== 'enemy_loadout' && declared !== 'unknown'
     ? declared
-    : CONTAINER_ORIGIN_KINDS[String(containerKind)] ?? 'found'
+    : ownEntry(CONTAINER_ORIGIN_KINDS, String(containerKind)) ?? 'found'
   return normalizeInventoryItem({
     ...clone(snapshot),
     id,
@@ -1555,4 +1555,9 @@ export function lootContainersForViewer(state = {}, { actorId = '', isAdmin = fa
         return cost ? { ...card, action_cost: cost } : card
       }),
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

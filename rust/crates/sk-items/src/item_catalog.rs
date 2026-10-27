@@ -11,14 +11,9 @@
 //! [`tables`]. Порядок записей и ключей совпадает с JS: от него зависят
 //! списки каналов, выдача добычи и хеши проекций.
 //!
-//! **Ключи прототипа.** В JS каталог — обычный объект, поэтому
-//! `ITEM_CATALOG['constructor']` (и другие свойства `Object.prototype`)
-//! находит не запись, а функцию. [`catalog_item`] на таких ключах возвращает
-//! `None` (функции в JSON нет), [`catalog_item_truthy`] — `true`, как
-//! `Boolean(catalogItem(id))`. Где исход виден снаружи, он повторён:
-//! [`item_lifecycle_profile`] и [`item_viewer_capabilities`] отдают пустой
-//! профиль, а рассветная перезарядка не трогает такую вещь. Материализация на
-//! таком ключе в JS падает `TypeError`; здесь вещь считается некаталожной.
+//! **Ключи прототипа.** Каталог читается только по собственному ключу
+//! (`Object.hasOwn` в JS): `constructor`, `toString` и прочие свойства
+//! `Object.prototype` — некаталожный код, как любой неизвестный.
 
 use std::sync::LazyLock;
 
@@ -1002,50 +997,26 @@ pub static SRD_EQUIPMENT_CATALOG: LazyLock<Value> = LazyLock::new(|| {
     Value::Object(ITEM_SHOP_CATALOG_IDS.iter().filter_map(|id| item_catalog().get(*id).map(|entry| ((*id).to_string(), entry.clone()))).collect())
 });
 
-/// Свойства `Object.prototype`, которые `obj[key]` в JS находит у любого объекта.
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
-/// Что находит `ITEM_CATALOG[id] ?? SCENARIO_ITEM_CATALOG[id]` в JS.
+/// Что находит `catalogItem(id)` в JS (только собственный ключ таблицы).
 enum Lookup {
     Entry(&'static Value),
-    /// Свойство прототипа: не запись, но истинное значение.
-    Prototype,
     Missing,
 }
 
 fn lookup(catalog_id: &str) -> Lookup {
-    if let Some(entry) = catalog_item(catalog_id) {
-        Lookup::Entry(entry)
-    } else if OBJECT_PROTOTYPE_KEYS.contains(&catalog_id) {
-        Lookup::Prototype
-    } else {
-        Lookup::Missing
+    match catalog_item(catalog_id) {
+        Some(entry) => Lookup::Entry(entry),
+        None => Lookup::Missing,
     }
 }
 
 /// `catalogItem(catalogId)`: запись SRD или сценария; аргумент — уже
-/// приведённое `String(catalogId ?? '')`. Ключи прототипа — `None` (см.
-/// шапку модуля и [`catalog_item_truthy`]).
+/// приведённое `String(catalogId ?? '')`. Ключи прототипа — `None`.
 pub fn catalog_item(catalog_id: &str) -> Option<&'static Value> {
     item_catalog().get(catalog_id).or_else(|| SCENARIO_ITEM_CATALOG.get(catalog_id))
 }
 
-/// `Boolean(catalogItem(catalogId))`: истинно и для свойств
-/// `Object.prototype` (`constructor`, `toString`, …), которые JS находит у
-/// каталога-объекта.
+/// `Boolean(catalogItem(catalogId))`.
 pub fn catalog_item_truthy(catalog_id: &str) -> bool {
     !matches!(lookup(catalog_id), Lookup::Missing)
 }
@@ -1084,7 +1055,6 @@ fn item_use_profile_for_ruleset(entry: &Value, ruleset_id: &str) -> Option<Value
 pub fn item_lifecycle_profile(catalog_id: &str, ruleset_id: &str) -> Option<Value> {
     let entry = match lookup(catalog_id) {
         Lookup::Entry(entry) => entry,
-        Lookup::Prototype => return Some(json!({ "equippable": false, "stackable": true, "requires_attunement": false })),
         Lookup::Missing => return None,
     };
     let lifecycle = entry.get("lifecycle");
@@ -1322,18 +1292,6 @@ pub fn item_viewer_capabilities(item: Option<&Value>, ruleset_id: &str) -> Optio
     let catalog_id = js::s(coalesce(field(item, "catalog_id"), field(item, "catalogId")));
     let entry = match lookup(&catalog_id) {
         Lookup::Entry(entry) => entry,
-        Lookup::Prototype => {
-            return Some(json!({
-                "equippable": false,
-                "equip_slot": null,
-                "combat_equip": false,
-                "usable": false,
-                "use": null,
-                "charges": null,
-                "recharge": null,
-                "requires_attunement": false,
-            }))
-        }
         Lookup::Missing => return custom_item_capabilities(item),
     };
     let rule_use = item_use_profile_for_ruleset(entry, ruleset_id);

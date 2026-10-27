@@ -229,7 +229,9 @@ export function currentSettlement(state = {}) {
 // Состояние закона
 // ---------------------------------------------------------------------------
 
-function safeCrime(value = {}) {
+function safeCrime(input = {}) {
+  // `null` в реестре старого сохранения — пустая запись: её отсеет проверка id.
+  const value = input ?? {}
   const id = text(value.id, 140)
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,139}$/u.test(id)) return null
   const kind = text(value.kind, 40)
@@ -420,7 +422,7 @@ export function crimeFromDeedLedger(state = {}, event = {}) {
   // Без свидетелей преступления для закона нет: тёмный переулок остаётся тайной
   // ведущего ровно так же, как для молвы.
   if (deed.secret === true) return null
-  const points = WANTED_CRIME_POINTS[text(deed.kind, 40)] ?? 0
+  const points = Object.hasOwn(WANTED_CRIME_POINTS, text(deed.kind, 40)) ? WANTED_CRIME_POINTS[text(deed.kind, 40)] : 0
   if (points <= 0) return null
   const node = currentWorldNode(state)
   const regionId = text(node?.regionId, 180)
@@ -692,9 +694,10 @@ export function lawForViewer(state = {}, viewer = {}) {
  */
 export function applyLawEvent(input, event, state = {}) {
   const type = String(event?.event_type ?? '')
-  const normalized = input?.schema_version === LAW_SCHEMA_VERSION && Array.isArray(input.crimes)
-    ? input
-    : normalizeLawState(input)
+  // Нормализуется всегда: сохранение с верной версией и массивом `crimes` всё
+  // равно может нести мусор (`escape_attempts: "2"` склеивался бы в `"21"`).
+  // Нормализация идемпотентна, и чистое состояние она не меняет.
+  const normalized = normalizeLawState(input)
   const payload = event?.payload ?? {}
   if (type === 'GuardEncounterStarted') {
     const encounter = safeEncounter(payload.encounter)

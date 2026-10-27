@@ -6,9 +6,9 @@
 //! (`reconcileWorldMap`) добавляет места из хроники рядом с предыдущей точкой и
 //! соединяет новую сцену дорогой с прошлой.
 //!
-//! Карта — JSON той же формы и с тем же порядком полей, что у JS. Там, где JS
-//! падает `TypeError` на `null` вместо объекта (концепт, источник, сцена,
-//! список мест), функции возвращают `Err` с текстом V8.
+//! Карта — JSON той же формы и с тем же порядком полей, что у JS. `null`
+//! вместо концепта, источника, сцены и не-список мест хроники читаются как
+//! пропущенное поле (старые сохранения).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
@@ -451,9 +451,6 @@ fn concept_part(concept: &Value, name: &str) -> String {
 
 fn fallback_regions(seed: &str, concept: &Value) -> Result<Vec<Value>, String> {
     let mut random = SeededRandom::new(&format!("{seed}:regions"));
-    if concept.is_null() {
-        return Err(type_error_reading("preset"));
-    }
     let signature = sk_text::lower(&format!(
         "{} {} {}",
         concept_part(concept, "preset"),
@@ -752,9 +749,8 @@ fn location_by_id(locations: &[Value], location_id: Option<&Value>) -> Option<us
 /// `worldLocationById(map, locationId)` — место карты по идентификатору.
 ///
 /// `location_id` — уже `String(locationId ?? '')`; к нему применяется та же
-/// нормализация, что в JS (NFKC, пробелы, 120 символов). В JS `null` среди
-/// мест до совпадения роняет поиск `TypeError`; здесь такой элемент
-/// пропускается — в карте, собранной модулем, его не бывает.
+/// нормализация, что в JS (NFKC, пробелы, 120 символов). Не-объект среди мест
+/// (`null` старого сохранения) пропускается, как в JS.
 pub fn world_location_by_id<'a>(map: Option<&'a Value>, location_id: &str) -> Option<&'a Value> {
     let locations = map.and_then(|map| get(map, "locations")).and_then(Value::as_array)?;
     let expected = text_str(location_id, 120);
@@ -843,11 +839,10 @@ fn create_map(args: &CreateArgs) -> Result<Value, String> {
     } else {
         seed_text
     };
-    let region_fallback = fallback_regions(&safe_seed, args.concept)?;
-    if args.source.is_null() {
-        return Err(type_error_reading("regions"));
-    }
-    let source = args.source;
+    // `concept ??= {}`, `source ??= {}`: `null` старого сохранения — пустой объект.
+    let concept = if args.concept.is_null() { &*EMPTY_OBJECT } else { args.concept };
+    let region_fallback = fallback_regions(&safe_seed, concept)?;
+    let source = if args.source.is_null() { &*EMPTY_OBJECT } else { args.source };
     let regions = normalize_regions(get(source, "regions"), &region_fallback);
     let location_fallback = fallback_locations(&safe_seed, args.starting_location, &regions);
     let mut locations =
@@ -946,8 +941,7 @@ fn option<'a>(options: &'a Value, name: &str, default: &'a Value) -> &'a Value {
 /// `createCampaignWorldMap({ seed, campaignName, concept = {}, source = {},
 /// startingLocation = '', startingLocationId = '',
 /// addMissingStartingLocation = true })` — карта кампании из сида и
-/// авторского источника. Отсутствующее поле — значение по умолчанию, `null`
-/// остаётся `null` (как в JS: `concept: null` и `source: null` — `TypeError`).
+/// авторского источника. Отсутствующее поле и `null` — значение по умолчанию.
 pub fn create_campaign_world_map(input: &Value) -> Result<Value, String> {
     if input.is_null() {
         return Err(DESTRUCTURE_NULL_SEED.into());
@@ -998,14 +992,15 @@ fn free_position(seed: &str, locations: &[Value], name: &str, anchor_x: f64, anc
 }
 
 fn reconcile_map(raw_map: Option<&Value>, args: &ReconcileArgs) -> Result<Value, String> {
-    let concept = args.concept.unwrap_or(&EMPTY_OBJECT);
+    // `concept ??= {}`, `scene ??= {}`: `null` — как пропущенное поле.
+    let concept = args.concept.filter(|value| !value.is_null()).unwrap_or(&EMPTY_OBJECT);
     let current_location = args.current_location.unwrap_or(&EMPTY_STRING);
     let current_location_id = args.current_location_id.unwrap_or(&EMPTY_STRING);
     let previous_location = args.previous_location.unwrap_or(&EMPTY_STRING);
     let previous_location_id = args.previous_location_id.unwrap_or(&EMPTY_STRING);
     let known_locations = args.known_locations.unwrap_or(&EMPTY_ARRAY);
     let transition = args.transition.unwrap_or(&EMPTY_STRING);
-    let scene = args.scene.unwrap_or(&EMPTY_OBJECT);
+    let scene = args.scene.filter(|value| !value.is_null()).unwrap_or(&EMPTY_OBJECT);
 
     let raw_seed = raw_map.and_then(|map| get(map, "seed"));
     let source = match raw_map {
@@ -1038,12 +1033,11 @@ fn reconcile_map(raw_map: Option<&Value>, args: &ReconcileArgs) -> Result<Value,
         _ => Vec::new(),
     };
 
-    // `[...knownLocations, previousLocation, currentLocation]`: строка
-    // раскладывается по символам, не-итерируемое — `TypeError`.
+    // `[...knownLocations, previousLocation, currentLocation]`: не-список
+    // (`null`, строка старого сохранения) — пустой список.
     let known_items: Vec<Value> = match known_locations {
         Value::Array(items) => items.clone(),
-        Value::String(raw) => raw.chars().map(|ch| Value::String(ch.to_string())).collect(),
-        _ => return Err("knownLocations is not iterable".into()),
+        _ => Vec::new(),
     };
     let mut all_names: Vec<String> = Vec::new();
     for name in known_items.iter().chain([previous_location, current_location]) {
@@ -1069,9 +1063,6 @@ fn reconcile_map(raw_map: Option<&Value>, args: &ReconcileArgs) -> Result<Value,
             let (x, y) = free_position(&map_seed, &locations, &name, anchor_x, anchor_y);
             let mut used: HashSet<String> = locations.iter().map(|location| str_field(location, "id").to_string()).collect();
             let id = unique_id(&slug_str(&name, "place"), &mut used);
-            if scene.is_null() {
-                return Err(type_error_reading("scene_kind"));
-            }
             let kind = match get(scene, "scene_kind").and_then(Value::as_str) {
                 Some("settlement") => "town",
                 Some("dungeon") => "dungeon",
@@ -1109,9 +1100,6 @@ fn reconcile_map(raw_map: Option<&Value>, args: &ReconcileArgs) -> Result<Value,
     let current = location_by_id(&locations, Some(current_location_id))
         .or_else(|| locations.iter().position(|location| key(get(location, "name")) == current_key));
     if let Some(index) = current {
-        if scene.is_null() {
-            return Err(type_error_reading("objective"));
-        }
         set_field(&mut locations[index], "visited", Value::Bool(true));
         set_field(&mut locations[index], "known", Value::Bool(true));
         if !text(get(scene, "objective"), 180).is_empty() {
@@ -1136,9 +1124,6 @@ fn reconcile_map(raw_map: Option<&Value>, args: &ReconcileArgs) -> Result<Value,
                     "road"
                 };
                 let distance = travel_distance(&locations[previous], &locations[current]);
-                if scene.is_null() {
-                    return Err(type_error_reading("danger"));
-                }
                 let danger = match get(scene, "danger").and_then(Value::as_str) {
                     Some("высокая") => "высокая",
                     Some("низкая") => "низкая",
@@ -1627,20 +1612,22 @@ mod tests {
     #[test]
     fn null_inputs_fail_with_v8_type_errors() {
         assert_eq!(create_campaign_world_map(&Value::Null), Err(DESTRUCTURE_NULL_SEED.into()));
-        assert_eq!(create_campaign_world_map(&json!({ "concept": null })), Err(type_error_reading("preset")));
-        assert_eq!(create_campaign_world_map(&json!({ "source": null })), Err(type_error_reading("regions")));
         assert_eq!(reconcile_world_map(None, &Value::Null), Err(DESTRUCTURE_NULL_SEED.into()));
-        assert_eq!(reconcile_world_map(None, &json!({ "knownLocations": null })), Err("knownLocations is not iterable".into()));
-        assert_eq!(reconcile_world_map(None, &json!({ "knownLocations": "ab" })), Err("knownLocations.some is not a function".into()));
-        assert!(reconcile_world_map(None, &json!({ "knownLocations": "" })).is_ok());
+        // Старое сохранение: `null` вместо концепта, карты, сцены и списка мест —
+        // как пропущенное поле (`test/old-save-registries.test.mjs`).
+        let plain = create_campaign_world_map(&json!({ "seed": "s" })).expect("карта");
+        assert_eq!(create_campaign_world_map(&json!({ "seed": "s", "concept": null, "source": null })), Ok(plain));
+        for known in [json!(null), json!("ab"), json!(5)] {
+            let options = json!({ "seed": "s", "knownLocations": known, "scene": null, "concept": null, "currentLocation": "Норвин" });
+            assert!(reconcile_world_map(None, &options).is_ok(), "{options}");
+        }
         assert_eq!(ensure_campaign_world_map(&Value::Null), Err(type_error_reading("adventure")));
         // Отсутствующие поля — значения по умолчанию, как `= {}` в JS.
         assert!(create_campaign_world_map(&json!({})).is_ok());
         assert!(ensure_campaign_world_map(&json!({})).is_ok());
     }
 
-    /// Отклонение от JS: `null` среди мест JS роняет `TypeError`, здесь он
-    /// пропускается.
+    /// `null` среди мест пропускается, как в JS.
     #[test]
     fn lookup_skips_null_entries() {
         let map = json!({ "locations": [null, 5, { "id": "port", "name": "Порт" }] });

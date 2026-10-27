@@ -729,13 +729,17 @@ function recordedAt(value, fallback = 0) {
   return Math.max(0, integer(value, fallback))
 }
 
-function clock(value = {}) {
+function clock(input = {}) {
+  // `clock: null` у задания старого сохранения — часы по умолчанию.
+  const value = input ?? {}
   const maximum = Math.max(1, Math.min(100, integer(value.max, 4)))
   const current = Math.max(0, Math.min(maximum, integer(value.current, 0)))
   return { current, max: maximum, label: text(value.label, 160), triggered: current >= maximum }
 }
 
-function safeEntity(value = {}) {
+function safeEntity(input = {}) {
+  // `null` в коллекции старого сохранения — пустая запись, а не падение загрузки.
+  const value = input ?? {}
   const kind = ENTITY_KINDS.has(text(value.kind, 30)) ? text(value.kind, 30) : 'concept'
   return {
     id: text(value.id, 120), kind, name: text(value.name, 160), summary: text(value.summary, 1_000),
@@ -744,7 +748,8 @@ function safeEntity(value = {}) {
   }
 }
 
-function safeFact(value = {}) {
+function safeFact(input = {}) {
+  const value = input ?? {}
   return {
     id: text(value.id, 120), subject_id: text(value.subject_id, 120), predicate: text(value.predicate, 120),
     object: text(value.object, 1_000), summary: text(value.summary, 1_000),
@@ -755,7 +760,8 @@ function safeFact(value = {}) {
   }
 }
 
-function safeRelationship(value = {}) {
+function safeRelationship(input = {}) {
+  const value = input ?? {}
   return {
     id: text(value.id, 120), from_entity_id: text(value.from_entity_id, 120), relation: text(value.relation, 120),
     to_entity_id: text(value.to_entity_id, 120), summary: text(value.summary, 1_000),
@@ -767,7 +773,8 @@ function safeRelationship(value = {}) {
   }
 }
 
-function safeQuest(value = {}) {
+function safeQuest(input = {}) {
+  const value = input ?? {}
   const responsibility = normalizeQuestResponsibility(value.responsibility)
   const progressFactIds = persistedStrings(value.progress_fact_ids, 120)
   const progressSourceIds = persistedStrings(value.progress_source_event_ids, 120)
@@ -785,7 +792,8 @@ function safeQuest(value = {}) {
   }
 }
 
-function safeThread(value = {}) {
+function safeThread(input = {}) {
+  const value = input ?? {}
   return {
     id: text(value.id, 120), title: text(value.title, 180), summary: text(value.summary, 1_000),
     status: THREAD_STATUSES.has(value.status) ? value.status : 'active',
@@ -796,7 +804,8 @@ function safeThread(value = {}) {
   }
 }
 
-function safeEpistemicClaim(value = {}) {
+function safeEpistemicClaim(input = {}) {
+  const value = input ?? {}
   return {
     id: text(value.id, 120), kind: EPISTEMIC_KINDS.has(value.kind) ? value.kind : 'belief',
     holder_entity_id: text(value.holder_entity_id, 120), subject_entity_id: text(value.subject_entity_id, 120),
@@ -810,7 +819,8 @@ function safeEpistemicClaim(value = {}) {
   }
 }
 
-function safeSummary(value = {}) {
+function safeSummary(input = {}) {
+  const value = input ?? {}
   return {
     id: text(value.id, 120), kind: SUMMARY_KINDS.has(value.kind) ? value.kind : 'scene',
     title: text(value.title, 180), summary: text(value.summary, 2_000),
@@ -821,7 +831,8 @@ function safeSummary(value = {}) {
   }
 }
 
-function safeKnowledgeEntry(value = {}) {
+function safeKnowledgeEntry(input = {}) {
+  const value = input ?? {}
   const heroId = text(value.hero_id, 120)
   const factId = text(value.fact_id, 120)
   const sourceKind = ['legacy', 'world_fact_revealed', 'knowledge_revealed', 'npc'].includes(text(value.source_kind, 40))

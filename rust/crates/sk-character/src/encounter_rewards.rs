@@ -38,22 +38,6 @@ const THEMES: [&str; 11] = ["goblinoids", "undead", "beasts", "raiders", "warban
 const STAGES: [&str; 6] = ["outcome", "xp", "coins", "loot", "distribution", "transition"];
 /// Редакции с каталогом наград, в порядке объекта JS.
 const KNOWN_REWARD_RULESETS: [&str; 2] = ["srd_5_2_1", "dnd_5e_2014"];
-/// Ключи `Object.prototype`: `RULESET_REWARD_CATALOGS[key]` находит их, а у
-/// найденного нет `.get` — JS падает `TypeError`.
-const PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
 const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
 
 /// Опыт монстров 2014 из справочника dnd.su: `{ xp: Number(monster.xp) }`.
@@ -323,7 +307,6 @@ fn reward_catalog_entry_for(state: &Value, stat_block_id: &str) -> RewardResult<
         // нет, и пустой `xp` даёт `Number(undefined)`.
         "srd_5_2_1" => Ok(SRD_5_2_1_MONSTER_ALLOWLIST.get(stat_block_id).map(|block| if js::present(block.get("xp")) { js::number(block.get("xp")) } else { f64::NAN })),
         "dnd_5e_2014" => Ok(DND_2014_XP.get(stat_block_id).copied()),
-        key if PROTOTYPE_KEYS.contains(&key) => Err(EncounterRewardError::type_error("RULESET_REWARD_CATALOGS[rulesetId]?.get is not a function")),
         _ => Ok(None),
     }
 }

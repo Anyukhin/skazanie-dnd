@@ -187,7 +187,9 @@ function healthWord(actor = {}, { hero = false, dead = false } = {}) {
   if (dead) return 'погиб'
   if (actor.hp == null && actor.maxHp == null) {
     if (actor.alive === false) return hero ? 'без сознания' : 'выбыл'
-    return HEALTH_WORDS[String(actor.healthStatus ?? '')] ?? 'цел'
+    const status = String(actor.healthStatus ?? '')
+    // Только собственный ключ: статус `constructor` — незнакомый, а не функция.
+    return (Object.hasOwn(HEALTH_WORDS, status) ? HEALTH_WORDS[status] : undefined) ?? 'цел'
   }
   const hp = Math.max(0, Number(actor.hp) || 0)
   const maximum = Math.max(1, Number(actor.maxHp ?? actor.max_hp) || 1)
@@ -293,7 +295,9 @@ export function sceneContextForAgent(state = {}, actorId = '') {
   }
   const id = String(actorId || state.activePlayerId || '')
   const actor = [...(state.players ?? []), ...(state.actors ?? [])].find((entry) => entry.id === id)
-  const position = state.mechanics?.positions?.[id] ?? actor
+  const positions = state.mechanics?.positions
+  // Позиция — собственный ключ словаря: id `constructor` не находит функцию.
+  const position = (positions && typeof positions === 'object' && Object.hasOwn(positions, id) ? positions[id] : undefined) ?? actor
     ?? state.npc_world?.placements?.find((entry) => entry.npc_id === id && entry.location_id === scene.location_id)
   const at = position ? cellAt(map, Number(position.x), Number(position.y)) : null
   const zones = Array.isArray(map.zones) ? map.zones : []

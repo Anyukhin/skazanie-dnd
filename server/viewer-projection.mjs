@@ -703,7 +703,7 @@ function publicLegendaryFor(enemy, state, id) {
   if (!declared || typeof declared !== 'object' || Array.isArray(declared)) return null
   if (!Array.isArray(declared.actions) || !declared.actions.length) return null
   const uses = Math.max(1, Math.min(5, integer(declared.uses, 3)))
-  const spent = (state?.mechanics?.conditions?.[id] ?? [])
+  const spent = actorConditionList(state, id)
     .map((/** @type {Loose} */ condition) => text(condition?.id ?? condition, 160))
     .filter((/** @type {string} */ condition) => condition.startsWith('legendary-action-used:'))
     .length
@@ -2791,4 +2791,20 @@ export function turnResultForViewer(result, user, actorId = '') {
     } : {}),
     ...(result.authoritative_state ? { authoritative_state: campaignStateForViewer(result.authoritative_state, user, actorId) } : {}),
   }
+}
+
+/**
+ * Состояния актора: только собственный список словаря `mechanics.conditions`.
+ * Id вида `constructor` или `__proto__` и не-массив дают пустой список, а не
+ * метод прототипа (как `sk_core::game::conditions` в Rust).
+ *
+ * @param {any} state
+ * @param {unknown} actorId
+ * @returns {any[]}
+ */
+function actorConditionList(state, actorId) {
+  const conditions = state?.mechanics?.conditions
+  const key = String(actorId)
+  const list = conditions && typeof conditions === 'object' && Object.hasOwn(conditions, key) ? conditions[key] : undefined
+  return Array.isArray(list) ? list : []
 }
