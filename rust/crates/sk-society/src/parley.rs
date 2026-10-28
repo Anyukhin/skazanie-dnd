@@ -496,6 +496,7 @@ mod tests {
         assert_eq!(parley_combat_patch(&json!({ "parley_attempts": 2 }), &json!({ "event_type": "ParleyProposed" })), Some(json!({ "parley_attempts": 3 })));
         assert_eq!(parley_combat_patch(&json!({}), &json!({ "event_type": "TruceBroken" })), Some(json!({ "truce": null })));
         assert_eq!(parley_combat_patch(&json!({}), &json!({ "event_type": "MakeAttack" })), None);
-        assert_eq!(parley_terms_for(&json!({ "outcomes": ["resume", "constructor", "nope"] })).len(), 2);
+        // Ключ прототипа условием перемирия не считается.
+        assert_eq!(parley_terms_for(&json!({ "outcomes": ["resume", "constructor", "nope"] })).len(), 1);
     }
 }

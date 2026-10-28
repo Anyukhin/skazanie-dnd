@@ -99,12 +99,15 @@ fn house_rule_toggles_only_declared_rules_and_not_in_combat() {
     assert_eq!(m::default_house_rule_event("house:bg3-opening-strike", Some(&old), Some(&json!([event])), None), Ok(None));
 }
 
-/// Старое сохранение: `null` или запись без типа в журнале фиксируют редакцию,
-/// а причина не печатает `undefined` (`test/old-save-registries.test.mjs`).
+/// Старое сохранение: `null` в журнале не скрывает настоящее событие после
+/// него, запись без типа фиксирует редакцию, а причина не печатает
+/// `undefined` (`test/old-save-registries.test.mjs`).
 #[test]
-fn null_journal_entry_locks_ruleset() {
+fn null_journal_entry_does_not_hide_later_event() {
     let locked = m::campaign_ruleset_can_change(Some(&json!([null, { "event_type": "CharacterImported" }])), None);
-    assert_eq!(locked, json!({ "allowed": false, "reason": "Редакция зафиксирована событием без типа", "blocking_event_type": "" }));
+    assert_eq!(locked, json!({ "allowed": false, "reason": "Редакция зафиксирована событием CharacterImported", "blocking_event_type": "CharacterImported" }));
+    let empty = m::campaign_ruleset_can_change(Some(&json!([null])), None);
+    assert_eq!(empty["allowed"], json!(true));
     let untyped = m::campaign_ruleset_can_change(Some(&json!([{ "id": "e1" }])), None);
     assert_eq!(untyped["allowed"], json!(false));
     assert!(!untyped["reason"].as_str().unwrap_or_default().contains("undefined"));

@@ -118,9 +118,10 @@ pub fn campaign_ruleset_can_change(events: Option<&Value>, state: Option<&Value>
             "blocking_event_type": "ImportedCampaignState",
         });
     }
-    // Любая запись, кроме выбора редакции, фиксирует её — и `null` из старого
-    // сохранения тоже; тип без поля — пустая строка, а не `undefined`.
-    let blocking = array(events).iter().find(|event| js::s(defined(prop(Some(event), "event_type"))) != RULESET_EVENT_TYPE);
+    // Пустая запись старого сохранения (`null`) событием не считается и поиск
+    // не обрывает: редакцию фиксирует первая настоящая запись после неё. Тип
+    // без поля — пустая строка, а не `undefined`.
+    let blocking = array(events).iter().find(|event| js::truthy(Some(event)) && js::s(defined(prop(Some(event), "event_type"))) != RULESET_EVENT_TYPE);
     match blocking {
         Some(event) => {
             let event_type = js::s(defined(prop(Some(event), "event_type")));

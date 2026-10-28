@@ -525,9 +525,12 @@ fn every_kit_item_and_weapon_list_is_in_the_catalog() {
 }
 
 #[test]
-fn prototype_class_key_fails_like_js_only_when_kit_is_needed() {
+fn prototype_class_key_is_unknown_class() {
+    // Класс-ключ прототипа — без набора 2024: запасной кинжал, а не `TypeError`.
     let options = StarterKitOptions { ruleset_id: RULESET_2024.into(), starter_policy_id: Some(STARTER_KIT_2024_POLICY.policy_id.into()), ..StarterKitOptions::default() };
-    assert!(matches!(m::with_starter_kit(Some(&json!({ "id": "x", "characterClass": "toString" })), &options), Err(StarterKitError::Runtime(_))));
+    let hero = m::with_starter_kit(Some(&json!({ "id": "x", "characterClass": "toString" })), &options).expect("герой");
+    let ids: Vec<&str> = hero["inventory"].as_array().expect("вещи").iter().filter_map(|item| item["catalog_id"].as_str()).collect();
+    assert_eq!(ids, ["srd_5_2_1:dagger"]);
     let imported = json!({ "id": "x", "characterClass": "toString", "inventory": [{ "id": "own" }] });
     assert!(m::with_starter_kit(Some(&imported), &options).is_ok(), "готовый инвентарь набор не трогает");
 }

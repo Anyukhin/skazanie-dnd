@@ -207,8 +207,8 @@ fn count_before(before: &str) -> f64 {
 }
 
 /// Обещанный объект: вид и количество. Количество — число JS: из словаря
-/// приходит целое, но унаследованное свойство числительных даёт `NaN` (см.
-/// «Замечено в JS» в отчёте переноса), а JSON записывает его как `null`.
+/// приходит целое (ключ прототипа числительным не считается); нечисло JSON
+/// записал бы как `null`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Requirement {
     pub id: String,
@@ -793,10 +793,10 @@ mod tests {
     }
 
     #[test]
-    fn prototype_numeral_gives_nan() {
+    fn prototype_numeral_is_not_a_number_word() {
+        // Ключ прототипа числительным не считается: количество по умолчанию.
         let items = scene_requirements_from_text(&Value::String("constructor навес".into()));
         assert_eq!(items.len(), 1);
-        assert!(items[0].count.is_nan());
-        assert_eq!(serde_json::to_value(&items[0]).expect("json"), serde_json::json!({ "id": "shelter", "count": null }));
+        assert_eq!(serde_json::to_value(&items[0]).expect("json"), serde_json::json!({ "id": "shelter", "count": 1 }));
     }
 }

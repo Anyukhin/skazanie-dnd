@@ -13,11 +13,13 @@ import { phbSpellId, phbToolId } from '../server/character-creation-phb.mjs'
 import { damageTypeLabel } from '../server/combat-narration.mjs'
 import { tacticLead } from '../server/combat-phrases.mjs'
 import { encounterDifficultyLabel } from '../server/encounter-assembler.mjs'
+import { compactArea } from '../server/graph-layout.mjs'
 import { itemVisualForCatalogId } from '../server/equipment-visuals.mjs'
 import { resolvePresentSocialActors } from '../server/intent-parser.mjs'
 import { catalogItem } from '../server/item-catalog.mjs'
 import { staticNpcPortrait } from '../server/npc-portraits.mjs'
 import { parleyTermsFor } from '../server/parley.mjs'
+import { seatAroundSurface } from '../server/prop-placement.mjs'
 import { attackForecast, eventSummary } from '../server/rules-engine.mjs'
 import { themeFromMapRequest } from '../server/scene-themes.mjs'
 import { createTacticalMap } from '../server/tactical-map.mjs'
@@ -78,4 +80,12 @@ test('прогноз удара по врагу с id `__proto__` не пада�
     mechanics: { conditions: {}, positions: {} },
   }
   assert.doesNotThrow(() => attackForecast(state, 'hero', '__proto__'))
+})
+
+test('обстановка карты: тема и вид мебели — ключ прототипа без корпуса из NaN и падения', () => {
+  assert.deepEqual(compactArea('constructor', 3, 40, 30), { minX: 0, minY: 0, maxX: 39, maxY: 29 })
+  const map = createTacticalMap({ width: 12, height: 12 })
+  for (const assetId of PROTOTYPE_KEYS) {
+    assert.deepEqual(seatAroundSurface(map, { id: 's1', assetId, x: 5, y: 5, w: 2, h: 1 }, { idPrefix: 'p' }), [], assetId)
+  }
 })

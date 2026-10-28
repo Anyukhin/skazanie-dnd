@@ -154,9 +154,10 @@ test('applyLawEvent нормализует сохранение и с верно
   assert.deepEqual(applyLawEvent(cleaned, { event_type: 'Unrelated' }), cleaned)
 })
 
-test('null в журнале фиксирует редакцию, причина без undefined', () => {
+test('null в журнале не скрывает событие после него, причина без undefined', () => {
   const locked = campaignRulesetCanChange([null, { event_type: 'CharacterImported' }])
-  assert.deepEqual(locked, { allowed: false, reason: 'Редакция зафиксирована событием без типа', blocking_event_type: '' })
+  assert.deepEqual(locked, { allowed: false, reason: 'Редакция зафиксирована событием CharacterImported', blocking_event_type: 'CharacterImported' })
+  assert.equal(campaignRulesetCanChange([null]).allowed, true)
   const untyped = campaignRulesetCanChange([{ id: 'e1' }])
   assert.equal(untyped.allowed, false)
   assert.doesNotMatch(untyped.reason, /undefined/u)

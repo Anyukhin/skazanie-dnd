@@ -228,7 +228,7 @@ const KITS_2024 = Object.freeze({
 
 function kit2024For(classKey, abilities = {}) {
   if (classKey === 'fighter' && Number(abilities.dex ?? 10) > Number(abilities.str ?? 10)) return KITS_2024['fighter-dex']
-  return KITS_2024[classKey] ?? null
+  return ownEntry(KITS_2024, classKey) ?? null
 }
 
 /**

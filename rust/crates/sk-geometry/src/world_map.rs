@@ -1086,8 +1086,10 @@ fn reconcile_map(raw_map: Option<&Value>, args: &ReconcileArgs) -> Result<Value,
             }));
             node = Some(locations.len() - 1);
         }
-        let Value::Array(known_list) = known_locations else {
-            return Err("knownLocations.some is not a function".into());
+        // Не-список старого сохранения — пустой список, как выше.
+        let known_list: &[Value] = match known_locations {
+            Value::Array(items) => items,
+            _ => &[],
         };
         if known_list.iter().any(|known| key(Some(known)) == name_key) || name_key == current_key {
             if let Some(index) = node {

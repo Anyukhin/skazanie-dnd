@@ -19,14 +19,13 @@ export function campaignRulesetCanChange(events = [], state = null) {
       blocking_event_type: 'ImportedCampaignState',
     }
   }
-  const list = Array.isArray(events) ? events : []
-  // Любая запись журнала, кроме выбора редакции, фиксирует её — и `null` из
-  // старого сохранения тоже: `find` вернул бы его как «ничего не нашлось».
-  const index = list.findIndex((event) => String(event?.event_type ?? '') !== RULESET_EVENT_TYPE)
-  const blockingType = index >= 0 ? String(list[index]?.event_type ?? '') : null
+  // Пустая запись старого сохранения (`null`) событием не считается и поиск не
+  // обрывает: редакцию фиксирует первая настоящая запись после неё.
+  const blocking = (Array.isArray(events) ? events : []).find((event) => event && String(event.event_type ?? '') !== RULESET_EVENT_TYPE)
+  const blockingType = blocking ? String(blocking.event_type ?? '') : null
   return {
-    allowed: index < 0,
-    reason: index >= 0 ? `Редакция зафиксирована событием ${blockingType || 'без типа'}` : null,
+    allowed: !blocking,
+    reason: blocking ? `Редакция зафиксирована событием ${blockingType || 'без типа'}` : null,
     blocking_event_type: blockingType,
   }
 }

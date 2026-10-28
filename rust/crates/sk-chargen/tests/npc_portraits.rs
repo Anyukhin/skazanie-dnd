@@ -386,12 +386,13 @@ fn astohan_speakers_get_fitting_role_portraits() {
 }
 
 #[test]
-fn prototype_key_id_is_treated_as_prepared_like_js() {
+fn prototype_key_id_is_not_prepared() {
+    // Id-ключ прототипа — не предзаготовленный NPC: ролевая картинка.
     let toy = json!({ "id": "toString", "name": "Т", "role": "village baker", "tags": [] });
     let profile = m::public_npc_portrait_profile(Some(&toy)).expect("профиль");
-    assert!(profile.get("portrait_url").is_none(), "функция прототипа в JSON пропадает");
+    assert!(profile.get("portrait_url").is_none());
     let portrait = m::static_npc_portrait(&profile, "prepared_asset");
-    assert_eq!(portrait.url, None);
+    assert_eq!(portrait.url, Some(json!("/assets/npcs/roles/artisan.png")));
 }
 
 // --- test/npc-portrait-assets.test.mjs ---

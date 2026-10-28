@@ -531,12 +531,12 @@ for (let s = 0; s < states.length; s += 1) {
 
 // --- блоки 50–53 по записям корпуса ---------------------------------------------------
 
-const prefix = await blockFunction([[6155, 6976]], ['const state = normalizeCampaignState(rawState)'], ['input', 'rawState', 'context'], 'return { state, command }')
+const prefix = await blockFunction([[6156, 6977]], ['const state = normalizeCampaignState(rawState)'], ['input', 'rawState', 'context'], 'return { state, command }')
 const blocks = {
-  b50: await blockFunction([[6977, 6979]], ['if (needsActor(command.command_type)'], ['state', 'command', 'context'], 'return command'),
-  b51: await blockFunction([[6980, 6994]], ['for (const id of command.target_ids)'], ['state', 'command', 'context'], 'return command'),
-  b52: await blockFunction([[6995, 6995]], ['assertActorPermission(command, context, state)'], ['state', 'command', 'context'], 'return command'),
-  b53: await blockFunction([[6996, 6996]], ['assertTurn(command, state, context)'], ['state', 'command', 'context'], 'return command'),
+  b50: await blockFunction([[6978, 6980]], ['if (needsActor(command.command_type)'], ['state', 'command', 'context'], 'return command'),
+  b51: await blockFunction([[6981, 6995]], ['for (const id of command.target_ids)'], ['state', 'command', 'context'], 'return command'),
+  b52: await blockFunction([[6996, 6996]], ['assertActorPermission(command, context, state)'], ['state', 'command', 'context'], 'return command'),
+  b53: await blockFunction([[6997, 6997]], ['assertTurn(command, state, context)'], ['state', 'command', 'context'], 'return command'),
 }
 const blockStates = []
 const blockStateIndex = new Map()
@@ -575,7 +575,7 @@ outer: for (const file of corpusFiles) {
 }
 // Нападение на NPC и сборка встречи — на записях корпуса: состояние и команда
 // перед блоком 47 (`validateAttackNpcCommand`), затем сборка встречи.
-const prefix47 = await blockFunction([[6155, 6921]], ['const state = normalizeCampaignState(rawState)'], ['input', 'rawState', 'context'], 'return { state, command }')
+const prefix47 = await blockFunction([[6156, 6922]], ['const state = normalizeCampaignState(rawState)'], ['input', 'rawState', 'context'], 'return { state, command }')
 const encounterTypes = new Map([['AttackNpc', 0], ['CreateEncounter', 0], ['StageEncounter', 0]])
 for (const file of corpusFiles) {
   for (const line of readFileSync(join(corpusDir, file), 'utf8').split('\n')) {
