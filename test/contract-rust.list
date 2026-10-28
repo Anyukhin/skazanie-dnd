@@ -188,3 +188,5 @@ test/first-scene-map-parity-api.test.mjs # 12 мест: поселение, до
 # левая рука в EquipItem, версия торговца null, кость комнаты строчными, гонка создания кампании,
 # домашние правила «всё или ничего» с 409 на чужое значение ключа.
 test/http-route-fixes-api.test.mjs     # lifecycle/settings: конфликт ключа; /commands и dice; два POST /api/campaigns
+# Стенды на Rust (2026-10-26): журнал подкомандой бинаря не рвёт кириллицу на границе кусков stdout
+test/kit-journal-utf8.test.mjs # readJournal большого журнала: без U+FFFD (перекрёстный replay стенда Асстохана)
