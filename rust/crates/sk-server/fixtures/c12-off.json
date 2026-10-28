@@ -383,12 +383,6 @@
             "name": "Марта",
             "role": "merchant",
             "has_portrait": false
-          },
-          {
-            "id": "toString",
-            "name": "Прототип",
-            "role": "priest",
-            "has_portrait": true
           }
         ],
         "location_illustrations": [
