@@ -314,8 +314,10 @@ sk-character, sk-items-life); (б) нормализаторы реестров, 
    MoveActor — удар вдогонку (18966) **перезаписывают** pending_command,
    транскрипт и pending_execution. ResistanceAfterRollPause меняет
    `trigger_roll` и фазу. События до броска паузы теряются, если не попали в
-   префикс. В Rust: `Result<_, Halt>` (`Rule`, `Pause(Box<Pause>)`…); каждое
-   место с `isCombatPause`/`instanceof RulesValidationError` — отдельно.
+   префикс. В Rust: внутри разбора `Result<_, Interrupt>` (`Rule`,
+   `Pause(Box<Pause>)`, `Fault`), на границе API — `Outcome` и `Halt` без паузы
+   (урок 5); каждое место с `isCombatPause`/`instanceof RulesValidationError` —
+   отдельно.
 3. **Стенограмма костей.** `recordingDiceService` пишет `{method, args,
    result}`; для `rollD20`/`rollCheck` args — объект **с порядком ключей места
    вызова**. Транскрипт лежит в `ReactionWindowOpened.pending_dice_transcript`

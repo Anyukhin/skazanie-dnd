@@ -43,6 +43,16 @@
   Остальные крейты получают клиент внедрением.
 - **Случайность — только через внедрённые кости** (`sk-dice`). Время — через
   внедрённые часы, где JS их внедряет.
+- **Ожидание решения игрока — итог, а не ошибка** (урок 5). Публичный разбор
+  (`sk-rules` `resolve::api`: `resolve_command`, `resolve_command_with_pauses`,
+  `resolve_commands`, `RulesEngine`) отдаёт `Outcome::Committed` или
+  `Outcome::Pending { resolved, prompt }` (`sk-rules/src/outcome.rs`: кто
+  решает, варианты, срок, продолжение), а ошибка `Halt` — только отказ или
+  сбой. События `Pending` коммитятся так же: окно реакции — событие. Внутри
+  `resolve/` остановка — `Interrupt` (`Flow`) с паузой, вложенный разбор —
+  `api::resolve_command_inner`; проверки и помощники вне разбора — `Halt`
+  (`Step`). Ответ на окно — новая команда; внутри она повторяет остановленную
+  команду по стенограмме костей (`Continuation::Replay`).
 - **Тестовые крючки — только под фичей `test-hooks`**: подкоманды `journal`,
   `session`, `room`, `audit`, кости `DND_TEST_DICE_RULES` и сбои
   `DND_COMMIT_FAULTS`. Вне `NODE_ENV=test` и временного хранилища
