@@ -1,0 +1,70 @@
+name: rust-nightly
+
+# Урок 6 плана переноса (docs/rust-rewrite-plan.md §1): тактика и бой
+# проверяются только массой. Каждую ночь — боевой стенд одним сидом против JS
+# и против Rust (eval/soak-parity.mjs: исходы и аномалии должны совпасть) и
+# прогон Асстохана ботом без модели против Rust (eval/astohan-seeds.mjs:
+# каждый сид доходит до развязки без блокеров).
+#
+# Расписание GitHub запускает только с ветки по умолчанию; вручную — кнопкой
+# Run workflow на вкладке Actions.
+on:
+  schedule:
+    - cron: '20 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      SKAZANIE_RUST_SERVER_BIN: ${{ github.workspace }}/rust/target/release/skazanie-server
+      # Стенды поднимают свои серверы с пустым ключом; модель не вызывается.
+      ROUTERAI_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Установить зависимости
+        run: pnpm install --frozen-lockfile
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Бинарь сервера с крючками стендов
+        # test-hooks — сид костей PLAYTEST_DICE_SEED и подкоманда journal для
+        # перекрёстного replay (eval/stand-server.mjs).
+        working-directory: rust
+        run: cargo build --release --locked -p sk-server --features test-hooks --bin skazanie-server
+
+      - name: Бои — паритет JS и Rust
+        env:
+          SOAK_DICE_SEED: '1'
+        run: node eval/soak-parity.mjs
+
+      - name: Асстохан без модели — Rust
+        if: ${{ !cancelled() }}
+        run: node eval/astohan-seeds.mjs --impl rust --seeds 2-3 --parallel 2 --minutes 40
+
+      - name: Отчёты стендов
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-nightly-reports
+          path: |
+            tmp/soak-parity/
+            tmp/astohan-playtest/
+          if-no-files-found: ignore
+          retention-days: 14
