@@ -16,7 +16,8 @@ use sk_core::js;
 use sk_dice::{DiceService, SequenceRng};
 use sk_rules::context::{sequence_uuids, Context};
 use sk_rules::dice_record::ServiceDice;
-use sk_rules::pause::Halt;
+use sk_rules::outcome::Outcome;
+use sk_rules::pause::Interrupt;
 use sk_rules::resolve::api;
 
 const FIXTURE: &[u8] = include_bytes!("../fixtures/r11.json.gz");
@@ -35,11 +36,11 @@ fn sequence(values: &Value) -> ServiceDice<DiceService<SequenceRng>> {
     ServiceDice::new(DiceService::deterministic(SequenceRng::new(values), "roll"))
 }
 
-fn failure(halt: &Halt) -> Value {
+fn failure(halt: &Interrupt) -> Value {
     match halt {
-        Halt::Rule(error) => json!({ "err": [error.code, error.message] }),
-        Halt::Fault(fault) => json!({ "fault": fault.name }),
-        Halt::Pause(pause) => json!({ "pause": pause.kind.class_name() }),
+        Interrupt::Rule(error) => json!({ "err": [error.code, error.message] }),
+        Interrupt::Fault(fault) => json!({ "fault": fault.name }),
+        Interrupt::Pause(pause) => json!({ "pause": pause.kind.class_name() }),
     }
 }
 
@@ -75,7 +76,7 @@ fn resolve_command_matches_js() {
         let result = if js::is_true(case.get("branch")) {
             sk_rules::resolve::vitals::resolve_branch_without_tail(input.clone(), raw, &mut dice, &context, &mut uuid)
         } else {
-            api::with_lenient_validation(|| api::resolve_command(input, raw, &mut dice, &context, &mut uuid))
+            api::with_lenient_validation(|| api::resolve_command(input, raw, &mut dice, &context, &mut uuid)).map(Outcome::into_resolved).map_err(Interrupt::from)
         };
         let actual = match &result {
             Ok(resolved) => {
@@ -124,7 +125,7 @@ fn validate_command_matches_js() {
         let result = api::with_lenient_validation(|| api::validate(input, raw, &context, &mut uuid));
         let actual = match &result {
             Ok(command) => json!({ "ok": sha(command) }),
-            Err(halt) => failure(halt),
+            Err(halt) => failure(&Interrupt::from(halt.clone())),
         };
         let expected = expected_outcome(&case["o"]);
         if js::stringify(&actual) != js::stringify(&expected) {

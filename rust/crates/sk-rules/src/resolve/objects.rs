@@ -22,7 +22,7 @@ use crate::constants::{REST_EVENT_SCHEMA_VERSION, REST_MINIMUM_MINUTES_SHORT, RE
 use crate::core::{ability_modifier, command_with, command_with_rules, event_from, slice_utf16, spread_value};
 use crate::death::zero_hit_point_damage_consequences;
 use crate::lockpick::{lockpick_check_modifier, lockpick_notice_events, LockpickNotice};
-use crate::pause::{rule, Fault, Halt, Step};
+use crate::pause::{rule, Fault, Interrupt, Flow};
 use crate::preview_checks::{blessing_granted_events, preview_d20_check, scene_place_text, shrine_prayer_refusal_for, BlessingGrant};
 use crate::validate::common::js_includes;
 
@@ -46,7 +46,7 @@ fn with_field(mut event: Value, key: &str, value: Value) -> Value {
 }
 
 /// `ResolveImprovisedAction` (15306–15316).
-pub fn resolve_improvised_action(r: &mut Resolve<'_>) -> Step {
+pub fn resolve_improvised_action(r: &mut Resolve<'_>) -> Flow {
     if !game::combat_active(&r.state) {
         return Ok(());
     }
@@ -100,7 +100,7 @@ impl SceneObject {
 
 /// `resolveSceneCheck(checkDefinition, modifierOverride)`: проверка у объекта
 /// и событие `SceneObjectCheckResolved`.
-fn resolve_scene_check(r: &mut Resolve<'_>, object: &SceneObject, check: &Value, modifier_override: Option<i64>) -> Result<Value, Halt> {
+fn resolve_scene_check(r: &mut Resolve<'_>, object: &SceneObject, check: &Value, modifier_override: Option<i64>) -> Result<Value, Interrupt> {
     let actor_id = js::s(r.command.get("actor_id"));
     let actor = object.actor.as_ref();
     let ability = check.get("ability");
@@ -154,12 +154,12 @@ fn state_changed(r: &mut Resolve<'_>, fields: Vec<(&str, Option<Value>)>) {
 }
 
 /// `sceneObjectLoot({ mapSeed: map.seed, prop })`.
-fn loot_of(object: &SceneObject) -> Result<Value, Halt> {
+fn loot_of(object: &SceneObject) -> Result<Value, Interrupt> {
     scene_object_loot(&object.map.seed, Some(&object.prop)).map(Value::Array).map_err(|message| Fault::new("Error", message).into())
 }
 
 /// Урон по `targetId` с разбором защит и последствиями нуля хитов.
-fn apply_object_damage(r: &mut Resolve<'_>, state: &Value, target_id: &str, amount: Value, damage_type: Option<&Value>, prop_id: &Value, reason: &str) -> Step {
+fn apply_object_damage(r: &mut Resolve<'_>, state: &Value, target_id: &str, amount: Value, damage_type: Option<&Value>, prop_id: &Value, reason: &str) -> Flow {
     let damage_type = damage_type.cloned().unwrap_or(Value::Null);
     let resolved = r.resolve_damage_payload(state, target_id, amount, &damage_type, None, None)?;
     let mut payload = spread_value(Some(&resolved));
@@ -174,7 +174,7 @@ fn apply_object_damage(r: &mut Resolve<'_>, state: &Value, target_id: &str, amou
 }
 
 /// `OperateSceneObject` (19280–19723).
-pub fn operate_scene_object(r: &mut Resolve<'_>) -> Step {
+pub fn operate_scene_object(r: &mut Resolve<'_>) -> Flow {
     let Some(map) = ensure_map(r)? else {
         return Err(rule("Для объекта нужна тактическая карта", "TACTICAL_MAP_REQUIRED"));
     };
@@ -469,7 +469,7 @@ pub fn operate_scene_object(r: &mut Resolve<'_>) -> Step {
 }
 
 /// Опрокинутая мебель: спасбросок Ловкости и урон тем, кто стоит под ней.
-fn topple_victims(r: &mut Resolve<'_>, state: &Value, object: &SceneObject, hazard: &Value, cells: &[Value]) -> Step {
+fn topple_victims(r: &mut Resolve<'_>, state: &Value, object: &SceneObject, hazard: &Value, cells: &[Value]) -> Flow {
     let covered: IndexSet<String> = cells.iter().map(|cell| format!("{}:{}", js::string(cell.get("x")), js::string(cell.get("y")))).collect();
     let actor_id = js::string(r.command.get("actor_id"));
     let caught: Vec<Value> = game::list_actors(state)
@@ -519,7 +519,7 @@ fn topple_victims(r: &mut Resolve<'_>, state: &Value, object: &SceneObject, haza
 
 /// `containerOpened(previousState, openedIntent)`: крышка откинута, находка
 /// на виду, ловушка сработала.
-fn container_opened(r: &mut Resolve<'_>, state: &Value, object: &SceneObject, opened_intent: Option<&Value>) -> Step {
+fn container_opened(r: &mut Resolve<'_>, state: &Value, object: &SceneObject, opened_intent: Option<&Value>) -> Flow {
     let previous = object.interaction_state().cloned();
     let mut fields = vec![("prop_id", Some(object.prop_id.clone())), ("state", Some(json!("open"))), ("previous_state", previous), ("success", Some(json!(true))), ("intent", opened_intent.cloned())];
     if opened_intent.and_then(Value::as_str) == Some("lockpick") {
@@ -549,7 +549,7 @@ fn container_opened(r: &mut Resolve<'_>, state: &Value, object: &SceneObject, op
 }
 
 /// Молитва у святыни (`intent === 'pray'`).
-fn pray(r: &mut Resolve<'_>, state: &Value, object: &SceneObject) -> Step {
+fn pray(r: &mut Resolve<'_>, state: &Value, object: &SceneObject) -> Flow {
     let actor_value = r.command.get("actor_id").cloned().unwrap_or(Value::Null);
     if let Some(refusal) = shrine_prayer_refusal_for(state, &actor_value, &object.prop_id)? {
         return Err(rule(refusal.message, refusal.code));

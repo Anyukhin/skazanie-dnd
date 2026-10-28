@@ -4,10 +4,10 @@
 //! файлах.
 
 use super::*;
-use crate::pause::Step;
+use crate::pause::Flow;
 
 /// Ветка по типу команды.
-pub(super) fn dispatch(r: &mut Resolve<'_>) -> Step {
+pub(super) fn dispatch(r: &mut Resolve<'_>) -> Flow {
     let command_type = sk_core::js::s(r.command.get("command_type"));
     match command_type.as_str() {
         "DeclareAction" => basic::declare_action(r),

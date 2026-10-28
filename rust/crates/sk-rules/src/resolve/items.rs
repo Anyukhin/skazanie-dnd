@@ -13,7 +13,7 @@ use crate::combat::weapons::{combat_item_for_command, item_instance_key, shillel
 use crate::command::rules::rule_ids;
 use crate::core::{actor_max_hp, assert_mechanics_supported, command_with_rules, event_from, inventory_item, item_granted_event_from, spread_value, unique_strings};
 use crate::npc_item_events::{npc_item_use_events, spilled_zone_events, thrown_flask_events, FlaskItem};
-use crate::pause::{rule, Fault, Halt, Step};
+use crate::pause::{rule, Fault, Interrupt, Flow};
 use crate::turn_economy::ACTION_ECONOMY_EVENT_VERSION;
 
 fn at<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
@@ -40,7 +40,7 @@ fn string_or(value: Option<&Value>, fallback: &str) -> String {
     }
 }
 
-fn lifecycle_halt(error: ItemLifecycleError) -> Halt {
+fn lifecycle_halt(error: ItemLifecycleError) -> Interrupt {
     match error {
         ItemLifecycleError::Validation { message, code } => rule(message, &code),
         ItemLifecycleError::Type(message) => Fault::type_error(message).into(),
@@ -63,7 +63,7 @@ fn visibility_or(command: &Value, fallback: &str) -> Value {
 }
 
 /// `GrantItem` (22777–22782).
-pub fn grant_item(r: &mut Resolve<'_>) -> Step {
+pub fn grant_item(r: &mut Resolve<'_>) -> Flow {
     let mut item = match r.command.get("item") {
         None | Some(Value::Null) => js::obj(),
         Some(item) => item.clone(),
@@ -83,7 +83,7 @@ pub fn grant_item(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `EquipItem`, `TransferItem`, `AttuneItem`, `ActivateItem` (22919–22953).
-pub fn item_lifecycle(r: &mut Resolve<'_>) -> Step {
+pub fn item_lifecycle(r: &mut Resolve<'_>) -> Flow {
     for item_event in item_lifecycle_events(&r.command).map_err(lifecycle_halt)? {
         let event_type = js::s(item_event.get("event_type"));
         let resolved = event_from(&r.command, &event_type, item_event.get("payload").cloned(), item_event.get("target_ids"));
@@ -135,7 +135,7 @@ fn timed_condition(condition: &str, rounds: i64, command: &Value, item: &Value, 
 }
 
 /// `UseItem` (22954–23149).
-pub fn use_item(r: &mut Resolve<'_>) -> Step {
+pub fn use_item(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     if js::truthy(command.get("npc_item")) {

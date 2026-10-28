@@ -14,7 +14,7 @@ use super::super::Resolve;
 use crate::checks::saves::saving_throw_succeeded;
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, command_with, command_with_rules, condition_ids_for, event_from, spread_value};
-use crate::pause::Step;
+use crate::pause::Flow;
 use crate::replay::apply_game_event;
 use crate::tactical_geometry::npc_positioning::NpcTargetGeometry;
 
@@ -51,7 +51,7 @@ fn failure_duration(spell: &Value, rounds: Option<String>) -> String {
 }
 
 /// Спасбросок и ослабление (17740–18221).
-pub(super) fn saving_throw_spell(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
+pub(super) fn saving_throw_spell(r: &mut Resolve<'_>, cast: &mut Cast) -> Flow {
     let state = r.state.clone();
     let spell = cast.spell.clone();
     let command = cast.command.clone();
@@ -404,7 +404,7 @@ pub(super) fn saving_throw_spell(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
 }
 
 /// Состояние провалившему спасбросок (17954–18053).
-fn apply_failed_condition(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target_id: &str, condition: &Value, save_ability: &str) -> Step {
+fn apply_failed_condition(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target_id: &str, condition: &Value, save_ability: &str) -> Flow {
     let spell = &cast.spell;
     let command = &cast.command;
     let condition_text = js::string(Some(condition));
@@ -552,7 +552,7 @@ fn apply_failed_condition(r: &mut Resolve<'_>, cast: &Cast, state: &Value, targe
 
 /// «Диссонирующий шёпот»: цель тратит реакцию и уходит от заклинателя
 /// (18103–18135).
-fn reaction_move_away(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target: &Value, target_id: &str) -> Step {
+fn reaction_move_away(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target: &Value, target_id: &str) -> Flow {
     let command = &cast.command;
     let actor_id = cast.actor_id.as_str();
     let mut movement_state = fold(state, &r.events)?;
@@ -595,14 +595,14 @@ fn reaction_move_away(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target: &
     move_command.insert("server_authoritative".into(), Value::Bool(true));
     let move_command = command_with_rules(&Value::Object(move_command), &[rule_ids::REACTION]);
     let context = r.context.with("isAdmin", Value::Bool(true)).with("serverAuthoritativeCombat", Value::Bool(true)).with("spellMovement", Value::Bool(true));
-    let movement = crate::resolve::api::resolve_command(&move_command, &movement_state, &mut r.dice, &context, &mut *r.uuid)?;
+    let movement = crate::resolve::api::resolve_command_inner(&move_command, &movement_state, &mut r.dice, &context, &mut *r.uuid)?;
     r.events.extend(movement.events);
     r.rolls.extend(movement.rolls);
     Ok(())
 }
 
 /// Спасброски и урон мирных NPC сцены от заклинания со спасброском (18137–18221).
-fn npc_saving_throws(r: &mut Resolve<'_>, cast: &Cast, shared_roll: Option<&Value>, bonus_roll: Option<&Value>, bonus_type: &str, save_ability: &str) -> Step {
+fn npc_saving_throws(r: &mut Resolve<'_>, cast: &Cast, shared_roll: Option<&Value>, bonus_roll: Option<&Value>, bonus_type: &str, save_ability: &str) -> Flow {
     let spell = &cast.spell;
     let command = &cast.command;
     let spell_id = cast.spell_id();
@@ -705,7 +705,7 @@ fn npc_saving_throws(r: &mut Resolve<'_>, cast: &Cast, shared_roll: Option<&Valu
 }
 
 /// Урон без спасброска (18222–18248).
-pub(super) fn damage_spell(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
+pub(super) fn damage_spell(r: &mut Resolve<'_>, cast: &mut Cast) -> Flow {
     let state = r.state.clone();
     let spell = cast.spell.clone();
     let command = cast.command.clone();

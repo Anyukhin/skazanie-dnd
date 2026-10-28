@@ -25,7 +25,7 @@ use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, coalesce, command_with_rules, condition_ids_for, event_from, monster_trait_for, readied_option_for, spread_value};
 use crate::death::zero_hit_point_damage_consequences;
 use crate::geometry::footprint::{actor_footprint_fits, FitOptions};
-use crate::pause::{pending_execution_for, rule, Fault, Halt, Step};
+use crate::pause::{pending_execution_for, rule, Fault, Interrupt, Flow};
 use crate::reactions::{opportunity_attackers, opportunity_blocking_conditions};
 use crate::resolve::world_time::TimeAdvanceOptions;
 use crate::speed::{effective_speed_feet, movement_bonus_feet};
@@ -83,7 +83,7 @@ impl Route {
 }
 
 /// `MoveActor` (18833–19127).
-pub fn move_actor(r: &mut Resolve<'_>) -> Step {
+pub fn move_actor(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     let actor_id = js::s(command.get("actor_id"));
@@ -298,9 +298,9 @@ pub fn move_actor(r: &mut Resolve<'_>) -> Step {
             context.set("isAdmin", Value::Bool(true));
             context.set("reactionResolution", Value::Bool(true));
             context.set("serverAuthoritativeCombat", Value::Bool(true));
-            let result = match api::resolve_command(&reaction_command, &reaction_state, &mut r.dice, &context, &mut *r.uuid) {
+            let result = match api::resolve_command_inner(&reaction_command, &reaction_state, &mut r.dice, &context, &mut *r.uuid) {
                 Ok(result) => result,
-                Err(Halt::Pause(mut pause)) => {
+                Err(Interrupt::Pause(mut pause)) => {
                     // Удар реакцией прерывает перемещение, но не заменяет его:
                     // продолжение повторит путь с сохранёнными бросками.
                     pause.command = command.clone();
@@ -310,7 +310,7 @@ pub fn move_actor(r: &mut Resolve<'_>) -> Step {
                     payload.insert("pending_command".into(), command.clone());
                     payload.insert("pending_dice_transcript".into(), transcript);
                     payload.insert("pending_execution".into(), execution);
-                    return Err(Halt::Pause(pause));
+                    return Err(Interrupt::Pause(pause));
                 }
                 Err(other) => return Err(other),
             };
@@ -355,7 +355,7 @@ pub fn move_actor(r: &mut Resolve<'_>) -> Step {
     // переходом сцены и открытой дверью, и отряд запирался в стартовом пятне.
     if !is_enemy {
         let mut scouting = r.state.clone();
-        let scouted_map = crate::scene_map_sync::ensure_scene_tactical_map(&mut scouting).map_err(|error| Halt::Fault(Fault::new(error.name, error.message).with_code(error.code)))?;
+        let scouted_map = crate::scene_map_sync::ensure_scene_tactical_map(&mut scouting).map_err(|error| Interrupt::Fault(Fault::new(error.name, error.message).with_code(error.code)))?;
         if scouting != r.state {
             r.state = scouting;
             r.projector = crate::replay::CommandProjector::new(&r.state);
@@ -458,7 +458,7 @@ fn condition_name(condition: &Value) -> String {
 }
 
 /// Герой (или призыв отряда), из чьей досягаемости уходит враг (19043–19062).
-fn opportunity_reactor(state: &Value, mover: Option<&Value>, from: &Value, route: &Route) -> Result<Option<String>, Halt> {
+fn opportunity_reactor(state: &Value, mover: Option<&Value>, from: &Value, route: &Route) -> Result<Option<String>, Interrupt> {
     let order = initiative_order(state);
     let economy = sk_core::game::combat(state).get("action_economy");
     let mut candidates: Vec<&Value> = state.get("players").and_then(Value::as_array).map(|players| players.iter().collect()).unwrap_or_default();

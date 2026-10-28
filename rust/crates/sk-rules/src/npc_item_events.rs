@@ -18,7 +18,7 @@ use crate::checks::saves::{is_saving_throw_proficient, saving_throw_succeeded};
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, actor_max_hp, command_with, command_with_rules, event_from, slice_utf16, spread_value, unique_strings};
 use crate::death::zero_hit_point_damage_consequences;
-use crate::pause::{rule, Halt};
+use crate::pause::{rule, Interrupt};
 use crate::resolve::kernel::undef;
 use crate::resolve::Resolve;
 
@@ -93,7 +93,7 @@ pub struct FlaskItem<'a> {
 
 /// `thrownFlaskEvents(state, command, { actor, item, use, … })` (8692–8791):
 /// метательная склянка — спасбросок Ловкости вместо броска атаки.
-pub fn thrown_flask_events(r: &mut Resolve<'_>, state: &Value, command: &Value, actor: Option<&Value>, flask: FlaskItem<'_>, profile: &Value) -> Result<Vec<Value>, Halt> {
+pub fn thrown_flask_events(r: &mut Resolve<'_>, state: &Value, command: &Value, actor: Option<&Value>, flask: FlaskItem<'_>, profile: &Value) -> Result<Vec<Value>, Interrupt> {
     let item = flask.item;
     let target_id = js::s(command.get("target_id"));
     let Some(target) = game::find_actor(state, &target_id).cloned() else {
@@ -197,7 +197,7 @@ pub fn thrown_flask_events(r: &mut Resolve<'_>, state: &Value, command: &Value, 
 
 /// `npcItemUseEvents(state, command, …)` (8815–8910): противник пускает в
 /// ход свою вещь — `NpcItemUsed`, действие вещи и `NpcEquipmentSpent`.
-pub fn npc_item_use_events(r: &mut Resolve<'_>, state: &Value, command: &Value) -> Result<Vec<Value>, Halt> {
+pub fn npc_item_use_events(r: &mut Resolve<'_>, state: &Value, command: &Value) -> Result<Vec<Value>, Interrupt> {
     let owner_id = js::string(command.get("actor_id"));
     let enemy = game::find_actor(state, &owner_id).cloned();
     let npc_item = command.get("npc_item").cloned().unwrap_or(Value::Null);
@@ -278,7 +278,7 @@ pub fn npc_item_use_events(r: &mut Resolve<'_>, state: &Value, command: &Value) 
 
 /// `spilledZoneEvents(state, command, { item, use })` (8923–8973):
 /// калтропы и лужа масла — обычный площадный эффект в клетке игрока.
-pub fn spilled_zone_events(state: &Value, command: &Value, item: &Value, profile: &Value) -> Result<Vec<Value>, Halt> {
+pub fn spilled_zone_events(state: &Value, command: &Value, item: &Value, profile: &Value) -> Result<Vec<Value>, Interrupt> {
     let spill = if command.get("use_mode").and_then(Value::as_str) == Some("spill") { profile.get("spill_mode") } else { Some(profile) };
     let Some(zone) = at(spill, "zone").filter(|zone| js::truthy(Some(zone))) else {
         return Err(rule("У предмета нет серверного профиля рассыпания", "ITEM_SPILL_NOT_AVAILABLE"));

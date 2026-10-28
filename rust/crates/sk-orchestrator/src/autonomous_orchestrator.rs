@@ -128,7 +128,6 @@ impl OrchestratorError {
             Self::Rule(error) => error.message.clone(),
             Self::Engine(Halt::Rule(error)) => error.message.clone(),
             Self::Engine(Halt::Fault(fault)) => fault.message.clone(),
-            Self::Engine(halt) => halt.to_string(),
             Self::Store(error) => error.message.clone(),
             Self::Error { message, .. } => message.clone(),
         }
@@ -140,7 +139,6 @@ impl OrchestratorError {
             Self::Rule(_) => "RulesValidationError".into(),
             Self::Engine(Halt::Rule(_)) => "RulesValidationError".into(),
             Self::Engine(Halt::Fault(fault)) => fault.name.clone(),
-            Self::Engine(_) => "CombatPause".into(),
             Self::Store(_) => "Error".into(),
             Self::Error { name, .. } => name.clone(),
         }

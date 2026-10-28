@@ -16,16 +16,16 @@ use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, command_with_rules, event_from, inventory_item, spread_value};
 use crate::lockpick::{lockpick_check_modifier, lockpick_notice_events, LockpickNotice};
 use crate::normalize::scene::DOOR_BARRICADE_EVENT_SCHEMA_VERSION;
-use crate::pause::{rule, Fault, Halt, Step};
+use crate::pause::{rule, Fault, Interrupt, Flow};
 use crate::tactical_geometry::{cells_visible_from, DOORWAY_SIGHT_CELLS};
 
 /// `TacticalMapError` JS — обычная ошибка с кодом.
-pub(crate) fn map_fault(error: TacticalMapError) -> Halt {
+pub(crate) fn map_fault(error: TacticalMapError) -> Interrupt {
     Fault::new(error.name, error.message).with_code(error.code).into()
 }
 
 /// `ensureSceneTacticalMap(state)`: пишет карту в состояние разбора, как JS.
-pub(crate) fn ensure_map(r: &mut Resolve<'_>) -> Result<Option<TacticalMap>, Halt> {
+pub(crate) fn ensure_map(r: &mut Resolve<'_>) -> Result<Option<TacticalMap>, Interrupt> {
     crate::scene_map_sync::ensure_scene_tactical_map(&mut r.state).map_err(map_fault)
 }
 
@@ -41,7 +41,7 @@ pub(crate) fn action_spent(state: &Value, actor_id: &str) -> bool {
     game::combat_active(state) && js::truthy(economy) && economy.and_then(|economy| economy.get("action")) == Some(&Value::Bool(false))
 }
 
-fn action_spent_error() -> Halt {
+fn action_spent_error() -> Interrupt {
     rule("Действие на этом ходу уже потрачено", "ACTION_SPENT")
 }
 
@@ -76,7 +76,7 @@ fn join_tags(item: &Value) -> String {
 }
 
 /// Проверка Силы (Атлетика) у двери (`rollAbilityCheckWithConditions`).
-fn athletics_check(r: &mut Resolve<'_>, difficulty: i64, purpose: &str) -> Result<Value, Halt> {
+fn athletics_check(r: &mut Resolve<'_>, difficulty: i64, purpose: &str) -> Result<Value, Interrupt> {
     let actor_id = js::s(r.command.get("actor_id"));
     let actor = game::find_actor(&r.state, &actor_id);
     let modifier = ability_modifier(actor.and_then(|actor| actor.get("abilities")).and_then(|abilities| abilities.get("str"))) + skill_proficiency_bonus(actor, "athletics", Some(&r.state));
@@ -102,7 +102,7 @@ fn check_resolved(r: &mut Resolve<'_>, ability: &str, skill: &str, check: &Value
 }
 
 /// `BarricadeDoor` (19142–19162).
-pub fn barricade_door(r: &mut Resolve<'_>) -> Step {
+pub fn barricade_door(r: &mut Resolve<'_>) -> Flow {
     let Some(map) = ensure_map(r)? else {
         return Err(rule("Для баррикады нужна тактическая карта", "TACTICAL_MAP_REQUIRED"));
     };
@@ -166,7 +166,7 @@ pub fn barricade_door(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `ClearDoorBarricade` (19163–19186).
-pub fn clear_door_barricade(r: &mut Resolve<'_>) -> Step {
+pub fn clear_door_barricade(r: &mut Resolve<'_>) -> Flow {
     let map = ensure_map(r)?;
     let Some((map, door)) = map.as_ref().and_then(|map| door_by_id(map, &js::s(r.command.get("door_id"))).map(|door| (map, door))) else {
         return Err(rule("Такой двери нет на карте", "DOOR_NOT_FOUND"));
@@ -230,7 +230,7 @@ fn reveal_beyond_door(r: &mut Resolve<'_>, map: &TacticalMap, at: sk_core::Point
 }
 
 /// `OperateDoor` (19187–19279).
-pub fn operate_door(r: &mut Resolve<'_>) -> Step {
+pub fn operate_door(r: &mut Resolve<'_>) -> Flow {
     let Some(map) = ensure_map(r)? else {
         return Err(rule("Для двери нужна тактическая карта", "TACTICAL_MAP_REQUIRED"));
     };
@@ -345,7 +345,7 @@ pub fn operate_door(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `diceService.rollCheck(options)` (поля `undefined` в кости не идут).
-pub(crate) fn roll_check(r: &mut Resolve<'_>, options: &Value) -> Result<Value, Halt> {
+pub(crate) fn roll_check(r: &mut Resolve<'_>, options: &Value) -> Result<Value, Interrupt> {
     use crate::dice_record::RulesDice;
-    r.dice.roll_check(&defined(options))
+    Ok(r.dice.roll_check(&defined(options))?)
 }

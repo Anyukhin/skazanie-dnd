@@ -245,7 +245,6 @@ pub fn assemble_encounter_for_command(state: &Value, command: &Value) -> Result<
     assemble_encounter_from_state(state, command).map_err(|halt| match halt {
         Halt::Rule(error) => error,
         Halt::Fault(fault) => RuleError::new(fault.code.unwrap_or_else(|| "ENCOUNTER_ASSEMBLY_REJECTED".into()), fault.message),
-        Halt::Pause(pause) => RuleError::new("ENCOUNTER_ASSEMBLY_REJECTED", pause.message()),
     })
 }
 

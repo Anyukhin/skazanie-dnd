@@ -12,11 +12,11 @@ use super::super::Resolve;
 use super::{elapsed_minutes, insert_present, string_or, with_visibility};
 use crate::command::rules::rule_ids;
 use crate::core::{command_with_rules, event_from, player_actor, slice_utf16};
-use crate::pause::{Fault, Step};
+use crate::pause::{Fault, Flow};
 use crate::preview_checks::catalog_item_owned;
 
 /// `FeedBeast` (21383–21422).
-pub fn feed_beast(r: &mut Resolve<'_>) -> Step {
+pub fn feed_beast(r: &mut Resolve<'_>) -> Flow {
     let actor = player_actor(&r.state, r.command.get("actor_id")).cloned();
     let Some(food) = beast_food_item_for(actor.as_ref(), Some(&catalog_item_owned)) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'id')").into());
@@ -51,7 +51,7 @@ pub fn feed_beast(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `ScareWithBeast` (21423–21440).
-pub fn scare_with_beast(r: &mut Resolve<'_>) -> Step {
+pub fn scare_with_beast(r: &mut Resolve<'_>) -> Flow {
     let Some(registered) = beast_for(&r.state, r.command.get("beast_id")) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'id')").into());
     };

@@ -12,7 +12,7 @@ use crate::checks::saves::{saved_damage_amount, saving_throw_succeeded};
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, command_with, command_with_rules, event_from, npc_world_events_from, spread_value, unique_strings};
 use crate::death::zero_hit_point_damage_consequences;
-use crate::pause::{Fault, Step};
+use crate::pause::{Fault, Flow};
 use crate::replay::apply_game_event;
 
 fn at<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
@@ -40,7 +40,7 @@ fn with_visibility(command: &Value, visibility: Option<&Value>) -> Value {
 }
 
 /// `StageScenarioStranger` (20952–21007).
-pub fn stage_scenario_stranger(r: &mut Resolve<'_>) -> Step {
+pub fn stage_scenario_stranger(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     let npc = command.get("npc");

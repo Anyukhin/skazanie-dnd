@@ -9,14 +9,14 @@ use sk_director::loot_containers::loot_container_command_events;
 use super::super::Resolve;
 use super::with_field;
 use crate::core::{event_from, spread_value};
-use crate::pause::{Fault, Halt, Step};
+use crate::pause::{Fault, Interrupt, Flow};
 
 /// `LootContainer` (21656–21667): итог проверки, уже лежащий в команде, —
 /// в события.
-pub fn loot_container(r: &mut Resolve<'_>) -> Step {
+pub fn loot_container(r: &mut Resolve<'_>) -> Flow {
     let drafts = loot_container_command_events(&r.command).map_err(|error| {
         let fault = Fault::new(error.name, error.message);
-        Halt::Fault(match error.code {
+        Interrupt::Fault(match error.code {
             Some(code) => fault.with_code(code),
             None => fault,
         })

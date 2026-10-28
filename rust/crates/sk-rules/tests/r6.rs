@@ -19,7 +19,7 @@ use sk_rules::context::{sequence_uuids, Context};
 use sk_rules::dice_record::ServiceDice;
 use sk_rules::merchants as m;
 use sk_rules::normalize::normalize_campaign_state;
-use sk_rules::pause::Halt;
+use sk_rules::pause::Interrupt;
 use sk_rules::validate::{Validation, BLOCKS};
 
 const FIXTURE: &[u8] = include_bytes!("../fixtures/r6.json.gz");
@@ -56,12 +56,12 @@ fn rule_outcome(result: Result<Value, RuleError>) -> Value {
     }
 }
 
-fn halt_outcome(result: Result<Value, Halt>) -> Value {
-    match result {
+fn halt_outcome<E: Into<Interrupt>>(result: Result<Value, E>) -> Value {
+    match result.map_err(Into::into) {
         Ok(value) => json!({ "ok": out(&value) }),
-        Err(Halt::Rule(error)) => json!({ "err": [error.code, error.message] }),
-        Err(Halt::Fault(fault)) => json!({ "fault": fault.name, "code": fault.code }),
-        Err(Halt::Pause(pause)) => json!({ "fault": pause.kind.name(), "code": null }),
+        Err(Interrupt::Rule(error)) => json!({ "err": [error.code, error.message] }),
+        Err(Interrupt::Fault(fault)) => json!({ "fault": fault.name, "code": fault.code }),
+        Err(Interrupt::Pause(pause)) => json!({ "fault": pause.kind.name(), "code": null }),
     }
 }
 
@@ -226,7 +226,7 @@ fn resolve_branches_match_js() {
         let mut uuid = sequence_uuids("uuid");
         let result = sk_rules::resolve::vitals::resolve_branch_without_tail(case["command"].clone(), &raw, &mut dice, &context, &mut uuid);
         let kind = js::s(case["command"].get("command_type"));
-        if matches!(&result, Err(halt) if halt.is_unported()) || (kind == "ImportLocationMap" && matches!(&result, Err(Halt::Fault(fault)) if fault.name == "TaleSpireImporterMissing")) {
+        if matches!(&result, Err(halt) if halt.is_unported()) || (kind == "ImportLocationMap" && matches!(&result, Err(Interrupt::Fault(fault)) if fault.name == "TaleSpireImporterMissing")) {
             waiting += 1;
             continue;
         }

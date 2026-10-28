@@ -7,6 +7,13 @@
 //! и событие окна с `pending_execution ??= pendingExecutionFor(context)`, во
 //! вложенном разборе пауза летит дальше (см. риск §4 п.2 плана).
 //!
+//! Граница API (урок 5): публичные [`resolve_command`],
+//! [`resolve_command_with_pauses`], [`resolve_commands`] и [`RulesEngine`]
+//! отдают [`Outcome`] (план — [`ResolvedPlan::pending`]) и [`Halt`] без паузы.
+//! Внутри движка вложенный разбор идёт через [`resolve_command_inner`] и
+//! [`resolve_with_pauses_inner`] с [`Interrupt`]: так пауза вложенной команды
+//! долетает до своего места ловли.
+//!
 //! Запись корпуса (`recordCorpusCommand`, `__corpus_recording`) не переносится.
 //!
 //! Сверка с корпусом, пока не все блоки `validateCommand` перенесены:
@@ -24,7 +31,8 @@ use super::{opening_strike, Resolve, Resolved};
 use crate::context::{Context, Uuid};
 use crate::core::{command_with, target_for};
 use crate::dice_record::{Recording, RulesDice};
-use crate::pause::{pending_execution_for, resistance_choices_from_context, Halt};
+use crate::outcome::{prompt_after, Outcome, Prompt};
+use crate::pause::{pending_execution_for, resistance_choices_from_context, Fault, Halt, Interrupt};
 use crate::reactions::REACTION_PREFERENCE_CHAIN_LIMIT;
 use crate::replay::{apply_game_event, CommandProjector};
 
@@ -65,7 +73,7 @@ pub fn validate(input: &Value, raw_state: &Value, context: &Context, uuid: Uuid<
 }
 
 /// `resolveCommandInternal` для обёрток: обычный или с мягкой проверкой.
-pub(crate) fn resolve_internal(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Halt> {
+pub(crate) fn resolve_internal(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
     if !LENIENT.with(Cell::get) {
         return super::resolve_command_internal(input, raw_state, dice, context, uuid);
     }
@@ -110,26 +118,50 @@ pub(crate) fn resolve_internal(input: &Value, raw_state: &Value, dice: &mut dyn 
     super::post::finish(r)
 }
 
-/// `resolveCommand(input, rawState, { diceService, context })`.
-pub fn resolve_command(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Halt> {
-    let result = resolve_command_with_pauses(input, raw_state, dice, context, &mut *uuid)?;
+/// `resolveCommand(input, rawState, { diceService, context })` команды
+/// верхнего уровня: исполнена или ждёт решения игрока.
+pub fn resolve_command(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Outcome, Halt> {
+    let resolved = top_level(resolve_command_inner(input, raw_state, dice, context, uuid))?;
+    Ok(Outcome::with_state_before(resolved, raw_state))
+}
+
+/// `resolveCommandWithPauses(input, rawState, { diceService, context })`
+/// команды верхнего уровня (без режимов реакций).
+pub fn resolve_command_with_pauses(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Outcome, Halt> {
+    let resolved = top_level(resolve_with_pauses_inner(input, raw_state, dice, context, uuid))?;
+    Ok(Outcome::with_state_before(resolved, raw_state))
+}
+
+/// Граница API: на верхнем уровне пауза уже стала событием окна, наружу
+/// уходят только отказ и сбой. Пауза здесь — вложенный контекст
+/// (`__resolve_depth`) у публичного входа: это ошибка вызывающего.
+fn top_level<T>(result: Result<T, Interrupt>) -> Result<T, Halt> {
+    result.map_err(|interrupt| match interrupt.into_halt() {
+        Ok(halt) => halt,
+        Err(pause) => Halt::Fault(Fault::new("Error", format!("Пауза вложенного разбора на входе движка: {}", pause.message()))),
+    })
+}
+
+/// `resolveCommand` внутри движка: пауза вложенного разбора летит дальше.
+pub(crate) fn resolve_command_inner(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
+    let result = resolve_with_pauses_inner(input, raw_state, dice, context, &mut *uuid)?;
     if context.resolve_depth() != 0 {
         return Ok(result);
     }
     resolve_reaction_preferences(result, raw_state, input, dice, uuid)
 }
 
-/// `resolveCommandWithPauses(input, rawState, { diceService, context })`.
-pub fn resolve_command_with_pauses(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Halt> {
+/// `resolveCommandWithPauses` внутри движка.
+pub(crate) fn resolve_with_pauses_inner(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
     match resolve_and_close(input, raw_state, dice, context, uuid) {
         Ok(resolved) => Ok(resolved),
-        Err(Halt::Pause(mut pause)) => {
+        Err(Interrupt::Pause(mut pause)) => {
             let payload = pause.window_payload_mut();
             if !js::present(payload.get("pending_execution")) {
                 payload.insert("pending_execution".into(), pending_execution_for(context));
             }
             if context.resolve_depth() != 0 {
-                return Err(Halt::Pause(pause));
+                return Err(Interrupt::Pause(pause));
             }
             let mut events = std::mem::take(&mut pause.prefix_events);
             events.push(pause.window_event.clone());
@@ -142,7 +174,7 @@ pub fn resolve_command_with_pauses(input: &Value, raw_state: &Value, dice: &mut 
 
 /// Тело `try` в `resolveCommandWithPauses`: удар-открытие или разбор, затем
 /// закрытие «Обессиливания», отработавших усилений и метка раунда.
-fn resolve_and_close(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Halt> {
+fn resolve_and_close(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
     let opening = opening_strike::opening_strike_for(input, raw_state, context)?;
     let resolved = match opening {
         Some(opening) => opening_strike::resolve_opening_strike(input, raw_state, &opening, dice, context, uuid)?,
@@ -161,7 +193,7 @@ fn event_type(event: &Value) -> &str {
 /// `resolveReactionPreferences(result, rawState, input, diceService)`: режимы
 /// реакций «сразу» и «никогда» отвечают на окно в той же команде обычным
 /// `UseCombatAction`. Отказ движка оставляет окно открытым.
-pub fn resolve_reaction_preferences(result: Resolved, raw_state: &Value, input: &Value, dice: &mut dyn RulesDice, uuid: Uuid<'_>) -> Result<Resolved, Halt> {
+fn resolve_reaction_preferences(result: Resolved, raw_state: &Value, input: &Value, dice: &mut dyn RulesDice, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
     let preference_events = |events: &[Value]| events.iter().any(|event| event_type(event) == "ReactionPreferenceChanged");
     let has_preferences = raw_state.get("mechanics").and_then(|mechanics| mechanics.get("reaction_preferences")).and_then(Value::as_object).is_some_and(|map| !map.is_empty());
     if !has_preferences && !preference_events(&result.events) {
@@ -208,7 +240,7 @@ pub fn resolve_reaction_preferences(result: Resolved, raw_state: &Value, input: 
         follow_up.insert("server_authoritative".into(), Value::Bool(true));
         follow_up.insert("expected_state_version".into(), after.get("state_version").cloned().unwrap_or(Value::Null));
         let context = Context::from_json(&json!({ "isAdmin": true, "serverAuthoritativeCombat": true }));
-        let answer = match resolve_command_with_pauses(&Value::Object(follow_up), &after, dice, &context, &mut *uuid) {
+        let answer = match resolve_with_pauses_inner(&Value::Object(follow_up), &after, dice, &context, &mut *uuid) {
             Ok(answer) => answer,
             // Заглушка ещё не перенесённой ветки — не отказ движка: пусть видно.
             Err(halt) if halt.is_rule() && !halt.is_unported() => return Ok(combined),
@@ -235,18 +267,25 @@ pub fn resolve_reaction_preferences(result: Resolved, raw_state: &Value, input: 
     Ok(combined)
 }
 
-/// Итог плана: `{ commands, events, rolls, state }`.
+/// Итог плана: `{ commands, events, rolls, state }` и ожидание, на котором
+/// план встал.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedPlan {
     pub commands: Vec<Value>,
     pub events: Vec<Value>,
     pub rolls: Vec<Value>,
     pub state: Value,
+    /// Окно, которое план открыл и оставил открытым (в JSON плана не входит).
+    pub pending: Option<Prompt>,
 }
 
 /// `resolveCommands(commands, initialState, options)`: команды плана одна за
 /// другой над состоянием после предыдущих; план встаёт на новом окне реакции.
 pub fn resolve_commands(commands: &[Value], initial_state: &Value, dice: &mut dyn RulesDice, context: &Context, stop_attack_after_movement: bool, uuid: Uuid<'_>) -> Result<ResolvedPlan, Halt> {
+    top_level(resolve_plan_inner(commands, initial_state, dice, context, stop_attack_after_movement, uuid))
+}
+
+fn resolve_plan_inner(commands: &[Value], initial_state: &Value, dice: &mut dyn RulesDice, context: &Context, stop_attack_after_movement: bool, uuid: Uuid<'_>) -> Result<ResolvedPlan, Interrupt> {
     let mut state = crate::normalize::normalize_campaign_state(initial_state)?;
     let mut all_events: Vec<Value> = Vec::new();
     let mut all_rolls: Vec<Value> = Vec::new();
@@ -268,11 +307,11 @@ pub fn resolve_commands(commands: &[Value], initial_state: &Value, dice: &mut dy
             match validate(&input, &state, context, &mut *uuid) {
                 Ok(_) => {}
                 Err(halt) if halt.is_rule() => break,
-                Err(halt) => return Err(halt),
+                Err(halt) => return Err(halt.into()),
             }
         }
         let window_before = js::s(sk_core::game::combat(&state).get("reaction_window").and_then(|window| window.get("id")));
-        let result = resolve_command(&input, &state, dice, context, &mut *uuid)?;
+        let result = resolve_command_inner(&input, &state, dice, context, &mut *uuid)?;
         validated.push(result.command.clone());
         for event in &result.events {
             state = apply_game_event(&state, event)?;
@@ -308,7 +347,8 @@ pub fn resolve_commands(commands: &[Value], initial_state: &Value, dice: &mut dy
             }
         }
     }
-    Ok(ResolvedPlan { commands: validated, events: all_events, rolls: all_rolls, state })
+    let pending = prompt_after(&all_events, &state);
+    Ok(ResolvedPlan { commands: validated, events: all_events, rolls: all_rolls, state, pending })
 }
 
 /// `RulesEngine`: движок с внедрёнными костями и источником UUID.
@@ -329,7 +369,7 @@ impl RulesEngine {
     }
 
     /// `resolve(command, state, context)`.
-    pub fn resolve(&mut self, command: &Value, state: &Value, context: &Context) -> Result<Resolved, Halt> {
+    pub fn resolve(&mut self, command: &Value, state: &Value, context: &Context) -> Result<Outcome, Halt> {
         resolve_command(command, state, &mut *self.dice, context, &mut *self.uuid)
     }
 

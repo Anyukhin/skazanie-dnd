@@ -16,7 +16,7 @@ use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, command_with_rules, event_from, npc_world_events_from, slice_utf16, spread_value, unique_string_list};
 use crate::normalize::summons::{party_summons_for_expiry, summon_expiry_events, summon_ids_expired_at};
 use crate::npc_item_events::{party_member_ids, sorted_initiative};
-use crate::pause::{rule, Fault, Halt, Step};
+use crate::pause::{rule, Fault, Interrupt, Flow};
 use crate::targets::is_dead_hero;
 use crate::turn_economy::ACTION_ECONOMY_EVENT_VERSION;
 use crate::world_clock::world_time_seconds;
@@ -56,7 +56,7 @@ fn owner_of(actor: &Value) -> String {
 }
 
 /// `events.reduce(applyGameEvent, state)`.
-fn apply_all(state: &Value, events: &[Value]) -> Result<Value, Halt> {
+fn apply_all(state: &Value, events: &[Value]) -> Result<Value, Interrupt> {
     let mut current = state.clone();
     for event in events {
         current = crate::replay::apply_game_event(&current, event)?;
@@ -66,7 +66,7 @@ fn apply_all(state: &Value, events: &[Value]) -> Result<Value, Halt> {
 
 /// `AttackNpc` (19805–19842): встреча из профиля NPC и `StartCombat` от
 /// имени героя — вложенными командами того же разбора.
-pub fn attack_npc(r: &mut Resolve<'_>) -> Step {
+pub fn attack_npc(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command_id = js::string(r.command.get("command_id"));
     let mut encounter_command = spread_value(Some(&r.command));
@@ -78,7 +78,7 @@ pub fn attack_npc(r: &mut Resolve<'_>) -> Step {
     encounter_command.insert("seed".into(), json!(""));
     let encounter_command = with_optional(&Value::Object(encounter_command), "expected_state_version", state.get("state_version"));
     let encounter_context = r.context.with("allowPlayerNpcEncounter", Value::Bool(true));
-    let encounter = super::api::resolve_command(&encounter_command, &state, &mut r.dice, &encounter_context, &mut *r.uuid)?;
+    let encounter = super::api::resolve_command_inner(&encounter_command, &state, &mut r.dice, &encounter_context, &mut *r.uuid)?;
     r.events.extend(encounter.events.iter().cloned());
     r.rolls.extend(encounter.rolls);
     let encounter_state = apply_all(&state, &encounter.events)?;
@@ -90,14 +90,14 @@ pub fn attack_npc(r: &mut Resolve<'_>) -> Step {
     start_command.insert("server_authoritative".into(), json!(true));
     let start_command = with_optional(&Value::Object(start_command), "expected_state_version", encounter_state.get("state_version"));
     let start_context = r.context.with("serverAuthoritativeCombat", Value::Bool(true));
-    let started = super::api::resolve_command(&start_command, &encounter_state, &mut r.dice, &start_context, &mut *r.uuid)?;
+    let started = super::api::resolve_command_inner(&start_command, &encounter_state, &mut r.dice, &start_context, &mut *r.uuid)?;
     r.events.extend(started.events);
     r.rolls.extend(started.rolls);
     Ok(())
 }
 
 /// `CreateEncounter` (19843–19865): собранная проверкой встреча — в журнал.
-pub fn create_encounter(r: &mut Resolve<'_>) -> Step {
+pub fn create_encounter(r: &mut Resolve<'_>) -> Flow {
     let source = r.command.get("encounter").cloned().unwrap_or(Value::Null);
     let proposal_id = source.get("proposal_id");
     let encounter_id = text::replace_first(sk_core::re!(r"^encounter-proposal-", "u"), &js::string(proposal_id), "encounter-");
@@ -137,7 +137,7 @@ pub fn create_encounter(r: &mut Resolve<'_>) -> Step {
 }
 
 /// Запись инициативы героя или противника с броском d20.
-fn initiative_entry(r: &mut Resolve<'_>, state: &Value, id: &str) -> Result<Value, Halt> {
+fn initiative_entry(r: &mut Resolve<'_>, state: &Value, id: &str) -> Result<Value, Interrupt> {
     let Some(actor) = game::find_actor(state, id).cloned() else {
         return Err(rule(format!("Участник {id} не найден"), "TARGET_NOT_FOUND"));
     };
@@ -151,7 +151,7 @@ fn initiative_entry(r: &mut Resolve<'_>, state: &Value, id: &str) -> Result<Valu
         ability_modifier(dex) as f64
     };
     let options = sk_items_life::item_lifecycle::MechanicEffectOptions { selected_item_id: None, selected_counts_as_equipped: false };
-    let effects = sk_items_life::item_lifecycle::active_item_mechanic_effects(Some(&actor), &options).map_err(|error| Halt::from(Fault::type_error(error.message().to_string())))?;
+    let effects = sk_items_life::item_lifecycle::active_item_mechanic_effects(Some(&actor), &options).map_err(|error| Interrupt::from(Fault::type_error(error.message().to_string())))?;
     let item_sources: Vec<Value> = effects
         .iter()
         .filter(|effect| js::truthy(effect.get("initiative_advantage")))
@@ -195,7 +195,7 @@ fn initiative_entry(r: &mut Resolve<'_>, state: &Value, id: &str) -> Result<Valu
 }
 
 /// `StartCombat` (19866–19995).
-pub fn start_combat(r: &mut Resolve<'_>) -> Step {
+pub fn start_combat(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     let member_ids = party_member_ids(&state);
@@ -331,7 +331,7 @@ pub fn start_combat(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `EndCombat` (19996–20026).
-pub fn end_combat(r: &mut Resolve<'_>) -> Step {
+pub fn end_combat(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     let combat = game::combat(&state).clone();

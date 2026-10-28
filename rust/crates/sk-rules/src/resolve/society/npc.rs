@@ -11,7 +11,7 @@ use super::super::Resolve;
 use super::{insert_present, social_npc, string_or};
 use crate::command::rules::rule_ids;
 use crate::core::{command_with_rules, event_from, npc_world_events_from, slice_utf16};
-use crate::pause::Step;
+use crate::pause::Flow;
 
 /// `npc_name`, `npc_role` поста: `String(npc?.name ?? command.npc_id)`, `String(npc?.role ?? '')`.
 fn npc_labels(npc: Option<&Value>, npc_id: Option<&Value>) -> (String, String) {
@@ -28,7 +28,7 @@ fn insert_destination(payload: &mut Map<String, Value>, command: &Value) {
 }
 
 /// `PlaceNpc` (21008–21023).
-pub fn place_npc(r: &mut Resolve<'_>) -> Step {
+pub fn place_npc(r: &mut Resolve<'_>) -> Flow {
     let npc_id = r.command.get("npc_id").cloned();
     let npc = social_npc(&r.state, npc_id.as_ref());
     let (name, role) = npc_labels(npc.as_ref(), npc_id.as_ref());
@@ -48,7 +48,7 @@ pub fn place_npc(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `MoveNpc` (21024–21040).
-pub fn move_npc(r: &mut Resolve<'_>) -> Step {
+pub fn move_npc(r: &mut Resolve<'_>) -> Flow {
     let npc_id = r.command.get("npc_id").cloned();
     let npc = social_npc(&r.state, npc_id.as_ref());
     let before = npc_placement_for(&r.state, npc_id.as_ref().unwrap_or(&Value::Null), r.command.get("location_id"));
@@ -78,7 +78,7 @@ pub fn move_npc(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `HarmNpc` (21041–21051).
-pub fn harm_npc(r: &mut Resolve<'_>) -> Step {
+pub fn harm_npc(r: &mut Resolve<'_>) -> Flow {
     let field = |key: &str| r.command.get(key).cloned();
     let options = NpcHarmOptions {
         npc_id: field("npc_id"),

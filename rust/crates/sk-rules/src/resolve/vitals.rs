@@ -17,7 +17,7 @@ use crate::command::rules::rule_ids;
 use crate::context::{Context, Uuid};
 use crate::core::{ability_modifier, actor_max_hp, command_with_rules, event_from, hero_died_event_from, monster_trait_for, player_actor, resource_pool};
 use crate::dice_record::RulesDice;
-use crate::pause::{resistance_choices_from_context, rule, Halt, Step};
+use crate::pause::{resistance_choices_from_context, rule, Interrupt, Flow};
 use crate::replay::CommandProjector;
 use crate::targets::is_dead_hero;
 
@@ -35,7 +35,7 @@ fn actor_targets(command: &Value) -> Value {
 }
 
 /// `ReduceHitPointMaximum` (15189–15221).
-pub fn reduce_hit_point_maximum(r: &mut Resolve<'_>) -> Step {
+pub fn reduce_hit_point_maximum(r: &mut Resolve<'_>) -> Flow {
     let target_id = js::s(Some(&r.target_id));
     let target = sk_core::game::find_actor(&r.state, &target_id);
     let amount = js::safe_int(r.command.get("amount"), 0).max(0);
@@ -77,7 +77,7 @@ pub fn reduce_hit_point_maximum(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `ResolveHeroDeath` (15222–15237).
-pub fn resolve_hero_death(r: &mut Resolve<'_>) -> Step {
+pub fn resolve_hero_death(r: &mut Resolve<'_>) -> Flow {
     let actor_id = r.command.get("actor_id").cloned().unwrap_or(Value::Null);
     let Some(hero) = player_actor(&r.state, Some(&actor_id)) else {
         return Err(crate::pause::Fault::type_error("Cannot read properties of null (reading 'character')").into());
@@ -107,7 +107,7 @@ fn command_resource(r: &Resolve<'_>) -> (String, crate::core::Pool, i64) {
 }
 
 /// `SpendResource` (15244–15251).
-pub fn spend_resource(r: &mut Resolve<'_>) -> Step {
+pub fn spend_resource(r: &mut Resolve<'_>) -> Flow {
     let (resource, pool, amount) = command_resource(r);
     if pool.current < amount {
         return Err(rule("Недостаточно ресурса", "INSUFFICIENT_RESOURCE"));
@@ -118,7 +118,7 @@ pub fn spend_resource(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `RestoreResource` (15252–15259).
-pub fn restore_resource(r: &mut Resolve<'_>) -> Step {
+pub fn restore_resource(r: &mut Resolve<'_>) -> Flow {
     let (resource, pool, amount) = command_resource(r);
     let after = pool.max.min(pool.current + amount);
     let targets = actor_targets(&r.command);
@@ -127,7 +127,7 @@ pub fn restore_resource(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `IdentifyEnemy` (15263–15305).
-pub fn identify_enemy(r: &mut Resolve<'_>) -> Step {
+pub fn identify_enemy(r: &mut Resolve<'_>) -> Flow {
     let actor = sk_core::game::find_actor(&r.state, &js::s(r.command.get("actor_id")));
     let target = sk_core::game::find_actor(&r.state, &js::s(r.command.get("target_id")));
     let lore = enemy_lore_check_for(target);
@@ -188,7 +188,7 @@ pub fn identify_enemy(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `AddCondition` (15317–15335).
-pub fn add_condition(r: &mut Resolve<'_>) -> Step {
+pub fn add_condition(r: &mut Resolve<'_>) -> Flow {
     if r.command.get("monster_ability").and_then(Value::as_str) == Some("nimble-escape") {
         let actor_id = js::s(r.command.get("actor_id"));
         let actor = sk_core::game::find_actor(&r.state, &actor_id);
@@ -214,7 +214,7 @@ pub fn add_condition(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `RemoveCondition` (15363–15365).
-pub fn remove_condition(r: &mut Resolve<'_>) -> Step {
+pub fn remove_condition(r: &mut Resolve<'_>) -> Flow {
     let targets = json!([r.target_id.clone()]);
     r.events.push(event_from(&r.command, "ConditionRemoved", Some(json!({ "condition": js::string(r.command.get("condition")) })), Some(&targets)));
     Ok(())
@@ -224,7 +224,7 @@ pub fn remove_condition(r: &mut Resolve<'_>) -> Step {
 /// 23134): подготовка как в [`super::resolve_command_internal`] над уже
 /// проверенной командой, вероломство, ветка диспетчера. Только для сверки
 /// веток с корпусом JS, пока хвост (Р5) и проверка (все 68 блоков) не перенесены.
-pub fn resolve_branch_without_tail(command: Value, state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Halt> {
+pub fn resolve_branch_without_tail(command: Value, state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
     let depth = context.resolve_depth().max(0);
     let context = context.with("__resolve_depth", Value::from(depth + 1));
     let recording = crate::dice_record::Recording::new(dice);

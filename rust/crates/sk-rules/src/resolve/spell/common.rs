@@ -20,7 +20,7 @@ use sk_geometry::Point;
 use super::super::Resolve;
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, command_with_rules, condition_ids_for, dice_expression, event_from, slice_utf16, spread_value};
-use crate::pause::{rule, Halt, Step};
+use crate::pause::{rule, Interrupt, Flow};
 use crate::replay::apply_game_event;
 use crate::tactical_geometry::npc_positioning::NpcTarget;
 use crate::tactical_geometry::point_json;
@@ -91,7 +91,7 @@ pub(super) fn point_value(point: Option<Point>) -> Value {
 }
 
 /// `events.reduce(applyGameEvent, state)`.
-pub(super) fn fold(state: &Value, events: &[Value]) -> Result<Value, Halt> {
+pub(super) fn fold(state: &Value, events: &[Value]) -> Result<Value, Interrupt> {
     let mut current = state.clone();
     for event in events {
         current = apply_game_event(&current, event)?;
@@ -100,7 +100,7 @@ pub(super) fn fold(state: &Value, events: &[Value]) -> Result<Value, Halt> {
 }
 
 /// `events.slice(0, -1).reduce(applyGameEvent, state)`.
-pub(super) fn fold_but_last(state: &Value, events: &[Value]) -> Result<Value, Halt> {
+pub(super) fn fold_but_last(state: &Value, events: &[Value]) -> Result<Value, Interrupt> {
     fold(state, &events[..events.len().saturating_sub(1)])
 }
 
@@ -171,7 +171,7 @@ pub(super) fn level_of(spell: &Value) -> i64 {
 /// `diceService.roll(…)` с записью броска и событием `DieRolled`.
 impl Resolve<'_> {
     /// `diceService.roll(expression, purpose, command.actor_id, command.visibility ?? 'public')`.
-    pub(super) fn spell_roll(&mut self, expression: Value, purpose: &str) -> Result<Value, Halt> {
+    pub(super) fn spell_roll(&mut self, expression: Value, purpose: &str) -> Result<Value, Interrupt> {
         let actor = self.command.get("actor_id").cloned().unwrap_or(Value::Null);
         let visibility = self.visibility();
         self.roll_dice(expression, purpose, actor, visibility)
@@ -197,13 +197,13 @@ impl Resolve<'_> {
     }
 
     /// `rollSavingThrow(state, targetId, options)` для заклинания.
-    pub(super) fn spell_save(&mut self, state: &Value, target_id: &str, options: Value) -> Result<Value, Halt> {
+    pub(super) fn spell_save(&mut self, state: &Value, target_id: &str, options: Value) -> Result<Value, Interrupt> {
         self.roll_saving_throw(state, Some(&Value::String(target_id.into())), &options)
     }
 
     /// `areaEntryConsequences(events.reduce(applyGameEvent, state), command, id,
     /// from, to, { …, trigger: 'forced-entry' })`.
-    pub(super) fn forced_entry(&mut self, moved_id: &str, from: &Value, to: &Value) -> Step {
+    pub(super) fn forced_entry(&mut self, moved_id: &str, from: &Value, to: &Value) -> Flow {
         let state = fold(&self.state, &self.events)?;
         let consequences = self.area_entry_consequences(&state, moved_id, Some(from), Some(to), Some("forced-entry"))?;
         self.events.extend(consequences);
@@ -213,7 +213,7 @@ impl Resolve<'_> {
     /// Принудительное перемещение заклинанием: `ActorMoved` и вход в области.
     /// `extra` — поля события после `forced_movement` (`pushed`/`pulled`,
     /// `spell_id`, …), `movement_remaining` считается по `speed_state`.
-    pub(super) fn forced_spell_move(&mut self, moved_id: &str, from: Option<Point>, path: &[Point], distance: i64, remaining: i64, extra: Value) -> Step {
+    pub(super) fn forced_spell_move(&mut self, moved_id: &str, from: Option<Point>, path: &[Point], distance: i64, remaining: i64, extra: Value) -> Flow {
         let Some(last) = path.last().copied() else { return Ok(()) };
         let mut payload = Map::new();
         payload.insert("from".into(), point_value(from));
@@ -236,7 +236,7 @@ impl Resolve<'_> {
 // --- концентрация (16836–16844) ----------------------------------------------
 
 /// `StartConcentration` (16836–16838).
-pub fn start_concentration(r: &mut Resolve<'_>) -> Step {
+pub fn start_concentration(r: &mut Resolve<'_>) -> Flow {
     let command = &r.command;
     let effect_id = match command.get("effect_id").filter(|value| js::truthy(Some(value))).or_else(|| command.get("effectId").filter(|value| js::truthy(Some(value)))) {
         Some(value) => js::string(Some(value)),
@@ -249,7 +249,7 @@ pub fn start_concentration(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `EndConcentration` (16839–16844).
-pub fn end_concentration(r: &mut Resolve<'_>) -> Step {
+pub fn end_concentration(r: &mut Resolve<'_>) -> Flow {
     let command = &r.command;
     let mut payload = Map::new();
     let reason = command.get("reason").filter(|value| js::truthy(Some(value))).map(|value| js::string(Some(value))).unwrap_or_else(|| "voluntary".into());
@@ -267,7 +267,7 @@ pub fn end_concentration(r: &mut Resolve<'_>) -> Step {
 /// `npcInteractionTargetForViewer(state, id)` и `npcCombatActorFor(state, id)`.
 /// `None` — NPC не цель (пропустить). Вызывается только для id, у которых нет
 /// листа в бою.
-pub fn npc_spell_proxy_for(state: &Value, id: &str) -> Result<Option<Value>, Halt> {
+pub fn npc_spell_proxy_for(state: &Value, id: &str) -> Result<Option<Value>, Interrupt> {
     if crate::tactical_geometry::npc_positioning::npc_interaction_target_for_viewer(state, id).is_none() {
         return Ok(None);
     }
@@ -336,7 +336,7 @@ const METAMAGIC_CONDITIONS: [&str; 10] = [
 ];
 
 /// `CastSpell` (16845–18832).
-pub fn cast_spell(r: &mut Resolve<'_>) -> Step {
+pub fn cast_spell(r: &mut Resolve<'_>) -> Flow {
     let authoritative = js::truthy(r.command.get("server_authoritative")) || r.context.truthy("serverAuthoritativeCombat");
     if authoritative {
         return authoritative_cast(r);
@@ -370,7 +370,7 @@ pub fn cast_spell(r: &mut Resolve<'_>) -> Step {
 }
 
 /// Авторитетный путь `CastSpell` (16846–18821).
-fn authoritative_cast(r: &mut Resolve<'_>) -> Step {
+fn authoritative_cast(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let actor_id = js::s(r.command.get("actor_id"));
     let actor = sk_core::game::find_actor(&state, &actor_id).cloned();
@@ -687,7 +687,7 @@ fn authoritative_cast(r: &mut Resolve<'_>) -> Step {
 }
 
 /// Ветка по виду заклинания (17242–18778).
-fn dispatch_kind(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
+fn dispatch_kind(r: &mut Resolve<'_>, cast: &mut Cast) -> Flow {
     let spell = cast.spell.clone();
     let kind = template(field(&spell, "kind"));
     let id = field(&spell, "id").and_then(Value::as_str).unwrap_or("");
@@ -791,7 +791,7 @@ fn area_probe(spell: &Value, center: &Value, minimum_radius: i64) -> Value {
 }
 
 /// `SpellAreaCreated` длящейся области заклинания и гашение пламени (17064–17170).
-fn spell_area_created(r: &mut Resolve<'_>, state: &Value, cast: &Cast, center: &Value) -> Step {
+fn spell_area_created(r: &mut Resolve<'_>, state: &Value, cast: &Cast, center: &Value) -> Flow {
     let spell = &cast.spell;
     let command = &cast.command;
     let cae = field(spell, "createsAreaEffect").cloned().unwrap_or(Value::Null);
@@ -929,7 +929,7 @@ fn spell_area_created(r: &mut Resolve<'_>, state: &Value, cast: &Cast, center: &
 }
 
 /// Огонь выжигает паутину и поджигает масло (17175–17240).
-fn burn_flammable_areas(r: &mut Resolve<'_>, state: &Value, cast: &Cast, area_center: Option<&Value>) -> Step {
+fn burn_flammable_areas(r: &mut Resolve<'_>, state: &Value, cast: &Cast, area_center: Option<&Value>) -> Flow {
     let spell = &cast.spell;
     let command = &cast.command;
     let impact = if let Some(center) = area_center {

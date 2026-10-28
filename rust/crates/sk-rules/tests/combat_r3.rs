@@ -118,7 +118,6 @@ fn outcome(result: Result<Value, Halt>) -> Value {
         Ok(value) => json!({ "ok": out(&value) }),
         Err(Halt::Rule(error)) => json!({ "err": [error.code, error.message] }),
         Err(Halt::Fault(fault)) => json!({ "fault": fault.name }),
-        Err(Halt::Pause(pause)) => json!({ "fault": pause.kind.name() }),
     }
 }
 

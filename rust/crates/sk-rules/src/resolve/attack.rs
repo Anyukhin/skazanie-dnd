@@ -26,7 +26,7 @@ use crate::conditions::{bless_bonus_enabled, condition_numeric_bonus, condition_
 use crate::constants::AMMUNITION_SPENT_EVENT_SCHEMA_VERSION;
 use crate::core::{ability_modifier, coalesce, command_with, command_with_rules, condition_ids_for, event_from, incapacitating_condition_for, monster_trait_for, npc_world_events_from, slice_utf16, spread_value};
 use crate::dice_record::RulesDice;
-use crate::pause::{rule, resistance_choices_object, Fault, Halt, Pause, ProtectiveReactionArgs, Step};
+use crate::pause::{rule, resistance_choices_object, Fault, Interrupt, Pause, ProtectiveReactionArgs, Flow};
 use crate::preview_attack::{attack_swing_shape, condition_id_values, swing_condition_modifiers, SwingOptions};
 use crate::reactions::{
     absorb_elements_condition_events, absorb_elements_damage_payload, ally_attack_reaction_for, ally_attack_reaction_option, protective_attack_reaction_options, reaction_options_after_attack, shield_condition_event,
@@ -64,7 +64,7 @@ fn targets(id: &Value) -> Value {
     Value::Array(vec![id.clone()])
 }
 
-fn fault(message: &str) -> Halt {
+fn fault(message: &str) -> Interrupt {
     Fault::type_error(message).into()
 }
 
@@ -103,14 +103,14 @@ impl Resolve<'_> {
     }
 
     /// Пауза защитной реакции с выборами этой команды.
-    fn protective_pause(&self, target_id: &Value, reactor_id: Option<&Value>, trigger: &str, kind: &str, key: &str, options: Value, trigger_roll: Option<Value>, damage: Option<Value>) -> Halt {
+    fn protective_pause(&self, target_id: &Value, reactor_id: Option<&Value>, trigger: &str, kind: &str, key: &str, options: Value, trigger_roll: Option<Value>, damage: Option<Value>) -> Interrupt {
         let choices = from_entries(&self.protective_reaction_choices);
         let resistance = resistance_choices_object(&self.resistance_choices);
         let elemental = from_entries(&self.elemental_reaction_choices);
         let trigger = Value::String(trigger.into());
         let kind = Value::String(kind.into());
         let key = Value::String(key.into());
-        Halt::pause(Pause::protective_reaction(&ProtectiveReactionArgs {
+        Interrupt::pause(Pause::protective_reaction(&ProtectiveReactionArgs {
             command: &self.command,
             target_id,
             reactor_id,
@@ -130,7 +130,7 @@ impl Resolve<'_> {
 
     /// `diceService.roll(expression, purpose, command.actor_id, command.visibility ?? 'public')`
     /// со стенограммой, броском в `rolls` и событием `DieRolled`.
-    fn attack_roll(&mut self, expression: Value, purpose: &str, actor: &Value) -> Result<Value, Halt> {
+    fn attack_roll(&mut self, expression: Value, purpose: &str, actor: &Value) -> Result<Value, Interrupt> {
         let visibility = self.visibility();
         let roll = self.roll_dice(expression, purpose, actor.clone(), visibility)?;
         self.rolls.push(roll.clone());
@@ -139,7 +139,7 @@ impl Resolve<'_> {
 }
 
 /// `MakeAttack` (13879–15021).
-pub fn make_attack(r: &mut Resolve<'_>) -> Step {
+pub fn make_attack(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let actor_id = js::s(r.command.get("actor_id"));
     let actor_value = r.command.get("actor_id").cloned().unwrap_or(Value::Null);
@@ -772,7 +772,7 @@ pub fn make_attack(r: &mut Resolve<'_>) -> Step {
         let info = sk_director::loot_containers::ThrownWeaponInfo { command_id: command.get("command_id"), owner_id: command.get("actor_id"), item: selected_item.as_ref(), position: Some(&position) };
         let drop = sk_director::loot_containers::thrown_weapon_drop_draft(&state, info).map_err(|error| {
             let fault = Fault::new(error.name, error.message);
-            Halt::Fault(match error.code {
+            Interrupt::Fault(match error.code {
                 Some(code) => fault.with_code(code),
                 None => fault,
             })
@@ -1526,7 +1526,7 @@ struct NextWeaponHit<'a> {
 
 /// Заготовленный удар (14790–14925): «Палящая кара», «Гневная кара»,
 /// «Опутывающий удар», «Громовая кара», «Удар Зефира», «Молниевая стрела».
-fn next_weapon_hit(r: &mut Resolve<'_>, state: &Value, hit: &NextWeaponHit<'_>) -> Step {
+fn next_weapon_hit(r: &mut Resolve<'_>, state: &Value, hit: &NextWeaponHit<'_>) -> Flow {
     let NextWeaponHit { actor, target, actor_id, actor_value, target_id, target_value, condition, spell, next, landed, critical } = *hit;
     let command = r.command.clone();
     let effect_id = coalesce(&[condition.get("effect_id"), js::path(game::mechanics(state), &["concentration", actor_id, "effect_id"])]).cloned().unwrap_or(Value::Null);
@@ -1752,7 +1752,7 @@ fn next_weapon_hit(r: &mut Resolve<'_>, state: &Value, hit: &NextWeaponHit<'_>) 
 }
 
 /// `ChangeWeapon` (15022–15031).
-pub fn change_weapon(r: &mut Resolve<'_>) -> Step {
+pub fn change_weapon(r: &mut Resolve<'_>) -> Flow {
     let actor_id = js::s(r.command.get("actor_id"));
     let actor = game::find_actor(&r.state, &actor_id);
     let Some(item) = combat_item(actor, &js::string(r.command.get("item_id"))).cloned() else {
@@ -1773,7 +1773,7 @@ pub fn change_weapon(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `MakeAreaAttack` (15090–15172).
-pub fn make_area_attack(r: &mut Resolve<'_>) -> Step {
+pub fn make_area_attack(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     let actor_id = js::s(command.get("actor_id"));

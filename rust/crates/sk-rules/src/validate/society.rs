@@ -179,7 +179,6 @@ fn encounter_assembly_refusal(halt: Halt) -> Halt {
     match halt {
         Halt::Rule(error) => rule(error.message, &error.code),
         Halt::Fault(fault) => rule(fault.message, fault.code.as_deref().unwrap_or("ENCOUNTER_ASSEMBLY_REJECTED")),
-        Halt::Pause(pause) => rule(pause.message().to_string(), "ENCOUNTER_ASSEMBLY_REJECTED"),
     }
 }
 

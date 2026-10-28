@@ -92,7 +92,7 @@ pub fn check_npc_social(v: &mut Validation<'_>) -> Step {
     if !NPC_SOCIAL_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());
     }
-    let result = sk_social::npc_social::validate_npc_social_command(&v.command, v.state, &v.context.json()).map_err(|error| rule(error.message, &error.code))?;
+    let result = sk_social::npc_social::validate_npc_social_command(&v.command, v.state, &v.context.json()).map_err(|error| rule::<Halt>(error.message, &error.code))?;
     assign(&mut v.command, result);
     Ok(())
 }
@@ -103,7 +103,7 @@ pub fn check_character_build(v: &mut Validation<'_>) -> Step {
         return Ok(());
     }
     let context = v.context.json();
-    let result = sk_combat_content::character_build::validate_character_build_command(&v.command, v.state, Some(&context)).map_err(|error| rule(error.message, &error.code))?;
+    let result = sk_combat_content::character_build::validate_character_build_command(&v.command, v.state, Some(&context)).map_err(|error| rule::<Halt>(error.message, &error.code))?;
     assign(&mut v.command, result);
     Ok(())
 }

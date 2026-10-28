@@ -13,12 +13,12 @@ use super::super::Resolve;
 use crate::checks::saves::{roll_d20_with_species_luck, saving_throw_succeeded, AttackConditionOptions, D20Method};
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, command_with_rules, condition_ids_for, event_from};
-use crate::pause::{rule, Halt, Pause, ProtectiveReactionArgs, Step};
+use crate::pause::{rule, Interrupt, Pause, ProtectiveReactionArgs, Flow};
 use crate::replay::apply_game_event;
 use crate::tactical_geometry::{point_json, points_json};
 
 /// «Волшебная стрела» и прочие автоматические снаряды (17242–17249).
-pub(super) fn magic_missile(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
+pub(super) fn magic_missile(r: &mut Resolve<'_>, cast: &mut Cast) -> Flow {
     let target = cast.affected.first().cloned().unwrap_or(Value::Null);
     let command = cast.command.clone();
     let spell = cast.spell.clone();
@@ -27,7 +27,7 @@ pub(super) fn magic_missile(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
 }
 
 /// Пул хитов: «Усыпление» и «Цветной брызг» (17250–17277).
-pub(super) fn hit_point_pool(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
+pub(super) fn hit_point_pool(r: &mut Resolve<'_>, cast: &mut Cast) -> Flow {
     let state = r.state.clone();
     let spell = cast.spell.clone();
     let command = cast.command.clone();
@@ -100,7 +100,7 @@ struct Component {
 }
 
 /// Атака заклинанием (17278–17739).
-pub(super) fn spell_attack(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
+pub(super) fn spell_attack(r: &mut Resolve<'_>, cast: &mut Cast) -> Flow {
     let state = r.state.clone();
     let spell = cast.spell.clone();
     let command = cast.command.clone();
@@ -245,7 +245,7 @@ pub(super) fn spell_attack(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
                 resistance_choices: Some(&resistance),
                 elemental_choices: Some(&elemental),
             });
-            return Err(Halt::pause(pause));
+            return Err(Interrupt::pause(pause));
         }
         let used = choice.as_ref().is_some_and(|choice| is_true(choice.get("use")));
         let choice_kind = choice.as_ref().and_then(|choice| choice.get("kind")).and_then(Value::as_str);
@@ -383,7 +383,7 @@ struct HitContext<'a> {
 }
 
 /// Последствия попадания атаки заклинанием (17394–17691).
-fn on_hit(r: &mut Resolve<'_>, cast: &Cast, hit: &HitContext<'_>) -> Step {
+fn on_hit(r: &mut Resolve<'_>, cast: &Cast, hit: &HitContext<'_>) -> Flow {
     let state = hit.state;
     let spell = &cast.spell;
     let command = &cast.command;
@@ -715,7 +715,7 @@ fn damage_outcome_of(outcomes: &[Value]) -> Option<Value> {
 }
 
 /// «Клинок зелёного пламени»: перескок огня на соседа цели (17513–17536).
-fn green_flame_blade(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target_id: &str, cantrip_level: i64) -> Step {
+fn green_flame_blade(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target_id: &str, cantrip_level: i64) -> Flow {
     let Some(target_at) = crate::tactical_geometry::actor_point(state, target_id) else { return Ok(()) };
     let actor_id = cast.actor_id.as_str();
     let caster_enemy = sk_core::game::is_enemy_actor(state, actor_id);
@@ -760,7 +760,7 @@ fn green_flame_blade(r: &mut Resolve<'_>, cast: &Cast, state: &Value, target_id:
 }
 
 /// Окно реакции после попадания заклинанием по герою (17661–17690).
-fn attack_reaction_window(r: &mut Resolve<'_>, cast: &Cast, hit: &HitContext<'_>, damage: Option<&Value>) -> Step {
+fn attack_reaction_window(r: &mut Resolve<'_>, cast: &Cast, hit: &HitContext<'_>, damage: Option<&Value>) -> Flow {
     let state = hit.state;
     let command = &cast.command;
     let actor_id = cast.actor_id.as_str();
@@ -830,7 +830,7 @@ fn attack_reaction_window(r: &mut Resolve<'_>, cast: &Cast, hit: &HitContext<'_>
 }
 
 /// Вторичный взрыв вокруг цели атаки (17705–17739).
-fn secondary_burst(r: &mut Resolve<'_>, cast: &Cast, state: &Value, burst: &Value, target_id: &str) -> Step {
+fn secondary_burst(r: &mut Resolve<'_>, cast: &Cast, state: &Value, burst: &Value, target_id: &str) -> Flow {
     let spell = &cast.spell;
     let command = &cast.command;
     let spell_id = cast.spell_id();

@@ -5,8 +5,14 @@
 //! (отказ правила игроку), четыре класса пауз боя (окно реакции посреди
 //! действия: `ResistanceChoicePause`, `ResistanceAfterRollPause`,
 //! `ElementalDamageReactionPause`, `ProtectiveReactionPause`) и прочие `Error`
-//! (`TypeError`, `DiceExpressionError`, `RangeError` кубиков). В Rust это
-//! [`Halt`]: `Result<_, Halt>` идёт от места броска до места ловли.
+//! (`TypeError`, `DiceExpressionError`, `RangeError` кубиков). В Rust отказ и
+//! сбой — [`Halt`], а пауза в него не входит (урок 5 плана переноса):
+//!
+//! - внутри разбора (`resolve/`) остановка — [`Interrupt`]: отказ, сбой или
+//!   пауза. Пауза летит `?` от места броска до места ловли, как в JS;
+//! - на границе API (`resolve::api`) пауза становится
+//!   [`crate::outcome::Outcome::Pending`], а наружу уходит только [`Halt`].
+//!   Код вида «любая ошибка — откат» у вызывающих паузу поймать не может.
 //!
 //! Здесь — данные и сериализация пауз: событие `ReactionWindowOpened`
 //! собирается так же, как в конструкторах классов JS, побайтно. Ловля паузы
@@ -45,13 +51,12 @@ impl Fault {
     }
 }
 
-/// Почему разбор команды остановился.
+/// Почему команда не дала итога: отказ правила или сбой. Паузы здесь нет —
+/// ожидание решения игрока приходит итогом ([`crate::outcome::Outcome`]).
 #[derive(Debug, Clone)]
 pub enum Halt {
     /// Отказ правила (`RulesValidationError` и ошибки валидации модулей).
     Rule(RuleError),
-    /// Пауза боя: окно реакции посреди действия.
-    Pause(Box<Pause>),
     /// Прочая ошибка JS.
     Fault(Fault),
 }
@@ -61,7 +66,6 @@ impl Halt {
     pub fn code(&self) -> Option<&str> {
         match self {
             Halt::Rule(error) => Some(error.code.as_str()),
-            Halt::Pause(_) => None,
             Halt::Fault(fault) => fault.code.as_deref(),
         }
     }
@@ -71,18 +75,9 @@ impl Halt {
         matches!(self, Halt::Rule(_))
     }
 
-    /// `isCombatPause(error)`.
-    pub fn is_combat_pause(&self) -> bool {
-        matches!(self, Halt::Pause(_))
-    }
-
     /// Ветка или блок ещё не перенесены (заглушка каркаса).
     pub fn is_unported(&self) -> bool {
         matches!(self, Halt::Rule(error) if error.code == UNPORTED)
-    }
-
-    pub fn pause(pause: Pause) -> Self {
-        Halt::Pause(Box::new(pause))
     }
 }
 
@@ -98,24 +93,109 @@ impl From<Fault> for Halt {
     }
 }
 
-impl From<Pause> for Halt {
-    fn from(pause: Pause) -> Self {
-        Halt::pause(pause)
-    }
-}
-
 impl std::fmt::Display for Halt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Halt::Rule(error) => write!(f, "{error}"),
-            Halt::Pause(pause) => write!(f, "пауза: {}", pause.message()),
             Halt::Fault(fault) => write!(f, "{}: {}", fault.name, fault.message),
         }
     }
 }
 
-/// Шаг разбора: ничего или остановка.
+/// Остановка внутри разбора команды: отказ, сбой или пауза боя. Живёт только
+/// в `resolve/` и тех помощниках, что зовут его броски; на границе API пауза
+/// становится [`crate::outcome::Outcome::Pending`], а отказ и сбой — [`Halt`].
+#[derive(Debug, Clone)]
+pub enum Interrupt {
+    /// Отказ правила.
+    Rule(RuleError),
+    /// Пауза боя: окно реакции посреди действия.
+    Pause(Box<Pause>),
+    /// Прочая ошибка JS.
+    Fault(Fault),
+}
+
+impl Interrupt {
+    /// Код отказа или ошибки, если он есть.
+    pub fn code(&self) -> Option<&str> {
+        match self {
+            Interrupt::Rule(error) => Some(error.code.as_str()),
+            Interrupt::Pause(_) => None,
+            Interrupt::Fault(fault) => fault.code.as_deref(),
+        }
+    }
+
+    /// `error instanceof RulesValidationError`.
+    pub fn is_rule(&self) -> bool {
+        matches!(self, Interrupt::Rule(_))
+    }
+
+    /// `isCombatPause(error)`.
+    pub fn is_combat_pause(&self) -> bool {
+        matches!(self, Interrupt::Pause(_))
+    }
+
+    /// Ветка или блок ещё не перенесены (заглушка каркаса).
+    pub fn is_unported(&self) -> bool {
+        matches!(self, Interrupt::Rule(error) if error.code == UNPORTED)
+    }
+
+    pub fn pause(pause: Pause) -> Self {
+        Interrupt::Pause(Box::new(pause))
+    }
+
+    /// Отказ или сбой — как [`Halt`]; пауза — отдельно.
+    pub fn into_halt(self) -> Result<Halt, Box<Pause>> {
+        match self {
+            Interrupt::Rule(error) => Ok(Halt::Rule(error)),
+            Interrupt::Fault(fault) => Ok(Halt::Fault(fault)),
+            Interrupt::Pause(pause) => Err(pause),
+        }
+    }
+}
+
+impl From<Halt> for Interrupt {
+    fn from(halt: Halt) -> Self {
+        match halt {
+            Halt::Rule(error) => Interrupt::Rule(error),
+            Halt::Fault(fault) => Interrupt::Fault(fault),
+        }
+    }
+}
+
+impl From<RuleError> for Interrupt {
+    fn from(error: RuleError) -> Self {
+        Interrupt::Rule(error)
+    }
+}
+
+impl From<Fault> for Interrupt {
+    fn from(fault: Fault) -> Self {
+        Interrupt::Fault(fault)
+    }
+}
+
+impl From<Pause> for Interrupt {
+    fn from(pause: Pause) -> Self {
+        Interrupt::pause(pause)
+    }
+}
+
+impl std::fmt::Display for Interrupt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Interrupt::Rule(error) => write!(f, "{error}"),
+            Interrupt::Pause(pause) => write!(f, "пауза: {}", pause.message()),
+            Interrupt::Fault(fault) => write!(f, "{}: {}", fault.name, fault.message),
+        }
+    }
+}
+
+/// Шаг проверки или помощника: ничего или отказ.
 pub type Step = Result<(), Halt>;
+
+/// Шаг разбора: ничего, отказ или пауза.
+pub type Flow = Result<(), Interrupt>;
 
 /// Код заглушки каркаса.
 pub const UNPORTED: &str = "UNPORTED";
@@ -125,9 +205,10 @@ pub fn unported(name: &str) -> RuleError {
     RuleError::new(UNPORTED, name)
 }
 
-/// `new RulesValidationError(message, code)`.
-pub fn rule(message: impl Into<String>, code: &str) -> Halt {
-    Halt::Rule(RuleError::new(code, message))
+/// `new RulesValidationError(message, code)`: [`Halt`] в проверке, [`Interrupt`]
+/// в разборе — по типу места.
+pub fn rule<E: From<RuleError>>(message: impl Into<String>, code: &str) -> E {
+    E::from(RuleError::new(code, message))
 }
 
 /// Класс паузы JS.

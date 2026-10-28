@@ -19,6 +19,7 @@ pub mod core;
 pub mod dice_record;
 pub mod enervation_link;
 pub mod journal;
+pub mod outcome;
 pub mod pause;
 pub mod tables;
 pub mod turn_economy;

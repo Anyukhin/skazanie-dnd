@@ -17,7 +17,7 @@ use super::Resolve;
 use crate::core::{command_with, event_from, npc_world_events_from, slice_utf16};
 use crate::normalize::scene::canonical_scene_metadata;
 use crate::normalize::summons::{party_summons_for_expiry, summon_expiry_events, summon_ids_expired_at};
-use crate::pause::{rule, Fault, Halt, Step};
+use crate::pause::{rule, Fault, Interrupt, Flow};
 use crate::scene::levels::{declared_scene_levels, level_arrival_positions, level_transition_back_to, plan_import_relocations, remembered_level_map, restore_scene_level_transitions, scene_level_label, LOCATION_MAP_IMPORT_SCHEMA_VERSION};
 use crate::scene::placement::{map_error, scene_advance_party_ids, scene_advance_party_positions};
 use crate::scene_maps::{scene_level_index, scene_location_id};
@@ -32,12 +32,12 @@ fn put(map: &mut Map<String, Value>, key: &str, value: Option<&Value>) {
     }
 }
 
-fn map_halt(error: TacticalMapError) -> Halt {
-    Halt::Rule(map_error(error))
+fn map_halt(error: TacticalMapError) -> Interrupt {
+    Interrupt::Rule(map_error(error))
 }
 
 /// Ошибка `adventure-director` / `scene-memory`: класс JS как есть.
-fn director_halt(error: sk_director::adventure_director::DirectorError) -> Halt {
+fn director_halt(error: sk_director::adventure_director::DirectorError) -> Interrupt {
     let fault = Fault::new(error.name, error.message);
     match error.code {
         Some(code) => fault.with_code(code).into(),
@@ -45,7 +45,7 @@ fn director_halt(error: sk_director::adventure_director::DirectorError) -> Halt 
     }
 }
 
-fn serialize(map: &TacticalMap) -> Result<Value, Halt> {
+fn serialize(map: &TacticalMap) -> Result<Value, Interrupt> {
     serialize_tactical_map(map).map_err(map_halt)
 }
 
@@ -81,7 +81,7 @@ fn expired_summon_events(r: &mut Resolve<'_>) -> IndexSet<String> {
 }
 
 /// `UseLevelTransition` (19731–19804).
-pub fn use_level_transition(r: &mut Resolve<'_>) -> Step {
+pub fn use_level_transition(r: &mut Resolve<'_>) -> Flow {
     let Some(mut map) = crate::scene_map_sync::ensure_scene_tactical_map(&mut r.state).map_err(map_halt)? else {
         return Err(rule("Для перехода между этажами нужна тактическая карта", "TACTICAL_MAP_REQUIRED"));
     };
@@ -137,7 +137,7 @@ pub fn use_level_transition(r: &mut Resolve<'_>) -> Step {
         };
         let result = sk_world_time::level_generator::generate_level_map(&options).map_err(|error| {
             let fault = Fault::new(error.name, error.message);
-            Halt::from(match error.code {
+            Interrupt::from(match error.code {
                 Some(code) => fault.with_code(code),
                 None => fault,
             })
@@ -158,7 +158,7 @@ pub fn use_level_transition(r: &mut Resolve<'_>) -> Step {
     };
     let expired = expired_summon_events(r);
     let transition_state = if expired.is_empty() { r.state.clone() } else { r.project_events()? };
-    let positions = level_arrival_positions(&transition_state, &target, Some(&arrival)).map_err(Halt::Rule)?;
+    let positions = level_arrival_positions(&transition_state, &target, Some(&arrival)).map_err(Interrupt::Rule)?;
     let mut payload = Map::new();
     payload.insert("location_id".into(), json!(location_id));
     payload.insert("from_level".into(), json!(from_level));
@@ -175,7 +175,7 @@ pub fn use_level_transition(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `importTaleSpireSlab` через зарегистрированный импортёр.
-fn import_slab(slab: Option<&Value>, location_id: &str, theme: &str) -> Result<Value, Halt> {
+fn import_slab(slab: Option<&Value>, location_id: &str, theme: &str) -> Result<Value, Interrupt> {
     let Some(importer) = crate::merchants::talespire_importer() else {
         return Err(Fault::new("TaleSpireImporterMissing", "Импортёр TaleSpire не зарегистрирован").into());
     };
@@ -204,7 +204,7 @@ fn location_name(primary: Option<&Value>, secondary: Option<&Value>, fallback: &
 }
 
 /// `ImportLocationMap` (22332–22381).
-pub fn import_location_map(r: &mut Resolve<'_>) -> Step {
+pub fn import_location_map(r: &mut Resolve<'_>) -> Flow {
     let location_id = field(&r.command, "location_id");
     let current = location_id.as_str() == Some(scene_location_id(&r.state).as_str());
     let location = sk_geometry::world_map::world_location_by_id(r.state.get("worldMap"), &js::s(Some(&location_id))).cloned();
@@ -228,7 +228,7 @@ pub fn import_location_map(r: &mut Resolve<'_>) -> Step {
         let Some(ground_value) = ground_value else { return Err(Fault::type_error("Cannot read properties of undefined (reading 'map')").into()) };
         let ground = deserialize_tactical_map(&ground_value).map_err(map_halt)?;
         let serialized = serialize(&ground)?;
-        positions = scene_advance_party_positions(&r.state, &entrance_transition(&ground, &serialized)).map_err(Halt::Rule)?;
+        positions = scene_advance_party_positions(&r.state, &entrance_transition(&ground, &serialized)).map_err(Interrupt::Rule)?;
         payload.insert("party_positions".into(), Value::Array(positions.clone()));
         payload.insert("relocations".into(), Value::Array(plan_import_relocations(&r.state, &ground, &positions)));
     }
@@ -244,7 +244,7 @@ pub fn import_location_map(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `RebuildLocationMap` (22382–22484).
-pub fn rebuild_location_map(r: &mut Resolve<'_>) -> Step {
+pub fn rebuild_location_map(r: &mut Resolve<'_>) -> Flow {
     let location_id = scene_location_id(&r.state);
     let scene = r.state.get("scene").cloned().unwrap_or_else(|| json!({}));
     if js::is_true(r.command.get("preserve_layout")) {
@@ -313,7 +313,7 @@ pub fn rebuild_location_map(r: &mut Resolve<'_>) -> Step {
         payload.insert("map_requirements".into(), Value::Object(requirements));
     }
     payload.insert("clear_library_source".into(), json!(true));
-    let positions = scene_advance_party_positions(&r.state, &entrance_transition(&ground, &serialized)).map_err(Halt::Rule)?;
+    let positions = scene_advance_party_positions(&r.state, &entrance_transition(&ground, &serialized)).map_err(Interrupt::Rule)?;
     payload.insert("party_positions".into(), Value::Array(positions.clone()));
     payload.insert("relocations".into(), Value::Array(plan_import_relocations(&r.state, &ground, &positions)));
     let source = command_with(&r.command, "visibility", json!("party"));
@@ -326,9 +326,9 @@ pub fn rebuild_location_map(r: &mut Resolve<'_>) -> Step {
 
 /// Ремонт карты ведущим (`preserve_layout`, 22363–22410): геометрия всех
 /// этажей остаётся, перекрашивается пол внутри помещений.
-fn refresh_location_floors(r: &mut Resolve<'_>, location_id: &str, scene: &Value) -> Step {
+fn refresh_location_floors(r: &mut Resolve<'_>, location_id: &str, scene: &Value) -> Flow {
     let active_level = scene_level_index(&r.state);
-    let no_scene = || rule("Текущая карта повреждена и не может быть обновлена", "MAP_REBUILD_NO_SCENE");
+    let no_scene = || rule::<Interrupt>("Текущая карта повреждена и не может быть обновлена", "MAP_REBUILD_NO_SCENE");
     let mut maps: IndexMap<i64, TacticalMap> = IndexMap::new();
     let current = deserialize_tactical_map(scene.get("map").unwrap_or(&Value::Null)).map_err(|_| no_scene())?;
     maps.insert(active_level, current);
@@ -404,7 +404,7 @@ fn draft_event(command: &Value, draft: &Value) -> Value {
 }
 
 /// `AdvanceScene` (22485–22620).
-pub fn advance_scene(r: &mut Resolve<'_>) -> Step {
+pub fn advance_scene(r: &mut Resolve<'_>) -> Flow {
     expired_summon_events(r);
     if js::truthy(r.command.get("party_decision")) {
         let decision = r.state.get("agentInteraction").cloned().unwrap_or(Value::Null);
@@ -435,7 +435,7 @@ pub fn advance_scene(r: &mut Resolve<'_>) -> Step {
     }
     canonical.insert("scene".into(), Value::Object(canonical_scene));
     let canonical = Value::Object(canonical);
-    let positions = scene_advance_party_positions(&r.state, &canonical).map_err(Halt::Rule)?;
+    let positions = scene_advance_party_positions(&r.state, &canonical).map_err(Interrupt::Rule)?;
     let scene_event_id = sk_director::scene_memory::scene_world_memory_event_id(r.command.get("command_id"));
     let mut payload = crate::core::spread_value(Some(&canonical));
     for (key, value) in crate::core::spread_value(Some(&metadata)) {
@@ -483,7 +483,7 @@ pub fn advance_scene(r: &mut Resolve<'_>) -> Step {
         };
         request["npc"] = Value::Object(profile);
         let upsert = sk_social::npc_social::validate_npc_social_command(&request, &transitioned, &json!({ "isDirector": true }))
-            .map_err(|error| Halt::Fault(Fault::new("NpcSocialValidationError", error.message.clone()).with_code(error.code.clone())))?;
+            .map_err(|error| Interrupt::Fault(Fault::new("NpcSocialValidationError", error.message.clone()).with_code(error.code.clone())))?;
         for social in sk_social::npc_social::npc_social_events(&upsert, &transitioned) {
             let event = draft_event(&system, &social);
             transitioned = crate::replay::apply_game_event(&transitioned, &event)?;
@@ -544,7 +544,7 @@ pub fn advance_scene(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `AdvanceTime` (22621–22626).
-pub fn advance_time(r: &mut Resolve<'_>) -> Step {
+pub fn advance_time(r: &mut Resolve<'_>) -> Flow {
     let amount = js::number(r.command.get("amount"));
     let amount = if amount.is_nan() { 0.0 } else { amount.max(0.0) };
     let unit = if js::truthy(r.command.get("unit")) { js::s(r.command.get("unit")) } else { "minute".to_string() };
@@ -553,14 +553,14 @@ pub fn advance_time(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `RevealArea` (22761–22765).
-pub fn reveal_area(r: &mut Resolve<'_>) -> Step {
+pub fn reveal_area(r: &mut Resolve<'_>) -> Flow {
     let cells: Vec<Value> = match r.command.get("cells") {
         Some(Value::Array(cells)) => cells
             .iter()
             .take(100)
             .map(|cell| {
                 if cell.is_null() {
-                    return Err(Halt::from(Fault::type_error("Cannot read properties of null (reading 'x')")));
+                    return Err(Interrupt::from(Fault::type_error("Cannot read properties of null (reading 'x')")));
                 }
                 Ok(json!({ "x": crate::core::safe_integer_or(cell.get("x"), None), "y": crate::core::safe_integer_or(cell.get("y"), None) }))
             })
@@ -572,7 +572,7 @@ pub fn reveal_area(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `SpawnEntity` (22774–22776).
-pub fn spawn_entity(r: &mut Resolve<'_>) -> Step {
+pub fn spawn_entity(r: &mut Resolve<'_>) -> Flow {
     let entity = r.command.get("entity").filter(|value| !value.is_null()).cloned().unwrap_or_else(|| json!({}));
     r.events.push(event_from(&r.command, "EntitySpawned", Some(json!({ "entity": entity })), Some(&json!([]))));
     Ok(())

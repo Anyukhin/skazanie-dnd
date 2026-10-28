@@ -11,10 +11,10 @@ use super::super::Resolve;
 use super::{balance_cp, elapsed_minutes, insert_present, insert_wallet, string_or, with_visibility};
 use crate::command::rules::rule_ids;
 use crate::core::{command_with_rules, event_from, player_actor, slice_utf16};
-use crate::pause::{Fault, Step};
+use crate::pause::{Fault, Flow};
 
 /// `SendLetter` (22097–22138).
-pub fn send_letter(r: &mut Resolve<'_>) -> Step {
+pub fn send_letter(r: &mut Resolve<'_>) -> Flow {
     let Some(actor) = player_actor(&r.state, r.command.get("actor_id")).cloned() else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'currency')").into());
     };

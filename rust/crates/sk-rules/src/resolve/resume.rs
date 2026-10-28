@@ -22,7 +22,7 @@ use crate::command::rules::rule_ids;
 use crate::context::Context;
 use crate::core::{command_with, command_with_rules, event_from, resource_pool, spread_value};
 use crate::dice_record::{roll_indomitable_replacement, Replay};
-use crate::pause::{resistance_choice_mode, Fault, Halt, Step};
+use crate::pause::{resistance_choice_mode, Fault, Interrupt, Flow};
 use crate::replay::apply_game_event;
 
 pub(super) fn at<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
@@ -30,7 +30,7 @@ pub(super) fn at<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
 }
 
 /// `events.reduce(applyGameEvent, state)`.
-pub(super) fn reduce_events(state: &Value, events: &[Value]) -> Result<Value, Halt> {
+pub(super) fn reduce_events(state: &Value, events: &[Value]) -> Result<Value, Interrupt> {
     let mut current = state.clone();
     for event in events {
         current = apply_game_event(&current, event)?;
@@ -163,23 +163,23 @@ impl Resume {
 
 /// `resolvePendingCommand(pendingCommand, resumedState, options)`: пауза
 /// внутри продолжения несёт префиксом события и броски этого ответа.
-pub(super) fn resolve_pending(r: &mut Resolve<'_>, command: &Value, state: &Value, dice: PendingDice, context: &Context) -> Result<Resolved, Halt> {
+pub(super) fn resolve_pending(r: &mut Resolve<'_>, command: &Value, state: &Value, dice: PendingDice, context: &Context) -> Result<Resolved, Interrupt> {
     let result = match dice {
-        PendingDice::Direct => api::resolve_command(command, state, &mut r.dice, context, &mut *r.uuid),
+        PendingDice::Direct => api::resolve_command_inner(command, state, &mut r.dice, context, &mut *r.uuid),
         PendingDice::Replay { transcript, replacements, allow_additional_rolls } => {
             let mut replay = Replay::new(&mut r.dice, transcript, replacements.as_ref(), allow_additional_rolls);
-            api::resolve_command(command, state, &mut replay, context, &mut *r.uuid)
+            api::resolve_command_inner(command, state, &mut replay, context, &mut *r.uuid)
         }
     };
     match result {
-        Err(Halt::Pause(mut pause)) => {
+        Err(Interrupt::Pause(mut pause)) => {
             let mut prefix = r.events.clone();
             prefix.append(&mut pause.prefix_events);
             pause.prefix_events = prefix;
             let mut rolls = r.rolls.clone();
             rolls.append(&mut pause.prefix_rolls);
             pause.prefix_rolls = rolls;
-            Err(Halt::Pause(pause))
+            Err(Interrupt::Pause(pause))
         }
         other => other,
     }
@@ -220,7 +220,7 @@ fn object_values(map: &Map<String, Value>) -> Vec<Value> {
 
 /// `resumePendingSpell()` (15399–15414): отказ от контрзаклинания —
 /// сохранённое заклинание творится дальше.
-pub(super) fn resume_pending_spell(r: &mut Resolve<'_>, resume: &Resume) -> Step {
+pub(super) fn resume_pending_spell(r: &mut Resolve<'_>, resume: &Resume) -> Flow {
     let Some(pending) = resume.field("pending_spell_command").filter(|value| js::truthy(Some(value))).cloned() else { return Ok(()) };
     let resumed = reduce_events(&r.state, &r.events)?;
     let command = with_expected_version(&command_with(&pending, "counterspell_bypassed", Value::Bool(true)), &resumed);
@@ -230,7 +230,7 @@ pub(super) fn resume_pending_spell(r: &mut Resolve<'_>, resume: &Resume) -> Step
 }
 
 /// `resumePendingElementalDamage(useAbsorb, absorbAction)` (15415–15489).
-pub(super) fn resume_pending_elemental_damage(r: &mut Resolve<'_>, resume: &Resume, use_absorb: bool, absorb_action: Option<&Value>) -> Step {
+pub(super) fn resume_pending_elemental_damage(r: &mut Resolve<'_>, resume: &Resume, use_absorb: bool, absorb_action: Option<&Value>) -> Flow {
     if !resume.trigger_is("spell-area-damage") || !js::truthy(resume.field("pending_command")) || !js::truthy(resume.field("pending_elemental_damage")) {
         return Ok(());
     }
@@ -324,7 +324,7 @@ pub(super) fn resume_pending_elemental_damage(r: &mut Resolve<'_>, resume: &Resu
 }
 
 /// `resumePendingProtectiveReaction(useProtection, protectionAction)` (15490–15546).
-pub(super) fn resume_pending_protective_reaction(r: &mut Resolve<'_>, resume: &Resume, use_protection: bool, protection_action: Option<&Value>) -> Step {
+pub(super) fn resume_pending_protective_reaction(r: &mut Resolve<'_>, resume: &Resume, use_protection: bool, protection_action: Option<&Value>) -> Flow {
     if !js::truthy(resume.field("pending_command")) || !js::truthy(resume.field("pending_protective_reaction")) {
         return Ok(());
     }
@@ -398,7 +398,7 @@ fn resistance_action(mode: &str, accepted: bool) -> (&'static str, &'static str)
 }
 
 /// `resumeResistanceChoice(choiceMode)` (15547–15613).
-pub(super) fn resume_resistance_choice(r: &mut Resolve<'_>, resume: &Resume, choice_mode: &str) -> Step {
+pub(super) fn resume_resistance_choice(r: &mut Resolve<'_>, resume: &Resume, choice_mode: &str) -> Flow {
     if !resume.trigger_is("saving-throw-bonus-choice") || !js::truthy(resume.field("pending_command")) || !js::truthy(resume.field("pending_resistance_choice")) {
         return Ok(());
     }
@@ -449,7 +449,7 @@ pub(super) fn resume_resistance_choice(r: &mut Resolve<'_>, resume: &Resume, cho
 
 /// `resolveIndomitableChoice(accepted)` (15614–15717): Несгибаемый — переброс
 /// проваленного спасброска; очередь окон для следующих воинов.
-pub(super) fn resolve_indomitable_choice(r: &mut Resolve<'_>, resume: &Resume, accepted: bool) -> Step {
+pub(super) fn resolve_indomitable_choice(r: &mut Resolve<'_>, resume: &Resume, accepted: bool) -> Flow {
     if !resume.trigger_is("failed-saving-throw") || !js::truthy(resume.field("pending_command")) || !matches!(resume.field("pending_dice_transcript"), Some(Value::Array(_))) {
         return Ok(());
     }

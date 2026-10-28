@@ -55,7 +55,7 @@ use crate::context::{Context, Uuid};
 use crate::core::{coalesce, command_with, event_from, target_for, unique_strings};
 use crate::dice_record::{Recording, RulesDice};
 use crate::normalize::normalize_campaign_state;
-use crate::pause::{resistance_choices_from_context, Halt, Step};
+use crate::pause::{resistance_choices_from_context, Interrupt, Flow};
 use crate::replay::CommandProjector;
 use crate::validate::validate_command;
 
@@ -147,7 +147,7 @@ pub fn reaction_choices(raw: Option<&Value>, key_field: &str) -> IndexMap<String
 
 /// Прокси NPC сцены для заклинаний 2014 (13066–13075): видимый NPC без листа
 /// в бою получает в расчёте свой стат-блок. События сохраняют id NPC.
-fn push_npc_spell_proxies(state: &mut Value, input: &Value) -> Step {
+fn push_npc_spell_proxies(state: &mut Value, input: &Value) -> Flow {
     if input.get("command_type").and_then(Value::as_str) != Some("CastSpell") || !sk_core::game::uses_2014(state) {
         return Ok(());
     }
@@ -209,7 +209,7 @@ pub fn truce_broken_event(state: &Value, command: &Value, target_id: &Value, tru
 }
 
 /// `resolveCommandInternal(input, rawState, { diceService, context })`.
-pub fn resolve_command_internal(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Halt> {
+pub fn resolve_command_internal(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
     let depth = context.resolve_depth().max(0);
     let context = context.with("__resolve_depth", Value::from(depth + 1));
     let recording = Recording::new(dice);
@@ -258,8 +258,8 @@ impl Resolve<'_> {
     }
 
     /// `projectEvents(events)`: состояние после событий команды.
-    pub fn project_events(&mut self) -> Result<Value, Halt> {
-        self.projector.project(&self.events)
+    pub fn project_events(&mut self) -> Result<Value, Interrupt> {
+        Ok(self.projector.project(&self.events)?)
     }
 
     /// Вероломство: удар под перемирием (13114–13139). Разрыв уговора идёт в

@@ -15,12 +15,12 @@ use crate::checks::skills::skill_proficiency_for_actor;
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, command_with_rules, event_from, npc_world_events_from, player_actor, slice_utf16, spread_value};
 use crate::dice_record::RulesDice;
-use crate::pause::{Fault, Halt, Step};
+use crate::pause::{Fault, Interrupt, Flow};
 use crate::society_helpers::npc_relationship_events_from;
 
 /// `captiveFor(state, command.captive_id)`: пленный проверен валидацией; без
 /// него JS падает на первом обращении к полю.
-fn captive_of(r: &Resolve<'_>, field: &str) -> Result<Value, Halt> {
+fn captive_of(r: &Resolve<'_>, field: &str) -> Result<Value, Interrupt> {
     captive_for(&r.state, r.command.get("captive_id")).ok_or_else(|| Fault::type_error(format!("Cannot read properties of null (reading '{field}')")).into())
 }
 
@@ -29,7 +29,7 @@ fn get<'a>(value: &'a Value, key: &str) -> Value {
 }
 
 /// `InterrogateCaptive` (21052–21102).
-pub fn interrogate_captive(r: &mut Resolve<'_>) -> Step {
+pub fn interrogate_captive(r: &mut Resolve<'_>) -> Flow {
     let captive = captive_of(r, "npc_id")?;
     let actor = sk_core::game::find_actor(&r.state, &js::s(r.command.get("actor_id"))).cloned();
     let standing = sk_society::reputation_policy::reputation_standing_for(&r.state, &get(&captive, "npc_id"));
@@ -91,7 +91,7 @@ pub fn interrogate_captive(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `ReleaseCaptive` (21103–21154).
-pub fn release_captive(r: &mut Resolve<'_>) -> Step {
+pub fn release_captive(r: &mut Resolve<'_>) -> Flow {
     let captive = captive_of(r, "id")?;
     let disposition = captive_spared_disposition(&captive);
     let minutes = elapsed_minutes(&r.state);
@@ -141,7 +141,7 @@ pub fn release_captive(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `HandCaptiveToGuards` (21155–21206).
-pub fn hand_captive_to_guards(r: &mut Resolve<'_>) -> Step {
+pub fn hand_captive_to_guards(r: &mut Resolve<'_>) -> Flow {
     let captive = captive_of(r, "id")?;
     let Some(settlement) = captive_settlement_for(&r.state) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'id')").into());
@@ -194,7 +194,7 @@ pub fn hand_captive_to_guards(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `FeedCaptive` (21207–21217).
-pub fn feed_captive(r: &mut Resolve<'_>) -> Step {
+pub fn feed_captive(r: &mut Resolve<'_>) -> Flow {
     let captive = captive_of(r, "id")?;
     let mut payload = Map::new();
     payload.insert("captive_id".into(), get(&captive, "id"));
@@ -208,7 +208,7 @@ pub fn feed_captive(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `NeglectCaptive` (21218–21225).
-pub fn neglect_captive(r: &mut Resolve<'_>) -> Step {
+pub fn neglect_captive(r: &mut Resolve<'_>) -> Flow {
     let captive = captive_of(r, "id")?;
     let payload = captive_neglected_payload(&captive, Some(&elapsed_minutes(&r.state)));
     let targets = json!([get(&captive, "npc_id")]);
@@ -217,7 +217,7 @@ pub fn neglect_captive(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `ExecuteCaptive` (21226–21266).
-pub fn execute_captive(r: &mut Resolve<'_>) -> Step {
+pub fn execute_captive(r: &mut Resolve<'_>) -> Flow {
     let captive = captive_of(r, "npc_id")?;
     let npc_id = get(&captive, "npc_id");
     let vital = npc_vital_for(&r.state, &npc_id);

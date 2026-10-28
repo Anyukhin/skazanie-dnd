@@ -17,7 +17,7 @@ use sk_rules::checks::{indomitable, saves, skills};
 use sk_rules::conditions as cond;
 use sk_rules::context::{sequence_uuids, Context};
 use sk_rules::dice_record::{Recording, RulesDice, ServiceDice};
-use sk_rules::pause::Halt;
+use sk_rules::pause::{Halt, Interrupt};
 use sk_rules::validate::Validation;
 use sk_rules::{damage, death, lockpick, rest};
 
@@ -129,12 +129,12 @@ fn out(value: &Value) -> Value {
     }
 }
 
-fn outcome(result: Result<Value, Halt>) -> Value {
-    match result {
+fn outcome<E: Into<Interrupt>>(result: Result<Value, E>) -> Value {
+    match result.map_err(Into::into) {
         Ok(value) => json!({ "ok": out(&value) }),
-        Err(Halt::Rule(error)) => json!({ "err": [error.code, error.message] }),
-        Err(Halt::Fault(fault)) => json!({ "fault": fault.name }),
-        Err(Halt::Pause(pause)) => json!({ "fault": pause.kind.name() }),
+        Err(Interrupt::Rule(error)) => json!({ "err": [error.code, error.message] }),
+        Err(Interrupt::Fault(fault)) => json!({ "fault": fault.name }),
+        Err(Interrupt::Pause(pause)) => json!({ "fault": pause.kind.name() }),
     }
 }
 
@@ -234,7 +234,7 @@ fn run_call(f: &str, a: &Args<'_>) -> Result<Value, Halt> {
         "immuneToMagicalSleep" => ok(json!(damage::immune_to_magical_sleep(st, a.actor(0)))),
         "statBlockConditionImmunities" => ok(utf16_sorted(damage::stat_block_condition_immunities(st, &a.id(0)).into_iter().collect())),
         "defenseFor" => ok(damage::defense_for(st, &a.text(0)).to_value()),
-        "damagePayload" => damage::damage_payload(st, &a.text(0), a.v(1), a.v(2), a.v(3), a.v(4)),
+        "damagePayload" => Ok(damage::damage_payload(st, &a.text(0), a.v(1), a.v(2), a.v(3), a.v(4))?),
         "conditionArmorClassBonus" => ok(json!(damage::condition_armor_class_bonus(st, &a.text(0)))),
         "statBlockDamageList" => ok(js::strings_value(damage::stat_block_damage_list(a.v(0)))),
         "conditionalDamageDefenseApplies" => ok(json!(damage::conditional_damage_defense_applies(a.v(0), a.v(1), a.v(2)))),
@@ -314,7 +314,7 @@ fn run_dice(f: &str, a: &Args<'_>, dice: &mut dyn RulesDice) -> Result<Value, Ha
             if method == saves::D20Method::RollCheck {
                 options.insert("difficulty".into(), json!(12));
             }
-            saves::roll_d20_with_species_luck(st, dice, &a.id(0), &Value::Object(options), method)
+            Ok(saves::roll_d20_with_species_luck(st, dice, &a.id(0), &Value::Object(options), method)?)
         }
         "rollAbilityCheckWithConditions" => saves::roll_ability_check_with_conditions(st, dice, &a.text(0), a.v(1), a.v(2).unwrap_or(&Value::Null), method_of(a.v(3))),
         "grappleContest" => {

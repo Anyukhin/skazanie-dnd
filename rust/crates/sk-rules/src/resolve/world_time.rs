@@ -16,7 +16,7 @@ use crate::constants::PROTECTION_FROM_ENERGY_EXPIRY_POLICY;
 use crate::core::{command_with, command_with_rules, event_from, npc_world_events_from};
 use crate::dice_record::RulesDice;
 use crate::normalize::summons::{expired_summons_between, summon_expiry_events};
-use crate::pause::{Fault, Halt, Step};
+use crate::pause::{Fault, Flow, Halt, Interrupt};
 use crate::world_clock::{duration_in_seconds, normalized_clock_seconds, world_time_seconds};
 
 use super::Resolve;
@@ -90,7 +90,7 @@ impl Resolve<'_> {
     /// `appendTimeAdvance(sourceCommand, amount, unit, options)` (13141):
     /// `TimeAdvanced`, отпуск истёкших призывов, часы мира и рассвет
     /// предметов. Возвращает пересечённые минуты.
-    pub fn append_time_advance(&mut self, source_command: &Value, amount: Option<&Value>, unit: Option<&Value>, options: TimeAdvanceOptions) -> Result<i64, Halt> {
+    pub fn append_time_advance(&mut self, source_command: &Value, amount: Option<&Value>, unit: Option<&Value>, options: TimeAdvanceOptions) -> Result<i64, Interrupt> {
         let source_state = match options.source_state {
             Some(state) => state,
             None => self.project_events()?,
@@ -125,9 +125,9 @@ impl Resolve<'_> {
         let mut bridge = DiceBridge { inner: &mut self.dice, halt: None };
         let recharge = sk_items::item_dawn_recharge::resolve_item_dawn_recharge(&source_state, Some(&js::num(elapsed_minutes)), &mut bridge);
         if let Some(halt) = bridge.halt.take() {
-            return Err(halt);
+            return Err(halt.into());
         }
-        let recharge = recharge.map_err(|error| Halt::Fault(Fault::new("Error", error.message.clone()).with_code(error.code.clone())))?;
+        let recharge = recharge.map_err(|error| Interrupt::Fault(Fault::new("Error", error.message.clone()).with_code(error.code.clone())))?;
         self.rolls.extend(recharge.rolls.iter().cloned());
         if let Some(payload) = recharge.payload {
             let owners: Vec<Value> = payload.get("items").and_then(Value::as_array).map(|items| items.iter().map(|item| item.get("owner_id").cloned().unwrap_or(Value::Null)).collect()).unwrap_or_default();
@@ -141,13 +141,13 @@ impl Resolve<'_> {
 
     /// `appendScenarioKnightPresence(sourceCommand)` (13177): ночной гость
     /// сценария приходит и уходит с часами мира и с приходом отряда.
-    pub fn append_scenario_knight_presence(&mut self, source_command: &Value) -> Step {
+    pub fn append_scenario_knight_presence(&mut self, source_command: &Value) -> Flow {
         let projected = self.project_events()?;
         let Some(plan) = sk_world_story::scenario_knight::scenario_knight_presence_plan(&projected) else { return Ok(()) };
         let system = command_with(source_command, "actor_id", Value::Null);
         let mut request = command_with(&system, "command_type", Value::String("UpsertNpcSocialProfile".into()));
         request["npc"] = plan.get("profile").cloned().unwrap_or(Value::Null);
-        let profile_command = sk_social::npc_social::validate_npc_social_command(&request, &projected, &json!({ "isDirector": true })).map_err(|error| crate::pause::rule(error.message.clone(), &error.code))?;
+        let profile_command = sk_social::npc_social::validate_npc_social_command(&request, &projected, &json!({ "isDirector": true })).map_err(|error| crate::pause::rule::<Interrupt>(error.message.clone(), &error.code))?;
         for social in sk_social::npc_social::npc_social_events(&profile_command, &projected) {
             let command = with_visibility(&system, &social);
             self.events.push(event_from(&command, &js::s(social.get("event_type")), social.get("payload").cloned(), social.get("target_ids")));
@@ -173,7 +173,7 @@ impl Resolve<'_> {
 
     /// `appendWorldTimeConsequences(sourceCommand, amount, unit, options)`
     /// (13179): ход времени и всё, что от него зависит.
-    pub fn append_world_time_consequences(&mut self, source_command: &Value, amount: Option<&Value>, unit: Option<&Value>, options: TimeAdvanceOptions) -> Step {
+    pub fn append_world_time_consequences(&mut self, source_command: &Value, amount: Option<&Value>, unit: Option<&Value>, options: TimeAdvanceOptions) -> Flow {
         let source_state = self.project_events()?;
         let elapsed_minutes = self.append_time_advance(source_command, amount, unit, TimeAdvanceOptions { source_state: Some(source_state.clone()), ..options })?;
         let after_time = self.project_events()?;
@@ -216,7 +216,7 @@ impl Resolve<'_> {
             let list = match conditions {
                 Value::Null => Vec::new(),
                 Value::Array(items) => items,
-                _ => return Err(Halt::Fault(Fault::type_error("conditions is not iterable"))),
+                _ => return Err(Interrupt::Fault(Fault::type_error("conditions is not iterable"))),
             };
             for condition in list {
                 let policy = condition.get("expiry_policy").and_then(Value::as_str);
@@ -285,7 +285,7 @@ impl Resolve<'_> {
     }
 
     /// Стабилизированные герои с 0 хитов: 1к4 часов до 1 хита (13246–13279).
-    fn append_stable_recovery(&mut self, source_command: &Value, source_state: &Value, elapsed_minutes: i64) -> Step {
+    fn append_stable_recovery(&mut self, source_command: &Value, source_state: &Value, elapsed_minutes: i64) -> Flow {
         let trackers: Vec<(String, Value)> = match source_state.get("mechanics").and_then(|mechanics| mechanics.get("death")).and_then(|death| death.get("saving_throws")) {
             Some(Value::Object(map)) => js::entries(map).into_iter().map(|(id, tracker)| (id.clone(), tracker.clone())).collect(),
             _ => Vec::new(),
@@ -363,7 +363,7 @@ impl Resolve<'_> {
 /// `appendWorldTimeConsequences` вне команды — для сверки с JS: состояние
 /// нормализуется, проектор команды строится от него, события и броски
 /// возвращаются как `{ events, rolls }` замыкания.
-pub fn world_time_consequences(state: &Value, source_command: &Value, amount: Option<&Value>, unit: Option<&Value>, options: TimeAdvanceOptions, dice: &mut dyn RulesDice) -> Result<(Vec<Value>, Vec<Value>), Halt> {
+pub fn world_time_consequences(state: &Value, source_command: &Value, amount: Option<&Value>, unit: Option<&Value>, options: TimeAdvanceOptions, dice: &mut dyn RulesDice) -> Result<(Vec<Value>, Vec<Value>), Interrupt> {
     let state = crate::normalize::normalize_campaign_state(state)?;
     let mut uuid = crate::context::sequence_uuids("world-time");
     let projector = crate::replay::CommandProjector::new(&state);

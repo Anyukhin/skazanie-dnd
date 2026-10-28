@@ -12,7 +12,7 @@ use crate::conditions::{at_path, exhaustion_level_of, hit_point_maximum_bonus_of
 use crate::constants::{HIT_POINT_DIE_EVENT_SCHEMA_VERSION, REST_EVENT_SCHEMA_VERSION, REST_POLICY_ID};
 use crate::core::{ability_modifier, actor_max_hp, command_with_rules, event_from, player_actor, signed, slice_utf16};
 use crate::dice_record::RulesDice;
-use crate::pause::{Fault, Step};
+use crate::pause::{Fault, Flow};
 use crate::rest::{elapsed_rest_minutes, hit_point_dice_pool_for_actor, rest_minimum_minutes_for};
 
 /// `{ ...event, event_schema_version }`.
@@ -41,7 +41,7 @@ fn world_minutes(state: &Value) -> i64 {
 }
 
 /// `StartRest` (22627–22645).
-pub fn start_rest(r: &mut Resolve<'_>) -> Step {
+pub fn start_rest(r: &mut Resolve<'_>) -> Flow {
     let started_at_minutes = world_minutes(&r.state);
     let rest_id = match r.command.get("rest_id").filter(|value| !value.is_null()) {
         Some(id) => js::s(Some(id)),
@@ -68,7 +68,7 @@ pub fn start_rest(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `SpendHitPointDie` (22646–22686).
-pub fn spend_hit_point_die(r: &mut Resolve<'_>) -> Step {
+pub fn spend_hit_point_die(r: &mut Resolve<'_>) -> Flow {
     let actor_id = r.command.get("actor_id").cloned().unwrap_or(Value::Null);
     let actor = player_actor(&r.state, Some(&actor_id)).cloned();
     let Some(pool) = hit_point_dice_pool_for_actor(&r.state, &js::s(Some(&actor_id))) else {
@@ -123,7 +123,7 @@ pub fn spend_hit_point_die(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `CompleteRest` (22687–22760).
-pub fn complete_rest(r: &mut Resolve<'_>) -> Step {
+pub fn complete_rest(r: &mut Resolve<'_>) -> Flow {
     let actor_key = js::string(r.command.get("actor_id"));
     let mechanics = sk_core::game::mechanics(&r.state);
     let active_rest = mechanics.get("resting").and_then(|all| all.get(&actor_key)).cloned();

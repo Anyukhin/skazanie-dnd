@@ -21,7 +21,7 @@ use crate::conditions::auto_failed_save_condition_for;
 use crate::constants::ACTION_ECONOMY_EVENT_VERSION;
 use crate::core::{ability_modifier, coalesce, command_with, command_with_rules, event_from, spread_value};
 use crate::death::zero_hit_point_damage_consequences;
-use crate::pause::{rule, Fault, Halt, Step};
+use crate::pause::{rule, Fault, Interrupt, Flow};
 use crate::replay::apply_game_event;
 use crate::resolve::round_time::COMBAT_ROUND_TIME_POLICY;
 use crate::resolve::world_time::TimeAdvanceOptions;
@@ -63,7 +63,7 @@ fn effect_field(condition: &Value) -> Option<Value> {
 }
 
 /// Состояния участника; `null` в списке — `TypeError` у JS-фильтра.
-fn conditions_list(state: &Value, id: &str) -> Result<Vec<Value>, Halt> {
+fn conditions_list(state: &Value, id: &str) -> Result<Vec<Value>, Interrupt> {
     let list = sk_core::game::conditions(state, id).to_vec();
     if list.iter().any(Value::is_null) {
         return Err(Fault::type_error("Cannot read properties of null (reading 'repeat_save_timing')").into());
@@ -85,7 +85,7 @@ fn concentration_of<'a>(state: &'a Value, id: &str) -> Option<&'a Value> {
 }
 
 /// Ход раздела: применить событие к рабочему состоянию.
-fn push_applied(r: &mut Resolve<'_>, working: &mut Value, event: Value) -> Step {
+fn push_applied(r: &mut Resolve<'_>, working: &mut Value, event: Value) -> Flow {
     *working = apply_game_event(working, &event)?;
     r.events.push(event);
     Ok(())
@@ -114,7 +114,7 @@ fn save_options(ability: &str, modifier: i64, purpose: String, advantage: Option
 }
 
 /// `EndTurn` (20027–20369).
-pub fn end_turn(r: &mut Resolve<'_>) -> Step {
+pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     let combat = sk_core::game::combat(&state).clone();
@@ -578,7 +578,7 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `combat.initiative[nextIndex].actor_id`.
-fn initiative_entry(initiative: &[Value], index: f64) -> Result<Value, Halt> {
+fn initiative_entry(initiative: &[Value], index: f64) -> Result<Value, Interrupt> {
     let entry = if index.is_finite() && index >= 0.0 { initiative.get(index as usize) } else { None };
     match entry {
         Some(entry) if !entry.is_null() => Ok(entry.get("actor_id").cloned().unwrap_or(Value::Null)),
