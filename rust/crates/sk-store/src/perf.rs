@@ -13,13 +13,40 @@
 //! влияет. Отрезки копятся в общей таблице процесса; вложенные считаются
 //! целиком (время родителя включает детей).
 
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
 
 /// 0 — не прочитано, 1 — выключено, 2 — трасса запросов, 3 — только накопление.
 static STATE: AtomicU8 = AtomicU8::new(0);
-static TOTALS: Mutex<Vec<(&'static str, u32, u128)>> = Mutex::new(Vec::new());
+static TOTALS: Mutex<Vec<(&'static str, u32, u128, u64)>> = Mutex::new(Vec::new());
+
+/// Счётчики выделений памяти процесса (все потоки): байты, число выделений и
+/// число крупных (от [`BIG_ALLOCATION`] байт). Растут, только если бинарь
+/// собран с распределителем-счётчиком (`sk-server`, фича `alloc-count`);
+/// иначе — нули. Отрезок записывает, сколько байт выделено за его время.
+pub static ALLOCATED_BYTES: AtomicU64 = AtomicU64::new(0);
+/// Число выделений.
+pub static ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
+/// Число крупных выделений.
+pub static BIG_ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
+/// Порог крупного выделения, байт.
+pub const BIG_ALLOCATION: usize = 64 * 1024;
+
+/// Учесть выделение `size` байт (зовёт распределитель-счётчик).
+#[inline]
+pub fn note_allocation(size: usize) {
+    ALLOCATED_BYTES.fetch_add(size as u64, Ordering::Relaxed);
+    ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+    if size >= BIG_ALLOCATION {
+        BIG_ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+/// Снимок счётчиков: (байты, выделения, крупные выделения).
+pub fn allocation_counters() -> (u64, u64, u64) {
+    (ALLOCATED_BYTES.load(Ordering::Relaxed), ALLOCATIONS.load(Ordering::Relaxed), BIG_ALLOCATIONS.load(Ordering::Relaxed))
+}
 
 fn state() -> u8 {
     match STATE.load(Ordering::Relaxed) {
@@ -51,25 +78,27 @@ pub fn enable() {
 
 /// Отрезок: время до уничтожения прибавляется к своему имени.
 #[must_use]
-pub struct Span(Option<(&'static str, Instant)>);
+pub struct Span(Option<(&'static str, Instant, u64)>);
 
 /// Начать отрезок `name`.
 #[inline]
 pub fn span(name: &'static str) -> Span {
-    Span(enabled().then(|| (name, Instant::now())))
+    Span(enabled().then(|| (name, Instant::now(), ALLOCATED_BYTES.load(Ordering::Relaxed))))
 }
 
 impl Drop for Span {
     fn drop(&mut self) {
-        if let Some((name, started)) = self.0.take() {
+        if let Some((name, started, bytes_before)) = self.0.take() {
             let nanos = started.elapsed().as_nanos();
+            let bytes = ALLOCATED_BYTES.load(Ordering::Relaxed).saturating_sub(bytes_before);
             let mut totals = TOTALS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            match totals.iter_mut().find(|(known, _, _)| *known == name) {
+            match totals.iter_mut().find(|(known, _, _, _)| *known == name) {
                 Some(entry) => {
                     entry.1 += 1;
                     entry.2 += nanos;
+                    entry.3 += bytes;
                 }
-                None => totals.push((name, 1, nanos)),
+                None => totals.push((name, 1, nanos, bytes)),
             }
         }
     }
@@ -80,11 +109,16 @@ pub fn record(name: &'static str, elapsed: std::time::Duration) {
     if !enabled() {
         return;
     }
-    drop(Span(Some((name, Instant::now() - elapsed))));
+    drop(Span(Some((name, Instant::now() - elapsed, ALLOCATED_BYTES.load(Ordering::Relaxed)))));
 }
 
 /// Забрать накопленное: `(имя, число, миллисекунды)` в порядке первого появления.
 pub fn take() -> Vec<(&'static str, u32, f64)> {
+    take_with_allocations().into_iter().map(|(name, count, ms, _)| (name, count, ms)).collect()
+}
+
+/// [`take`] и мегабайты, выделенные за время отрезка (нули без счётчика).
+pub fn take_with_allocations() -> Vec<(&'static str, u32, f64, f64)> {
     let mut totals = TOTALS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    totals.drain(..).map(|(name, count, nanos)| (name, count, nanos as f64 / 1e6)).collect()
+    totals.drain(..).map(|(name, count, nanos, bytes)| (name, count, nanos as f64 / 1e6, bytes as f64 / 1e6)).collect()
 }

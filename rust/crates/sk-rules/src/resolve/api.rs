@@ -272,9 +272,12 @@ pub fn resolve_commands(commands: &[Value], initial_state: &Value, dice: &mut dy
             }
         }
         let window_before = js::s(sk_core::game::combat(&state).get("reaction_window").and_then(|window| window.get("id")));
+        let resolve_span = sk_store::perf::span("rules.resolve_command");
         let result = resolve_command(&input, &state, dice, context, &mut *uuid)?;
+        drop(resolve_span);
         validated.push(result.command.clone());
         for event in &result.events {
+            let _apply_span = sk_store::perf::span("rules.apply_game_event");
             state = apply_game_event(&state, event)?;
             all_events.push(event.clone());
         }
