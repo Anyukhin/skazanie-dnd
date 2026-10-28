@@ -23,39 +23,67 @@ thread_local! {
 
 /// `normalizeCampaignState(rawState)`.
 pub fn normalize_campaign_state(raw: &Value) -> Result<Value, Halt> {
+    let _span = sk_store::perf::span("normalize.ref");
     if ASSUME_NORMALIZED.with(Cell::get) {
         return Ok(raw.clone());
     }
-    if fixed_point::known(raw) {
+    if known(raw) {
+        let _clone = sk_store::perf::span("normalize.ref.hit_clone");
         return Ok(raw.clone());
     }
+    let _full = sk_store::perf::span("normalize.full");
     let normalized = campaign::normalize_campaign_state(raw)?;
-    fixed_point::remember(&normalized);
+    {
+        let _remember = sk_store::perf::span("normalize.remember");
+        fixed_point::remember(&normalized);
+    }
     Ok(normalized)
 }
 
 /// [`normalize_campaign_state`] для чтения (Ск3): уже нормализованный вход
 /// (неподвижная точка из памяти итогов) возвращается заимствованным, без копии.
 pub fn normalize_campaign_state_cow(raw: &Value) -> Result<std::borrow::Cow<'_, Value>, Halt> {
-    if ASSUME_NORMALIZED.with(Cell::get) || fixed_point::known(raw) {
+    let _span = sk_store::perf::span("normalize.cow");
+    if ASSUME_NORMALIZED.with(Cell::get) || known(raw) {
         return Ok(std::borrow::Cow::Borrowed(raw));
     }
+    let _full = sk_store::perf::span("normalize.full");
     let normalized = campaign::normalize_campaign_state(raw)?;
-    fixed_point::remember(&normalized);
+    {
+        let _remember = sk_store::perf::span("normalize.remember");
+        fixed_point::remember(&normalized);
+    }
     Ok(std::borrow::Cow::Owned(normalized))
 }
 
 /// [`normalize_campaign_state`] для своего значения: без копии входа.
 pub fn normalize_campaign_state_owned(raw: Value) -> Result<Value, Halt> {
+    let _span = sk_store::perf::span("normalize.owned");
     if ASSUME_NORMALIZED.with(Cell::get) {
         return Ok(raw);
     }
-    if fixed_point::known(&raw) {
+    if known(&raw) {
         return Ok(raw);
     }
+    let _full = sk_store::perf::span("normalize.full");
     let normalized = campaign::normalize_campaign_state_owned(raw)?;
-    fixed_point::remember(&normalized);
+    {
+        let _remember = sk_store::perf::span("normalize.remember");
+        fixed_point::remember(&normalized);
+    }
     Ok(normalized)
+}
+
+/// `fixed_point::known` под отрезком замера: сравнение с памятью итогов
+/// (`normalize.memo_check`) и попадание (`normalize.memo_hit`, число).
+fn known(raw: &Value) -> bool {
+    let check = sk_store::perf::span("normalize.memo_check");
+    let hit = fixed_point::known(raw);
+    drop(check);
+    if hit {
+        drop(sk_store::perf::span("normalize.memo_hit"));
+    }
+    hit
 }
 
 /// Память недавних итогов нормализации (Ск3).

@@ -22,6 +22,8 @@ sk-scene-base = { path = "../sk-scene-base" }
 sk-economy = { path = "../sk-economy" }
 sk-items = { path = "../sk-items" }
 sk-tactical = { path = "../sk-tactical" }
+# Урок 11: отрезки замера нормализации (`sk_store::perf`); sk-store уже в графе через sk-tactical.
+sk-store = { path = "../sk-store" }
 sk-heroes = { path = "../sk-heroes" }
 sk-npc-world = { path = "../sk-npc-world" }
 sk-items-life = { path = "../sk-items-life" }

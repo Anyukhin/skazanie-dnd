@@ -66,6 +66,8 @@ function fighterDocument(name) {
     starterEquipmentChoices: { armor: ['chain-mail'], 'melee-loadout': ['longsword-shield'], secondary: ['light-crossbow'], pack: ['explorers-pack'] },
     baseSpeed: 30, hitPointIncreases: [], classSkillProficiencies: ['athletics', 'perception'], selectedFeatureIds: ['fighting-style-defense'],
     knownSpellIds: [], preparedSpellIds: [],
+    // #190: герой 2014 создаётся только с выборами PHB — как в `tests/hot_path_budget.rs`.
+    phbCreation: { schema_version: 1, classChoices: {} },
   } }
 }
 

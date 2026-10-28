@@ -311,9 +311,12 @@ fn resolve_plan_inner(commands: &[Value], initial_state: &Value, dice: &mut dyn 
             }
         }
         let window_before = js::s(sk_core::game::combat(&state).get("reaction_window").and_then(|window| window.get("id")));
+        let resolve_span = sk_store::perf::span("rules.resolve_command");
         let result = resolve_command_inner(&input, &state, dice, context, &mut *uuid)?;
+        drop(resolve_span);
         validated.push(result.command.clone());
         for event in &result.events {
+            let _apply_span = sk_store::perf::span("rules.apply_game_event");
             state = apply_game_event(&state, event)?;
             all_events.push(event.clone());
         }

@@ -3599,6 +3599,7 @@ impl GameOrchestrator {
 
     /// `_handle(input)`.
     async fn handle_turn(&self, mut input: HandleInput) -> OrchestratorResult<Value> {
+        let prelude_span = sk_store::perf::span("orch.handle_turn.prelude");
         let started = self.now_ms();
         let request_operation = request_operation_for(&input.fields);
         let original_state = normalize_campaign_state(nullish(input.field("state"), None).unwrap_or(&json!({})))?;
@@ -3914,6 +3915,7 @@ impl GameOrchestrator {
                 }
             }
         }
+        drop(prelude_span);
         self.handle_planned(input, HandleContext {
             started,
             campaign_id,
@@ -3966,6 +3968,7 @@ impl GameOrchestrator {
             idempotency_request,
             request_fingerprint,
         } = context;
+        let pre_resolve_span = sk_store::perf::span("orch.planned.pre_resolve");
         let has_commands = input.has_commands();
         let mut intent = if has_commands {
             json!({ "actor_id": player_id, "intent": "structured_commands", "approach": "api", "targets": [], "mentioned_entities": [], "missing_information": [], "requires_clarification": false, "confidence": 1, "raw_message": message })
@@ -4400,6 +4403,7 @@ impl GameOrchestrator {
             }
         }
 
+        drop(pre_resolve_span);
         let mut replayed_commit = duplicate.is_some();
         let mut ruling_from_draft = false;
         let (mut committed, mut engine_result) = match &duplicate {
@@ -4425,11 +4429,14 @@ impl GameOrchestrator {
                 let mut resolution_state = if social_request.is_some() { social_base_state.clone() } else { authoritative_state.clone() };
                 let mut outcome: Option<(Value, Value)> = None;
                 for attempt in 0..3 {
+                    let resolve_span = sk_store::perf::span("orch.resolve_turn_plan");
                     let engine = self.rules_engine.resolve_turn_plan(&plan, &resolution_state, &rules_context)?;
+                    drop(resolve_span);
                     let events = list(engine.get("events")).to_vec();
                     if events.is_empty() {
                         return Err(OrchestratorError::plain("Enforce-ход не создал ни события, ни ruling"));
                     }
+                    let _commit_span = sk_store::perf::span("orch.commit");
                     match self.commit(&campaign_id, resolution_state.get("state_version"), &idempotency_key, events) {
                         Ok(commit) => {
                             outcome = Some((commit.to_json(), engine));
@@ -4459,6 +4466,7 @@ impl GameOrchestrator {
             }
         };
 
+        let brief_span = sk_store::perf::span("orch.post_commit_brief");
         let check_command = plan_check.filter(|command| social_request.is_none() && is_str(command.get("command_type"), "MakeAbilityCheck"));
         committed = self.commit_check_discovery(&campaign_id, &idempotency_key, committed, &message, &rules_context, check_command.as_ref()).await?;
         let main_events = match nullish(committed.get("events"), None) {
@@ -4553,6 +4561,8 @@ impl GameOrchestrator {
             let wrapped: ProgressCallback = Arc::new(move |text_value: &str| callback(text_value, &payload));
             wrapped
         });
+        drop(brief_span);
+        let narration_span = sk_store::perf::span("orch.narration");
         let narration = if idempotent_replay {
             cached_narration(replay_trace.as_ref(), &brief, &resolved_rule_ids)?.unwrap_or(replay_fallback)
         } else if let Some(response) = &deterministic_response {
@@ -4566,6 +4576,8 @@ impl GameOrchestrator {
             let recent = self.recent_narrations_for(&campaign_id)?;
             narrator.render(&brief, NarrationOptions { known_rule_ids: resolved_rule_ids.clone(), recent_narrations: recent, on_progress: progress }).await?
         };
+        drop(narration_span);
+        let _tail_span = sk_store::perf::span("orch.response_and_trace");
         if !idempotent_replay && !private_social {
             self.remember_narration(&campaign_id, &js::s(narration.get("narration")))?;
         }
