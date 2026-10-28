@@ -2917,13 +2917,13 @@ function rateLimited(req) {
 }
 
 async function readBody(req) {
-  let raw = ''
+  let raw = '', decoder = new TextDecoder() // поток: хвост буквы ждёт следующего куска, без «��» на границе
   for await (const chunk of req) {
-    raw += chunk
+    raw += decoder.decode(chunk, { stream: true })
     if (raw.length > 1_000_000) throw commandPolicyError('Слишком большой запрос', 'REQUEST_TOO_LARGE')
   }
   let body
-  try { body = JSON.parse(raw || '{}') }
+  try { body = JSON.parse((raw + decoder.decode()) || '{}') }
   catch { throw commandPolicyError('Некорректный JSON в запросе', 'INVALID_JSON') }
   // Каждый маршрут сразу читает поля тела. JSON `null` проходил разбор, и
   // `body.mode` бросал TypeError мимо catch маршрута — процесс падал целиком;

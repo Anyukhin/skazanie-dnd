@@ -26,7 +26,7 @@ import { join } from 'node:path'
 const root = new URL('../../../../', import.meta.url)
 const FIXTURE = new URL('./command-guard.json', import.meta.url)
 const CORPUS_DIR = 'C:/Users/anton/PycharmProjects/Dnd-narrator-live/tmp/corpus-v1'
-const SOURCE_SHA256 = '610438b762f2ce4fc9413ad23b5c18f1527f9ddc83577aa2b25eb673094a141c'
+const SOURCE_SHA256 = '5d972e446f05fa2c4fbb604e5a65914422264ed323dbebb94feca1d231e31ecd'
 const RANGES = [[513, 529], [531, 996], [1250, 2074]]
 
 const sha = (text) => createHash('sha256').update(text).digest('hex')

@@ -4,10 +4,8 @@
 // («Благослове��ие»), и перекрёстный replay стенда Асстохана
 // (`eval/stand-server.mjs`) видел расхождение там, где его нет.
 //
-// Тело запроса уходит экранированным ASCII (`\uXXXX`): JS-сервер склеивает
-// куски тела строками и сам рвёт буквы большого тела (`readBody`,
-// server/index.mjs; docs/rust-port-js-findings.md) — здесь проверяется только
-// чтение журнала.
+// Тело запроса уходит экранированным ASCII (`\uXXXX`): здесь проверяется только
+// чтение журнала; разбор тела из кусков — `request-body-utf8-api.test.mjs`.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
