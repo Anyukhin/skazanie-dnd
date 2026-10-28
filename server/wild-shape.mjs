@@ -78,5 +78,5 @@ export function wildShapeFormFor(actor, formId = '') {
   const forms = wildShapeFormsFor(actor)
   const chosen = forms.find((form) => form.id === String(formId ?? ''))
   if (chosen) return chosen
-  return [...forms].sort((left, right) => right.challenge_rating - left.challenge_rating || right.hp - left.hp || left.id.localeCompare(right.id))[0] ?? null
+  return [...forms].sort((left, right) => right.challenge_rating - left.challenge_rating || right.hp - left.hp || left.id.localeCompare(right.id, 'en'))[0] ?? null
 }

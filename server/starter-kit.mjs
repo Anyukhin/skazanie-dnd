@@ -506,7 +506,7 @@ function effectiveStarterOptionSignature(option) {
         quantity: (byIdentity.get(key)?.quantity ?? 0) + Math.max(1, Number(quantity) || 1),
       })
     }
-    return [...byIdentity.values()].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))
+    return [...byIdentity.values()].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right), 'en'))
   }
   return JSON.stringify({
     items: stack(option?.items),

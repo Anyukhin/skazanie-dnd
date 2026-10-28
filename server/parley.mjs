@@ -179,7 +179,7 @@ function traitIds(enemy = {}) {
 export function standingEnemies(state = {}) {
   return (Array.isArray(state?.enemies) ? state.enemies : [])
     .filter((enemy) => isStanding(state, enemy))
-    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), 'en'))
 }
 
 /**

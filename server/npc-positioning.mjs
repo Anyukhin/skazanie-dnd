@@ -192,7 +192,7 @@ export function presentSceneNpcs(state = {}) {
   return (Array.isArray(state.social?.npcs) ? state.social.npcs : [])
     .filter((npc) => npc?.id && npc?.name && npcAtCurrentLocation(npc, state))
     .filter((npc) => world.vitals[String(npc.id)]?.alive !== false && Number(world.vitals[String(npc.id)]?.hp ?? 1) > 0)
-    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), 'en'))
     .slice(0, MAX_VISIBLE_NPCS)
 }
 
@@ -354,7 +354,7 @@ function suitableProps(map, npc) {
     const rightRank = preferred.findIndex((asset) => rightAsset.includes(asset))
     const normalizedLeft = leftRank < 0 ? preferred.length : leftRank
     const normalizedRight = rightRank < 0 ? preferred.length : rightRank
-    return normalizedLeft - normalizedRight || String(left.id).localeCompare(String(right.id))
+    return normalizedLeft - normalizedRight || String(left.id).localeCompare(String(right.id), 'en')
   })
 }
 
@@ -416,7 +416,7 @@ function candidateCells(map, npc, occupied, propOccupied, footprint = null) {
         const rank = preferred.findIndex((asset) => String(prop.assetId ?? '').includes(asset))
         const normalizedRank = rank < 0 ? preferred.length : rank
         if (distanceToProp < anchorDistance || (distanceToProp === anchorDistance && normalizedRank < anchorRank)
-          || (distanceToProp === anchorDistance && normalizedRank === anchorRank && String(prop.id).localeCompare(String(anchor?.id ?? '')) < 0)) {
+          || (distanceToProp === anchorDistance && normalizedRank === anchorRank && String(prop.id).localeCompare(String(anchor?.id ?? ''), 'en') < 0)) {
           anchor = prop
           anchorDistance = distanceToProp
           anchorRank = normalizedRank
@@ -599,7 +599,7 @@ export function placedSceneNpcTargets(state) {
   return presentSceneNpcs(state)
     .map((npc) => ({ npc, placement: npcPlacementFor(state, npc.id, locationId) }))
     .filter(({ placement }) => placement)
-    .sort((left, right) => String(left.npc.id).localeCompare(String(right.npc.id)))
+    .sort((left, right) => String(left.npc.id).localeCompare(String(right.npc.id), 'en'))
 }
 
 /**
@@ -643,7 +643,7 @@ export function npcTargetsWithinArea(state, center, radiusFeet) {
       const distanceFeet = footprintDistanceFeet({ footprint: placement.footprint }, [center], placement)
       return distanceFeet != null && distanceFeet <= Math.max(0, Number(radiusFeet) || 0)
     })
-    .sort((left, right) => String(left.npc.id).localeCompare(String(right.npc.id)))
+    .sort((left, right) => String(left.npc.id).localeCompare(String(right.npc.id), 'en'))
 }
 
 export function npcMissCollateralTarget(state, { targetPosition, attackTotal, armorClass } = {}) {
@@ -660,7 +660,7 @@ function nearbyPlacedNpcs(state, origin, radiusCells, excluded = new Set()) {
       && footprintDistanceFeet({ footprint: placement.footprint }, [origin], placement) <= radiusCells * 5)
     .sort((left, right) => (footprintDistanceFeet({ footprint: left.placement.footprint }, [origin], left.placement) ?? Number.MAX_SAFE_INTEGER)
       - (footprintDistanceFeet({ footprint: right.placement.footprint }, [origin], right.placement) ?? Number.MAX_SAFE_INTEGER)
-      || String(left.npc.id).localeCompare(String(right.npc.id)))
+      || String(left.npc.id).localeCompare(String(right.npc.id), 'en'))
 }
 
 function stanceDraft(npc, stance, reason, sourceEventId, propagationDepth) {
@@ -1181,6 +1181,6 @@ export function sceneNpcsForViewer(state = {}) {
       }
     })
     .filter(Boolean)
-    .sort((left, right) => left.id.localeCompare(right.id))
+    .sort((left, right) => left.id.localeCompare(right.id, 'en'))
     .slice(0, MAX_VISIBLE_NPCS)
 }

@@ -193,7 +193,7 @@ function nearestHazardAt(state, actorId) {
     const hazardId = canonicalEnvironmentHazardId(hazard?.id ?? hazard?.hazard_id ?? hazard?.type)
     if (hazardId) candidates.push({ hazard_id: hazardId, source: { kind: 'active-hazard', id: String(hazard?.id ?? hazardId) }, distance: 0 })
   }
-  return candidates.sort((left, right) => left.distance - right.distance || left.hazard_id.localeCompare(right.hazard_id))
+  return candidates.sort((left, right) => left.distance - right.distance || left.hazard_id.localeCompare(right.hazard_id, 'en'))
 }
 
 function hazardCandidateReachable(state, actorId, candidate) {
@@ -1114,7 +1114,7 @@ export function freeActionApproachPlan(state = {}, actorId = '', text = '') {
       .map((prop) => ({ prop, cells: hazardPropCells(prop).filter((cell) => cellAt(map, cell.x, cell.y)?.revealed === true) }))
       .filter((entry) => entry.cells.length)
       .map((entry) => ({ ...entry, distance: Math.min(...entry.cells.map((cell) => Math.max(Math.abs(cell.x - from.x), Math.abs(cell.y - from.y)))) }))
-      .sort((left, right) => left.distance - right.distance || clean(left.prop.id).localeCompare(clean(right.prop.id)))
+      .sort((left, right) => left.distance - right.distance || clean(left.prop.id).localeCompare(clean(right.prop.id), 'en'))
     for (const entry of props.slice(0, 3)) {
       const plan = ready('prop', request.phrase, entry.cells, approachCellsAround(map, entry.cells, occupied))
       if (plan.status !== 'unresolved') return plan
@@ -1357,7 +1357,7 @@ function nearestLootContainer(state, hero, containers) {
   const pool = within.length ? within : measured
   const distance = (entry) => entry.distance_feet ?? Number.POSITIVE_INFINITY
   const [first, second] = [...pool].sort((left, right) => distance(left) - distance(right)
-    || left.container.id.localeCompare(right.container.id))
+    || left.container.id.localeCompare(right.container.id, 'en'))
   if (!first) return null
   return second && distance(second) === distance(first) ? null : first
 }
@@ -1479,7 +1479,7 @@ function resolveLootContainerSearch(state, hero, text, reading) {
   // «что именно обыскивает» (замер 28, дважды подряд): вне боя оркестратор
   // сам подводит героя к телу.
   if (!chosen) {
-    const first = [...pool].sort((left, right) => left.id.localeCompare(right.id))[0]
+    const first = [...pool].sort((left, right) => left.id.localeCompare(right.id, 'en'))[0]
     if (!first) {
       return {
         status: 'clarification',
@@ -1903,7 +1903,7 @@ function closedDoorEntry(state, actorId, map, outside) {
     if (path.some((step) => cellAt(map, step.x, step.y)?.revealed !== true)) continue
     options.push({ door_id: String(door.id), approach: out.position, inside: inside.position, steps: path.length })
   }
-  options.sort((left, right) => left.steps - right.steps || left.door_id.localeCompare(right.door_id))
+  options.sort((left, right) => left.steps - right.steps || left.door_id.localeCompare(right.door_id, 'en'))
   const best = options[0]
   if (!best) return null
   return { status: 'ready', door_id: best.door_id, open_door: true, approach: best.approach, ...(best.steps === 0 ? { at_door: true } : {}), destination: { to: best.inside, path: [best.inside] } }
@@ -1984,7 +1984,7 @@ export function freeActionPassagePlan(state = {}, actorId = '', text = '') {
   if (!origin || !outside.has(positionKey(from))) return { status: 'already_inside' }
   const candidates = []
   for (const door of [...(map.doors ?? [])].sort((left, right) => (
-    left.y - right.y || left.x - right.x || String(left.id).localeCompare(String(right.id))
+    left.y - right.y || left.x - right.x || String(left.id).localeCompare(String(right.id), 'en')
   ))) {
     const first = { x: Number(door.x), y: Number(door.y) }
     const second = door.dir === 'e' ? { x: first.x + 1, y: first.y } : { x: first.x, y: first.y + 1 }
@@ -2001,7 +2001,7 @@ export function freeActionPassagePlan(state = {}, actorId = '', text = '') {
     candidates.push({ door_id: String(door.id), to: entry.position, path })
   }
   candidates.sort((left, right) => left.path.length - right.path.length
-    || left.to.y - right.to.y || left.to.x - right.to.x || left.door_id.localeCompare(right.door_id))
+    || left.to.y - right.to.y || left.to.x - right.to.x || left.door_id.localeCompare(right.door_id, 'en'))
   if (!candidates.length) {
     // Открытого прохода нет, но есть закрытая (не запертая) дверь внутрь:
     // живой ведущий не отвечает «откройте дверь на карте» — герой подходит,

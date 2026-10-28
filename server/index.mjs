@@ -929,7 +929,7 @@ function lootCommandFingerprint(command) {
         item_instance_id: String(line?.item_instance_id ?? ''),
         quantity: Number(line?.quantity ?? 1),
       }))
-      .sort((left, right) => left.item_instance_id.localeCompare(right.item_instance_id)),
+      .sort((left, right) => left.item_instance_id.localeCompare(right.item_instance_id, 'en')),
   }
   return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
 }
@@ -4478,7 +4478,7 @@ async function handleHttpRequest(req, res) {
             updatedAt: room.updatedAt,
           }
         })
-        .sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')))
+        .sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || ''), 'en'))
       return json(res, 200, { campaigns })
     } catch (error) { return json(res, 500, { error: error instanceof Error ? error.message : 'Не удалось загрузить кампании' }) }
   }

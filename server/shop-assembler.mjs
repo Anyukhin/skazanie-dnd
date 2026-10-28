@@ -153,7 +153,7 @@ function deterministicOrder(values, seed, label) {
   return [...values].sort((left, right) => {
     const leftHash = digest(`${seed}\u0000${label}\u0000${left}`)
     const rightHash = digest(`${seed}\u0000${label}\u0000${right}`)
-    return leftHash.localeCompare(rightHash) || left.localeCompare(right)
+    return leftHash.localeCompare(rightHash, 'en') || left.localeCompare(right, 'en')
   })
 }
 
@@ -182,7 +182,7 @@ function validateDirectorIntent(input, theme, settlement) {
       throw new ShopAssemblyError('Количество товара выходит за разрешённые границы', 'DIRECTOR_QUANTITY_OUT_OF_RANGE')
     }
     return { catalog_id: entry.catalog_id, quantity: entry.quantity }
-  }).sort((left, right) => left.catalog_id.localeCompare(right.catalog_id))
+  }).sort((left, right) => left.catalog_id.localeCompare(right.catalog_id, 'en'))
 
   const adjustment = input.agent_adjustment_bps ?? 0
   if (!Number.isSafeInteger(adjustment)

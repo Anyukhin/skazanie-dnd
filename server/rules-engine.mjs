@@ -2508,14 +2508,14 @@ function planImportRelocations(state, map, partyPositions) {
     for (const cell of footprintCellsFor(findActor(state, position.actor_id), position)) occupied.add(positionKey(cell))
   }
   const movers = []
-  for (const [id, position] of Object.entries(state.mechanics.positions ?? {}).sort(([left], [right]) => left.localeCompare(right))) {
+  for (const [id, position] of Object.entries(state.mechanics.positions ?? {}).sort(([left], [right]) => left.localeCompare(right, 'en'))) {
     if (partyIds.has(String(id))) continue
     const x = Number(position?.x)
     const y = Number(position?.y)
     if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) continue
     movers.push({ kind: 'actor', id: String(id), x, y, body: findActor(state, id), creature: true })
   }
-  for (const entity of [...(state.entities ?? [])].sort((left, right) => String(left?.id ?? '').localeCompare(String(right?.id ?? '')))) {
+  for (const entity of [...(state.entities ?? [])].sort((left, right) => String(left?.id ?? '').localeCompare(String(right?.id ?? ''), 'en'))) {
     const x = Number(entity?.x)
     const y = Number(entity?.y)
     if (!entity?.id || !Number.isSafeInteger(x) || !Number.isSafeInteger(y)) continue
@@ -3090,7 +3090,7 @@ function farthestSafeDestinationAwayFrom(state, moverId, origin, distanceFeet) {
   const distanceFromOrigin = (position) => (footprintDistanceFeet(findActor(state, moverId), [origin], position) ?? 0) / 5
   return candidates.sort((left, right) => distanceFromOrigin(right.position) - distanceFromOrigin(left.position)
     || right.path.length - left.path.length
-    || positionKey(left.position).localeCompare(positionKey(right.position)))[0] ?? null
+    || positionKey(left.position).localeCompare(positionKey(right.position), 'en'))[0] ?? null
 }
 
 function diceExpression(dice, bonus, fallbackSides) {
@@ -4583,7 +4583,7 @@ function opportunityAttackers(state, moverId, from, path) {
       return path.some((step) => (footprintDistanceFeet(candidate, findActor(state, moverId), position, step) ?? 0) > reachFeet)
     })
     .sort((left, right) => (initiativeOrder.get(actorId(left)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right)) ?? Number.MAX_SAFE_INTEGER)
-      || actorId(left).localeCompare(actorId(right)))
+      || actorId(left).localeCompare(actorId(right), 'en'))
 }
 
 function sourceIdsFor(command, state) {
@@ -9685,7 +9685,7 @@ function allyAttackReactionFor(state, attackerId, targetId, kind) {
     })
     .filter(Boolean)
     .sort((left, right) => (initiativeOrder.get(actorId(left.actor)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right.actor)) ?? Number.MAX_SAFE_INTEGER)
-      || actorId(left.actor).localeCompare(actorId(right.actor)))[0] ?? null
+      || actorId(left.actor).localeCompare(actorId(right.actor), 'en'))[0] ?? null
 }
 
 /** Вариант окна для союзной реакции: то же описание, что у плитки. */
@@ -9787,7 +9787,7 @@ function counterspellReactionFor(state, casterId) {
     })
     .filter(Boolean)
     .sort((left, right) => (initiativeOrder.get(actorId(left.actor)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right.actor)) ?? Number.MAX_SAFE_INTEGER)
-      || actorId(left.actor).localeCompare(actorId(right.actor)))[0] ?? null
+      || actorId(left.actor).localeCompare(actorId(right.actor), 'en'))[0] ?? null
 }
 
 function silveryBarbsReactionFor(state, sourceActorId, preferredActorId = null) {
@@ -9807,7 +9807,7 @@ function silveryBarbsReactionFor(state, sourceActorId, preferredActorId = null) 
     .filter(Boolean)
     .sort((left, right) => Number(actorId(right.actor) === preferredActorId) - Number(actorId(left.actor) === preferredActorId)
       || (initiativeOrder.get(actorId(left.actor)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right.actor)) ?? Number.MAX_SAFE_INTEGER)
-      || actorId(left.actor).localeCompare(actorId(right.actor)))[0] ?? null
+      || actorId(left.actor).localeCompare(actorId(right.actor), 'en'))[0] ?? null
 }
 
 function reducedReactionDamage(damage, preventedAmount) {
@@ -10873,7 +10873,7 @@ function enervationLinkFor(state, casterIdValue) {
       && String(condition?.effect_id ?? '') === effectId
       && safeInteger(condition?.continuation_version, 0) === 1
       && (condition?.spell_id == null || String(condition.spell_id) === 'enervation'))
-    .sort((left, right) => String(left.targetId).localeCompare(String(right.targetId)))
+    .sort((left, right) => String(left.targetId).localeCompare(String(right.targetId), 'en'))
   const match = candidates[0]
   if (!match) return null
   const spell = canonicalCombatSpellFor('enervation', { rulesetId: state?.ruleset_id })
@@ -11020,7 +11020,7 @@ function monsterMultiattackActionCounts(multiattack) {
   return new Map(Object.entries(multiattack.action_counts)
     .map(([id, count]) => [String(id), Math.max(0, Math.min(8, safeInteger(count, 0)))])
     .filter(([id, count]) => id && count > 0)
-    .sort(([left], [right]) => left.localeCompare(right)))
+    .sort(([left], [right]) => left.localeCompare(right, 'en')))
 }
 
 function monsterMultiattackActionIds(actor, fallbackActionId = null, usedActionIds = []) {
@@ -11631,7 +11631,7 @@ function activeAuraOfProtection(state, targetId) {
       radius_feet: 10,
     })
   }
-  return candidates.sort((left, right) => right.bonus - left.bonus || left.source_id.localeCompare(right.source_id))[0] ?? null
+  return candidates.sort((left, right) => right.bonus - left.bonus || left.source_id.localeCompare(right.source_id, 'en'))[0] ?? null
 }
 
 function savingThrowModifierWithAura(state, targetId, baseModifier) {
@@ -12227,7 +12227,7 @@ function savingThrowSucceeded(save, difficulty) {
 }
 
 function sortedInitiative(entries) {
-  return [...entries].sort((left, right) => right.total - left.total || right.modifier - left.modifier || String(left.actor_id).localeCompare(String(right.actor_id)))
+  return [...entries].sort((left, right) => right.total - left.total || right.modifier - left.modifier || String(left.actor_id).localeCompare(String(right.actor_id), 'en'))
 }
 
 function sceneAdvancePartyIds(state) {
@@ -16925,7 +16925,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               && ![...OPPORTUNITY_BLOCKING_CONDITIONS].some((condition) => conditionIdsFor(state, readyId).has(condition)))
             // Заготовленный удар оружием требует дотянуться, заклинание — нет.
             .filter(([readyId, readied]) => Boolean(readied?.spell_id) || distanceBetweenActors(state, readyId, command.actor_id) <= 5)
-            .sort(([left], [right]) => (initiativeOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(right) ?? Number.MAX_SAFE_INTEGER) || left.localeCompare(right))[0]
+            .sort(([left], [right]) => (initiativeOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(right) ?? Number.MAX_SAFE_INTEGER) || left.localeCompare(right, 'en'))[0]
           if (readyEntry) events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowOpened', {
             id: `reaction:${command.command_id}:readied`,
             trigger: 'readied',
@@ -17290,7 +17290,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               if (spell.id === 'color-spray' && (conditions.has('blinded') || conditions.has('cannot-see'))) return false
               return true
             })
-            .sort((left, right) => actorHp(left) - actorHp(right) || actorId(left).localeCompare(actorId(right)))
+            .sort((left, right) => actorHp(left) - actorHp(right) || actorId(left).localeCompare(actorId(right), 'en'))
           for (const target of eligible) {
             const hp = actorHp(target)
             if (hp > remaining) continue
@@ -17548,7 +17548,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                   const at = actorPosition(state, actorId(candidate))
                   return at && footprintDistanceFeet(candidate, findActor(state, resolvedTargetId), at, targetAt) === 5
                 })
-                .sort((left, right) => actorId(left).localeCompare(actorId(right)))[0] : null
+                .sort((left, right) => actorId(left).localeCompare(actorId(right), 'en'))[0] : null
               if (secondTarget) {
                 const fireDice = cantripLevel >= 11 ? 2 : cantripLevel >= 5 ? 1 : 0
                 const expression = fireDice > 0 ? `${fireDice}d8${spellModifier >= 0 ? '+' : ''}${spellModifier}` : null
@@ -19097,7 +19097,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             return before <= reach && leavesReach
           })
           .sort((left, right) => (initiativeOrder.get(actorId(left)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right)) ?? Number.MAX_SAFE_INTEGER)
-            || actorId(left).localeCompare(actorId(right)))[0]
+            || actorId(left).localeCompare(actorId(right), 'en'))[0]
         if (reactor) events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowOpened', {
           id: `reaction:${command.command_id}:opportunity`,
           trigger: 'enemy-left-reach',
@@ -19134,7 +19134,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             // Именно «подошёл»: был дальше досягаемости, стал в её пределах.
             return before > 5 && after <= 5
           })
-          .sort(([left], [right]) => (initiativeOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(right) ?? Number.MAX_SAFE_INTEGER) || left.localeCompare(right))[0]
+          .sort(([left], [right]) => (initiativeOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(right) ?? Number.MAX_SAFE_INTEGER) || left.localeCompare(right, 'en'))[0]
         if (readyEntry) events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowOpened', {
           id: `reaction:${command.command_id}:readied`,
           trigger: 'readied',
@@ -19962,7 +19962,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         })
       }
       const initiative = sortedInitiative(entries)
-      for (const summon of summons.sort((left, right) => actorId(left).localeCompare(actorId(right)))) {
+      for (const summon of summons.sort((left, right) => actorId(left).localeCompare(actorId(right), 'en'))) {
         const ownerId = String(summon.ownerId ?? summon.owner_id)
         const ownerIndex = initiative.findIndex((entry) => String(entry.actor_id) === ownerId)
         if (ownerIndex < 0) continue
@@ -22244,7 +22244,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
         const runners = state.players
           .filter((hero) => memberIds.has(actorId(hero)) && isLivingActor(hero))
-          .sort((left, right) => actorId(left).localeCompare(actorId(right)))
+          .sort((left, right) => actorId(left).localeCompare(actorId(right), 'en'))
         const checks = []
         for (const hero of runners) {
           const heroId = actorId(hero)

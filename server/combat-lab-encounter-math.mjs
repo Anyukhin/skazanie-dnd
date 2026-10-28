@@ -128,7 +128,7 @@ function rosterKey(ids) {
 function candidateOrder(records, seed) {
   return [...records].sort((left, right) => (
     hash32(`${seed}:candidate:${left.id}`) - hash32(`${seed}:candidate:${right.id}`)
-    || String(left.id).localeCompare(String(right.id))
+    || String(left.id).localeCompare(String(right.id), 'en')
   ))
 }
 

@@ -105,7 +105,7 @@ function mapSurfaceFacts(rawMap) {
   if (!revealed) return { materials: [], water: false }
   const materials = [...counts.entries()]
     .filter(([, count]) => count / revealed >= 0.1)
-    .sort((left, right) => right[1] - left[1] || String(left[0]).localeCompare(String(right[0])))
+    .sort((left, right) => right[1] - left[1] || String(left[0]).localeCompare(String(right[0]), 'en'))
     .slice(0, 3)
     .map(([material]) => MATERIAL_LABELS[material] ?? '')
     .filter(Boolean)

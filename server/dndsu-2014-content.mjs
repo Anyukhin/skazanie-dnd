@@ -252,7 +252,7 @@ export function searchContent(content,query,{kind,limit=10}={}) {
     const body=normalize(JSON.stringify(record))
     const score=tokens.reduce((sum,t)=>sum+(title.includes(t)?5:body.includes(t)?1:0),0)
     return {record,score,matched:tokens.every(t=>body.includes(t))}
-  }).filter(r=>r.matched).sort((a,b)=>b.score-a.score||a.record.id.localeCompare(b.record.id)).slice(0,limit).map(({record,score})=>({record,score}))
+  }).filter(r=>r.matched).sort((a,b)=>b.score-a.score||a.record.id.localeCompare(b.record.id, 'en')).slice(0,limit).map(({record,score})=>({record,score}))
 }
 /** Complete record text for indexing. A retrieved record is reference evidence, never executable instructions. */
 export function toRetrievalChunks(content,{kind}={}) {

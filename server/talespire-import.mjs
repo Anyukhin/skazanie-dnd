@@ -1056,7 +1056,7 @@ function assignRooms(map, cells, ceilings, { toX, toY, level, underground = fals
   const seen = new Set()
   /** @type {Array<{ keys: string[], covered: boolean, closed: number, open: number, materials: Record<string, number> }>} */
   const components = []
-  for (const [start, info] of [...byMapCell.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+  for (const [start, info] of [...byMapCell.entries()].sort(([left], [right]) => left.localeCompare(right, 'en'))) {
     if (seen.has(start)) continue
     const [sx, sy] = start.split(',').map(Number)
     if (!cellAt(map, sx, sy)?.passable) continue
@@ -1093,7 +1093,7 @@ function assignRooms(map, cells, ceilings, { toX, toY, level, underground = fals
     }
     components.push({ keys, covered: info.covered, closed, open, materials })
   }
-  components.sort((left, right) => right.keys.length - left.keys.length || left.keys[0].localeCompare(right.keys[0]))
+  components.sort((left, right) => right.keys.length - left.keys.length || left.keys[0].localeCompare(right.keys[0], 'en'))
   /** @type {Map<string, number>} */
   const usedLabels = new Map()
   for (const [index, component] of components.filter((entry) => entry.keys.length >= MIN_ROOM_CELLS).slice(0, MAX_ROOMS).entries()) {

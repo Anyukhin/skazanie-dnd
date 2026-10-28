@@ -635,7 +635,7 @@ export function namedKnownSpell(text, state, playerId) {
     const words = (name.toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}{3,}/gu) ?? []).map((word) => word.slice(0, 5))
     return { id, name, words }
   }).filter((entry) => entry.words.length && entry.words.every((stem) => stems.has(stem)))
-    .sort((left, right) => right.words.length - left.words.length || left.id.localeCompare(right.id))
+    .sort((left, right) => right.words.length - left.words.length || left.id.localeCompare(right.id, 'en'))
   return matches[0] ? { id: matches[0].id, name: matches[0].name } : null
 }
 

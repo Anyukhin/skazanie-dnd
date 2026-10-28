@@ -663,7 +663,7 @@ export function applyWorldDeedEvent(input, event, state = {}) {
 export function worldDeedsFeed(state = {}, { limit = 30 } = {}) {
   return normalizeWorldDeedsState(state?.world_deeds).deeds
     .slice()
-    .sort((left, right) => right.at_minutes - left.at_minutes || left.id.localeCompare(right.id))
+    .sort((left, right) => right.at_minutes - left.at_minutes || left.id.localeCompare(right.id, 'en'))
     .slice(0, Math.max(1, Math.min(200, integer(limit, 30))))
     .map((deed) => ({
       ...clone(deed),
@@ -784,7 +784,7 @@ export function rumorSpreadTargets(state = {}, { worldMinute } = {}) {
       targets.push({ deed, npc, npc_id: npcId, hop, claim_id: claimId, claim: rumorWording(deed, hop) })
     }
   }
-  return targets.sort((left, right) => left.claim_id.localeCompare(right.claim_id))
+  return targets.sort((left, right) => left.claim_id.localeCompare(right.claim_id, 'en'))
 }
 
 function deedFactId(deed) {
@@ -914,7 +914,7 @@ export function planWorldRumorReputation(state = {}) {
         if (previous == null || hop < previous) nearest.set(factionId, hop)
       }
     }
-    for (const [factionId, hop] of [...nearest.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+    for (const [factionId, hop] of [...nearest.entries()].sort(([left], [right]) => left.localeCompare(right, 'en'))) {
       events.push({
         event_type: 'FactionReputationAdjusted',
         payload: {

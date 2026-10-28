@@ -123,7 +123,7 @@ export function collectEpilogueFacts(state = {}, outcomeOrOptions = undefined) {
       score: Math.max(-100, Math.min(100, Number.isSafeInteger(Number(rawScore)) ? Number(rawScore) : 0)),
     }))
     .filter((entry) => entry.score !== 0 && visibleFactions.has(entry.faction_id))
-    .sort((left, right) => Math.abs(right.score) - Math.abs(left.score) || left.faction_id.localeCompare(right.faction_id))
+    .sort((left, right) => Math.abs(right.score) - Math.abs(left.score) || left.faction_id.localeCompare(right.faction_id, 'en'))
     .slice(0, 6)
     .map((entry) => ({
       key: `reputation:${entry.faction_id}`,

@@ -208,7 +208,7 @@ export function sceneRequirementsFromText(texts) {
     }
   }
   return [...found.values()]
-    .sort((left, right) => left.at - right.at || left.id.localeCompare(right.id))
+    .sort((left, right) => left.at - right.at || left.id.localeCompare(right.id, 'en'))
     .slice(0, MAX_ITEMS)
     .map(({ id, count }) => ({ id, count }))
 }

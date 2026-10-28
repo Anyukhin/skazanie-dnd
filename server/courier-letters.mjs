@@ -385,7 +385,7 @@ function worldLeagueTable(map, fromId) {
     let currentCost = Infinity
     for (const [id, cost] of table) {
       if (visited.has(id)) continue
-      if (cost < currentCost || (cost === currentCost && id.localeCompare(current) < 0)) {
+      if (cost < currentCost || (cost === currentCost && id.localeCompare(current, 'en') < 0)) {
         current = id
         currentCost = cost
       }
@@ -622,7 +622,7 @@ export function courierLetterAddressees(state = {}) {
   }
   return rows.sort((left, right) => left.leagues - right.leagues
     || left.name.localeCompare(right.name, 'ru')
-    || left.id.localeCompare(right.id))
+    || left.id.localeCompare(right.id, 'en'))
 }
 
 /** Письма одного героя, свежие в конце. */
@@ -1183,7 +1183,7 @@ export function courierLetterForViewer(letter = {}, { isAdmin = false } = {}) {
 export function courierLettersForViewer(state = {}, { isAdmin = false, limit = 20 } = {}) {
   const letters = normalizeCourierLetterState(state?.courier_letters).letters
     .slice()
-    .sort((left, right) => right.sent_at_minutes - left.sent_at_minutes || left.id.localeCompare(right.id))
+    .sort((left, right) => right.sent_at_minutes - left.sent_at_minutes || left.id.localeCompare(right.id, 'en'))
     .slice(0, Math.max(1, Math.min(MAX_LETTERS, integer(limit, 20))))
     .map((letter) => courierLetterForViewer(letter, { isAdmin }))
     .filter(Boolean)

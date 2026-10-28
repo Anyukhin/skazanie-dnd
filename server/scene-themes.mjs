@@ -2443,7 +2443,7 @@ export function buildThemedScene({
       .filter(([, use]) => use in rank)
       .map(([zoneId, use]) => ({ zoneId, use, floor: floorOf(zoneId) }))
       .filter((entry) => entry.floor >= LARGE_HOUSE_FLOOR)
-      .sort((left, right) => rank[/** @type {keyof typeof rank} */ (left.use)] - rank[/** @type {keyof typeof rank} */ (right.use)] || right.floor - left.floor || left.zoneId.localeCompare(right.zoneId))[0]
+      .sort((left, right) => rank[/** @type {keyof typeof rank} */ (left.use)] - rank[/** @type {keyof typeof rank} */ (right.use)] || right.floor - left.floor || left.zoneId.localeCompare(right.zoneId, 'en'))[0]
     /** @type {Array<{offset: number, hint: string, label: string}>} */
     let sceneLevels = []
     if (storeyed) {

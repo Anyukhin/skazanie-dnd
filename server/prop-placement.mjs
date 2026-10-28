@@ -522,7 +522,7 @@ function arrangeSeats(map, surface, spec, blocked) {
   // У стойки сидят только спереди: сторона, где мест больше и за спиной меньше стен.
   const behind = (/** @type {typeof slots} */ list) => list.reduce((sum, slot) => sum + wallSidesAt(map, slot.x, slot.y).length, 0)
   let order = [...bySide.keys()].sort((a, b) => sideLength(b) - sideLength(a)
-    || (bySide.get(b)?.length ?? 0) - (bySide.get(a)?.length ?? 0) || behind(bySide.get(a) ?? []) - behind(bySide.get(b) ?? []) || a.localeCompare(b))
+    || (bySide.get(b)?.length ?? 0) - (bySide.get(a)?.length ?? 0) || behind(bySide.get(a) ?? []) - behind(bySide.get(b) ?? []) || a.localeCompare(b, 'en'))
   if (order.length > 1 && bySide.has(opposite[order[0]])) order = [order[0], opposite[order[0]], ...order.slice(1).filter((side) => side !== opposite[order[0]])]
   if (surface.assetId === 'bar_counter') order = order.slice(0, 1)
   /** @type {ReturnType<typeof arrangeSeats>} */
@@ -1923,7 +1923,7 @@ export function placeRequiredProps(map, wanted, { seed }) {
     const sized = map.zones.filter((zone) => zone.id !== 'path')
       .map((zone) => ({ zone, size: zoneCells(map, zone.id).length })).filter((entry) => entry.size >= 4)
     const fitting = sized.filter(({ zone }) => (indoor ? zone.kind === 'interior' : zone.kind !== 'interior'))
-    const order = (fitting.length ? fitting : sized).sort((left, right) => right.size - left.size || left.zone.id.localeCompare(right.zone.id))
+    const order = (fitting.length ? fitting : sized).sort((left, right) => right.size - left.size || left.zone.id.localeCompare(right.zone.id, 'en'))
     for (let attempt = 0; missing > 0 && attempt < missing + order.length * 2; attempt += 1) {
       const { zone } = order[attempt % order.length] ?? {}
       if (!zone) break
@@ -2101,7 +2101,7 @@ export function attachPropSupports(map) {
     const candidates = surfaces.filter((surface) => surface.zone === zone
       && Math.max(Math.abs(surface.x - prop.x), Math.abs(surface.y - prop.y)) <= 4
       && (used.get(surface.prop.id) ?? 0) < Math.min(SURFACE_SLOTS.length, Math.max(2, surface.prop.footprint.length * 2)))
-    candidates.sort((a, b) => Math.hypot(a.x - prop.x, a.y - prop.y) - Math.hypot(b.x - prop.x, b.y - prop.y) || a.prop.id.localeCompare(b.prop.id))
+    candidates.sort((a, b) => Math.hypot(a.x - prop.x, a.y - prop.y) - Math.hypot(b.x - prop.x, b.y - prop.y) || a.prop.id.localeCompare(b.prop.id, 'en'))
     const surface = candidates[0]
     if (!surface) {
       // Новая мелкая утварь не должна тихо падать на пол: без опоры её

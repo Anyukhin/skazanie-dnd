@@ -354,7 +354,7 @@ export function selectNarratorFewShotExamples(brief, {
       score: (example.moment === moment ? 10 : 0)
         + example.tones.reduce((total, tone) => total + (tones.has(tone) ? 2 : 0), 0),
     }))
-    .sort((left, right) => (right.score - left.score) || left.id.localeCompare(right.id))
+    .sort((left, right) => (right.score - left.score) || left.id.localeCompare(right.id, 'en'))
     .slice(0, maximum)
     .map(({ score: _score, ...example }) => example)
 }

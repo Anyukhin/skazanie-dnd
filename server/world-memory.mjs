@@ -309,7 +309,7 @@ function presentNpcLead(state = {}, spokenText = '') {
         return { npc, goal, score: [...spoken].filter((stem) => topic.has(stem)).length }
       }))
     .filter((lead) => lead.score > 0)
-    .sort((left, right) => right.score - left.score || text(left.npc.id, 120).localeCompare(text(right.npc.id, 120)))
+    .sort((left, right) => right.score - left.score || text(left.npc.id, 120).localeCompare(text(right.npc.id, 120), 'en'))
   return leads[0] ?? null
 }
 
@@ -1755,7 +1755,7 @@ export function retrieveWorldMemory(input, viewer = {}, { query = '', limit = 8,
   const strip = ({ search, anchors, hub, lexical, exact, ...record }) => clone(record)
   const records = retrievalRecords(memory)
   const unordered = () => records
-    .sort((left, right) => left.id.localeCompare(right.id))
+    .sort((left, right) => left.id.localeCompare(right.id, 'en'))
     .slice(0, maximum)
     .map((record) => strip({ ...record, score: 0 }))
   if (!queryProfile.stems.length) return unordered()
@@ -1775,7 +1775,7 @@ export function retrieveWorldMemory(input, viewer = {}, { query = '', limit = 8,
       score: record.lexical + Math.max(0, ...record.anchors.map((entityId) => activation.get(entityId) ?? 0)),
     }))
     .filter((record) => record.score > 0)
-    .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id))
+    .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id, 'en'))
     .slice(0, maximum)
     .map(strip)
 }

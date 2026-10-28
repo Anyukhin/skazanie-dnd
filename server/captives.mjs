@@ -287,7 +287,7 @@ export function capturableEnemies(state = {}) {
     .filter((enemy) => enemy?.id && !known.has(String(enemy.id)) && !conditionIds(state, enemy.id).has('fled'))
     .map((enemy) => ({ enemy, origin: captiveOriginFor(state, enemy) }))
     .filter((entry) => entry.origin)
-    .sort((left, right) => String(left.enemy.id).localeCompare(String(right.enemy.id)))
+    .sort((left, right) => String(left.enemy.id).localeCompare(String(right.enemy.id), 'en'))
 }
 
 const CAPTIVE_LEAD_TEMPLATES = Object.freeze([

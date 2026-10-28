@@ -351,7 +351,7 @@ export function chooseLibraryMap(entries, request, { seed, usedIds = [] }) {
     scored.push({ entry, score })
   }
   if (!scored.length) return null
-  scored.sort((left, right) => right.score - left.score || left.entry.id.localeCompare(right.entry.id))
+  scored.sort((left, right) => right.score - left.score || left.entry.id.localeCompare(right.entry.id, 'en'))
   // Из близких по качеству — по сиду места, чтобы две таверны одного мира
   // не оказывались одной и той же лучшей картой.
   const top = scored.filter((candidate) => candidate.score >= scored[0].score - 2).slice(0, 4)
@@ -584,7 +584,7 @@ export class MapLibrary {
     mkdirSync(join(this.dir, 'maps'), { recursive: true })
     writeJsonAtomic(join(this.dir, 'maps', `${entry.id}.json`), { schema_version: MAP_LIBRARY_SCHEMA_VERSION, id: entry.id, levels })
     const entries = [...this.entries().filter((candidate) => candidate.id !== entry.id), entry]
-      .sort((left, right) => left.id.localeCompare(right.id))
+      .sort((left, right) => left.id.localeCompare(right.id, 'en'))
     writeJsonAtomic(this.indexFile, { schema_version: MAP_LIBRARY_SCHEMA_VERSION, entries })
     this.cache = null
   }

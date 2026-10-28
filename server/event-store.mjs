@@ -20,9 +20,10 @@ import { RETENTION_REDUCER_VERSION, withRetentionMode } from './retention-contex
 const STORE_SCHEMA_VERSION = 1
 const EVENT_FILE = /^(\d{16})-(\d{16})-([a-zA-Z0-9-]+)\.json$/
 const SNAPSHOT_FILE = /^(\d{16})\.json$/
-// Тот же порядок, что у `localeCompare` без аргументов, но без создания
+// Тот же порядок, что у `localeCompare(x, 'en')`, но без создания
 // сравнителя на каждое сравнение: журнал сортируется при каждой сверке.
-const FILE_NAME_ORDER = new Intl.Collator()
+// Локаль закреплена: без неё порядок зависел бы от локали процесса.
+const FILE_NAME_ORDER = new Intl.Collator('en')
 
 export class EventStoreError extends Error {
   constructor(message, code = 'EVENT_STORE_ERROR', details = {}) {
@@ -658,7 +659,7 @@ export class FileEventStore {
     const candidates = readdirSync(layout.snapshots)
       .map((name) => ({ name, match: name.match(SNAPSHOT_FILE) }))
       .filter((entry) => entry.match && Number(entry.match[1]) <= targetVersion && (useSnapshots || Number(entry.match[1]) === 0))
-      .sort((left, right) => right.name.localeCompare(left.name))
+      .sort((left, right) => right.name.localeCompare(left.name, 'en'))
     if (!candidates.length) return null
     for (const candidate of candidates) {
       const file = join(layout.snapshots, candidate.name)

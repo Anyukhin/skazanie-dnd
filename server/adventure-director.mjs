@@ -362,7 +362,7 @@ export function openingEntrySide(worldMap, locationId) {
     .map((route) => ({ route, neighbor: route.from === locationId ? route.to : route.from }))
     .sort((left, right) => Number(left.route.kind !== 'road') - Number(right.route.kind !== 'road')
       || (Number(left.route.distance) || 0) - (Number(right.route.distance) || 0)
-      || String(left.neighbor).localeCompare(String(right.neighbor)))
+      || String(left.neighbor).localeCompare(String(right.neighbor), 'en'))
   return routes.length ? entrySideToward(worldMap, locationId, routes[0].neighbor) : ''
 }
 

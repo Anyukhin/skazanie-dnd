@@ -332,7 +332,7 @@ function rangedThreats(state, enemy) {
     .map((hero) => ({ hero, at: actorPosition(state, actorId(hero)) }))
     .sort((left, right) => distanceFeetBetweenActors(state, actorId(left.hero), actorId(enemy), left.at, from)
       - distanceFeetBetweenActors(state, actorId(right.hero), actorId(enemy), right.at, from)
-      || actorId(left.hero).localeCompare(actorId(right.hero)))
+      || actorId(left.hero).localeCompare(actorId(right.hero), 'en'))
     .slice(0, MAX_COVER_THREATS)
     .map((entry) => entry.hero)
 }
@@ -578,7 +578,7 @@ function bloodiedRetreatFor(state, enemy) {
     .slice()
     .sort((left, right) => distanceFeetBetweenActors(state, actorId(enemy), left.id, from, left.at)
       - distanceFeetBetweenActors(state, actorId(enemy), right.id, from, right.at)
-      || left.id.localeCompare(right.id))[0]
+      || left.id.localeCompare(right.id, 'en'))[0]
   const ranked = rankedPositions(state, enemy, budgetFeet, nearestHero?.at ?? from, positionScore, positionScore(from), 'far')
   return firstAffordable(state, enemy, ranked, budgetFeet)?.destination ?? null
 }
@@ -725,8 +725,8 @@ function targetCandidates(state, enemy) {
   return candidates.sort((left, right) => right.score - left.score
     || Number(right.inRange) - Number(left.inRange)
     || left.distance - right.distance
-    || actorId(left.actor).localeCompare(actorId(right.actor))
-    || String(left.profile.id ?? '').localeCompare(String(right.profile.id ?? '')))
+    || actorId(left.actor).localeCompare(actorId(right.actor), 'en')
+    || String(left.profile.id ?? '').localeCompare(String(right.profile.id ?? ''), 'en'))
 }
 
 /**
@@ -842,7 +842,7 @@ function multiattackActionCounts(multiattack) {
   return new Map(Object.entries(multiattack.action_counts)
     .map(([id, count]) => [String(id), Math.max(0, Math.min(8, Number(count) || 0))])
     .filter(([id, count]) => id && count > 0)
-    .sort(([left], [right]) => left.localeCompare(right)))
+    .sort(([left], [right]) => left.localeCompare(right, 'en')))
 }
 
 function multiattackActionIds(enemy, selectedProfile, usedActionIds = []) {
@@ -964,7 +964,7 @@ function thrownFlaskCommandFor(state, enemy, usable, economy, from) {
     .filter((hero) => hero.at)
     .map((hero) => ({ ...hero, feet: distanceFeetBetweenActors(state, actorId(enemy), hero.id, from, hero.at) }))
     .filter((hero) => hero.feet >= CELL_FEET && hero.feet <= rangeFeet && hasClearActorTrajectory(state, actorId(enemy), hero.id, from, hero.at))
-    .sort((left, right) => left.feet - right.feet || left.id.localeCompare(right.id))[0]
+    .sort((left, right) => left.feet - right.feet || left.id.localeCompare(right.id, 'en'))[0]
   return target ? { ...equipmentItemCommand(enemy, flask), target_id: target.id } : null
 }
 
@@ -1076,7 +1076,7 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
     .filter((ally) => actorId(ally) !== id)
     .map((ally) => ({ id: actorId(ally), at: actorPosition(state, actorId(ally)), hp: Math.max(0, Number(ally.hp) || 0), maximum: Math.max(1, Number(ally.maxHp) || 1) }))
     .filter((ally) => ally.at && ally.hp > 0 && ally.hp * 100 <= ally.maximum * NPC_SPELL_HEAL_HP_PERCENT)
-    .sort((left, right) => left.hp / left.maximum - right.hp / right.maximum || left.id.localeCompare(right.id))[0]
+    .sort((left, right) => left.hp / left.maximum - right.hp / right.maximum || left.id.localeCompare(right.id, 'en'))[0]
   const healing = wounded
     ? spells.find((spell) => spell.kind === 'healing' && spell.target === 'ally' && inRange(spell, wounded.at, wounded.id))
     : null
@@ -1135,14 +1135,14 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
         || option.score > best.score
         || option.score === best.score && (option.caught > best.caught
           || option.caught === best.caught && (option.center.priority < best.center.priority
-            || option.center.priority === best.center.priority && option.center.tie.localeCompare(best.center.tie) < 0))) {
+            || option.center.priority === best.center.priority && option.center.tie.localeCompare(best.center.tie, 'en') < 0))) {
         best = option
       }
     }
     if (best) areaOptions.push(best)
   }
   areaOptions.sort((left, right) => right.score - left.score || right.caught - left.caught
-    || right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id))
+    || right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id, 'en'))
   const validatedAreas = []
   for (const option of areaOptions) {
     const command = validateSpellPlan(option.spell, option.extra)
@@ -1154,7 +1154,7 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
     })
   }
   validatedAreas.sort((left, right) => right.score - left.score || right.caught - left.caught
-    || right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id))
+    || right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id, 'en'))
   if (validatedAreas[0]) return validatedAreas[0].command
 
   const damaging = []
@@ -1166,7 +1166,7 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
     if (targets.length !== 1 || actorId(targets[0]) !== targetId) continue
     damaging.push({ spell, command, score: spellDamageEstimate(enemy, spell, Number(command.slot_level ?? spell.level)) })
   }
-  damaging.sort((left, right) => right.score - left.score || left.spell.id.localeCompare(right.spell.id))
+  damaging.sort((left, right) => right.score - left.score || left.spell.id.localeCompare(right.spell.id, 'en'))
   return damaging[0]?.command ?? null
 }
 
@@ -1730,7 +1730,7 @@ export async function runNpcTurnScheduler({
       .filter((enemy) => isBossActor(enemy))
       .map((enemy) => ({ id: actorId(enemy), command: planLegendaryAction(state, actorId(enemy)) }))
       .filter((entry) => entry.command)
-      .sort((left, right) => left.id.localeCompare(right.id))[0]
+      .sort((left, right) => left.id.localeCompare(right.id, 'en'))[0]
       : null
     if (legendaryBoss) {
       const key = schedulerKey(campaignId, state, legendaryBoss.id, `legendary-${keyPart(legendaryBoss.command.legendary_action_id)}`)

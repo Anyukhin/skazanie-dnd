@@ -250,7 +250,7 @@ function partyQuests(state) {
   return (Array.isArray(state?.worldMemory?.quests) ? state.worldMemory.quests : [])
     .filter((quest) => quest?.id && quest.status === 'active' && visibleToParty(quest.visibility))
     .slice()
-    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), 'en'))
 }
 
 const questClockOf = (quest) => {
@@ -275,7 +275,7 @@ export function antagonistFactionFor(state = {}) {
   const tagged = factions
     .filter((entity) => (Array.isArray(entity.tags) ? entity.tags : [])
       .some((tag) => ['antagonist', 'enemy', 'hostile'].includes(text(tag, 60))))
-    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), 'en'))
   if (tagged.length) return tagged[0]
   const reputations = state?.autonomy?.reputations && typeof state.autonomy.reputations === 'object'
     ? state.autonomy.reputations
@@ -283,7 +283,7 @@ export function antagonistFactionFor(state = {}) {
   return factions
     .map((entity) => ({ entity, score: integer(reputations[String(entity.id)], 0) }))
     .filter((row) => row.score < 0)
-    .sort((left, right) => left.score - right.score || String(left.entity.id).localeCompare(String(right.entity.id)))[0]?.entity ?? null
+    .sort((left, right) => left.score - right.score || String(left.entity.id).localeCompare(String(right.entity.id), 'en'))[0]?.entity ?? null
 }
 
 /**
@@ -307,7 +307,7 @@ function hostageCandidates(state, takenIds) {
     .filter((npc) => npc.available !== false && vitals[String(npc.id)]?.alive !== false)
     .filter((npc) => !present.has(String(npc.id)) && !takenIds.has(String(npc.id)))
     .filter((npc) => !merchants.has(String(npc.id)))
-    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), 'en'))
 }
 
 /** Где стоит отряд — только для формулировки хода фракции. */
@@ -781,7 +781,7 @@ export function applyOffscreenWorldEvent(input, event) {
 export function offscreenWorldFeed(state = {}, { limit = 20 } = {}) {
   return normalizeOffscreenWorldState(state?.offscreen_world).steps
     .slice()
-    .sort((left, right) => right.at_minutes - left.at_minutes || left.id.localeCompare(right.id))
+    .sort((left, right) => right.at_minutes - left.at_minutes || left.id.localeCompare(right.id, 'en'))
     .slice(0, Math.max(1, Math.min(MAX_STEPS, integer(limit, 20))))
     .map((step) => ({
       ...step,

@@ -224,7 +224,7 @@ export function longstriderDependencyFingerprints() {
   return Object.fromEntries(LONGSTRIDER_EVIDENCE_DEPENDENCIES.map((path) => [path, spellEvidenceTextSha256(read(path))]))
 }
 
-const dependencyDigest = (fingerprints) => sha256(JSON.stringify(Object.entries(fingerprints ?? {}).sort(([a], [b]) => a.localeCompare(b))))
+const dependencyDigest = (fingerprints) => sha256(JSON.stringify(Object.entries(fingerprints ?? {}).sort(([a], [b]) => a.localeCompare(b, 'en'))))
 const isSha256 = (value) => /^[a-f0-9]{64}$/u.test(value ?? '')
 const isRevision = (value) => /^[a-f0-9]{40}$/u.test(value ?? '')
 
