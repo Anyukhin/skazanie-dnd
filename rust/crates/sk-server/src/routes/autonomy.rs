@@ -248,7 +248,8 @@ fn director_resume_key(core: &GameCore, campaign_id: &str, interaction_id: &str)
     if !valid_interaction_id(&id) {
         return Err(policy_error("Некорректный идентификатор решения отряда", "PARTY_DECISION_INVALID"));
     }
-    let events = core.events.get_events(campaign_id, 0, None)?;
+    // Нужно только последнее `PartyDecisionOpened`: читаются одни такие события (урок 11).
+    let events = core.events.get_events_of_types(campaign_id, &["PartyDecisionOpened"])?;
     let opened = events.iter().rev().find(|event| is_type(event, "PartyDecisionOpened") && js::s(at(Some(event), &["payload", "interaction", "id"])) == id);
     let custom_key = js::s(opened.and_then(|event| event.get("idempotency_key")));
     const SUFFIX: &str = ":custom";

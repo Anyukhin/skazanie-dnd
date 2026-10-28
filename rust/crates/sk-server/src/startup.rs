@@ -68,7 +68,9 @@ pub fn enable_default_house_rules(core: &Rc<GameCore>, campaign_id: &str) {
 fn enable_default_house_rule(core: &Rc<GameCore>, campaign_id: &str, house_rule_id: &str) -> Result<(), Failure> {
     let key = format!("house-rule-default:{house_rule_id}");
     let derive = |fresh: &Value, _loaded: &sk_store::Loaded| -> Result<Vec<Value>, sk_core::RuleError> {
-        let history = Value::Array(core.events.get_events(campaign_id, 0, None).map_err(|error| sk_core::RuleError::new(error.code, error.message))?);
+        // `defaultHouseRuleEvent` смотрит в истории только переключения правил:
+        // читаются они одни, без разбора всего журнала (урок 11).
+        let history = Value::Array(core.events.get_events_of_types(campaign_id, &[sk_ruleset::campaign_ruleset::HOUSE_RULE_EVENT_TYPE]).map_err(|error| sk_core::RuleError::new(error.code, error.message))?);
         let event = sk_ruleset::campaign_ruleset::default_house_rule_event(house_rule_id, Some(fresh), Some(&history), None).map_err(|error| sk_core::RuleError::new(error.code.clone(), error.message.clone()))?;
         Ok(event.into_iter().collect())
     };

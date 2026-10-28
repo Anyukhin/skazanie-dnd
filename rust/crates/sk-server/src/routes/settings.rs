@@ -85,6 +85,13 @@ async fn get_room(state: &AppState, code: &str) -> Result<Result<Room, Failure>,
     Ok(state.core.call(move |core| Box::pin(async move { room::get_room(&core, &code) })).await?)
 }
 
+/// `eventStore.getEvents(id)` для редакции: `campaignRulesetCanChange` смотрит
+/// только на первое событие, кроме смен редакции, поэтому журнал читается до
+/// него включительно — тот же ответ без чтения всего журнала (урок 11).
+fn ruleset_history(core: &GameCore, campaign_id: &str) -> Result<Vec<Value>, sk_store::StoreError> {
+    core.events.get_events_until(campaign_id, |event| event.get("event_type").and_then(Value::as_str) != Some(sk_ruleset::campaign_ruleset::RULESET_EVENT_TYPE))
+}
+
 /// `eventStore.load(id).state` и `eventStore.getEvents(id)` в ядре.
 async fn load_with_events(state: &AppState, campaign_id: &str) -> Result<Result<(Value, Value), Failure>, ApiError> {
     let campaign_id = campaign_id.to_string();
@@ -93,7 +100,7 @@ async fn load_with_events(state: &AppState, campaign_id: &str) -> Result<Result<
         .call(move |core| {
             Box::pin(async move {
                 let loaded = core.events.load(&campaign_id, &LoadOptions::default())?;
-                let events = core.events.get_events(&campaign_id, 0, None)?;
+                let events = ruleset_history(&core, &campaign_id)?;
                 Ok::<_, Failure>((loaded.state, Value::Array(events)))
             })
         })
@@ -318,7 +325,7 @@ fn change_ruleset(core: &std::rc::Rc<GameCore>, change: &RulesetChange) -> Resul
             }
             None => {
                 let derive = |fresh: &Value, _loaded: &sk_store::Loaded| -> Result<Vec<Value>, RuleError> {
-                    let history = Value::Array(core.events.get_events(campaign_id, 0, None).map_err(|error| RuleError::new(error.code, error.message))?);
+                    let history = Value::Array(ruleset_history(core, campaign_id).map_err(|error| RuleError::new(error.code, error.message))?);
                     let event = campaign_ruleset_change_event(requested, Some(fresh), Some(&history), &options).map_err(|error| RuleError::new(error.code(), error.message()))?;
                     Ok(event.into_iter().collect())
                 };
@@ -448,7 +455,7 @@ async fn patch_body(ctx: &mut RouteCtx, user: &Value, campaign_id: &str, room: R
                 for entry in entries {
                     crate::journal::append_room_journal(&core, &journal_campaign, &[entry])?;
                 }
-                Ok::<_, Failure>(Value::Array(core.events.get_events(&journal_campaign, 0, None)?))
+                Ok::<_, Failure>(Value::Array(ruleset_history(&core, &journal_campaign)?))
             })
         })
         .await??;
