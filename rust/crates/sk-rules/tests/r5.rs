@@ -378,7 +378,8 @@ fn run_probe(r: &mut Resolve<'_>, f: &str, a: &[Option<Value>]) -> Result<Value,
         "resolveDamageWithReactions" => r.resolve_damage_with_reactions(&st, &js::s(v(0)), v(1).cloned().unwrap_or(Value::Null), v(2).unwrap_or(&Value::Null), None, None),
         "appendMagicMissileResolution" => {
             let Some(target) = sk_core::game::find_actor(&st, &js::s(v(0))).cloned() else { return Ok(json!("no-target")) };
-            let spell = sk_combat_content::combat_spells::canonical_combat_spell_for(Some(&json!("magic-missile")), Some(&ruleset_options(&st))).unwrap_or(Value::Null);
+            let spell = sk_combat_content::combat_spells::canonical_combat_spell_for(Some(&json!("magic-missile")), Some(&ruleset_options(&st)));
+            let spell = sk_rules::executable::Executable::admit(spell, "заклинания").expect("«Волшебная стрела» исполнима");
             let command = r.command.clone();
             let force = json!("force");
             r.append_magic_missile_resolution(kernel::MagicMissile { source_command: &command, spell: &spell, target: &target, slot_level: v(1), damage_type: &force, source_item: some(2) })?;

@@ -20,7 +20,7 @@ use super::Validation;
 use crate::combat::class_features::{assert_monk_unarmed_action_allowed, divine_smite_action_for, font_of_magic_action_for, lay_on_hands_action_for};
 use crate::combat::weapons::{item_attack_profile, off_hand_weapon_for, trusted_attack_profile, AttackOptions};
 use crate::context::Context;
-use crate::core::{assert_mechanics_supported, condition_ids_for, resource_pool, spread_value, target_for};
+use crate::core::{condition_ids_for, resource_pool, spread_value, target_for};
 use crate::enervation_link::{enervation_continuation_action_for, enervation_link_for};
 use crate::geometry::footprint::distance_between_actor_positions;
 use crate::geometry::forced::assert_clear_actor_trajectory;
@@ -227,7 +227,7 @@ pub fn check_combat_action(v: &mut Validation<'_>) -> Step {
         }
         return Err(rule("Это действие недоступно активному герою", "COMBAT_ACTION_NOT_AVAILABLE"));
     };
-    assert_mechanics_supported(Some(&action), "действия")?;
+    let action = crate::executable::Executable::admit(Some(action), "действия")?;
     let action_spell = action.get("spell").filter(|spell| js::truthy(Some(spell))).cloned();
     if let Some(spell) = &action_spell {
         assert_spell_components_allowed(state, actor, Some(spell), &Context::default())?;
@@ -324,7 +324,7 @@ pub fn check_combat_action(v: &mut Validation<'_>) -> Step {
         Some("divine-smite") => divine_smite_action_for(state, &mut v.command, &action)?,
         Some("lay-on-hands") => lay_on_hands_action_for(state, &mut v.command, &action)?,
         Some("font-of-magic") => font_of_magic_action_for(state, &mut v.command, &action)?,
-        _ => wild_shape_action.clone().unwrap_or_else(|| action.clone()),
+        _ => wild_shape_action.clone().unwrap_or_else(|| action.card().clone()),
     };
     set_field(&mut v.command, "combat_action", chosen.clone());
     if at(action_spell.as_ref(), "id").and_then(Value::as_str) == Some("silvery-barbs") {

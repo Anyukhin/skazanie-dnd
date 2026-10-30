@@ -11,7 +11,7 @@ use super::kernel::MagicMissile;
 use super::Resolve;
 use crate::combat::weapons::{combat_item_for_command, item_instance_key, shillelagh_removal_events, ShillelaghRemoval};
 use crate::command::rules::rule_ids;
-use crate::core::{actor_max_hp, assert_mechanics_supported, command_with_rules, event_from, inventory_item, item_granted_event_from, spread_value, unique_strings};
+use crate::core::{actor_max_hp, command_with_rules, event_from, inventory_item, item_granted_event_from, spread_value, unique_strings};
 use crate::npc_item_events::{npc_item_use_events, spilled_zone_events, thrown_flask_events, FlaskItem};
 use crate::pause::{rule, Fault, Halt, Step};
 use crate::turn_economy::ACTION_ECONOMY_EVENT_VERSION;
@@ -180,7 +180,7 @@ pub fn use_item(r: &mut Resolve<'_>) -> Step {
         let Some(spell) = spell.filter(|_| usable) else {
             return Err(rule("Серверный профиль заклинания предмета недоступен", "ITEM_SPELL_NOT_AVAILABLE"));
         };
-        assert_mechanics_supported(Some(&spell), "заклинания предмета")?;
+        let spell = crate::executable::Executable::admit(Some(spell), "заклинания предмета")?;
         let mut source = Map::new();
         source.insert("kind".into(), json!("magic-item"));
         insert_present(&mut source, "item_id", item.get("id"));

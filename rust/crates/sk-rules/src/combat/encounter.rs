@@ -12,7 +12,7 @@
 //! без кода — `Halt::Fault`; превращение блока 48 — [`assemble_encounter_for_command`].
 
 use serde_json::{json, Map, Value};
-use sk_core::{game, js, text, RuleError};
+use sk_core::{game, js, text, MechanicsSupport, RuleError};
 use sk_geometry::Point;
 
 use crate::combat::weapons::array_of;
@@ -148,7 +148,7 @@ pub fn assemble_encounter_from_state(state: &Value, command: &Value) -> Result<V
         .filter(|id| {
             *id != authored_npc_id
                 && present.iter().any(|candidate| candidate.get("id").and_then(Value::as_str) == Some(id.as_str()))
-                && mechanics_of(id).is_none_or(|mechanics| mechanics.get("status").and_then(Value::as_str) != Some("ruling-only"))
+                && mechanics_of(id).is_none_or(|mechanics| !MechanicsSupport::is(mechanics.get("status"), MechanicsSupport::RulingOnly))
                 && mechanics_of(id).is_some()
                 && placement_of(id).is_some()
         })
@@ -375,7 +375,7 @@ pub fn validate_attack_npc_command(command: &mut Value, state: &Value) -> Step {
     let Some(mechanics) = sk_npc_world::npc_positioning::npc_mechanics_for(state, &npc_value) else {
         return Err(rule("У NPC нет проверенного боевого листа", "AUTHORED_NPC_PROFILE_MISSING"));
     };
-    if mechanics.get("status").and_then(Value::as_str) == Some("ruling-only") {
+    if MechanicsSupport::is(mechanics.get("status"), MechanicsSupport::RulingOnly) {
         return Err(rule("Боевой профиль NPC требует решения ведущего", "AUTHORED_NPC_PROFILE_UNVERIFIED"));
     }
     let vital = sk_npc_world::npc_positioning::npc_vital_for(state, &npc_value);

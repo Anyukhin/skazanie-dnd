@@ -20,6 +20,7 @@ use sk_geometry::Point;
 use super::super::Resolve;
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, command_with_rules, condition_ids_for, dice_expression, event_from, slice_utf16, spread_value};
+use crate::executable::Executable;
 use crate::pause::{rule, Halt, Step};
 use crate::replay::apply_game_event;
 use crate::tactical_geometry::npc_positioning::NpcTarget;
@@ -284,7 +285,8 @@ pub(super) struct Cast {
     pub actor_id: String,
     /// `findActor(state, command.actor_id)`.
     pub actor: Option<Value>,
-    pub spell: Value,
+    /// Исполнимая карточка: обработчики вида заклинания получают только её.
+    pub spell: Executable,
     pub spell_ability: String,
     pub spell_modifier: i64,
     pub spell_attack_modifier: i64,
@@ -382,8 +384,7 @@ fn authoritative_cast(r: &mut Resolve<'_>) -> Step {
         sk_combat_content::combat_spells::combat_spell_for(actor.as_ref(), r.command.get("spell_id"), Some(&ruleset_options))
     };
     let spell = raw_spell.map(|spell| crate::spells::slots::with_spell_option_overrides(&spell, r.command.get("spell_option")));
-    crate::core::assert_mechanics_supported(spell.as_ref(), "заклинания")?;
-    let Some(spell) = spell else { return Ok(()) };
+    let spell = Executable::admit(spell, "заклинания")?;
     let uses_2014 = sk_core::game::uses_2014(&state);
     let spell_id_value = spell.get("id").cloned();
     if spell_id_value.as_ref().and_then(Value::as_str) == Some("resistance") && uses_2014 {
