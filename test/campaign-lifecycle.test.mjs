@@ -399,7 +399,8 @@ test('NPC и история сцен без поля видимости видн
         { id: 'promise-2', npc_id: 'npc-bo', status: 'broken', text: 'Вернуть долг', visibility: 'party' },
       ],
     },
-    adventure: { history: [{ chapter: 1, location: 'Мельница' }, { chapter: 2, location: 'Брод' }] },
+    // Пустая запись истории не роняет бриф и в него не попадает.
+    adventure: { history: [{ chapter: 1, location: 'Мельница' }, null, { chapter: 2, location: 'Брод' }] },
   }
   const facts = collectEpilogueFacts(state)
   assert.deepEqual(facts.promises.map((promise) => promise.npc_name), ['Ада', 'Бо'])

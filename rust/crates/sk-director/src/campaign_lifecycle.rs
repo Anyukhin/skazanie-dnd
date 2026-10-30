@@ -34,9 +34,8 @@ fn clean_str(value: &str, maximum: usize) -> String {
     clean(Some(&Value::String(value.to_string())), maximum)
 }
 
-/// `visibleToParty(entry, fallback)`: видимость записи или запасная.
-/// Запасная — значение JS: при `array.filter(visibleToParty)` это номер
-/// элемента, и запись без поля видимости отряду не видна.
+/// `visibleToParty(entry, fallback)`: видимость записи или запасная
+/// (`'party'` по умолчанию: запись без поля видимости отряду видна).
 fn visible_to_party(entry: &Value, fallback: &Value) -> bool {
     let visibility = or(prop(Some(entry), "visibility"), Some(fallback));
     VISIBLE_TO_PARTY.contains(&clean(visibility, 30).as_str())
@@ -164,8 +163,8 @@ pub fn collect_epilogue_facts(state: &Value, outcome_or_options: Option<&Value>)
 
     let social = prop(state_ref, "social");
     let mut visible_npcs: HashMap<String, &Value> = HashMap::new();
-    for (index, npc) in array(prop(social, "npcs")).iter().enumerate() {
-        if visible_to_party(npc, &Value::from(index)) {
+    for npc in array(prop(social, "npcs")) {
+        if visible_to_party(npc, &party()) {
             visible_npcs.insert(clean(prop(Some(npc), "id"), 120), npc);
         }
     }
@@ -693,7 +692,7 @@ pub fn build_epilogue_narration_brief(state: &Value, outcome_or_options: Option<
                 "subject_name": fact["subject_name"], "predicate": fact["predicate"], "summary": fact["summary"] })
         })
         .collect();
-    let history: Vec<&Value> = array(prop(adventure, "history")).iter().enumerate().filter(|(index, entry)| visible_to_party(entry, &Value::from(*index))).map(|(_, entry)| entry).collect();
+    let history: Vec<&Value> = array(prop(adventure, "history")).iter().filter(|entry| !entry.is_null() && visible_to_party(entry, &party())).collect();
     let history: Vec<Value> = tail(history, 12)
         .into_iter()
         .map(|entry| json!({ "chapter": chapter_of(entry.get("chapter")), "location": clean(entry.get("location"), 180), "outcome": clean(entry.get("outcome"), 500) }))

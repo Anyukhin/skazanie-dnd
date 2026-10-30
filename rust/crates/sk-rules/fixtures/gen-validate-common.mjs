@@ -29,9 +29,9 @@ const groups = {
   g1: await blockFunction([[6157, 6173]], ['if (!ALLOWED_COMMAND_TYPES'], ['state', 'command', 'context']),
   g2: await blockFunction([[6799, 6831]], ['const setupActor'], ['state', 'command', 'context']),
   g3: await blockFunction([[7003, 7006]], ['const actorFate'], ['state', 'command', 'context'], 'return actorFate ?? null'),
-  g4: await blockFunction([[7841, 7854]], ['if (!command.source_rule_ids.length'], ['state', 'command', 'context']),
+  g4: await blockFunction([[7843, 7856]], ['if (!command.source_rule_ids.length'], ['state', 'command', 'context']),
 }
-const truce = await blockFunction([[13122, 13139]], ['const truceBeforeCommand'], ['state', 'command', 'targetId', 'events'], 'return events')
+const truce = await blockFunction([[13149, 13166]], ['const truceBeforeCommand'], ['state', 'command', 'targetId', 'events'], 'return events')
 
 const windows = [
   null, { id: 'w', pending_command: { command_type: 'MakeAttack' }, action_ids: ['cast:shield', 'decline-reaction'] },

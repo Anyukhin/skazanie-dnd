@@ -363,7 +363,7 @@ for (let n = 0; n < 400; n += 1) {
 // --- блоки проверки 28–29 и 66–68 ----------------------------------------------------------
 
 const legendaryBlock = await blockFunction([[6725, 6732]], ["if (command.command_type === 'UseLegendaryAction')"], ['state', 'command', 'context'], 'return command')
-const attackBlock = await blockFunction([[7244, 7346]], ["if (command.command_type === 'MakeAttack')"], ['state', 'command', 'context'], 'return command')
+const attackBlock = await blockFunction([[7246, 7348]], ["if (command.command_type === 'MakeAttack')"], ['state', 'command', 'context'], 'return command')
 const blocks = []
 const BLOCK_CONTEXTS = [{}, { isNpcScheduler: true }, { serverAuthoritativeCombat: true }, { isAdmin: true, isNpcScheduler: true }, { isNpcScheduler: 'yes' }]
 for (let n = 0; n < 2600; n += 1) {

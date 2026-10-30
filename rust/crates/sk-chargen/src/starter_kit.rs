@@ -320,8 +320,8 @@ const CLASS_PROFILES: [ClassProfile; 12] = [
     ClassProfile { key: "wizard", weapon: "dagger", gear: &[], abilities: [8, 14, 13, 16, 15, 10] },
 ];
 
-/// Слово роли, по которому узнаётся класс прежнего набора. Образцы — из JS;
-/// «маг» — отдельным словом, граница по буквам Юникода.
+/// Слово роли, по которому узнаётся класс прежнего набора. Образцы — из JS
+/// без правок (`маг\b` — граница ASCII-слова, см. «Замечено в JS» в отчёте).
 fn class_pattern(key: &str) -> &'static sk_core::fancy_regex::Regex {
     match key {
         "barbarian" => re!(r"варвар|barbarian", "u"),
@@ -335,7 +335,7 @@ fn class_pattern(key: &str) -> &'static sk_core::fancy_regex::Regex {
         "bard" => re!(r"бард|bard", "u"),
         "sorcerer" => re!(r"чарод|sorcer", "u"),
         "warlock" => re!(r"колдун|warlock", "u"),
-        _ => re!(r"волшеб|wizard|(?<![\p{L}\p{N}])маг(?![\p{L}\p{N}])", "u"),
+        _ => re!(r"волшеб|wizard|маг\b", "u"),
     }
 }
 
@@ -1326,7 +1326,20 @@ pub fn with_starter_kit(hero: Option<&Value>, options: &StarterKitOptions) -> Ki
             KitLookup::Missing if ruleset_2014 => match classic_profile.as_ref() {
                 Some(classic_profile) => {
                     let version = options.starter_policy_version.clone().unwrap_or_else(classic_policy_version);
-                    classic_starter_inventory(hero, classic_profile, &version, use_complete)?
+                    // `{ ...hero, characterClass: hero?.characterClass ?? profile?.key }`:
+                    // класс, узнанный по роли, — и для выбора набора 2014.
+                    let mut with_class = hero.and_then(Value::as_object).cloned().unwrap_or_default();
+                    if !js::present(with_class.get("characterClass")) {
+                        match profile {
+                            Some(profile) => {
+                                with_class.insert("characterClass".into(), json!(profile.key));
+                            }
+                            None => {
+                                with_class.shift_remove("characterClass");
+                            }
+                        }
+                    }
+                    classic_starter_inventory(Some(&Value::Object(with_class)), classic_profile, &version, use_complete)?
                 }
                 None => vec![starter_weapon(&hero_id, weapon_key)],
             },

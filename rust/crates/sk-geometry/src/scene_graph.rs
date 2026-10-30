@@ -657,11 +657,11 @@ mod tests {
         assert_eq!(create_scene_graph(&json!({})).expect("пустой граф").version, SCENE_GRAPH_VERSION);
     }
 
-    /// Замечено в JS и перенесено как есть: повторный обход начинается от входа
-    /// и не проходит через уже достигнутые зоны, поэтому ключ, найденный в
-    /// том же обходе после проверки запертой двери, эту дверь уже не открывает.
+    /// Ключ, найденный в том же обходе после проверки запертой двери, открывает
+    /// её на следующем: повторный обход раскрывает все достигнутые зоны (прежде
+    /// — только вход, и цель считалась недостижимой).
     #[test]
-    fn late_key_in_same_round_does_not_reopen_checked_door() {
+    fn late_key_in_same_round_reopens_checked_door_next_round() {
         let graph = graph(json!({
             "entranceZoneId": "a",
             "goalZoneId": "c",
@@ -673,9 +673,9 @@ mod tests {
             ],
         }));
         let reached = reachable_zones(&graph, None);
-        assert_eq!(reached.zones.iter().collect::<Vec<_>>(), ["a", "b", "d"]);
-        assert_eq!(reached.rounds, 2);
-        assert_eq!(codes(&validate_scene_graph(&graph)), ["GOAL_UNREACHABLE"]);
+        assert_eq!(reached.zones.iter().collect::<Vec<_>>(), ["a", "b", "d", "c"]);
+        assert_eq!(reached.rounds, 3);
+        assert!(codes(&validate_scene_graph(&graph)).is_empty());
         // Волны прогрессии ту же дверь открывают.
         assert_eq!(progression_waves(&graph).last().expect("волна").zones, ["c"]);
     }

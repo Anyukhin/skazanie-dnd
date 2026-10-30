@@ -555,3 +555,18 @@ fn prototype_class_key_fails_like_js_only_when_kit_is_needed() {
     let imported = json!({ "id": "x", "characterClass": "toString", "inventory": [{ "id": "own" }] });
     assert!(m::with_starter_kit(Some(&imported), &options).is_ok(), "готовый инвентарь набор не трогает");
 }
+
+// --- test/character-creation-equipment-complete.test.mjs ---
+
+/// Класс, узнанный по роли, выбирает набор 2014 (прежде — «Для класса нет
+/// стартового набора 2014»; такой импорт не проходил, старых событий с ним нет).
+#[test]
+fn role_recognised_class_picks_2014_class_kit() {
+    for (role, class) in [("Воин", "fighter"), ("Волшебник", "wizard")] {
+        let hero = json!({ "id": "by-role", "role": role, "inventory": [], "currency": {} });
+        let kit = m::with_starter_kit(Some(&hero), &options_2014()).expect("набор по роли");
+        assert_eq!(kit["characterClass"], json!(class));
+        assert!(kit["inventory"].as_array().expect("инвентарь").len() > 1, "{role}: набор класса, а не одно оружие");
+        assert!(kit["starterEquipmentChoices"].as_object().is_some_and(|choices| !choices.is_empty()), "{role}");
+    }
+}

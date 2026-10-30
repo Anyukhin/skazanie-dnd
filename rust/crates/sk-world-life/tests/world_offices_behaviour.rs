@@ -131,9 +131,12 @@ fn hidden_death_keeps_previous_status_until_revealed() {
     let player = offices_for_viewer(Some(&after), &json!({ "playerId": "hero" }));
     assert_eq!(player[0]["status"], "held");
     assert_eq!(player[0]["holder_npc_id"], KING);
-    // Замечено в JS: ведущему статус настоящий, а держатель не приходит вовсе.
+    // Ведущему статус настоящий и держатель из записи (у вакантной — `null`);
+    // прежде держатель ведущему не приходил вовсе.
     let gm = offices_for_viewer(Some(&after), &json!({ "isAdmin": true }));
-    assert_eq!(gm[0], json!({ "office_id": "office:crown", "title": "Корона Валедора", "status": "vacant" }));
+    assert_eq!(gm[0], json!({ "office_id": "office:crown", "title": "Корона Валедора", "status": "vacant", "holder_npc_id": null }));
+    let installed = offices_for_viewer(Some(&state), &json!({ "isAdmin": true }));
+    assert_eq!(installed[0]["holder_npc_id"], KING, "ведущий видит держателя занятой должности");
 }
 
 #[test]

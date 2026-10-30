@@ -395,7 +395,7 @@ fn actor_class(actor: Option<&Value>) -> Option<&'static str> {
         ("rogue", re!(r"плут|разбойник|rogue", "u")),
         ("sorcerer", re!(r"чарод|sorcer", "u")),
         ("warlock", re!(r"колдун|warlock", "u")),
-        ("wizard", re!(r"волшеб|wizard|(?<![\p{L}\p{N}])маг(?![\p{L}\p{N}])", "u")),
+        ("wizard", re!(r"волшеб|wizard|маг\b", "u")),
     ];
     patterns.into_iter().find(|(_, pattern)| text::test(pattern, &role)).map(|(key, _)| key)
 }

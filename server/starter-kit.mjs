@@ -190,7 +190,7 @@ const CLASS_PROFILES = Object.freeze([
   { key: 'bard', pattern: /бард|bard/u, weapon: 'dagger', gear: ['leather'], abilities: { str: 8, dex: 14, con: 13, int: 12, wis: 10, cha: 16 } },
   { key: 'sorcerer', pattern: /чарод|sorcer/u, weapon: 'dagger', gear: [], abilities: { str: 8, dex: 14, con: 15, int: 10, wis: 12, cha: 16 } },
   { key: 'warlock', pattern: /колдун|warlock/u, weapon: 'dagger', gear: ['leather'], abilities: { str: 8, dex: 14, con: 15, int: 12, wis: 10, cha: 16 } },
-  { key: 'wizard', pattern: /волшеб|wizard|(?<![\p{L}\p{N}])маг(?![\p{L}\p{N}])/u, weapon: 'dagger', gear: [], abilities: { str: 8, dex: 14, con: 13, int: 16, wis: 15, cha: 10 } },
+  { key: 'wizard', pattern: /волшеб|wizard|маг\b/u, weapon: 'dagger', gear: [], abilities: { str: 8, dex: 14, con: 13, int: 16, wis: 15, cha: 10 } },
 ])
 
 /**
@@ -676,9 +676,7 @@ function completeBackgroundInventory(heroId, background, choices) {
   const fixed = [...(background.fixed_items ?? [])].map((item, index) => completeStarterItem(heroId, item, index, 'background'))
   const fixedNarrative = [...(background.fixed_narrative_items ?? [])].map((item, index) => completeStarterItem(heroId, item, index, 'background-keepsake'))
   const selectedItems = selected.flatMap((option) => option.items ?? []).map((item, index) => completeStarterItem(heroId, item, index, 'background-choice'))
-  // Памятные вещи выбора — своей приставкой, как у класса и предыстории:
-  // общая с вещами выбора давала два id `…-background-choice-1` (солдат).
-  const selectedNarrative = selected.flatMap((option) => option.narrative_items ?? []).map((item, index) => completeStarterItem(heroId, item, index, 'background-choice-keepsake'))
+  const selectedNarrative = selected.flatMap((option) => option.narrative_items ?? []).map((item, index) => completeStarterItem(heroId, item, index, 'background-choice'))
   return [...fixed, ...fixedNarrative, ...selectedItems, ...selectedNarrative]
 }
 

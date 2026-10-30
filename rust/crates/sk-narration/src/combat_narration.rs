@@ -536,21 +536,25 @@ fn attack_condition_reason(payload: &Value) -> JsResult<String> {
         Some(Value::Array(items)) => items,
         _ => return Err(JsTypeError("entries.map is not a function")),
     };
+    // Запись без двоеточия не называет ни стороны, ни состояния: её не
+    // пересказываем (прежде в ленту уходило «атакующий undefined»).
     let described: Vec<String> = entries
         .iter()
-        .map(|entry| {
+        .filter_map(|entry| {
             let source = js::string(Some(entry));
             let mut pieces = source.split(':');
             let side = pieces.next().unwrap_or("");
-            let condition = pieces.next();
-            let key = condition.unwrap_or("undefined");
-            if side == "target" {
+            let key = pieces.next().filter(|condition| !condition.is_empty())?;
+            Some(if side == "target" {
                 format!("цель {}", table_lookup(&CONDITION_LABELS, key).unwrap_or(key))
             } else {
                 format!("атакующий {}", table_lookup(&ATTACKER_CONDITION_LABELS, key).unwrap_or(key))
-            }
+            })
         })
         .collect();
+    if described.is_empty() {
+        return Ok(String::new());
+    }
     Ok(format!(" {} ({})", if with_advantage { "с преимуществом" } else { "с помехой" }, described.join(", ")))
 }
 

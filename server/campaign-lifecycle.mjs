@@ -495,7 +495,7 @@ export function buildEpilogueNarrationBrief(state = {}, outcomeOrOptions = undef
       faction_reputations: facts.faction_reputations,
       visited_locations: facts.visited_locations,
       confirmed_scene_history: (Array.isArray(state.adventure?.history) ? state.adventure.history : [])
-        .filter((entry) => visibleToParty(entry))
+        .filter((entry) => entry != null && visibleToParty(entry))
         .slice(-12)
         .map((entry) => ({
         chapter: Math.max(1, Number(entry.chapter) || 1),

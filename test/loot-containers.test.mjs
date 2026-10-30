@@ -10,7 +10,7 @@ import {
   MAX_LOOT_CONTAINERS,
   lootCommitTouchesContainers,
   lootContainerList,
-  lootContainerReachFor,
+  lootContainerForViewer,
   lootContainersForViewer,
   lootContainersInScene,
   lootItemForViewer,
@@ -1318,14 +1318,14 @@ test('«обыскивает поверженных» — тела, а не об
   assert.doesNotMatch(crouching.narration, /Тело: /u, 'подпись панели не звучит в рассказе')
 })
 
-// Находка переноса (docs/rust-port-js-findings.md): `coordinate(null)` давал
-// 0, и контейнер без места вставал в угол карты на 0:0.
-test('контейнер без места — без координат и без расстояния, а не на клетке 0:0', () => {
-  const container = normalizeLootContainer({ id: 'corpse-1', kind: 'corpse', x: null, y: '', items: [] })
-  assert.equal(container.x, null)
-  assert.equal(container.y, null)
-  const reach = lootContainerReachFor({ mechanics: { positions: { hero: { x: 3, y: 3 } } } }, { id: 'hero', x: 3, y: 3 }, container)
-  assert.equal(reach.distance_feet, null)
-  assert.equal(reach.reachable, true, 'померить нечем — досягаемо по сцене')
-  assert.equal(normalizeLootContainer({ id: 'corpse-2', kind: 'corpse', x: 0, y: 0, items: [] }).x, 0, 'настоящий ноль остаётся нулём')
+// Находка переноса (docs/rust-port-js-findings.md): без расстояния карточка
+// показывала `distance_feet: 0` — `Number(null)` равно 0. Координаты контейнера
+// без места (`coordinate(null)` — 0:0) не тронуты: это нормализация в
+// редьюсере, и старые журналы проигрывались бы иначе.
+test('карточка контейнера без расстояния — без поля distance_feet, а не 0', () => {
+  const container = normalizeLootContainer({ id: 'corpse-1', kind: 'corpse', x: 2, y: 2, items: [] })
+  assert.equal(Object.hasOwn(lootContainerForViewer(container), 'distance_feet'), false)
+  assert.equal(Object.hasOwn(lootContainerForViewer(container, { distanceFeet: null }), 'distance_feet'), false)
+  assert.equal(lootContainerForViewer(container, { distanceFeet: 0 }).distance_feet, 0, 'настоящий ноль остаётся')
+  assert.equal(lootContainerForViewer(container, { distanceFeet: 7.4 }).distance_feet, 7)
 })

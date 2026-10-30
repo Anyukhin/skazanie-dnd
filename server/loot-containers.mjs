@@ -138,9 +138,6 @@ function actorIdOf(actor) {
 }
 
 function coordinate(value) {
-  // `Number(null)` и `Number('')` — 0: без этой проверки контейнер выбывшего,
-  // которого не было на доске, вставал на клетку 0:0 с `distance_feet: 0`.
-  if (value == null || typeof value === 'string' && !value.trim()) return null
   const number = Number(value)
   return Number.isSafeInteger(number) ? number : null
 }
@@ -1457,7 +1454,9 @@ export function lootContainerReachFor(state = {}, actor = null, container = {}) 
 export function lootContainerForViewer(container = {}, { withContents = false, distanceFeet = null, cellRevealed = true } = {}) {
   const normalized = normalizeLootContainer(container)
   if (!normalized) return null
-  const distance = Number.isFinite(Number(distanceFeet)) && Number(distanceFeet) >= 0
+  // Без расстояния (`null`) — без поля: `Number(null)` — 0, и карточка
+  // показывала `distance_feet: 0` там, где померить нечем.
+  const distance = distanceFeet != null && Number.isFinite(Number(distanceFeet)) && Number(distanceFeet) >= 0
     ? Math.round(Number(distanceFeet))
     : null
   return {

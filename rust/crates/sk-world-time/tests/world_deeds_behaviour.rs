@@ -182,6 +182,9 @@ fn js_prototype_quirks_are_kept() {
     let ledger = normalize_world_deeds_state(Some(&json!({ "deeds": [{ "id": "deed:x", "kind": "constructor" }] })));
     assert_eq!(ledger["deeds"][0]["kind"], "constructor");
     assert_eq!(ledger["deeds"][0]["severity"], "minor");
+    // Молва о таком поступке — запасной фразой (JS прежде падал на
+    // `RUMOR_PHRASES['constructor']`, исправлено вместе с ним).
+    assert!(rumor_wording(&json!({ "kind": "constructor", "location_name": "Брод" }), None).starts_with("В «Брод» случилось нехорошее"));
     // Ступень `toString` даёт поправку NaN (в JSON — null).
     assert!(rumor_reputation_delta(Some(&json!({ "severity": "toString" })), None).is_nan());
     // Обстановка вида `constructor` — в предмете поступка текст встроенной функции.

@@ -126,9 +126,7 @@ pub fn opening_entry_side(world_map: Option<&Value>, location_id: Option<&Value>
 /// переносится на клетку двора у ближайшей наружной двери (на шаг от проёма,
 /// если там свободно); карта без такой двери — `None`.
 ///
-/// `door.locked === true` в JS никогда не срабатывает: у двери тактической
-/// карты нет поля `locked` (замок — `state: 'locked'`), и запертая дверь
-/// годится в выход. Перенесено как есть.
+/// Запертая (`state: 'locked'`) или заваленная дверь выходом не служит.
 pub fn outside_entrance_for(map: &TacticalMap, spawn_x: f64, spawn_y: f64) -> Option<(i64, i64)> {
     let kind = zone_kinds(map);
     let kind_of = |cell: &TacticalCell<'_>| kind.get(cell.zone).copied();
@@ -139,7 +137,7 @@ pub fn outside_entrance_for(map: &TacticalMap, spawn_x: f64, spawn_y: f64) -> Op
     let blocked = blocked_cells(map);
     let mut best: Option<(i64, i64, f64)> = None;
     for door in &map.doors {
-        if door.barricade().is_some() {
+        if door.state == "locked" || door.barricade().is_some() {
             continue;
         }
         let first = (door.x, door.y);

@@ -198,7 +198,7 @@ function casterProfile(actor) {
   if (/бард|bard/u.test(role)) return { key: 'bard', ability: 'cha', progression: 'full' }
   if (/чарод|sorcer/u.test(role)) return { key: 'sorcerer', ability: 'cha', progression: 'full' }
   if (/колдун|warlock/u.test(role)) return { key: 'warlock', ability: 'cha', progression: 'pact' }
-  if (/волшеб|wizard|(?<![\p{L}\p{N}])маг(?![\p{L}\p{N}])/u.test(role)) return { key: 'wizard', ability: 'int', progression: 'full' }
+  if (/волшеб|wizard|маг\b/u.test(role)) return { key: 'wizard', ability: 'int', progression: 'full' }
   if (/следопыт|ranger/u.test(role)) return { key: 'ranger', ability: 'wis', progression: 'half' }
   if (/паладин|paladin/u.test(role)) return { key: 'paladin', ability: 'cha', progression: 'half' }
   return null

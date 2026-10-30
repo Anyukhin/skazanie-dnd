@@ -245,7 +245,10 @@ function alignmentOf(kind) {
 }
 
 function safeDeed(value = {}) {
-  const kind = deedKindEntry(text(value.kind, 40)) ? text(value.kind, 40) : ''
+  // `DEED_KINDS[...]`, а не `deedKindEntry`: нормализация идёт в редьюсере, и
+  // запись вида `constructor` из старого журнала должна проигрываться как
+  // прежде. Падение молвы на таком виде снимает `rumorWording`.
+  const kind = DEED_KINDS[text(value.kind, 40)] ? text(value.kind, 40) : ''
   if (!kind) return null
   const id = text(value.id, 120)
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u.test(id)) return null
