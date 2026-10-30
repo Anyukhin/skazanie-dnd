@@ -2105,8 +2105,10 @@ mod viewer_memo {
 
     /// Отпечаток входа: сериализация сохраняет порядок ключей, поэтому
     /// объекты с иным порядком — разные входы (проекция его повторяет).
+    /// `None` (`undefined`) и `Some(null)` — разные входы: флаг присутствия
+    /// стоит перед значением.
     fn fingerprint(state: &Value, user: Option<&Value>, actor_id: Option<&Value>) -> Option<[u8; 32]> {
-        serde_json::to_vec(&(state, user, actor_id)).ok().map(sk_core::hash::sha256)
+        serde_json::to_vec(&(state, user.is_some(), user, actor_id.is_some(), actor_id)).ok().map(sk_core::hash::sha256)
     }
 
     pub(super) fn project(state: &Value, user: Option<&Value>, actor_id: Option<&Value>) -> R<Option<Value>> {
