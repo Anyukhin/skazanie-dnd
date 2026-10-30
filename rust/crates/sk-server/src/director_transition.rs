@@ -195,7 +195,8 @@ fn is_scene_advanced(event: &Value) -> bool {
 
 /// `committedSceneForPartyDecision(campaignId, reference)` (3053–3058).
 fn committed_scene_for_party_decision(core: &GameCore, campaign_id: &str, reference: &Value) -> Result<Option<Value>, Failure> {
-    let events = core.events.get_events(campaign_id, 0, None)?;
+    // Ищется только `SceneAdvanced`: читаются одни такие события (урок 11).
+    let events = core.events.get_events_of_types(campaign_id, &["SceneAdvanced"])?;
     let same = |event: &Value, field: &str| {
         let recorded = get(get(event.get("payload"), "party_decision"), field);
         match (recorded, reference.get(field)) {
@@ -208,7 +209,7 @@ fn committed_scene_for_party_decision(core: &GameCore, campaign_id: &str, refere
 
 /// `committedSceneForFingerprint(campaignId, fingerprint)` (3060–3064).
 pub fn committed_scene_for_fingerprint(core: &GameCore, campaign_id: &str, fingerprint: &str) -> Result<Option<Value>, Failure> {
-    let events = core.events.get_events(campaign_id, 0, None)?;
+    let events = core.events.get_events_of_types(campaign_id, &["SceneAdvanced"])?;
     Ok(events.into_iter().rev().find(|event| is_scene_advanced(event) && get(event.get("payload"), "request_fingerprint").and_then(Value::as_str) == Some(fingerprint)))
 }
 
@@ -325,7 +326,9 @@ async fn execute_director_scene_transition_once(input: TransitionInput<'_>, part
     }
     // Сводка пишется о сцене, которую отряд ПОКИДАЕТ (`campaignEventsForSummary`:
     // сбой чтения журнала — пустой список).
-    let events = core.events.get_events(campaign_id, 0, None).unwrap_or_default();
+    // Сводке нужны только события после последнего `SceneAdvanced`
+    // (`eventsSinceSceneStart`): читается хвост журнала, а не весь (урок 11).
+    let events = core.events.get_events_since_last(campaign_id, "SceneAdvanced").unwrap_or_default();
     let summary_options = literal(vec![
         ("state", Some(planning_state.clone())),
         ("events", Some(Value::Array(events))),

@@ -472,3 +472,43 @@ fn maps_round_trip_through_snapshots() {
     assert_eq!(loaded.state["scene"]["cells"], json!([]), "без тактической карты клетки — пустые, как при ошибке разбора в JS");
     assert_eq!(loaded.state["locationMaps"]["inn:0"]["cells"], json!([{ "x": 3, "y": 4 }]));
 }
+
+/// Урок 11: выборки по типу, хвост и префикс журнала дают то же, что
+/// соответствующая часть полного `get_events`.
+#[test]
+fn typed_tail_and_prefix_reads_match_full_journal() {
+    let fixture = Fixture::new(3);
+    init(&fixture.store, "reads", json!({ "hp": 10 }));
+    let kinds = ["DamageApplied", "HealingApplied", "ObjectiveUpdated"];
+    let mut version = 0;
+    for step in 0..12 {
+        let mut events = vec![json!({ "event_type": kinds[step % 3], "payload": { "amount": 1, "objective": format!("цель {step}") } })];
+        if step % 4 == 0 {
+            // Имя типа внутри полезной нагрузки — не само событие этого типа.
+            events.push(json!({ "event_type": "HealingApplied", "payload": { "amount": 1, "objective": "ObjectiveUpdated" } }));
+        }
+        let committed = fixture.store.commit(request("reads", version, &format!("step-{step}"), events)).expect("коммит");
+        version = committed.state_version;
+    }
+    let all = fixture.store.get_events("reads", 0, None).expect("журнал");
+    let kind = |event: &Value| event["event_type"].as_str().unwrap_or_default().to_string();
+
+    for wanted in [&["ObjectiveUpdated"][..], &["DamageApplied", "ObjectiveUpdated"][..], &["Missing"][..]] {
+        let expected: Vec<Value> = all.iter().filter(|event| wanted.contains(&kind(event).as_str())).cloned().collect();
+        assert_eq!(fixture.store.get_events_of_types("reads", wanted).expect("по типу"), expected, "{wanted:?}");
+    }
+
+    for wanted in ["DamageApplied", "ObjectiveUpdated", "Missing"] {
+        let last = all.iter().rposition(|event| kind(event) == wanted);
+        let expected: Vec<Value> = last.map_or_else(|| all.clone(), |index| all[index + 1..].to_vec());
+        assert_eq!(fixture.store.get_events_since_last("reads", wanted).expect("хвост"), expected, "{wanted}");
+    }
+
+    let expected: Vec<Value> = all.iter().take_while(|event| kind(event) != "ObjectiveUpdated").cloned().collect();
+    let until = fixture.store.get_events_until("reads", |event| event["event_type"] == "ObjectiveUpdated").expect("префикс");
+    assert_eq!(&until[..until.len() - 1], &expected[..]);
+    assert_eq!(until.last().map(kind).as_deref(), Some("ObjectiveUpdated"));
+    assert_eq!(fixture.store.get_events_until("reads", |_| false).expect("весь"), all);
+
+    assert_eq!(fixture.store.get_events_of_types("absent", &["DamageApplied"]).expect_err("нет кампании").code, fixture.store.get_events("absent", 0, None).expect_err("нет кампании").code);
+}

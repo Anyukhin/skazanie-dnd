@@ -455,12 +455,18 @@ pub async fn handle(state: Shared, request: Request) -> Response<Body> {
     let ctx = RouteCtx { state, method: parts.method, raw_url, pathname, headers: parts.headers, peer, params: Vec::new(), body };
     let perf_started = sk_store::perf::request_trace().then(std::time::Instant::now);
     let perf_label = perf_started.map(|_| format!("{method} {log_path}"));
+    let allocations_before = sk_store::perf::allocation_counters();
     let mut response = crate::ai_context::with_campaign_ai(settings, crate::boundary::guard(method, log_path, dispatch(ctx))).await;
     leftover.drain();
     apply_security_headers(response.headers_mut());
     if let (Some(started), Some(label)) = (perf_started, perf_label) {
-        let spans: serde_json::Map<String, Value> = sk_store::perf::take().into_iter().map(|(name, count, ms)| (name.to_string(), serde_json::json!([count, (ms * 100.0).round() / 100.0]))).collect();
-        eprintln!("[perf] {}", serde_json::json!({ "request": label, "status": response.status().as_u16(), "total_ms": (started.elapsed().as_secs_f64() * 1e5).round() / 100.0, "spans": spans }));
+        // Отрезок: [число, мс, МБ выделено за его время]; МБ — только в сборке
+        // с фичей `alloc-count`, иначе 0.
+        let round = |value: f64| (value * 100.0).round() / 100.0;
+        let spans: serde_json::Map<String, Value> = sk_store::perf::take_with_allocations().into_iter().map(|(name, count, ms, mb)| (name.to_string(), serde_json::json!([count, round(ms), round(mb)]))).collect();
+        let (bytes, count, big) = sk_store::perf::allocation_counters();
+        let alloc = serde_json::json!({ "mb": round((bytes - allocations_before.0) as f64 / 1e6), "count": count - allocations_before.1, "big": big - allocations_before.2 });
+        eprintln!("[perf] {}", serde_json::json!({ "request": label, "status": response.status().as_u16(), "total_ms": (started.elapsed().as_secs_f64() * 1e5).round() / 100.0, "alloc": alloc, "spans": spans }));
     }
     response
 }

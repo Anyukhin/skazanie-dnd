@@ -573,29 +573,149 @@ impl EventStore {
         let mut expected_before: Option<i64> = None;
         for row in rows {
             let (before, after_version, body) = row?;
-            let commit: Value = serde_json::from_str(&body).map_err(|error| StoreError::corrupt(campaign_id, format!("unreadable commit {after_version}: {error}"), json!({})))?;
             if let Some(expected) = expected_before {
                 if before != expected {
-                    return Err(StoreError::corrupt(campaign_id, format!("non-contiguous commit ending at {after_version}"), json!({ "expected_state_version": expected })));
+                    return Err(Self::non_contiguous(campaign_id, after_version, expected));
                 }
             }
-            let events = commit.get("events").and_then(Value::as_array).cloned().unwrap_or_default();
-            if events.is_empty() || after_version != before + events.len() as i64 {
-                return Err(StoreError::corrupt(campaign_id, format!("invalid version range in commit ending at {after_version}"), json!({})));
+            commits.push(Self::parse_commit(campaign_id, before, after_version, &body)?);
+            expected_before = Some(after_version);
+        }
+        Ok(commits)
+    }
+
+    fn non_contiguous(campaign_id: &str, after_version: i64, expected: i64) -> StoreError {
+        StoreError::corrupt(campaign_id, format!("non-contiguous commit ending at {after_version}"), json!({ "expected_state_version": expected }))
+    }
+
+    /// Тело коммита с проверками [`Self::read_commits`]: читается, диапазон
+    /// версий сходится с числом событий, у каждого события своя кампания и версии.
+    fn parse_commit(campaign_id: &str, before: i64, after_version: i64, body: &str) -> StoreResult<Value> {
+        let commit: Value = serde_json::from_str(body).map_err(|error| StoreError::corrupt(campaign_id, format!("unreadable commit {after_version}: {error}"), json!({})))?;
+        let events = commit.get("events").and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
+        if events.is_empty() || after_version != before + events.len() as i64 {
+            return Err(StoreError::corrupt(campaign_id, format!("invalid version range in commit ending at {after_version}"), json!({})));
+        }
+        for (index, event) in events.iter().enumerate() {
+            let expected = before + index as i64;
+            if event.get("campaign_id").and_then(Value::as_str) != Some(campaign_id) || int_field(event, "state_version_before") != expected || int_field(event, "state_version_after") != expected + 1 {
+                return Err(StoreError::corrupt(campaign_id, format!("invalid event version in commit ending at {after_version}"), json!({ "event_id": event.get("event_id") })));
             }
-            for (index, event) in events.iter().enumerate() {
-                let expected = before + index as i64;
-                if event.get("campaign_id").and_then(Value::as_str) != Some(campaign_id)
-                    || int_field(event, "state_version_before") != expected
-                    || int_field(event, "state_version_after") != expected + 1
-                {
-                    return Err(StoreError::corrupt(campaign_id, format!("invalid event version in commit ending at {after_version}"), json!({ "event_id": event.get("event_id") })));
+        }
+        Ok(commit)
+    }
+
+    /// Непрерывность журнала по одним номерам версий, без тел коммитов: та же
+    /// проверка, что у [`Self::read_commits`] при полном чтении (урок 11).
+    fn check_contiguous(conn: &Connection, campaign_id: &str) -> StoreResult<()> {
+        let mut statement = conn.prepare_cached("SELECT version_before, version_after FROM commits WHERE campaign_id = ?1 ORDER BY version_after")?;
+        let rows = statement.query_map(params![campaign_id], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?;
+        let mut expected_before: Option<i64> = None;
+        for row in rows {
+            let (before, after_version) = row?;
+            if let Some(expected) = expected_before {
+                if before != expected {
+                    return Err(Self::non_contiguous(campaign_id, after_version, expected));
                 }
             }
             expected_before = Some(after_version);
-            commits.push(commit);
         }
-        Ok(commits)
+        Ok(())
+    }
+
+    /// Предварительные проверки чтения журнала — как у [`Self::get_events`].
+    fn checked_journal(inner: &Inner, campaign_id: &str) -> StoreResult<String> {
+        let campaign_id = safe_id(campaign_id, "campaign_id")?;
+        if !Self::exists(&inner.conn, &campaign_id)? {
+            return Err(StoreError::campaign_not_found(&campaign_id));
+        }
+        let (head, _) = Self::head(&inner.conn, &campaign_id)?;
+        Self::check_head_evidence(&inner.conn, &campaign_id, head)?;
+        Self::check_contiguous(&inner.conn, &campaign_id)?;
+        Ok(campaign_id)
+    }
+
+    /// Строка-признак события типа `kind` в теле коммита: имя типа в кавычках.
+    /// Отбор по ней — надмножество (тот же текст может стоять и в полезной
+    /// нагрузке), поэтому найденные коммиты разбираются и фильтруются по типу.
+    fn type_needle(kind: &str) -> String {
+        format!("\"{kind}\"")
+    }
+
+    /// События типов `kinds` по порядку журнала — то же, что
+    /// `get_events(campaign_id, 0, None)`, отфильтрованное по типу, но тела
+    /// разбираются только у коммитов, где эти типы встречаются (урок 11:
+    /// без разбора всего журнала).
+    pub fn get_events_of_types(&self, campaign_id: &str, kinds: &[&str]) -> StoreResult<Vec<Value>> {
+        let _span = crate::perf::span("store.get_events_of_types");
+        let inner = self.lock();
+        let campaign_id = Self::checked_journal(&inner, campaign_id)?;
+        Self::events_of_types(&inner, &campaign_id, kinds)
+    }
+
+    fn events_of_types(inner: &Inner, campaign_id: &str, kinds: &[&str]) -> StoreResult<Vec<Value>> {
+        let condition = (0..kinds.len()).map(|index| format!("instr(body, ?{}) > 0", index + 2)).collect::<Vec<_>>().join(" OR ");
+        let sql = format!("SELECT version_before, version_after, body FROM commits WHERE campaign_id = ?1 AND ({condition}) ORDER BY version_after");
+        let mut statement = inner.conn.prepare(&sql)?;
+        let needles: Vec<String> = kinds.iter().map(|kind| Self::type_needle(kind)).collect();
+        let mut arguments: Vec<&dyn rusqlite::ToSql> = vec![&campaign_id];
+        arguments.extend(needles.iter().map(|needle| needle as &dyn rusqlite::ToSql));
+        let rows = statement.query_map(arguments.as_slice(), |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?;
+        let mut found = Vec::new();
+        for row in rows {
+            let (before, after_version, body) = row?;
+            let commit = Self::parse_commit(campaign_id, before, after_version, &body)?;
+            found.extend(commit["events"].as_array().into_iter().flatten().filter(|event| kinds.contains(&event.get("event_type").and_then(Value::as_str).unwrap_or_default())).cloned());
+        }
+        Ok(found)
+    }
+
+    /// События после последнего события типа `kind` (весь журнал, если его
+    /// нет) — то же, что хвост `get_events(campaign_id, 0, None)` за последним
+    /// таким событием. Последнее событие ищется с головы журнала (урок 11).
+    pub fn get_events_since_last(&self, campaign_id: &str, kind: &str) -> StoreResult<Vec<Value>> {
+        let _span = crate::perf::span("store.get_events_since_last");
+        let since = {
+            let inner = self.lock();
+            let campaign_id = Self::checked_journal(&inner, campaign_id)?;
+            let mut statement = inner.conn.prepare_cached("SELECT version_before, version_after, body FROM commits WHERE campaign_id = ?1 AND instr(body, ?2) > 0 ORDER BY version_after DESC")?;
+            let rows = statement.query_map(params![campaign_id, Self::type_needle(kind)], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?;
+            let mut since = 0;
+            for row in rows {
+                let (before, after_version, body) = row?;
+                let commit = Self::parse_commit(&campaign_id, before, after_version, &body)?;
+                let last = commit["events"].as_array().into_iter().flatten().rev().find(|event| event.get("event_type").and_then(Value::as_str) == Some(kind));
+                if let Some(event) = last {
+                    since = int_field(event, "state_version_after");
+                    break;
+                }
+            }
+            since
+        };
+        self.get_events(campaign_id, since, None)
+    }
+
+    /// Начало журнала до первого события, на котором `stop` истинно,
+    /// включительно (весь журнал, если такого нет) — префикс
+    /// `get_events(campaign_id, 0, None)`; коммиты дальше не читаются (урок 11).
+    pub fn get_events_until(&self, campaign_id: &str, stop: impl Fn(&Value) -> bool) -> StoreResult<Vec<Value>> {
+        let _span = crate::perf::span("store.get_events_until");
+        let inner = self.lock();
+        let campaign_id = Self::checked_journal(&inner, campaign_id)?;
+        let mut statement = inner.conn.prepare_cached("SELECT version_before, version_after, body FROM commits WHERE campaign_id = ?1 ORDER BY version_after")?;
+        let rows = statement.query_map(params![campaign_id], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?;
+        let mut events = Vec::new();
+        for row in rows {
+            let (before, after_version, body) = row?;
+            let commit = Self::parse_commit(&campaign_id, before, after_version, &body)?;
+            for event in commit["events"].as_array().into_iter().flatten() {
+                events.push(event.clone());
+                if stop(event) {
+                    return Ok(events);
+                }
+            }
+        }
+        Ok(events)
     }
 
     fn read_metadata_raw(conn: &Connection, campaign_id: &str) -> StoreResult<Option<Value>> {

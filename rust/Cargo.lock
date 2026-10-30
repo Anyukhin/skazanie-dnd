@@ -2063,6 +2063,7 @@ dependencies = [
  "sk-scene-base",
  "sk-social",
  "sk-society",
+ "sk-store",
  "sk-story",
  "sk-tactical",
  "sk-world-life",

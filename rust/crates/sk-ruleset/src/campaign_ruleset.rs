@@ -13,8 +13,10 @@ use crate::ruleset_config::{
 };
 use crate::support::{array, defined, path, prop, spread_items, str_array, string_of, unique_strings};
 
-const RULESET_EVENT_TYPE: &str = "CampaignRulesetChanged";
-const HOUSE_RULE_EVENT_TYPE: &str = "CampaignHouseRuleChanged";
+/// Тип события смены редакции.
+pub const RULESET_EVENT_TYPE: &str = "CampaignRulesetChanged";
+/// Тип события переключения домашнего правила.
+pub const HOUSE_RULE_EVENT_TYPE: &str = "CampaignHouseRuleChanged";
 
 /// Отказ смены редакции или домашнего правила (`CampaignRulesetError`).
 #[derive(Debug, Clone, PartialEq, Eq)]

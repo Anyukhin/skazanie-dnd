@@ -49,8 +49,41 @@ use std::time::Duration;
 /// Ск3, A/B три раунда (bench/hot-path.mjs): с двумя зрителями mimalloc
 /// быстрее системного на 5–11 % по всем операциям (MoveActor 410 против 461 мс,
 /// narrate 519 против 562), без зрителей — в пределах ±4 %; оставлен.
+#[cfg(not(feature = "alloc-count"))]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+/// Фича `alloc-count` (замер, урок 11): тот же mimalloc, но каждое выделение
+/// учитывается в `sk_store::perf` — строка `[perf]` показывает выделенные МБ.
+#[cfg(feature = "alloc-count")]
+struct CountingAllocator;
+
+#[cfg(feature = "alloc-count")]
+unsafe impl std::alloc::GlobalAlloc for CountingAllocator {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        sk_store::perf::note_allocation(layout.size());
+        // SAFETY: тот же контракт `GlobalAlloc`, вызов передаётся mimalloc.
+        unsafe { std::alloc::GlobalAlloc::alloc(&mimalloc::MiMalloc, layout) }
+    }
+    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
+        sk_store::perf::note_allocation(layout.size());
+        // SAFETY: см. `alloc`.
+        unsafe { std::alloc::GlobalAlloc::alloc_zeroed(&mimalloc::MiMalloc, layout) }
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        // SAFETY: см. `alloc`.
+        unsafe { std::alloc::GlobalAlloc::dealloc(&mimalloc::MiMalloc, ptr, layout) }
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, new_size: usize) -> *mut u8 {
+        sk_store::perf::note_allocation(new_size);
+        // SAFETY: см. `alloc`.
+        unsafe { std::alloc::GlobalAlloc::realloc(&mimalloc::MiMalloc, ptr, layout, new_size) }
+    }
+}
+
+#[cfg(feature = "alloc-count")]
+#[global_allocator]
+static GLOBAL: CountingAllocator = CountingAllocator;
 
 use sk_agents_base::llm_client::{RouterAiClient, RouterAiClientConfig};
 use sk_infra::usage_ledger::DurableUsageLedger;

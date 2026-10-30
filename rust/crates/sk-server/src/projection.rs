@@ -141,15 +141,29 @@ fn projected_room_state(room_state: &Value, engine_state: &Value, events: &[Valu
     for player in room_players {
         online_by_id.insert(js::string(player.get("id")), Value::Bool(js::truthy(player.get("online"))));
     }
-    let engine = engine_state.as_object().cloned().unwrap_or_default();
-    let mut next = room_state.as_object().cloned().unwrap_or_default();
-    for field in CANONICAL_PROJECTION_FIELDS {
-        if !engine.contains_key(*field) {
-            next.shift_remove(*field);
+    // `{ ...room, ...engine }` без канонических полей, которых у движка нет:
+    // порядок ключей — комнаты, новые поля движка — в конце в его порядке.
+    // Значения комнаты, которые движок тут же заменит, не копируются, и само
+    // состояние движка целиком не копируется (урок 11).
+    let empty = Map::new();
+    let engine = engine_state.as_object().unwrap_or(&empty);
+    let room = room_state.as_object().unwrap_or(&empty);
+    let mut next = Map::new();
+    for (field, value) in room {
+        match engine.get(field) {
+            Some(engine_value) => {
+                next.insert(field.clone(), engine_value.clone());
+            }
+            None if CANONICAL_PROJECTION_FIELDS.contains(&field.as_str()) => {}
+            None => {
+                next.insert(field.clone(), value.clone());
+            }
         }
     }
-    for (field, value) in &engine {
-        next.insert(field.clone(), value.clone());
+    for (field, value) in engine {
+        if !next.contains_key(field) {
+            next.insert(field.clone(), value.clone());
+        }
     }
     next.insert("agentInteraction".into(), engine.get("agentInteraction").filter(|value| !value.is_null()).cloned().unwrap_or(Value::Null));
     let engine_players = match engine.get("players") {
@@ -235,7 +249,7 @@ pub fn persist_authoritative_projection(
         let ack = comparison.matched.then(|| RoomProjectionAck { campaign_id: campaign_id.to_string(), projected_version: proposed_version, projection_hash: Some(comparison.projected_hash.clone()) });
         let (saved, acknowledged) = {
             let _span = sk_store::perf::span("persist.save_room");
-            crate::room::save_room_with_ack(core, campaign_id, &next, room.version, ack)?
+            crate::room::save_composed_room_with_ack(core, campaign_id, &next, room.version, ack)?
         };
         if !saved.conflict {
             if let Some(Err(error)) = acknowledged {
