@@ -17,7 +17,7 @@ use std::collections::HashSet;
 
 use serde_json::{json, Map, Value};
 use sk_core::{js, re, text};
-use sk_items::item_catalog::{catalog_item, materialize_catalog_item, normalize_item_recharge_profile, ITEM_MECHANICS_STATUSES, ITEM_ORIGIN_KINDS};
+use sk_items::item_catalog::{catalog_item, item_mechanics_support, materialize_catalog_item, normalize_item_recharge_profile, ITEM_ORIGIN_KINDS};
 
 use crate::merchant_economy::{normalize_inventory_item_rarity, normalize_inventory_item_type, normalize_inventory_passive_effects};
 use crate::support::{coalesce, get, js_order, nfkc_text, num, plain, safe_int, sha256_hex, hex8};
@@ -167,7 +167,7 @@ fn normalize_snapshot(input: Option<&Value>) -> Value {
     }
     if present(&snapshot, "mechanics_status") {
         let status = nfkc_text(snapshot.get("mechanics_status"), 40);
-        if ITEM_MECHANICS_STATUSES.contains(&status.as_str()) {
+        if item_mechanics_support(&status).is_some() {
             snapshot.insert("mechanics_status".into(), json!(status));
         } else {
             snapshot.shift_remove("mechanics_status");

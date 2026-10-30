@@ -68,7 +68,8 @@ pub struct LegendaryResistance {
 #[derive(Debug, Clone, Copy)]
 pub struct MagicMissile<'a> {
     pub source_command: &'a Value,
-    pub spell: &'a Value,
+    /// Только исполнимая карточка: у предмета и у заклинания граница одна.
+    pub spell: &'a crate::executable::Executable,
     pub target: &'a Value,
     pub slot_level: Option<&'a Value>,
     pub damage_type: &'a Value,

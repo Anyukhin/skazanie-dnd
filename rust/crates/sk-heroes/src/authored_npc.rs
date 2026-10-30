@@ -17,13 +17,13 @@ use sk_chargen::npc_portraits::NPC_PORTRAIT_CHARACTER_ASSETS;
 use sk_combat_base::legendary_actions::legendary_profile_for;
 use sk_combat_base::monster_actions::monster_area_action;
 use sk_combat_content::combat_spells::canonical_combat_spell_for;
-use sk_core::{js, re, text};
+use sk_core::{js, re, text, MechanicsSupport};
 use sk_geometry::actor_footprint::footprint_metadata_for_size;
 
 use crate::support::{array, defined, prop, same_value_zero};
 
 /// `AUTHORED_NPC_MECHANICS_STATUSES`: статусы механики листа и особенностей.
-pub const AUTHORED_NPC_MECHANICS_STATUSES: [&str; 3] = ["verified", "partial", "ruling-only"];
+pub const AUTHORED_NPC_MECHANICS_STATUSES: [&str; 3] = [MechanicsSupport::Verified.as_str(), MechanicsSupport::Partial.as_str(), MechanicsSupport::RulingOnly.as_str()];
 
 /// Путь листа в текстах отказов по умолчанию (`path = 'npc.mechanics'`).
 pub const DEFAULT_MECHANICS_PATH: &str = "npc.mechanics";
@@ -433,8 +433,8 @@ fn normalize_spellcasting(value: Option<&Value>, path: &str) -> Checked<Value> {
         seen.push(spell_id.clone());
         let catalog = canonical_combat_spell_for(Some(&json!(spell_id)), None);
         let unsupported = catalog.as_ref().is_none_or(|catalog| {
-            let support = js::string(catalog.get("mechanicsSupport"));
-            support == "heuristic" || support == "ruling-only"
+            let support = MechanicsSupport::parse(&js::string(catalog.get("mechanicsSupport")));
+            support.is_some_and(|status| !status.is_executable())
         });
         if unsupported {
             return invalid(format!("{spell_path}.id не имеет исполнимой серверной механики"));

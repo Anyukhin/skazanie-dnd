@@ -86,8 +86,8 @@ fn choose_for_tier(pool: &[&'static str], tier_index: usize, used: &[&str]) -> O
 }
 
 fn eligible(catalog_id: &str, purpose: &str) -> Result<(), String> {
-    let status = catalog_item(catalog_id).and_then(|entry| entry.get("mechanics_status")).and_then(Value::as_str);
-    if matches!(status, Some("verified" | "partial")) {
+    let status = sk_core::MechanicsSupport::of(catalog_item(catalog_id).and_then(|entry| entry.get("mechanics_status")));
+    if status.is_some_and(sk_core::MechanicsSupport::is_executable) {
         Ok(())
     } else {
         Err(format!("Catalog item {catalog_id} is not mechanically eligible for {purpose}"))

@@ -7,7 +7,7 @@
 //! закрытие после действия и после триггеров — `spells/enervation.rs` (Р5).
 
 use serde_json::{json, Map, Value};
-use sk_core::js;
+use sk_core::{js, MechanicsSupport};
 
 use crate::core::{safe_integer_or, spread_value, string_of};
 
@@ -132,7 +132,7 @@ pub fn enervation_continuation_action_for(state: &Value, caster_id: Option<&Valu
     if let Some(url) = link.spell.get("sourceUrl") {
         action.insert("sourceUrl".into(), url.clone());
     }
-    action.insert("mechanicsSupport".into(), Value::String("partial".into()));
+    action.insert("mechanicsSupport".into(), MechanicsSupport::Partial.into());
     if let Some(note) = link.spell.get("supportNote") {
         action.insert("supportNote".into(), note.clone());
     }

@@ -9,7 +9,7 @@
 //! навык усиления (`spell_option`).
 
 use serde_json::{json, Value};
-use sk_core::js;
+use sk_core::{js, MechanicsSupport};
 use sk_geometry::Point;
 
 use super::Validation;
@@ -115,11 +115,12 @@ pub fn check_cast_spell(v: &mut Validation<'_>) -> Step {
     if !combat_active && crate::resolve::opening_strike::HARMFUL_SPELL_KINDS.contains(&kind.as_str()) {
         return Err(rule("Боевое заклинание требует инициативы: сначала начните бой", "COMBAT_NOT_ACTIVE"));
     }
-    let action_type = field(&spell, "actionType").and_then(Value::as_str);
+    let action_type = field(&spell, "actionType").and_then(Value::as_str).map(str::to_owned);
+    let action_type = action_type.as_deref();
     if action_type == Some("long_cast") && combat_active {
         return Err(rule("Это заклинание требует больше одного хода и в бою недоступно", "SPELL_CAST_TIME_TOO_LONG"));
     }
-    crate::core::assert_mechanics_supported(Some(&spell), "заклинания")?;
+    let spell = crate::executable::Executable::admit(Some(spell), "заклинания")?;
     let uses_2014 = sk_core::game::uses_2014(state);
     if uses_2014 && action_type == Some("reaction") {
         return Err(rule("Заклинание-реакция применяется через окно реакции после подходящего события", "REACTION_NOT_AVAILABLE"));
@@ -416,7 +417,7 @@ fn check_creature_targets(v: &mut Validation<'_>, spell: &Value, from: Point, ma
             if distance_value > maximum_range {
                 return Err(rule("Цель находится вне дальности заклинания", "TARGET_OUT_OF_RANGE"));
             }
-            let verified_2014 = sk_core::game::uses_2014(state) && field(spell, "mechanicsSupport").and_then(Value::as_str) == Some("verified");
+            let verified_2014 = sk_core::game::uses_2014(state) && MechanicsSupport::is(field(spell, "mechanicsSupport"), MechanicsSupport::Verified);
             if distance_value > 5.0 || field(spell, "id").and_then(Value::as_str) == Some("longstrider") || verified_2014 {
                 crate::geometry::forced::assert_clear_actor_trajectory(&target_state, &source_id, id, Some(source_position), Some(to), blind)?;
             }

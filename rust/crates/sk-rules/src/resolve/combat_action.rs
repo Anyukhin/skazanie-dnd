@@ -21,9 +21,10 @@ use crate::checks::skills::{challenge_rating_value, skill_proficiency_bonus};
 use crate::command::rules::rule_ids;
 use crate::constants::{ACTION_ECONOMY_EVENT_VERSION, EXTINGUISHABLE_FLAME_CONDITIONS, MONK_BONUS_UNARMED_ACTION_IDS, READIED_TRIGGERS};
 use crate::context::Context;
-use crate::core::{ability_modifier, armor_stealth_disadvantage, assert_mechanics_supported, coalesce, command_with, command_with_rules, condition_ids_for, dice_expression, event_from, player_actor, resource_pool, spread_value};
+use crate::core::{ability_modifier, armor_stealth_disadvantage, coalesce, command_with, command_with_rules, condition_ids_for, dice_expression, event_from, player_actor, resource_pool, spread_value};
 use crate::damage::{damage_payload, resolved_healing_roll};
 use crate::death::zero_hit_point_damage_consequences;
+use crate::executable::Executable;
 use crate::pause::{rule, Fault, Interrupt, Flow};
 use crate::spells::components::{assert_spell_components_allowed, spell_component_cost_events};
 use crate::tactical_geometry::{actor_point, point_json, points_json};
@@ -119,7 +120,8 @@ struct Act {
     state: Value,
     command: Value,
     actor_id: String,
-    action: Value,
+    /// Карточка приёма: исполнимость доказана на границе команды.
+    action: Executable,
     /// `actionTargetId`.
     target: Value,
     /// `String(actionTargetId)` для поиска.
@@ -330,8 +332,7 @@ pub fn use_combat_action(r: &mut Resolve<'_>) -> Flow {
         Some(action) => Some(action.clone()),
         None => sk_combat_content::combat_actions::combat_action_for(sk_core::game::find_actor(&state, &actor_id), command.get("action_id")),
     };
-    assert_mechanics_supported(action.as_ref(), "действия")?;
-    let action = action.unwrap_or(Value::Null);
+    let action = Executable::admit(action, "действия")?;
     let target = if action.get("target").and_then(Value::as_str) == Some("self") { command.get("actor_id").cloned().unwrap_or(Value::Null) } else { r.target_id.clone() };
     let target_key = js::s(Some(&target));
     let act = Act { state, command, actor_id, action, target, target_key, resume };
@@ -1002,7 +1003,7 @@ fn ready_action(r: &mut Resolve<'_>, a: &Act) -> Flow {
         let Some(spell) = sk_combat_content::combat_spells::combat_spell_for(a.actor(), Some(&Value::String(readied_spell_id.clone())), Some(&options_value)) else {
             return Err(rule("Это заклинание недоступно герою", "SPELL_NOT_AVAILABLE"));
         };
-        assert_mechanics_supported(Some(&spell), "заклинания")?;
+        let spell = Executable::admit(Some(spell), "заклинания")?;
         if spell.get("target").and_then(Value::as_str) == Some("point") {
             return Err(rule("Заготовка заклинаний с выбором точки пока недоступна. Наложите заклинание обычным действием.", "READIED_POINT_SPELL_UNSUPPORTED"));
         }

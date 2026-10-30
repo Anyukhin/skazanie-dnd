@@ -190,9 +190,15 @@ fn core_helpers_match_js() {
         let found = k::inventory_item(case.get("actor"), case.get("item_id")).cloned().unwrap_or(Value::Null);
         assert_eq!(found, case["expected"], "inventoryItem {case}");
     }
+    // `assertMechanicsSupported` стал единственным конструктором доказательства
+    // исполнимости: те же коды и тексты отказов.
     for case in cases("assert_mechanics_supported") {
-        match k::assert_mechanics_supported(case.get("subject"), "«Левитации»") {
-            Ok(()) => assert_eq!(case["ok"], json!(true), "assertMechanicsSupported {case}"),
+        match sk_rules::executable::Executable::admit(case.get("subject").cloned(), "«Левитации»") {
+            Ok(proof) => {
+                assert_eq!(case["ok"], json!(true), "assertMechanicsSupported {case}");
+                assert_eq!(Some(proof.card()), case.get("subject"), "доказательство несёт карточку {case}");
+                assert!(proof.support().is_executable(), "{case}");
+            }
             Err(error) => {
                 assert_eq!(json!(error.code), case["code"], "assertMechanicsSupported {case}");
                 assert_eq!(json!(error.message), case["message"], "assertMechanicsSupported {case}");

@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use serde_json::{json, Map, Value};
 use sk_combat_base::monster_actions::monster_area_action;
 use sk_core::indexmap::{IndexMap, IndexSet};
-use sk_core::{js, re, text};
+use sk_core::{js, re, text, MechanicsSupport};
 use sk_geometry::actor_footprint::footprint_metadata_for_size;
 
 use crate::combat_spells::{canonical_combat_spell_for, MONSTER_SPELL_AT_WILL};
@@ -767,7 +767,7 @@ pub fn monster_limitations_for(record: &Value) -> Vec<String> {
             let spell = canonical_combat_spell_for(known.get("key"), None);
             let support = spell.as_ref().and_then(|spell| spell.get("mechanicsSupport"));
             match &spell {
-                Some(spell) if is_str(support, "verified") || is_str(support, "partial") => {
+                Some(spell) if MechanicsSupport::executable(support) => {
                     if !is_str(spell.get("actionType"), "action") {
                         limitations.push(format!("Заклинание «{}» с этим временем накладывания пока не выбирается тактикой NPC.", jsv::string(spell.get("name"))));
                     }

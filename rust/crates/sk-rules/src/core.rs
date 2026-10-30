@@ -1,6 +1,6 @@
 //! Ядро движка правил — общие помощники `rules-engine.mjs`. Задача Р0.
 //!
-//! JS: `clone`, `assertMechanicsSupported` (1024–1044), `uniqueStrings`,
+//! JS: `clone`, `uniqueStrings`,
 //! `plainObject` (1209–1215), `abilityModifier` (2221), `diceExpression`
 //! (3096), `monsterTraitFor`/`monsterActionFor` (3120–3128), доспехи
 //! (3740–3763), `targetFor` (5077), `playerActor` (5128),
@@ -19,7 +19,7 @@
 use serde_json::{json, Map, Value};
 use sk_core::indexmap::IndexSet;
 use sk_core::js;
-use sk_core::{Event, RuleError};
+use sk_core::Event;
 use sk_ruleset::ruleset_config::ruleset_rule_id;
 
 use crate::command::rules::rule_ids;
@@ -276,24 +276,6 @@ pub fn same_campaign_party(state: &Value, id: &str) -> bool {
         Some(ids) => ids.iter().any(|member| string_of(member) == id),
         None => state.get("players").and_then(Value::as_array).into_iter().flatten().any(|player| sk_core::game::actor_id(player) == id),
     }
-}
-
-/// `assertMechanicsSupported(subject, label)`: отказ называет причину карточки.
-pub fn assert_mechanics_supported(subject: Option<&Value>, label: &str) -> Result<(), RuleError> {
-    let support = subject.and_then(|subject| subject.get("mechanicsSupport")).and_then(Value::as_str);
-    if matches!(support, Some("verified" | "partial")) {
-        return Ok(());
-    }
-    let reason = sk_core::text::trim(&js::s(subject.and_then(|subject| subject.get("supportNote")))).to_string();
-    if support == Some("heuristic") {
-        return Err(RuleError::new("MECHANICS_NOT_VERIFIED", format!("Механика {label} ещё не проверена для авторитетного боя")));
-    }
-    let message = if reason.is_empty() {
-        format!("Для {label} требуется серверное решение правил")
-    } else {
-        format!("Для {label} требуется серверное решение правил: {reason}")
-    };
-    Err(RuleError::new("RULING_REQUIRED", message))
 }
 
 /// События, которым `eventFrom` ставит маркер жизненного цикла призыва.

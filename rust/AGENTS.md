@@ -64,6 +64,19 @@
 - **Отметка писателя storage.** Два сервера на одном хранилище не стартуют.
   Если в каталоге лежат файлы JS, а база пуста, запуск получает отказ с
   подсказкой `import-legacy`.
+- **Статус механики — тип.** `sk_core::MechanicsSupport` (`verified`,
+  `partial`, `heuristic`, `ruling-only`) — единственный словарь статусов
+  карточек заклинаний, действий, предметов и листов NPC; сравнивать статус
+  строкой нельзя. Встроенные каталоги разбирают статус строго при загрузке
+  (`load_spell_cards`, `action()`, `item_catalog_from_entries`): опечатка —
+  отказ с именем карточки. Карточка из состояния или команды разбирается
+  мягко (`MechanicsSupport::of`): чужое значение — не исполнимое. Обработчики
+  исполнения (`resolve::spell::Cast`, `resolve::combat_action::Act`,
+  `MagicMissile`) принимают `sk_rules::executable::Executable`, который
+  выдаёт только `Executable::admit` на границе команды — с прежними отказами
+  `MECHANICS_NOT_VERIFIED` и `RULING_REQUIRED`. Новый обработчик карточки
+  берёт `Executable`, а не `&Value`. Сводки каталогов —
+  `spell_catalog_census`, `combat_action_catalog_census`, `item_catalog_census`.
 - **Быстродействие.** Мемо нормализации (`sk-rules` `normalize::fixed_point`)
   держится на том, что нормализация — чистая функция входа и режима
   хранения. Новое скрытое состояние в нормализаторе это ломает. Бюджеты

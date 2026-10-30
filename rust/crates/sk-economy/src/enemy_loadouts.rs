@@ -26,7 +26,7 @@
 use std::collections::HashSet;
 
 use serde_json::{json, Value};
-use sk_core::js;
+use sk_core::{js, MechanicsSupport};
 use sk_items::item_catalog::catalog_item;
 
 use crate::item_instances::{create_item_instance, normalize_item_instance, seeded_integer, ItemInstanceError};
@@ -192,7 +192,7 @@ pub fn assert_enemy_loadout_item(catalog_id: &str, verified_only: bool, allow_sp
     if !js::truthy(entry.get("enemy_loadout_eligible")) && !spellcasting_component {
         return Err(loadout_error("ENEMY_LOADOUT_ITEM_NOT_ELIGIBLE", format!("Предмет {catalog_id} не разрешён в инвентарях противников")));
     }
-    if verified_only && entry.get("mechanics_status").and_then(Value::as_str) != Some("verified") {
+    if verified_only && !MechanicsSupport::is(entry.get("mechanics_status"), MechanicsSupport::Verified) {
         return Err(loadout_error("ENEMY_LOADOUT_CONSUMABLE_NOT_VERIFIED", format!("Расходник {catalog_id} не имеет статуса verified")));
     }
     Ok(entry)

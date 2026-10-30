@@ -515,6 +515,17 @@ GCC из пакетов MSYS2 в `~/.cargo/mingw64-root` (подробно — `
   уточнение и голосование через разбор команды не идут (`sk-infra`
   `roll_registry`, `sk-narration-base` `clarification_registry`, `sk-memory`
   `party_decision`) — в `Prompt` их нет.
+### Уроки JS-стека
+
+- **Урок 8: статус механики — тип** (`rs/lesson8`). `sk_core::MechanicsSupport`
+  заменил строки `verified`/`partial`/`heuristic`/`ruling-only` во всех
+  сравнениях. Встроенные каталоги заклинаний, действий и предметов разбирают
+  статус при загрузке — опечатка в правке не загружается и называет карточку.
+  Исполнение заклинаний, боевых действий и заклинаний предметов принимает
+  `sk_rules::executable::Executable`; его выдаёт только `Executable::admit`
+  (бывший `assertMechanicsSupported`) с теми же отказами и в том же порядке.
+  Сводки по статусам — `spell_catalog_census`, `combat_action_catalog_census`,
+  `item_catalog_census`. Поведение HTTP и события не изменились.
 
 ## 11. Первые шаги
 

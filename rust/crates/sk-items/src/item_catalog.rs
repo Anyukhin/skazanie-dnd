@@ -18,7 +18,7 @@
 use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
-use sk_core::{js, text};
+use sk_core::{js, text, MechanicsSupport, UnknownMechanicsSupport};
 use sk_ruleset::ruleset_config::DND_2014_RULESET_ID;
 
 use crate::support::{coalesce, field, is_safe_integer, js_max, js_min, json_num, or_value, or_zero};
@@ -51,7 +51,17 @@ static SPELLCASTING_COMPONENT_SOURCE: LazyLock<Value> = LazyLock::new(|| {
     })
 });
 
-pub const ITEM_MECHANICS_STATUSES: [&str; 3] = ["verified", "partial", "ruling-only"];
+/// Статусы механики предмета: `heuristic` у вещей не бывает.
+pub const ITEM_MECHANICS_SUPPORT: [MechanicsSupport; 3] = [MechanicsSupport::Verified, MechanicsSupport::Partial, MechanicsSupport::RulingOnly];
+
+/// `ITEM_MECHANICS_STATUSES`: те же статусы строками.
+pub const ITEM_MECHANICS_STATUSES: [&str; 3] = [ITEM_MECHANICS_SUPPORT[0].as_str(), ITEM_MECHANICS_SUPPORT[1].as_str(), ITEM_MECHANICS_SUPPORT[2].as_str()];
+
+/// Мягкий разбор статуса предмета (снимок в инвентаре, сохранение): чужая
+/// строка или `heuristic` — `None`.
+pub fn item_mechanics_support(text: &str) -> Option<MechanicsSupport> {
+    MechanicsSupport::parse(text).filter(|status| ITEM_MECHANICS_SUPPORT.contains(status))
+}
 
 /// Откуда вещь взялась. Словарь один на оба мира: на экземпляры противников и
 /// контейнеров (`origin.kind`, `item-instances`) и на инвентарь героя
@@ -903,7 +913,7 @@ const ENEMY_LOADOUT_GEAR_IDS: [&str; 12] = [
 ///
 /// Общая граница одна: `ruling-only` не материализуется нигде.
 fn loot_metadata(entry: &Value) -> (bool, bool) {
-    let executable = entry.get("mechanics_status").and_then(Value::as_str) != Some("ruling-only");
+    let executable = !MechanicsSupport::is(entry.get("mechanics_status"), MechanicsSupport::RulingOnly);
     let transferable = !js::is_false(entry.get("lifecycle").and_then(|lifecycle| lifecycle.get("transferable")));
     let magic = js::truthy(entry.get("magic_item"));
     let category = entry.get("category").and_then(Value::as_str).unwrap_or_default();
@@ -925,17 +935,36 @@ fn build_catalog() -> Value {
         .chain(tables::spell_material_components().iter().map(spell_material_entry))
         .chain(tables::magic_items())
         .collect();
+    item_catalog_from_entries(entries).unwrap_or_else(|error| panic!("Каталог предметов не загружается: {error}"))
+}
+
+/// Каталог по `catalog_id` из записей манифеста с признаками добычи. Статус
+/// механики каждой записи разбирается строго: незнакомая строка или
+/// `heuristic` — отказ с `catalog_id` записи.
+pub fn item_catalog_from_entries(entries: Vec<Value>) -> Result<Value, UnknownMechanicsSupport> {
     let mut catalog = Map::new();
     for mut entry in entries {
-        let (enemy, corpse) = loot_metadata(&entry);
         let catalog_id = js::s(entry.get("catalog_id"));
+        require_item_status(&entry, &catalog_id)?;
+        let (enemy, corpse) = loot_metadata(&entry);
         if let Some(map) = entry.as_object_mut() {
             map.insert("enemy_loadout_eligible".into(), Value::Bool(enemy));
             map.insert("corpse_loot_eligible".into(), Value::Bool(corpse));
         }
         catalog.insert(catalog_id, entry);
     }
-    Value::Object(catalog)
+    Ok(Value::Object(catalog))
+}
+
+/// Строгий разбор `mechanics_status` записи встроенного каталога предметов.
+fn require_item_status(entry: &Value, catalog_id: &str) -> Result<MechanicsSupport, UnknownMechanicsSupport> {
+    let value = entry.get("mechanics_status");
+    let status = MechanicsSupport::require(value, catalog_id)?;
+    if ITEM_MECHANICS_SUPPORT.contains(&status) {
+        Ok(status)
+    } else {
+        Err(UnknownMechanicsSupport { card: catalog_id.to_string(), value: format!("{} (у предметов не бывает)", status.as_str()) })
+    }
 }
 
 /// `ITEM_CATALOG`: 145 записей SRD по `catalog_id` в порядке манифеста.
@@ -965,8 +994,24 @@ static SCENARIO_ITEM_AVAILABILITY: LazyLock<Value> = LazyLock::new(|| json!({ "s
 
 /// `SCENARIO_ITEM_CATALOG`.
 pub static SCENARIO_ITEM_CATALOG: LazyLock<Value> = LazyLock::new(|| {
-    Value::Object(tables::scenario_items().into_iter().map(|entry| (js::s(entry.get("catalog_id")), entry)).collect())
+    let entries = tables::scenario_items().into_iter().map(|entry| {
+        let catalog_id = js::s(entry.get("catalog_id"));
+        require_item_status(&entry, &catalog_id).unwrap_or_else(|error| panic!("Каталог предметов сценария не загружается: {error}"));
+        (catalog_id, entry)
+    });
+    Value::Object(entries.collect())
 });
+
+/// Сводка каталогов предметов (SRD и сценария) по статусам механики:
+/// счётчики и неисполнимые (`ruling-only`) записи по порядку каталога.
+pub fn item_catalog_census() -> sk_core::MechanicsCensus {
+    let mut census = sk_core::MechanicsCensus::default();
+    let scenario = SCENARIO_ITEM_CATALOG.as_object().into_iter().flatten();
+    for (catalog_id, entry) in item_catalog().iter().chain(scenario) {
+        census.add(catalog_id, require_item_status(entry, catalog_id).unwrap_or_else(|error| panic!("{error}")));
+    }
+    census
+}
 
 fn ids_where(include: impl Fn(&Value) -> bool) -> Vec<&'static str> {
     item_catalog().iter().filter(|(_, entry)| include(entry)).map(|(id, _)| id.as_str()).collect()
@@ -976,21 +1021,21 @@ fn channel_open(entry: &Value, channel: &str) -> bool {
     js::truthy(entry.get("availability").and_then(|availability| availability.get(channel)))
 }
 
-fn status_of(entry: &Value) -> Option<&str> {
-    entry.get("mechanics_status").and_then(Value::as_str)
+fn status_of(entry: &Value) -> Option<MechanicsSupport> {
+    MechanicsSupport::of(entry.get("mechanics_status"))
 }
 
 /// `ITEM_SHOP_CATALOG_IDS`: открытое лавке и исполнимое.
-pub static ITEM_SHOP_CATALOG_IDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| ids_where(|entry| channel_open(entry, "shop") && status_of(entry) != Some("ruling-only")));
+pub static ITEM_SHOP_CATALOG_IDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| ids_where(|entry| channel_open(entry, "shop") && status_of(entry) != Some(MechanicsSupport::RulingOnly)));
 
 /// `ITEM_MAGIC_LOOT_CATALOG_IDS`.
-pub static ITEM_MAGIC_LOOT_CATALOG_IDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| ids_where(|entry| channel_open(entry, "magic_loot") && status_of(entry) != Some("ruling-only")));
+pub static ITEM_MAGIC_LOOT_CATALOG_IDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| ids_where(|entry| channel_open(entry, "magic_loot") && status_of(entry) != Some(MechanicsSupport::RulingOnly)));
 
 /// `ITEM_LOOT_CATALOG_IDS`.
-pub static ITEM_LOOT_CATALOG_IDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| ids_where(|entry| channel_open(entry, "loot") && status_of(entry) != Some("ruling-only")));
+pub static ITEM_LOOT_CATALOG_IDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| ids_where(|entry| channel_open(entry, "loot") && status_of(entry) != Some(MechanicsSupport::RulingOnly)));
 
 /// `ITEM_CRAFTING_CATALOG_IDS`: изготовление открыто только проверенной механике.
-pub static ITEM_CRAFTING_CATALOG_IDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| ids_where(|entry| channel_open(entry, "crafting") && status_of(entry) == Some("verified")));
+pub static ITEM_CRAFTING_CATALOG_IDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| ids_where(|entry| channel_open(entry, "crafting") && status_of(entry) == Some(MechanicsSupport::Verified)));
 
 /// `SRD_EQUIPMENT_CATALOG`: записи лавки по `catalog_id`.
 pub static SRD_EQUIPMENT_CATALOG: LazyLock<Value> = LazyLock::new(|| {

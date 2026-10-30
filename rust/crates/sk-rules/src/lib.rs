@@ -18,6 +18,7 @@ pub mod context;
 pub mod core;
 pub mod dice_record;
 pub mod enervation_link;
+pub mod executable;
 pub mod journal;
 pub mod outcome;
 pub mod pause;

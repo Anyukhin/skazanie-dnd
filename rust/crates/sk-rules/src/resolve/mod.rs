@@ -153,7 +153,7 @@ fn push_npc_spell_proxies(state: &mut Value, input: &Value) -> Flow {
     }
     let options = json!({ "rulesetId": "dnd_5e_2014" });
     let spell = sk_combat_content::combat_spells::canonical_combat_spell_for(input.get("spell_id"), Some(&options));
-    if spell.as_ref().and_then(|spell| spell.get("mechanicsSupport")).and_then(Value::as_str) != Some("verified") {
+    if !sk_core::MechanicsSupport::is(spell.as_ref().and_then(|spell| spell.get("mechanicsSupport")), sk_core::MechanicsSupport::Verified) {
         return Ok(());
     }
     let ids = match input.get("target_ids").and_then(Value::as_array).filter(|ids| !ids.is_empty()) {

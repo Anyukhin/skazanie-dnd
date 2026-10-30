@@ -17,7 +17,7 @@ use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
 use sk_core::indexmap::IndexSet;
-use sk_core::{js, re, text};
+use sk_core::{js, re, text, MechanicsSupport};
 use sk_dice::parse_dice_expression;
 
 use crate::combat_spells::{catalog_payload, override_payload};
@@ -306,7 +306,7 @@ fn audit(override_source: &str, overrides: &Value, catalog: &Value, fields_read:
         let Some(base) = base_spells.get(id.as_str()).copied() else {
             continue;
         };
-        if !card.is_object() || ["heuristic", "ruling-only"].contains(&jsv::string(card.get("mechanicsSupport")).as_str()) {
+        if !card.is_object() || MechanicsSupport::parse(&jsv::string(card.get("mechanicsSupport"))).is_some_and(|status| !status.is_executable()) {
             continue;
         }
         let promise = js::s(base.get("higherLevels"));

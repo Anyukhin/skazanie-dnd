@@ -9,7 +9,7 @@
 //! [`crate::core`]), `knightDistanceFeet` (8207).
 
 use serde_json::{json, Value};
-use sk_core::{game, js};
+use sk_core::{game, js, MechanicsSupport};
 use sk_geometry::actor_footprint::footprint_size_for;
 
 use crate::geometry::footprint::distance_between_actor_positions;
@@ -112,7 +112,7 @@ pub fn spell_creature_for(state: &Value, id: &str, spell: &Value) -> Option<Valu
     let spell_id = spell.get("id");
     let verified_2014 = game::uses_2014(state)
         && sk_combat_content::combat_spells::canonical_combat_spell_for(spell_id, Some(&json!({ "rulesetId": "dnd_5e_2014" })))
-            .is_some_and(|card| card.get("mechanicsSupport").and_then(Value::as_str) == Some("verified"));
+            .is_some_and(|card| MechanicsSupport::is(card.get("mechanicsSupport"), MechanicsSupport::Verified));
     let id_text = js::s(spell_id);
     if actor.is_some() || !verified_2014 && !["longstrider", "mass-cure-wounds"].contains(&id_text.as_str()) {
         return actor.cloned();
