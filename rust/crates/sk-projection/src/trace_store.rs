@@ -141,10 +141,42 @@ fn atomic_json(file: &Path, value: &Value) -> TraceStoreResult<()> {
     Ok(())
 }
 
+/// Оглавление трасс кампании: файл рядом с трассами. Имя не кончается на
+/// `.json`, поэтому ни `recent` здесь, ни `recent` JS его за трассу не
+/// примут.
+const INDEX_FILE: &str = "trace-index.v1";
+
+/// Строка оглавления: размер и время изменения файла (по ним видно, что
+/// трасса не переписана после разбора) и `String(created_at)` трассы.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct IndexEntry {
+    size: u64,
+    modified: u128,
+    created_at: String,
+}
+
+/// Оглавление каталога кампании в памяти: строки по имени файла и порядок
+/// `recent` (имена по байтам, затем устойчиво по `created_at` от свежих).
+#[derive(Debug, Default)]
+struct CampaignIndex {
+    entries: std::collections::HashMap<String, IndexEntry>,
+    order: Vec<String>,
+    /// Строк в файле оглавления (с повторами): по ним решается, когда его
+    /// переписать целиком.
+    file_lines: usize,
+}
+
 /// `FileTraceStore`: трассы хода в `<rootDir>/<campaign_id>/<turn_id>.json`.
+///
+/// Урок 11: `recent` не разбирает все трассы кампании. Время создания каждой
+/// трассы помнит оглавление ([`INDEX_FILE`], и копия в памяти); разбираются
+/// только новые или изменённые файлы, а из упорядоченных — лишь те, что
+/// нужны до `limit` совпадений предиката. Ответ тот же, что у полного
+/// разбора.
 #[derive(Debug, Clone)]
 pub struct FileTraceStore {
     pub root_dir: PathBuf,
+    index: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<PathBuf, CampaignIndex>>>,
 }
 
 impl FileTraceStore {
@@ -156,7 +188,7 @@ impl FileTraceStore {
         }
         let root = std::path::absolute(root)?;
         fs::create_dir_all(&root)?;
-        Ok(Self { root_dir: root })
+        Ok(Self { root_dir: root, index: Default::default() })
     }
 
     /// `campaignDir(campaignId)`.
@@ -243,24 +275,105 @@ impl FileTraceStore {
         let limit = limit.cloned().unwrap_or(Value::from(3));
         let number = js::number(Some(&limit));
         let number = if number.is_nan() || number == 0.0 { 3.0 } else { number };
-        let bounded = number.clamp(1.0, 20.0);
-        let mut names: Vec<String> = fs::read_dir(&directory)?
-            .filter_map(Result::ok)
-            .filter_map(|entry| entry.file_name().into_string().ok())
-            .filter(|name| name.ends_with(".json") && is_safe_id(&name[..name.len() - 5]))
-            .collect();
-        names.sort();
+        let bounded = number.clamp(1.0, 20.0) as usize;
         let mut traces = Vec::new();
-        for name in names {
-            traces.push(parse_file(&directory.join(name))?);
+        for name in self.ordered_names(&directory)? {
+            if traces.len() >= bounded {
+                break;
+            }
+            let trace = parse_file(&directory.join(name))?;
+            if predicate.is_none_or(|predicate| predicate(&trace)) {
+                traces.push(trace);
+            }
         }
-        traces.sort_by(|left, right| text::locale_compare(&js::string(get(Some(right), "created_at")), &js::string(get(Some(left), "created_at"))));
-        let filtered: Vec<Value> = match predicate {
-            Some(predicate) => traces.into_iter().filter(|trace| predicate(trace)).collect(),
-            None => traces,
-        };
-        Ok(filtered.into_iter().take(bounded as usize).collect())
+        Ok(traces)
     }
+
+    /// Имена трасс каталога в порядке `recent`: по байтам, затем устойчиво
+    /// по `created_at` от свежих (`localeCompare`). Время создания берётся из
+    /// оглавления; разбираются только трассы, которых в нём нет или чей файл
+    /// с тех пор изменился. Оглавление на диске — подсказка: не записалось —
+    /// следующий запуск разберёт трассы заново.
+    fn ordered_names(&self, directory: &Path) -> TraceStoreResult<Vec<String>> {
+        let mut listed = Vec::new();
+        for entry in fs::read_dir(directory)? {
+            let Ok(entry) = entry else { continue };
+            let Ok(name) = entry.file_name().into_string() else { continue };
+            if !(name.ends_with(".json") && is_safe_id(&name[..name.len() - 5])) {
+                continue;
+            }
+            let metadata = entry.metadata()?;
+            let modified = metadata.modified().ok().and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |since| since.as_nanos());
+            listed.push((name, metadata.len(), modified));
+        }
+        let mut guard = self.index.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let index = guard.entry(directory.to_path_buf()).or_insert_with(|| read_index(directory));
+        let mut appended = Vec::new();
+        let mut present = std::collections::HashSet::with_capacity(listed.len());
+        for (name, size, modified) in listed {
+            let known = index.entries.get(&name).is_some_and(|entry| entry.size == size && entry.modified == modified);
+            if !known {
+                let trace = parse_file(&directory.join(&name))?;
+                let entry = IndexEntry { size, modified, created_at: js::string(get(Some(&trace), "created_at")) };
+                index.entries.insert(name.clone(), entry.clone());
+                appended.push((name.clone(), entry));
+            }
+            present.insert(name);
+        }
+        let before = index.entries.len();
+        index.entries.retain(|name, _| present.contains(name));
+        let removed = index.entries.len() != before;
+        if !appended.is_empty() || removed || index.order.len() != index.entries.len() {
+            let mut order: Vec<String> = index.entries.keys().cloned().collect();
+            order.sort();
+            order.sort_by(|left, right| text::locale_compare(&index.entries[right].created_at, &index.entries[left].created_at));
+            index.order = order;
+        }
+        if removed || index.file_lines + appended.len() > 2 * index.entries.len() + 16 {
+            if rewrite_index(directory, &index.entries).is_ok() {
+                index.file_lines = index.entries.len();
+            }
+        } else if !appended.is_empty() && append_index(directory, &appended).is_ok() {
+            index.file_lines += appended.len();
+        }
+        Ok(index.order.clone())
+    }
+}
+
+fn index_line(name: &str, entry: &IndexEntry) -> String {
+    let line = Value::Array(vec![Value::String(name.into()), Value::from(entry.size), Value::String(entry.modified.to_string()), Value::String(entry.created_at.clone())]);
+    format!("{line}\n")
+}
+
+/// Оглавление с диска: строки `[имя, размер, время, created_at]`, поздняя
+/// строка имени главнее. Нечитаемая строка пропускается — её трасса будет
+/// разобрана заново.
+fn read_index(directory: &Path) -> CampaignIndex {
+    let mut index = CampaignIndex::default();
+    let Ok(source) = fs::read_to_string(directory.join(INDEX_FILE)) else { return index };
+    for line in source.lines().filter(|line| !line.trim().is_empty()) {
+        index.file_lines += 1;
+        let Ok(Value::Array(fields)) = serde_json::from_str::<Value>(line) else { continue };
+        let (Some(name), Some(size), Some(modified), Some(created_at)) = (fields.first().and_then(Value::as_str), fields.get(1).and_then(Value::as_u64), fields.get(2).and_then(Value::as_str).and_then(|text| text.parse::<u128>().ok()), fields.get(3).and_then(Value::as_str)) else { continue };
+        index.entries.insert(name.into(), IndexEntry { size, modified, created_at: created_at.into() });
+    }
+    index
+}
+
+fn append_index(directory: &Path, appended: &[(String, IndexEntry)]) -> io::Result<()> {
+    let body: String = appended.iter().map(|(name, entry)| index_line(name, entry)).collect();
+    let mut file = fs::OpenOptions::new().create(true).append(true).open(directory.join(INDEX_FILE))?;
+    io::Write::write_all(&mut file, body.as_bytes())
+}
+
+fn rewrite_index(directory: &Path, entries: &std::collections::HashMap<String, IndexEntry>) -> io::Result<()> {
+    let mut names: Vec<&String> = entries.keys().collect();
+    names.sort();
+    let body: String = names.into_iter().map(|name| index_line(name, &entries[name])).collect();
+    let file = directory.join(INDEX_FILE);
+    let temporary = PathBuf::from(format!("{}.{}.tmp", file.display(), hash::uuid_v4()));
+    fs::write(&temporary, body)?;
+    fs::rename(&temporary, &file)
 }
 
 fn parse_file(file: &Path) -> TraceStoreResult<Value> {

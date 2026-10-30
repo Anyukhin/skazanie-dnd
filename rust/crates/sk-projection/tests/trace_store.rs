@@ -116,3 +116,48 @@ fn unsafe_ids_are_refused() {
     }
     assert!(FileTraceStore::new("").is_err());
 }
+
+/// Прежний `recent` целиком: разобрать все трассы, упорядочить, отфильтровать.
+fn recent_by_full_scan(directory: &std::path::Path, limit: usize, predicate: Option<&dyn Fn(&Value) -> bool>) -> Vec<Value> {
+    let mut names: Vec<String> = std::fs::read_dir(directory).expect("каталог").filter_map(Result::ok).filter_map(|entry| entry.file_name().into_string().ok()).filter(|name| name.ends_with(".json")).collect();
+    names.sort();
+    let mut traces: Vec<Value> = names.iter().map(|name| serde_json::from_str(&std::fs::read_to_string(directory.join(name)).expect("файл")).expect("JSON")).collect();
+    traces.sort_by(|left, right| sk_core::text::locale_compare(&js::string(right.get("created_at")), &js::string(left.get("created_at"))));
+    traces.into_iter().filter(|trace| predicate.is_none_or(|predicate| predicate(trace))).take(limit).collect()
+}
+
+/// Урок 11: оглавление трасс даёт тот же ответ, что полный разбор, — с
+/// одинаковым временем, после перезапуска, после переписанной и удалённой
+/// трассы и после записи трассы в обход хранилища.
+#[test]
+fn recent_by_index_matches_full_scan() {
+    let dir = TempDir::new("index");
+    let room = id("ROOM-INDEX");
+    let store = FileTraceStore::new(&dir.0).expect("хранилище");
+    for index in 0..40 {
+        let events = if index % 3 == 0 { json!([{ "event_type": "DamageApplied" }]) } else { json!([]) };
+        // Каждые пять трасс — с одним временем: порядок решают имена.
+        store.save(&json!({ "turn_id": format!("turn-{index:02}"), "campaign_id": "ROOM-INDEX", "created_at": format!("2026-07-29T20:{:02}:00.000Z", index / 5), "events": events })).expect("запись");
+    }
+    let directory = dir.0.join("ROOM-INDEX");
+    let mechanical = |trace: &Value| is_mechanical_trace(Some(trace));
+    let check = |store: &FileTraceStore, label: &str| {
+        for limit in [1, 3, 20] {
+            assert_eq!(store.recent(Some(&room), Some(&json!(limit)), None).expect("окно"), recent_by_full_scan(&directory, limit, None), "{label}: {limit}");
+            assert_eq!(store.recent(Some(&room), Some(&json!(limit)), Some(&mechanical)).expect("окно"), recent_by_full_scan(&directory, limit, Some(&mechanical)), "{label}: {limit}, механика");
+        }
+    };
+    check(&store, "первое чтение");
+    check(&store, "повтор");
+    assert!(directory.join("trace-index.v1").exists(), "оглавление записано");
+
+    store.save(&json!({ "turn_id": "turn-03", "campaign_id": "ROOM-INDEX", "created_at": "2026-07-29T23:00:00.000Z", "events": [] })).expect("перезапись");
+    std::fs::remove_file(directory.join("turn-39.json")).expect("удаление");
+    let outside = json!({ "turn_id": "turn-outside", "campaign_id": "ROOM-INDEX", "created_at": "2026-07-29T22:00:00.000Z", "events": [{ "event_type": "DamageApplied" }] });
+    std::fs::write(directory.join("turn-outside.json"), js::stringify(&outside)).expect("запись в обход");
+    check(&store, "после правок");
+    check(&FileTraceStore::new(&dir.0).expect("хранилище"), "после перезапуска");
+
+    std::fs::write(directory.join("trace-index.v1"), "не JSON\n[\"turn-00.json\"]\n").expect("порча оглавления");
+    check(&FileTraceStore::new(&dir.0).expect("хранилище"), "испорченное оглавление");
+}
