@@ -17,7 +17,7 @@ use std::sync::LazyLock;
 use serde_json::{json, Map, Value};
 use sk_core::hash::sha256_hex;
 use sk_core::indexmap::IndexSet;
-use sk_core::{clock, js, re, text};
+use sk_core::{clock, js, re, text, MechanicsSupport};
 
 use crate::combat_spells::{canonical_combat_spell_for, catalog_payload};
 use crate::jsv::{self, array, defined, is_str, prop};
@@ -80,8 +80,15 @@ pub const SPELL_ACCEPTANCE_BASELINE: &str = "9277df04985856208f2bfd1590a5916c60b
 /// Измерения приёмки.
 pub const SPELL_ACCEPTANCE_DIMENSIONS: [&str; 5] = ["rules", "playerPath", "resilience", "permissions", "presentation"];
 
-const SUPPORT_STATUSES: [&str; 4] = ["verified", "partial", "heuristic", "ruling-only"];
-const BLOCKED_STATUSES: [&str; 2] = ["heuristic", "ruling-only"];
+/// `SUPPORT_STATUSES.includes(status)`: статус из словаря [`MechanicsSupport`].
+fn known_status(status: &str) -> bool {
+    MechanicsSupport::parse(status).is_some()
+}
+
+/// `BLOCKED_STATUSES.includes(status)`: `heuristic` или `ruling-only`.
+fn blocked_status(status: &str) -> bool {
+    MechanicsSupport::parse(status).is_some_and(|status| !status.is_executable())
+}
 
 /// Очередь проверки четырёх пилотов, а не второй каталог заклинаний: наличие
 /// требования или сценария никогда не означает пройденную приёмку.
@@ -597,7 +604,7 @@ pub fn read_spell_acceptance_baseline(repository_root: &Path) -> Value {
             let entry = prop(Some(&overrides), &id);
             let status = match defined(prop(entry, "mechanicsSupport")) {
                 Some(status) => status.clone(),
-                None => Value::from(if js::truthy(entry) { "partial" } else { "heuristic" }),
+                None => Value::from(if js::truthy(entry) { MechanicsSupport::Partial } else { MechanicsSupport::Heuristic }),
             };
             statuses.insert(id, status);
         }
@@ -718,22 +725,22 @@ pub fn validate_spell_acceptance_report(report: &Value) -> Vec<Value> {
         }
         let support = jsv::path(Some(card), &["availability", "supportStatus"]);
         let support_text = support.and_then(Value::as_str);
-        if !support_text.is_some_and(|status| SUPPORT_STATUSES.contains(&status)) {
+        if !support_text.is_some_and(known_status) {
             add(id, "INVALID_SUPPORT_STATUS", "Неизвестный статус доступности.");
         }
-        let blocked_expected = support_text.is_some_and(|status| BLOCKED_STATUSES.contains(&status));
+        let blocked_expected = support_text.is_some_and(blocked_status);
         if !jsv::strict_eq(jsv::path(Some(card), &["availability", "blocked"]), Some(&Value::Bool(blocked_expected))) {
             add(id, "AVAILABILITY_MISMATCH", "Блокировка расходится с контрактом каталога.");
         }
         let initial = jsv::path(Some(card), &["baseline", "supportStatus"]);
         let initial_text = initial.and_then(Value::as_str);
         let initial_is_null = matches!(initial, Some(Value::Null));
-        if !initial_is_null && !initial_text.is_some_and(|status| SUPPORT_STATUSES.contains(&status)) {
+        if !initial_is_null && !initial_text.is_some_and(known_status) {
             add(id, "INVALID_BASELINE_STATUS", "Недопустимая исходная группа.");
         }
         let expected_group = if !js::present(initial) {
             Value::Null
-        } else if initial_text.is_some_and(|status| BLOCKED_STATUSES.contains(&status)) {
+        } else if initial_text.is_some_and(blocked_status) {
             Value::from("blocked")
         } else {
             initial.cloned().unwrap_or(Value::Null)
@@ -883,13 +890,13 @@ fn acceptance_card(raw: &Value, spell: &Value, baseline: &Value) -> Map<String, 
     let initial_text = initial.as_str();
     let group = if initial.is_null() {
         Value::Null
-    } else if initial_text.is_some_and(|status| BLOCKED_STATUSES.contains(&status)) {
+    } else if initial_text.is_some_and(blocked_status) {
         Value::from("blocked")
     } else {
         initial.clone()
     };
     let support = spell.get("mechanicsSupport");
-    let blocked = support.and_then(Value::as_str).is_some_and(|status| BLOCKED_STATUSES.contains(&status));
+    let blocked = support.and_then(Value::as_str).is_some_and(blocked_status);
     let components = spell.get("components");
     let mut component_dependencies: Vec<String> = Vec::new();
     if truthy(jsv::path(components, &["material", "unresolved"])) {
@@ -1004,7 +1011,7 @@ pub fn audit_spell_acceptance_in(root: &Path, options: SpellAcceptanceOptions) -
     let raw_spells = array(catalog.get("spells"));
     let basic_ids: Vec<String> = raw_spells
         .iter()
-        .filter(|raw| canonical_combat_spell_for(raw.get("id"), Some(&options_2014)).is_some_and(|spell| is_str(spell.get("mechanicsSupport"), "verified")))
+        .filter(|raw| canonical_combat_spell_for(raw.get("id"), Some(&options_2014)).is_some_and(|spell| MechanicsSupport::is(spell.get("mechanicsSupport"), MechanicsSupport::Verified)))
         .map(|raw| jsv::string(raw.get("id")))
         .collect();
     let basic_inspection = inspect_basic_spell_evidence(Some(&basic_evidence), &basic_spell_dependency_fingerprints(root)?, &basic_ids, &catalog);

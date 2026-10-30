@@ -12,7 +12,7 @@ use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
 use sk_core::indexmap::{IndexMap, IndexSet};
-use sk_core::{js, re, text};
+use sk_core::{js, re, text, MechanicsCensus, MechanicsSupport};
 use sk_ruleset::character_progression::is_optional_feature_selected;
 pub use sk_ruleset::ruleset_config::CLASS_RESOURCES_2024_POLICY_ID;
 use sk_ruleset::ruleset_config::DND_2014_RULESET_ID;
@@ -98,18 +98,16 @@ const VERIFIED_ACTION_EFFECTS: [&str; 13] =
 const DEFAULT_PARTIAL_ACTION_NOTE: &str = "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.";
 
 /// `action(id, name, options)`: карточка с умолчаниями и статусом механики.
+/// Явный статус разбирается строго: опечатка в нём — отказ загрузки каталога
+/// с именем карточки.
 fn action(id: &str, name: &str, options: Value) -> Value {
     let options = options.as_object().cloned().unwrap_or_default();
     let effect_kind = jsv::path(options.get("effect"), &["kind"]);
     let mechanics_support = match defined(options.get("mechanicsSupport")) {
-        Some(value) => value.clone(),
-        None => Value::from(if is_str(effect_kind, "special") {
-            "ruling-only"
-        } else if VERIFIED_ACTION_EFFECTS.iter().any(|kind| is_str(effect_kind, kind)) {
-            "verified"
-        } else {
-            "partial"
-        }),
+        Some(value) => MechanicsSupport::require(Some(value), id).unwrap_or_else(|error| panic!("Каталог действий не загружается: {error}")),
+        None if is_str(effect_kind, "special") => MechanicsSupport::RulingOnly,
+        None if VERIFIED_ACTION_EFFECTS.iter().any(|kind| is_str(effect_kind, kind)) => MechanicsSupport::Verified,
+        None => MechanicsSupport::Partial,
     };
     let mut card = Map::new();
     card.insert("id".into(), Value::from(id));
@@ -122,8 +120,8 @@ fn action(id: &str, name: &str, options: Value) -> Value {
     for (key, value) in &options {
         card.insert(key.clone(), value.clone());
     }
-    let partial = mechanics_support.as_str() == Some("partial");
-    card.insert("mechanicsSupport".into(), mechanics_support);
+    let partial = mechanics_support == MechanicsSupport::Partial;
+    card.insert("mechanicsSupport".into(), mechanics_support.into());
     if js::truthy(options.get("supportNote")) || partial {
         let note = defined(options.get("supportNote")).cloned().unwrap_or_else(|| Value::from(DEFAULT_PARTIAL_ACTION_NOTE));
         card.insert("supportNote".into(), note);
@@ -416,6 +414,42 @@ fn actor_subclass(actor: Option<&Value>, class_key: Option<&str>) -> Option<Stri
     subclasses.iter().find(|entry| role.contains(&normalized_name(entry.get("name")))).and_then(name_of)
 }
 
+/// Статус каталожного действия dnd.su: исполнимым его делает только ручная
+/// карточка, сам каталог — `ruling-only` для особых эффектов, иначе `heuristic`.
+fn generated_action_support(entry: &Value) -> MechanicsSupport {
+    if is_str(jsv::path(entry.get("effect"), &["kind"]), "special") {
+        MechanicsSupport::RulingOnly
+    } else {
+        MechanicsSupport::Heuristic
+    }
+}
+
+/// Сводка встроенного каталога действий по статусам: общие действия, умения
+/// классов, манёвры, умения подклассов, боевой стиль «Оборона» и каталожные
+/// действия dnd.su всех классов. Явные статусы ручных карточек разобраны при
+/// загрузке ([`action`]); оружие дыхания вида собирается под героя и сюда не
+/// входит.
+pub fn combat_action_catalog_census() -> MechanicsCensus {
+    let mut census = MechanicsCensus::default();
+    let mut add = |card: &Value, status: MechanicsSupport| census.add(&js::s(card.get("id")), status);
+    let curated = COMMON_ACTIONS
+        .iter()
+        .chain(GENERATED_CLASSES.keys().flat_map(|class_key| class_actions(class_key)))
+        .chain(MANEUVERS.iter())
+        .chain(SUBCLASS_ACTIONS.iter().flat_map(|(_, actions)| actions))
+        .chain(PROTECTION_STYLE_ACTIONS.iter());
+    for card in curated {
+        let status = MechanicsSupport::require(card.get("mechanicsSupport"), &js::s(card.get("id"))).unwrap_or_else(|error| panic!("{error}"));
+        add(card, status);
+    }
+    for class in GENERATED_CLASSES.values() {
+        for entry in array(class.get("actions")) {
+            add(entry, generated_action_support(entry));
+        }
+    }
+    census
+}
+
 fn generated_actions_for(class_key: Option<&str>, subclass: Option<&str>) -> Vec<Value> {
     let Some(catalog) = generated_class(class_key) else {
         return Vec::new();
@@ -426,8 +460,7 @@ fn generated_actions_for(class_key: Option<&str>, subclass: Option<&str>) -> Vec
         .filter(|entry| !js::truthy(entry.get("subclass")) || normalized_name(entry.get("subclass")) == selected)
         .map(|entry| {
             let mut card = entry.as_object().cloned().unwrap_or_default();
-            let special = is_str(jsv::path(entry.get("effect"), &["kind"]), "special");
-            card.insert("mechanicsSupport".into(), Value::from(if special { "ruling-only" } else { "heuristic" }));
+            card.insert("mechanicsSupport".into(), generated_action_support(entry).into());
             if js::truthy(entry.get("uses")) {
                 card.insert("resource".into(), Value::from(format!("feature_{}", jsv::string(entry.get("id")))));
                 card.insert("cost".into(), Value::from(1));
@@ -914,4 +947,25 @@ pub fn combat_resource_recovery_for(actor: Option<&Value>, options: ClassResourc
         set("species_breath_weapon", "short_or_long");
     }
     Value::Object(recovery)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ручная карточка с опечаткой в статусе не загружается, отказ называет её.
+    #[test]
+    #[should_panic(expected = "Карточка «typo-card»: неизвестный статус механики \"verifed\"")]
+    fn typo_in_action_status_fails_the_load() {
+        action("typo-card", "Опечатка", json!({ "mechanicsSupport": "verifed", "effect": { "kind": "dash" } }));
+    }
+
+    #[test]
+    fn explicit_and_default_statuses() {
+        let explicit = action("ready", "Подготовка", json!({ "mechanicsSupport": "partial", "effect": { "kind": "condition" } }));
+        assert_eq!(explicit["mechanicsSupport"], json!("partial"));
+        assert_eq!(action("x", "x", json!({ "effect": { "kind": "special" } }))["mechanicsSupport"], json!("ruling-only"));
+        assert_eq!(action("x", "x", json!({ "effect": { "kind": "dash" } }))["mechanicsSupport"], json!("verified"));
+        assert_eq!(action("x", "x", json!({ "effect": { "kind": "condition" } }))["mechanicsSupport"], json!("partial"));
+    }
 }

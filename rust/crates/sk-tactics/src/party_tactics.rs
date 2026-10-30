@@ -21,7 +21,7 @@ use std::cmp::Ordering;
 
 use serde_json::{json, Map, Value};
 use sk_core::indexmap::IndexMap;
-use sk_core::{game, js, text, v8sort};
+use sk_core::{game, js, text, v8sort, MechanicsSupport};
 use sk_geometry::actor_footprint::{footprint_cells_for, footprint_distance_feet};
 use sk_geometry::Point;
 use sk_rules::areas::shape::spell_targets_at;
@@ -50,7 +50,6 @@ pub const UNCANNY_DODGE_DAMAGE_PERCENT: f64 = 25.0;
 /// в списке нет, окно закрывает отказом.
 pub const AUTONOMOUS_REACTION_PRIORITY: [&str; 6] = ["opportunity-attack", "fighter-zaschita", "paladin-zaschita", "bard-kollegiya-znaniy-ostroe-slovtso", "cast:shield", "uncanny-dodge"];
 
-const COMBAT_POLICY_SUPPORT: [&str; 2] = ["verified", "partial"];
 const DAMAGE_SPELL_KINDS: [&str; 6] = ["attack", "damage", "save", "debuff", "area-save", "area-damage"];
 const EXTINGUISHABLE_FLAME_CONDITIONS: [&str; 2] = ["searing-smite-flames", "alchemists-fire-flames"];
 const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
@@ -898,8 +897,7 @@ fn spell_candidates_for(candidates: &mut Candidates<'_, '_>, actor: &Value) -> R
     }
     let spells = sk_combat_content::combat_spells::combat_spells_for(Some(actor), Some(&Value::Object(options)));
     for spell in &spells {
-        let support = spell.get("mechanicsSupport").and_then(Value::as_str).unwrap_or("");
-        if !COMBAT_POLICY_SUPPORT.contains(&support) || js::is_false(spell.get("prepared")) {
+        if !MechanicsSupport::executable(spell.get("mechanicsSupport")) || js::is_false(spell.get("prepared")) {
             continue;
         }
         let action_type = spell.get("actionType").and_then(Value::as_str);
@@ -1352,7 +1350,7 @@ fn add_action_candidates(candidates: &mut Candidates<'_, '_>, actor: &Value) -> 
     let actor_id = candidates.actor_id.clone();
     let actions: Vec<Value> = sk_combat_content::combat_actions::combat_actions_for(Some(actor))
         .into_iter()
-        .filter(|action| COMBAT_POLICY_SUPPORT.contains(&action.get("mechanicsSupport").and_then(Value::as_str).unwrap_or("")) && action.get("id").and_then(Value::as_str) != Some("extra-attack"))
+        .filter(|action| MechanicsSupport::executable(action.get("mechanicsSupport")) && action.get("id").and_then(Value::as_str) != Some("extra-attack"))
         .collect();
     let economy = economy_for(state, &actor_id);
     let conditions = condition_ids(state, &actor_id)?;

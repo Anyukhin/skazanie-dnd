@@ -20,7 +20,7 @@
 //! `npcItemTacticFor('constructor')` в JS отдаёт саму функцию; здесь — `None`.
 
 use serde_json::{json, Map, Value};
-use sk_core::{js, re, text};
+use sk_core::{js, re, text, MechanicsSupport};
 use sk_items::item_catalog::{catalog_item, item_lifecycle_profile};
 
 use crate::enemy_loadouts::{ammunition_for_weapon, weapon_catalog_for_action};
@@ -429,7 +429,7 @@ pub fn npc_usable_items(enemy: Option<&Value>, ruleset_id: &str) -> Vec<Value> {
         let (Some(entry_use), Some(lifecycle_use)) = (entry_use, lifecycle_use) else {
             continue;
         };
-        if entry.get("mechanics_status").and_then(Value::as_str) != Some("verified") {
+        if !MechanicsSupport::is(entry.get("mechanics_status"), MechanicsSupport::Verified) {
             continue;
         }
         if entry_use.get("kind").and_then(Value::as_str) != Some(tactic.use_kind) || js::s(entry_use.get("combat_action")) != tactic.combat_action {

@@ -19,7 +19,7 @@ use std::collections::HashSet;
 
 use serde_json::{json, Map, Value};
 use sk_core::indexmap::{IndexMap, IndexSet};
-use sk_core::{js, re, text as jstext, RuleError};
+use sk_core::{js, re, text as jstext, MechanicsSupport, RuleError};
 use sk_economy::merchant_economy::{inventory_stack_key, normalize_inventory_item, InventoryItemOptions, MAX_STOCK_QUANTITY};
 use sk_geometry::actor_footprint::{footprint_cells_for, footprint_distance_feet, footprint_metadata_for_size, normalize_footprint_metadata};
 use sk_heroes::authored_npc::{authored_npc_combatant, safe_authored_npc_mechanics};
@@ -1891,7 +1891,7 @@ pub fn scene_npcs_for_viewer(state: &Value) -> Vec<Value> {
             let stance = member(world.get("stances"), &id).field("stance");
             let stance = if stance.nullish() { json!("neutral") } else { stance.own().cloned().unwrap_or(Value::Null) };
             let mechanics = member(world.get("profiles"), &id);
-            let open_profile = mechanics.truthy() && mechanics.field("status").own().and_then(Value::as_str) != Some("ruling-only");
+            let open_profile = mechanics.truthy() && !MechanicsSupport::is(mechanics.field("status").own(), MechanicsSupport::RulingOnly);
             // `Boolean(…) && available && vital.alive && vital.hp > 0`: ложное
             // `vital.alive` возвращается как есть — `undefined` у унаследованной
             // функции в JSON не пишется.

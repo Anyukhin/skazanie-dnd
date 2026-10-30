@@ -24,7 +24,7 @@ use sk_combat_base::legendary_actions::{choose_legendary_action, is_boss_actor, 
 use sk_combat_base::monster_actions::{monster_action_available, monster_attack_target_allowed, monster_multiattack_sequence_for, monster_multiattack_sequences};
 use sk_combat_content::combat_spells::{is_hostile_summon, is_party_summon, is_untargetable_summon, monster_combat_spell_for, monster_spell_uses_spent_in, monster_spellcasting_for};
 use sk_core::indexmap::IndexSet;
-use sk_core::{game, hash, js, re, text, v8sort, RuleError};
+use sk_core::{game, hash, js, re, text, v8sort, MechanicsSupport, RuleError};
 use sk_economy::npc_equipment::{npc_action_unavailable_reason, npc_needs_healing_potion, npc_tactic_condition, npc_usable_items, npc_weapon_binding_for};
 use sk_geometry::actor_footprint::{footprint_distance_feet, footprint_size_for};
 use sk_geometry::Point;
@@ -104,8 +104,6 @@ const MAX_COVER_THREATS: usize = 3;
 const BLOODIED_RATIO: f64 = 0.25;
 /// Союзник-NPC зовёт на помощь, когда потерял половину и больше.
 const NPC_SPELL_HEAL_HP_PERCENT: f64 = 50.0;
-/// Виды заклинаний, которые движок действительно исполняет по стат-блоку.
-const EXECUTABLE_SPELL_SUPPORT: [&str; 2] = ["verified", "partial"];
 
 // --- приведения JS ---------------------------------------------------------------------
 
@@ -1435,7 +1433,7 @@ fn available_monster_spells(state: &Value, enemy: &Value) -> Vec<Value> {
         .filter_map(|entry| monster_combat_spell_for(Some(enemy), Some(&Value::String(entry.id.clone())), None))
         .filter(|spell| {
             let per_day = path(Some(spell), &["monsterSpell", "perDay"]);
-            EXECUTABLE_SPELL_SUPPORT.contains(&js::string(spell.get("mechanicsSupport")).as_str())
+            MechanicsSupport::parse(&js::string(spell.get("mechanicsSupport"))).is_some_and(MechanicsSupport::is_executable)
                 && type_is(spell.get("actionType"), "action")
                 && shared_spell_slot_available(state, enemy, spell)
                 && (!js::present(per_day) || (monster_spell_uses_spent_in(conditions.iter(), &js::s(spell.get("id"))) as f64) < number(per_day))

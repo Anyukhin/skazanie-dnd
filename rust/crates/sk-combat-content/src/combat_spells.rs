@@ -23,7 +23,7 @@ use std::sync::LazyLock;
 use serde_json::{json, Map, Value};
 use sk_core::fancy_regex::Regex;
 use sk_core::indexmap::{IndexMap, IndexSet};
-use sk_core::{js, re, text};
+use sk_core::{js, re, text, MechanicsCensus, MechanicsSupport, UnknownMechanicsSupport};
 use sk_ruleset::character_creation_feats::is_class_spell_available;
 use sk_ruleset::character_progression::normalized_selected_feature_ids;
 
@@ -45,11 +45,24 @@ pub const MONSTER_SPELL_USE_CONDITION_PREFIX: &str = "monster-spell-used:";
 static PAYLOAD: LazyLock<Value> = LazyLock::new(|| jsv::embedded_json(include_str!("../../../../data/dndsu-spells-0-6.json")));
 static OVERRIDE_PAYLOAD: LazyLock<Value> = LazyLock::new(|| jsv::embedded_json(include_str!("../../../../data/dndsu-spell-mechanics-overrides.json")));
 
-/// Каталог с наложенными правками механики (`SPELLS`).
-static SPELLS: LazyLock<Vec<Value>> = LazyLock::new(|| {
-    let overrides = OVERRIDE_PAYLOAD.get("spells");
-    array(PAYLOAD.get("spells")).iter().map(|spell| merge_override(spell, overrides)).collect()
-});
+/// Каталог с наложенными правками механики (`SPELLS`). Статус каждой карточки
+/// разбирается при загрузке: опечатка в правке — отказ с именем карточки, а не
+/// тихий `RULING_REQUIRED` в бою.
+static SPELLS: LazyLock<Vec<Value>> = LazyLock::new(|| load_spell_cards(&PAYLOAD, &OVERRIDE_PAYLOAD).unwrap_or_else(|error| panic!("Каталог заклинаний не загружается: {error}")));
+
+/// Карточки каталога `payload` с правками `overrides` (`{ spells: { id: … } }`).
+/// Статус механики карточки и её варианта D&D 2014 разбирается строго.
+pub fn load_spell_cards(payload: &Value, overrides: &Value) -> Result<Vec<Value>, UnknownMechanicsSupport> {
+    let overrides = overrides.get("spells");
+    let cards: Vec<Value> = array(payload.get("spells")).iter().map(|spell| merge_override(spell, overrides)).collect();
+    for card in &cards {
+        let id = js::s(card.get("id"));
+        MechanicsSupport::require(card.get("mechanicsSupport"), &id)?;
+        let card_2014 = spell_for_ruleset(card, DND_2014_RULESET_ID);
+        MechanicsSupport::require(card_2014.get("mechanicsSupport"), &format!("{id} ({DND_2014_RULESET_ID})"))?;
+    }
+    Ok(cards)
+}
 
 /// `SPELLS_BY_ID`: индекс в [`SPELLS`]; при повторе id побеждает последний.
 static SPELLS_BY_ID: LazyLock<HashMap<String, usize>> = LazyLock::new(|| {
@@ -69,7 +82,7 @@ fn merge_override(spell: &Value, overrides: Option<&Value>) -> Value {
     let mechanics_override = prop(overrides, &id).filter(|value| js::truthy(Some(value)));
     let mechanics_support = match defined(prop(mechanics_override, "mechanicsSupport")) {
         Some(value) => value.clone(),
-        None => Value::from(if mechanics_override.is_some() { "partial" } else { "heuristic" }),
+        None => Value::from(if mechanics_override.is_some() { MechanicsSupport::Partial } else { MechanicsSupport::Heuristic }),
     };
     let mut card = spell.as_object().cloned().unwrap_or_default();
     jsv::spread_into(&mut card, mechanics_override);
@@ -87,11 +100,11 @@ fn merge_override(spell: &Value, overrides: Option<&Value>) -> Value {
     };
     card.insert("mechanicsAccuracy".into(), accuracy);
     card.insert("mechanicsSupport".into(), mechanics_support.clone());
-    let support = mechanics_support.as_str();
-    if js::truthy(prop(mechanics_override, "supportNote")) || support == Some("partial") || support == Some("ruling-only") {
+    let support = MechanicsSupport::of(Some(&mechanics_support));
+    if js::truthy(prop(mechanics_override, "supportNote")) || matches!(support, Some(MechanicsSupport::Partial | MechanicsSupport::RulingOnly)) {
         let note = match defined(prop(mechanics_override, "supportNote")) {
             Some(note) => note.clone(),
-            None => Value::from(if support == Some("partial") { DEFAULT_PARTIAL_NOTE } else { DEFAULT_RULING_NOTE }),
+            None => Value::from(if support == Some(MechanicsSupport::Partial) { DEFAULT_PARTIAL_NOTE } else { DEFAULT_RULING_NOTE }),
         };
         card.insert("supportNote".into(), note);
     }
@@ -188,7 +201,7 @@ fn spell_for_ruleset(spell: &Value, ruleset_id: &str) -> Value {
 /// компоненты и отдельные обработчики остаются явными.
 fn timed_condition_for_dnd2014(spell: Value) -> Value {
     let field = |key: &str| spell.get(key);
-    let support_ok = ["partial", "verified"].iter().any(|status| is_str(field("mechanicsSupport"), status));
+    let support_ok = MechanicsSupport::executable(field("mechanicsSupport"));
     let kind_ok = ["buff", "utility", "save", "debuff", "area-save", "area-damage"].iter().any(|kind| is_str(field("kind"), kind));
     let has_conditions = conditions_length_truthy(field("conditions"));
     if !support_ok
@@ -1097,18 +1110,31 @@ pub fn spell_slot_maximums_for(actor: Option<&Value>) -> Value {
 
 /// Сводка каталога заклинаний по статусам механики в редакции.
 pub fn spell_catalog_info(options: Option<&Value>) -> Value {
-    let ruleset_id = ruleset_id_of(options);
-    let count = |status: &str| (0..SPELLS.len()).filter(|index| is_str(ruleset_template(*index, &ruleset_id).get("mechanicsSupport"), status)).count();
+    let census = spell_catalog_census(options);
     let mut info = Map::new();
     info.insert("count".into(), Value::from(SPELLS.len()));
     insert_or_remove(&mut info, "source", PAYLOAD.get("source").cloned());
     insert_or_remove(&mut info, "generatedAt", PAYLOAD.get("generatedAt").cloned());
     info.insert("maximumSpellLevel".into(), Value::from(6));
-    info.insert("verifiedMechanics".into(), Value::from(count("verified")));
-    info.insert("partialMechanics".into(), Value::from(count("partial")));
-    info.insert("heuristicMechanics".into(), Value::from(count("heuristic")));
-    info.insert("rulingOnlyMechanics".into(), Value::from(count("ruling-only")));
+    info.insert("verifiedMechanics".into(), Value::from(census.count(MechanicsSupport::Verified)));
+    info.insert("partialMechanics".into(), Value::from(census.count(MechanicsSupport::Partial)));
+    info.insert("heuristicMechanics".into(), Value::from(census.count(MechanicsSupport::Heuristic)));
+    info.insert("rulingOnlyMechanics".into(), Value::from(census.count(MechanicsSupport::RulingOnly)));
     Value::Object(info)
+}
+
+/// Сводка каталога заклинаний в редакции: счётчики по статусам и
+/// неисполнимые карточки (`heuristic`, `ruling-only`) по порядку каталога.
+pub fn spell_catalog_census(options: Option<&Value>) -> MechanicsCensus {
+    let ruleset_id = ruleset_id_of(options);
+    let mut census = MechanicsCensus::default();
+    for index in 0..SPELLS.len() {
+        let card = ruleset_template(index, &ruleset_id);
+        // Статус разобран при загрузке (`load_spell_cards`).
+        let status = MechanicsSupport::require(card.get("mechanicsSupport"), &js::s(card.get("id"))).unwrap_or_else(|error| panic!("{error}"));
+        census.add(&js::s(card.get("id")), status);
+    }
+    census
 }
 
 fn summon_owned(actor: Option<&Value>) -> bool {
