@@ -1290,3 +1290,21 @@ test('без модели цель — сама фраза игрока: исх�
   assert.equal(missed.free_action_outcome, 'check_failure')
   assert.doesNotMatch(missed.narration, /Не вышло: Ору/u, missed.narration)
 })
+
+test('шаблоны подхода ловят кириллические окончания: `\w` в JS только ASCII', async () => {
+  const { contextualResolutionFor, interpretFreeAction } = await import('../server/free-action-adjudication.mjs')
+  for (const [text, skill, obstacle] of [
+    ['Держу дверь плечом', 'athletics', 'дверь'],
+    ['Факелом к соломе тянусь', 'sleight-of-hand', 'огонь'],
+    ['Прошу помощи у стражника', 'persuasion', 'собеседник'],
+    // Была латинская «a» в «окликa» — «окликаю» не ловилось.
+    ['Окликаю стражника', 'persuasion', 'окружающие'],
+  ]) {
+    const reading = interpretFreeAction(text)
+    assert.equal(reading.source, 'deterministic-pattern', text)
+    assert.equal(reading.skill, skill, text)
+    assert.equal(reading.obstacle, obstacle, text)
+  }
+  const resolution = contextualResolutionFor({}, 'hero', interpretFreeAction('Держу дверь плечом'), 'Это простая задача, держу дверь')
+  assert.deepEqual(resolution.difficulty_factors, ['favorable_conditions'])
+})

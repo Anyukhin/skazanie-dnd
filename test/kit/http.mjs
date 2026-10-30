@@ -95,6 +95,10 @@ export async function runRustTool(args, { storageDir, input }) {
   const child = spawnRust(args, { storageDir, stdin: input === undefined ? 'ignore' : 'pipe' })
   let stdout = ''
   let stderr = ''
+  // Декодер потока, а не `String(chunk)`: иначе кириллица на границе кусков
+  // большого вывода (журнал кампании) превращается в «��».
+  child.stdout?.setEncoding('utf8')
+  child.stderr?.setEncoding('utf8')
   child.stdout?.on('data', (chunk) => { stdout += chunk })
   child.stderr?.on('data', (chunk) => { stderr += chunk })
   if (input !== undefined) child.stdin?.end(JSON.stringify(input))

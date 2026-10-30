@@ -19,7 +19,16 @@ node eval/astohan-playthrough.mjs --party fighter,cleric  # быстрый пр�
 node eval/astohan-playthrough.mjs --live --minutes 25 # с моделью из .env — стоит денег
 node eval/astohan-playthrough.mjs --live --judge      # плюс оценка текста моделью-судьёй
 node eval/collect-player-phrases.mjs                  # пополнить корпус реальных фраз из ./storage
+SKAZANIE_RUST_SERVER_BIN=<exe> node eval/astohan-playthrough.mjs --impl rust --seed 2  # бинарь Rust
 ```
+
+- `--impl rust` (и у `astohan-seeds.mjs`, и у `combat-http-soak.mjs`) поднимает
+  бинарь переноса через `eval/stand-server.mjs`; нужен бинарь с
+  `--features test-hooks` (он читает `PLAYTEST_DICE_SEED` — те же кости, что у
+  JS). Аудит replay в этом режиме — снимки против replay и перекрёстный replay
+  журнала Rust JS-редьюсером (находка `cross-replay`). Механика с одним сидом
+  совпадает с JS до конца бюджета; текст вступлений боя различается и между
+  двумя прогонами JS — вариант выбирается по случайному `event_id`.
 
 - `--seed N` подменяет кости сервера детерминированными (`eval/playtest-seeded-dice.mjs`):
   офлайн-прогон с тем же сидом повторяется, но сюжет арки (число глав) зависит

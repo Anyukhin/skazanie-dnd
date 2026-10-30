@@ -32,6 +32,13 @@
 //! живут в потоке ядра ([`install`]): у каждого `AppState` свои, как у
 //! процесса JS, — тесты в одном процессе не мешают друг другу.
 //!
+//! Сид костей стендов (`eval/playtest-seeded-dice.mjs`): `PLAYTEST_DICE_SEED` —
+//! целое; генератор костей заменяется детерминированным mulberry32 тем же
+//! алгоритмом, что у JS-предзагрузки, — офлайн-прогон `eval/astohan-playthrough.mjs`
+//! с тем же `--seed` повторяет те же броски. Условия те же, что у крючков
+//! (фича, `NODE_ENV=test`, хранилище `skazanie-*` во временном каталоге); с
+//! правилами костей сид становится генератором костей без правила.
+//!
 //! Служебная подкоманда `skazanie-server journal …` (журнал глазами теста,
 //! `test/kit/journal.mjs`) — [`journal_cli`], тоже только с фичей; истечение
 //! сессии `skazanie-server session …` (`test/kit/sessions.mjs`) — [`session_cli`];
@@ -54,6 +61,8 @@ pub mod session_cli;
 pub const DICE_ENV: &str = "DND_TEST_DICE_RULES";
 /// Переменная сбоев.
 pub const FAULTS_ENV: &str = "DND_COMMIT_FAULTS";
+/// Переменная сида костей стендов (`eval/playtest-seeded-dice.mjs`).
+pub const SEED_ENV: &str = "PLAYTEST_DICE_SEED";
 /// Формат правил костей.
 pub const DICE_FORMAT: &str = "skazanie.test-dice/1";
 /// Формат сбоев.
@@ -79,6 +88,8 @@ pub struct Hooks {
 pub struct HookEnv<'a> {
     pub dice: Option<&'a str>,
     pub faults: Option<&'a str>,
+    /// `PLAYTEST_DICE_SEED`.
+    pub seed: Option<&'a str>,
     pub node_env: Option<&'a str>,
     /// Каталог хранилища сервера, уже абсолютный (`Config::storage_dir`).
     pub storage_dir: &'a Path,
@@ -89,23 +100,65 @@ pub struct HookEnv<'a> {
 /// Крючки из окружения процесса. `Err` — сервер не должен стартовать.
 pub fn from_env(storage_dir: &Path) -> Result<Hooks, String> {
     let read = |name: &str| std::env::var_os(name).map(|value| value.to_string_lossy().into_owned());
-    let (dice, faults, node_env) = (read(DICE_ENV), read(FAULTS_ENV), read("NODE_ENV"));
+    let (dice, faults, seed, node_env) = (read(DICE_ENV), read(FAULTS_ENV), read(SEED_ENV), read("NODE_ENV"));
     let temp_dir = std::env::temp_dir();
-    from_vars(&HookEnv { dice: dice.as_deref(), faults: faults.as_deref(), node_env: node_env.as_deref(), storage_dir, temp_dir: &temp_dir })
+    from_vars(&HookEnv { dice: dice.as_deref(), faults: faults.as_deref(), seed: seed.as_deref(), node_env: node_env.as_deref(), storage_dir, temp_dir: &temp_dir })
 }
 
 /// Разбор крючков: пустая переменная — как отсутствующая (`if (source)` JS).
 pub fn from_vars(env: &HookEnv<'_>) -> Result<Hooks, String> {
     let dice = env.dice.filter(|text| !text.is_empty());
     let faults = env.faults.filter(|text| !text.is_empty());
-    if dice.is_none() && faults.is_none() {
+    let seed = env.seed.filter(|text| !text.is_empty());
+    if dice.is_none() && faults.is_none() && seed.is_none() {
         return Ok(Hooks::default());
     }
     if !ENABLED {
-        return Err(format!("Тестовые крючки ({DICE_ENV}, {FAULTS_ENV}) заданы, но бинарь собран без фичи test-hooks: cargo build --release -p sk-server --features test-hooks"));
+        return Err(format!("Тестовые крючки ({DICE_ENV}, {FAULTS_ENV}, {SEED_ENV}) заданы, но бинарь собран без фичи test-hooks: cargo build --release -p sk-server --features test-hooks"));
     }
     assert_hook_storage(env.node_env, env.storage_dir, env.temp_dir)?;
-    imp::parse(dice, faults)
+    let seed = seed.map(parse_seed).transpose()?;
+    imp::parse(dice, faults, seed)
+}
+
+/// `Number(PLAYTEST_DICE_SEED)` + `Number.isSafeInteger` + `>>> 0`
+/// (`eval/playtest-seeded-dice.mjs:14–20`): целое, взятое по модулю 2³².
+pub fn parse_seed(text: &str) -> Result<u32, String> {
+    const MAX_SAFE: i64 = 9_007_199_254_740_991;
+    let value = text.trim().parse::<i64>().ok().filter(|value| value.abs() <= MAX_SAFE);
+    let value = value.ok_or_else(|| format!("{SEED_ENV}: нужно целое, получено «{text}»"))?;
+    Ok(value.rem_euclid(1 << 32) as u32)
+}
+
+/// Генератор mulberry32 стендов — построчно `eval/playtest-seeded-dice.mjs:21–34`.
+#[derive(Debug, Clone)]
+pub struct Mulberry32 {
+    state: u32,
+}
+
+impl Mulberry32 {
+    pub fn new(seed: u32) -> Self {
+        Self { state: seed }
+    }
+
+    /// `next()`: число из [0, 1). `Math.imul` и `^` JS — арифметика по
+    /// модулю 2³², поэтому обёрточные операции `u32` дают те же биты.
+    pub fn next_unit(&mut self) -> f64 {
+        self.state = self.state.wrapping_add(0x6D2B_79F5);
+        let mut value = self.state;
+        value = (value ^ (value >> 15)).wrapping_mul(value | 1);
+        value ^= value.wrapping_add((value ^ (value >> 7)).wrapping_mul(value | 61));
+        f64::from(value ^ (value >> 14)) / 4_294_967_296.0
+    }
+}
+
+impl sk_dice::Rng for Mulberry32 {
+    fn randint(&mut self, minimum: i64, maximum: i64) -> Result<i64, sk_dice::DiceError> {
+        if maximum < minimum {
+            return Err(sk_dice::DiceError::Range("Некорректный диапазон генератора случайных чисел".into()));
+        }
+        Ok(minimum + (self.next_unit() * (maximum - minimum + 1) as f64).floor() as i64)
+    }
 }
 
 /// `assertHookStorage` (`hooks-format.mjs`): `NODE_ENV=test` и хранилище —
@@ -187,7 +240,7 @@ mod imp {
     /// Без фичи сбоев не бывает: тип пустой, значение не создать.
     pub enum CommitFaults {}
 
-    pub fn parse(_dice: Option<&str>, _faults: Option<&str>) -> Result<Hooks, String> {
+    pub fn parse(_dice: Option<&str>, _faults: Option<&str>, _seed: Option<u32>) -> Result<Hooks, String> {
         Err("бинарь собран без фичи test-hooks".to_string())
     }
 
@@ -363,7 +416,7 @@ mod imp {
     struct RulesRng {
         picker: DicePicker,
         context: Context,
-        real: SystemRng,
+        real: Box<dyn Rng + Send>,
     }
 
     impl Rng for RulesRng {
@@ -384,8 +437,13 @@ mod imp {
 
     impl RulesDice {
         pub fn new(picker: DicePicker) -> Self {
+            Self::with_real(picker, Box::new(SystemRng))
+        }
+
+        /// Правила поверх своего генератора костей без правила (сид стендов).
+        pub fn with_real(picker: DicePicker, real: Box<dyn Rng + Send>) -> Self {
             let context: Context = Arc::new(Mutex::new((String::new(), String::new())));
-            let rng = RulesRng { picker, context: context.clone(), real: SystemRng };
+            let rng = RulesRng { picker, context: context.clone(), real };
             let service = DiceService::new(rng, Box::new(|| uuid::Uuid::new_v4().to_string()), Box::new(sk_core::clock::now_iso));
             Self { service, context }
         }
@@ -394,7 +452,7 @@ mod imp {
         /// для тестов в процессе (`tests/kit/dice.rs`).
         pub fn deterministic(picker: DicePicker, prefix: &str) -> Self {
             let context: Context = Arc::new(Mutex::new((String::new(), String::new())));
-            let rng = RulesRng { picker, context: context.clone(), real: SystemRng };
+            let rng = RulesRng { picker, context: context.clone(), real: Box::new(SystemRng) };
             Self { service: DiceService::deterministic(rng, prefix), context }
         }
 
@@ -506,10 +564,18 @@ mod imp {
         }
     }
 
-    pub fn parse(dice: Option<&str>, faults: Option<&str>) -> Result<Hooks, String> {
-        let dice = match dice {
-            Some(source) => Some(Box::new(RulesDice::new(DicePicker::parse(source)?)) as Box<dyn Dice + Send>),
-            None => None,
+    pub fn parse(dice: Option<&str>, faults: Option<&str>, seed: Option<u32>) -> Result<Hooks, String> {
+        let real = || -> Box<dyn Rng + Send> {
+            match seed {
+                Some(seed) => Box::new(super::Mulberry32::new(seed)),
+                None => Box::new(SystemRng),
+            }
+        };
+        let dice = match (dice, seed) {
+            (Some(source), _) => Some(Box::new(RulesDice::with_real(DicePicker::parse(source)?, real())) as Box<dyn Dice + Send>),
+            // Только сид: `CryptoDiceRng.prototype.randint` заменён целиком, id и время — обычные.
+            (None, Some(seed)) => Some(Box::new(DiceService::new(super::Mulberry32::new(seed), Box::new(|| uuid::Uuid::new_v4().to_string()), Box::new(sk_core::clock::now_iso))) as Box<dyn Dice + Send>),
+            (None, None) => None,
         };
         let faults = faults.map(CommitFaults::parse).transpose()?;
         Ok(Hooks { dice, faults })
@@ -632,6 +698,40 @@ mod tests {
         assert_eq!(dice.roll("2d4", "", None, sk_dice::Visibility::Public).unwrap().total, 2, "пустое назначение roll — unspecified");
     }
 
+    /// Эталон — `eval/playtest-seeded-dice.mjs` под node: сид 1 на d20, сид 7 на d6.
+    const JS_SEED_1_D20: [i64; 8] = [13, 1, 11, 20, 20, 6, 13, 15];
+    const JS_SEED_7_D6: [i64; 8] = [1, 1, 6, 5, 4, 3, 3, 2];
+
+    #[test]
+    fn seeded_dice_match_js_mulberry32() {
+        use sk_dice::Rng as _;
+        let rolls = |seed: u32, sides: i64| {
+            let mut rng = Mulberry32::new(seed);
+            (0..8).map(|_| rng.randint(1, sides).unwrap()).collect::<Vec<_>>()
+        };
+        assert_eq!(rolls(1, 20), JS_SEED_1_D20);
+        assert_eq!(rolls(7, 6), JS_SEED_7_D6);
+        assert_eq!(parse_seed("-1").unwrap(), u32::MAX, ">>> 0");
+        assert!(parse_seed("1.5").is_err() && parse_seed("x").is_err());
+    }
+
+    #[test]
+    fn seed_alone_installs_dice_only_in_test_storage() {
+        let temp = tempfile::tempdir().expect("временный каталог");
+        let good = temp.path().join("skazanie-astohan-abc");
+        std::fs::create_dir_all(&good).unwrap();
+        let env = |node_env: Option<&'static str>, storage: &Path, seed: &'static str| -> Result<Hooks, String> {
+            from_vars(&HookEnv { dice: None, faults: None, seed: Some(seed), node_env, storage_dir: storage, temp_dir: temp.path() })
+        };
+        let mut hooks = env(Some("test"), &good, "1").unwrap();
+        let dice = hooks.dice.as_mut().expect("сидовые кости");
+        let first = dice.roll("1d20", "attack", None, sk_dice::Visibility::Public).unwrap().total;
+        assert_eq!(first, JS_SEED_1_D20[0]);
+        assert!(env(Some("production"), &good, "1").is_err(), "вне NODE_ENV=test — отказ старта");
+        assert!(env(Some("test"), &temp.path().join("other"), "1").is_err());
+        assert!(env(Some("test"), &good, "x").is_err(), "сид не целое — отказ старта");
+    }
+
     #[test]
     fn faults_parse_and_fire_once() {
         let mut faults = CommitFaults::parse(
@@ -659,7 +759,7 @@ mod tests {
         std::fs::create_dir_all(&good).unwrap();
         let dice = json!({ "format": DICE_FORMAT, "rules": [{ "value": "max" }] }).to_string();
         let env = |node_env: Option<&'static str>, storage: &Path| -> Result<Hooks, String> {
-            from_vars(&HookEnv { dice: Some(&dice), faults: None, node_env, storage_dir: storage, temp_dir: temp.path() })
+            from_vars(&HookEnv { dice: Some(&dice), faults: None, seed: None, node_env, storage_dir: storage, temp_dir: temp.path() })
         };
         assert!(env(Some("test"), &good).unwrap().dice.is_some());
         assert!(env(Some("production"), &good).is_err(), "не NODE_ENV=test — отказ старта");
@@ -667,7 +767,7 @@ mod tests {
         assert!(env(Some("test"), &temp.path().join("other-dir")).is_err(), "имя не skazanie-*");
         assert!(env(Some("test"), &good.join("skazanie-nested")).is_err(), "не прямо во временном каталоге");
         assert!(env(Some("test"), &temp.path().join("skazanie-")).is_err(), "пустой хвост имени");
-        let none = from_vars(&HookEnv { dice: Some(""), faults: None, node_env: None, storage_dir: Path::new("/var/storage"), temp_dir: temp.path() }).unwrap();
+        let none = from_vars(&HookEnv { dice: Some(""), faults: None, seed: Some(""), node_env: None, storage_dir: Path::new("/var/storage"), temp_dir: temp.path() }).unwrap();
         assert!(none.dice.is_none() && none.faults.is_none(), "пустые переменные — как отсутствие");
     }
 }

@@ -201,6 +201,13 @@ addState('hazard-active', hazardState({ withFire: false, hazards: { hero: [{ id:
   state.mechanics.scene_interactions = { 'campfire-1': { state: 'extinguished' } }
   addState('hazard-out', state, ['hero'])
 }
+// Костёр, скрытый ведущим, на раскрытой клетке: опасностью не считается. Метка ставится
+// после нормализации — нормализация пересобирает карту и сама её не хранит.
+{
+  const state = hazardState()
+  state.scene.map.props.find((prop) => prop.id === 'campfire-1').visibility = 'gm_only'
+  addState('hazard-gm-only', state, ['hero'])
+}
 {
   const map = tm.createTacticalMap({ width: 4, height: 2, locationId: 'cell-hazards', seed: 'cell-hazards', fill: { passable: true, revealed: true, material: 'stone' } })
   tm.setCell(map, 1, 0, { hazardId: 'hazard-fire' })

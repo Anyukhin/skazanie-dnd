@@ -101,7 +101,13 @@ pnpm test:contract:rust             # контракт HTTP против Rust; �
 pnpm test:contract:js               # тот же контракт против JS
 node bench/hot-path.mjs             # замер горячего пути Rust против JS
 node tools/rust-port-status.mjs     # обновить rust/PORT-STATUS.md
+node eval/soak-parity.mjs           # боевой стенд одним сидом против JS и Rust; код 1 — расхождение
 ```
+
+- Ночной CI (`.github/workflows/rust-nightly.yml`, с ветки по умолчанию или
+  кнопкой Run workflow): паритет боевого стенда и Асстохан без модели на сидах
+  2–3 против Rust. Образ `Dockerfile.rust` собирается и отвечает на
+  `/api/health` в задаче `docker` workflow `rust.yml`.
 
 - `SKAZANIE_RUST_SERVER_BIN` — бинарь, собранный с `--features test-hooks`.
 - Перенос старого хранилища:

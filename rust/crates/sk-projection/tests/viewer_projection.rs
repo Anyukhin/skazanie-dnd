@@ -703,7 +703,7 @@ fn game_master_sees_armor_and_hit_chance() {
 
 #[test]
 fn projected_state_keys_match_js_list() {
-    assert_eq!(PROJECTED_STATE_KEYS.len(), 63);
+    assert_eq!(PROJECTED_STATE_KEYS.len(), 64);
     assert!(PROJECTED_STATE_KEYS.iter().all(|key| !key.is_empty()));
     assert_eq!(REACTION_DAMAGE_PUBLIC_KEYS.len(), 12);
     assert_eq!(REACTION_DAMAGE_COMPONENT_PUBLIC_KEYS, ["damage_type", "raw_amount", "applied_amount", "temporary_hp_absorbed", "source"]);

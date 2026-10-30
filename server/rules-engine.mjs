@@ -10816,7 +10816,11 @@ function livingPartySize(state) {
 }
 
 function conditionIdsFor(state, id) {
-  return new Set((state.mechanics?.conditions?.[String(id)] ?? []).map((condition) => String(condition?.id ?? condition)))
+  // Только собственный ключ: `conditions['__proto__']` иначе читает
+  // Object.prototype, и прогноз удара по такому врагу падал TypeError.
+  const conditions = state.mechanics?.conditions
+  const own = conditions && typeof conditions === 'object' && Object.hasOwn(conditions, String(id)) ? conditions[String(id)] : null
+  return new Set((own ?? []).map((condition) => String(condition?.id ?? condition)))
 }
 
 function blessBonusEnabled(state, id) {
