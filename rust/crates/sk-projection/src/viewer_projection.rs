@@ -2076,11 +2076,93 @@ pub fn campaign_state_for_viewer(state: Option<&Value>, user: Option<&Value>, ac
     if !objectish(Some(state)) {
         return Ok(Some(state.clone()));
     }
+    viewer_memo::project(state, user, actor_id)
+}
+
+/// Память проекций зрителя (урок 11). После команды одно и то же состояние
+/// проецируется для одного зрителя несколько раз: ответ на ход, живой поток,
+/// следующее чтение комнаты, состояние для рассказчика. Проекция — чистая
+/// функция `(state, user, actor_id)`; ключ — SHA-256 сериализации состояния
+/// вместе с `user` и `actor_id` (с порядком ключей). Это память по
+/// значению входа, а не пересчёт по событиям: новое состояние проецируется
+/// заново целиком. Ошибки не запоминаются.
+mod viewer_memo {
+    use std::collections::VecDeque;
+    use std::sync::{LazyLock, Mutex, PoisonError};
+
+    use serde_json::Value;
+
+    use super::{admin_room, is_admin, player_room, R};
+
+    const LIMIT: usize = 16;
+
+    struct Entry {
+        key: [u8; 32],
+        projected: Value,
+    }
+
+    static KNOWN: LazyLock<Mutex<VecDeque<Entry>>> = LazyLock::new(|| Mutex::new(VecDeque::new()));
+
+    /// Отпечаток входа: сериализация сохраняет порядок ключей, поэтому
+    /// объекты с иным порядком — разные входы (проекция его повторяет).
+    fn fingerprint(state: &Value, user: Option<&Value>, actor_id: Option<&Value>) -> Option<[u8; 32]> {
+        serde_json::to_vec(&(state, user, actor_id)).ok().map(sk_core::hash::sha256)
+    }
+
+    pub(super) fn project(state: &Value, user: Option<&Value>, actor_id: Option<&Value>) -> R<Option<Value>> {
+        let key = fingerprint(state, user, actor_id);
+        if let Some(key) = key {
+            let known = KNOWN.lock().unwrap_or_else(PoisonError::into_inner);
+            if let Some(entry) = known.iter().find(|entry| entry.key == key) {
+                return Ok(Some(entry.projected.clone()));
+            }
+        }
+        let actor = super::actor_arg(actor_id);
+        let projected = if is_admin(user) { admin_room(state, &actor)? } else { player_room(state, user, &actor)? };
+        if let Some(key) = key {
+            let mut known = KNOWN.lock().unwrap_or_else(PoisonError::into_inner);
+            known.push_front(Entry { key, projected: projected.clone() });
+            known.truncate(LIMIT);
+        }
+        Ok(Some(projected))
+    }
+}
+
+/// Проекция без памяти — то, что запоминает [`viewer_memo`].
+#[cfg(test)]
+fn campaign_state_for_viewer_uncached(state: &Value, user: Option<&Value>, actor_id: Option<&Value>) -> R<Option<Value>> {
     let actor = actor_arg(actor_id);
     if is_admin(user) {
         return admin_room(state, &actor).map(Some);
     }
     player_room(state, user, &actor).map(Some)
+}
+
+#[cfg(test)]
+mod viewer_memo_tests {
+    use serde_json::{json, Value};
+
+    use super::{campaign_state_for_viewer, campaign_state_for_viewer_uncached};
+
+    /// Память отдаёт то же, что проекция без неё, на повторе, после смены
+    /// состояния и между зрителями одного состояния.
+    #[test]
+    fn memo_matches_uncached_projection() {
+        let player = json!({ "id": "user-a", "role": "player" });
+        let other = json!({ "id": "user-b", "role": "player" });
+        let admin = json!({ "id": "gm", "role": "admin" });
+        let state = |hp: i64| json!({ "state_version": hp, "players": [{ "id": "hero-a", "hp": hp, "maxHp": 12 }, { "id": "hero-b", "hp": 9, "maxHp": 9 }],
+            "npcs": [{ "id": "npc-1", "name": "Страж", "hp": 7, "ac": 15, "visibility": "gm_only" }], "objective": "Пройти мост" });
+        for round in 0..2 {
+            for hp in [12, 5] {
+                for (user, actor) in [(&player, "hero-a"), (&other, "hero-b"), (&admin, "")] {
+                    let actor = Value::String(actor.into());
+                    let expected = campaign_state_for_viewer_uncached(&state(hp), Some(user), Some(&actor)).expect("проекция");
+                    assert_eq!(campaign_state_for_viewer(Some(&state(hp)), Some(user), Some(&actor)).expect("проекция"), expected, "{round} {hp} {user}");
+                }
+            }
+        }
+    }
 }
 
 /// Ветка игрока `campaignStateForViewer`.
