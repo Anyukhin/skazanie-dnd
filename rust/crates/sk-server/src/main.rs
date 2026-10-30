@@ -9,7 +9,9 @@
 //! 1. `.env` из текущего каталога (`import 'dotenv/config'`, строка 1):
 //!    уже заданные переменные не перекрываются. Крейта `dotenvy` нет в
 //!    офлайн-кэше, поэтому разборщик свой — только здесь, тесты его не видят;
-//! 2. отметка писателя storage — **до** первой записи (236–240);
+//! 2. проверка каталогов контента (`content_check`, урок 7; в JS — проверки
+//!    при загрузке модулей), затем отметка писателя storage — **до** первой
+//!    записи (236–240);
 //! 3. клиенты модели — только здесь (AGENTS §4), сразу через учёт расхода;
 //! 4. сверка проекций и резервов бросков (С1), затем `listen`;
 //! 5. через 250 мс — фоновые толчки боя и часов (С17).
@@ -205,6 +207,11 @@ fn main() {
     let data_root = match sk_core::data_root::init(data_root) {
         Ok(root) | Err(root) => root,
     };
+    // Урок 7: каталоги контента (`data/`) грузятся и проверяются до отметки
+    // писателя storage и приёма запросов; ошибка данных — отказ старта.
+    if let Err(report) = sk_server::content_check::verify_before_listen() {
+        fail(report);
+    }
     let config = Config::from_env(&data_root.path);
     let port = listen_port(config.port).unwrap_or_else(|error| fail(error));
     // Кости и сбои из данных (`DND_TEST_DICE_RULES`, `DND_COMMIT_FAULTS`):

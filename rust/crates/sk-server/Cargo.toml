@@ -60,6 +60,11 @@ sk-chargen = { path = "../sk-chargen" }
 # кадрах наблюдателя (`canonicalCombatSpellFor`).
 sk-combat-content = { path = "../sk-combat-content" }
 sk-items = { path = "../sk-items" }
+# Урок 7: проверка каталогов при старте (`src/content_check.rs`) — справочник
+# 2014, карты мест, атласы и реестр прав.
+sk-combat-base = { path = "../sk-combat-base" }
+sk-map-core = { path = "../sk-map-core" }
+sk-scene-base = { path = "../sk-scene-base" }
 sk-director = { path = "../sk-director" }
 sk-economy = { path = "../sk-economy" }
 sk-encounters = { path = "../sk-encounters" }

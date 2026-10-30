@@ -13,7 +13,8 @@
 //! - [`ai_context`] — настройки ИИ кампании на время запроса;
 //! - [`cli`] — разбор аргументов бинаря, [`storage_audit`] — подкоманда
 //!   `audit-storage` (С19), [`legacy_import`] — подкоманда
-//!   `import-legacy` (С19.2);
+//!   `import-legacy` (С19.2), [`content_check`] — проверка каталогов
+//!   контента при старте и подкоманда `check-content` (урок 7);
 //! - [`room`], [`journal`], [`projection`], [`streams`] — заглушки С1/С9 с
 //!   зафиксированными сигнатурами;
 //! - [`test_hooks`] — кости и сбои журнала из данных (фича `test-hooks`) и
@@ -37,6 +38,7 @@ pub mod clocks;
 pub mod command_fingerprints;
 pub mod command_guard;
 pub mod config;
+pub mod content_check;
 pub mod core;
 pub mod director_transition;
 pub mod dispatch;

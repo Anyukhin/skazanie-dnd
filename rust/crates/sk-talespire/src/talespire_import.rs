@@ -134,7 +134,7 @@ pub type AssetTable = HashMap<String, AssetRow>;
 
 static ASSET_TABLE: LazyLock<std::result::Result<AssetTable, TaleSpireImportError>> = LazyLock::new(|| {
     let invalid = || TaleSpireImportError::new("Таблица ассетов TaleSpire повреждена", "TALESPIRE_TABLE_INVALID");
-    let parsed: Value = serde_json::from_str(include_str!("../../../../data/talespire-assets-v1.json")).map_err(|_| invalid())?;
+    let parsed: Value = serde_json::from_str(ASSET_TABLE_SOURCE).map_err(|_| invalid())?;
     if parsed.get("schema_version").and_then(Value::as_f64) != Some(1.0) {
         return Err(invalid());
     }
@@ -145,6 +145,44 @@ static ASSET_TABLE: LazyLock<std::result::Result<AssetTable, TaleSpireImportErro
 /// `taleSpireAssetTable()`: таблица разбирается один раз на процесс.
 pub fn talespire_asset_table() -> Result<&'static AssetTable> {
     ASSET_TABLE.as_ref().map_err(Clone::clone)
+}
+
+const ASSET_TABLE_SOURCE: &str = include_str!("../../../../data/talespire-assets-v1.json");
+
+/// Строгая проверка таблицы ассетов из текста (урок 7). Разбор таблицы
+/// терпим к строке не той формы — она молча выпадает, и импорт слэба теряет
+/// тайл или предмет. Здесь такая строка — отказ с GUID: `[вид t|p, роль, cx,
+/// cy, cz, ex, ey, ez — числа, материал, вид каталога, жанр f|s?]`.
+pub fn check_talespire_asset_text(text: &str) -> std::result::Result<(), sk_core::content::ContentError> {
+    use sk_core::content::{self, ContentError};
+    let file = TALESPIRE_ASSET_TABLE_FILE;
+    let raw = content::parse_json(file, text)?;
+    content::schema_version(file, &raw, "schema_version", 1.0)?;
+    for (id, row) in content::object_field(file, &raw, "assets")? {
+        let fail = |message: &str| Err(ContentError::at(file, id.as_str(), message));
+        let Some(items) = row.as_array().filter(|items| items.len() >= 10) else {
+            return fail("строка должна быть массивом из 10–11 полей");
+        };
+        if !matches!(items[0].as_str(), Some("t" | "p")) {
+            return fail("вид должен быть «t» или «p»");
+        }
+        if !items[2..8].iter().all(|value| value.as_f64().is_some_and(f64::is_finite)) {
+            return fail("cx, cy, cz, ex, ey, ez должны быть числами");
+        }
+        if !items[1].is_string() || !items[8].is_string() || !items[9].is_string() {
+            return fail("роль, материал и вид каталога должны быть строками");
+        }
+        if items.get(10).is_some_and(|genre| !matches!(genre.as_str(), Some("f" | "s"))) {
+            return fail("жанр должен быть «f» или «s»");
+        }
+    }
+    Ok(())
+}
+
+/// Проверка встроенной таблицы (сервер зовёт её до приёма запросов).
+pub fn check_talespire_asset_table() -> std::result::Result<(), sk_core::content::ContentError> {
+    talespire_asset_table().map_err(|error| sk_core::content::ContentError::new(TALESPIRE_ASSET_TABLE_FILE, error.message))?;
+    check_talespire_asset_text(ASSET_TABLE_SOURCE)
 }
 
 // ---------------------------------------------------------------------------
@@ -1835,4 +1873,22 @@ pub fn repair_imported_level(map: &mut TacticalMap, stats: &mut Stats) -> Result
     }
     map.props = items.into_iter().zip(alive).filter_map(|(prop, keep)| keep.then_some(prop)).collect();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Урок 7: таблица проходит строгую проверку, а копия с опечаткой в
+    /// ключевом поле строки — отказ, который называет файл и GUID.
+    #[test]
+    fn broken_copy_names_file_and_asset() {
+        assert_eq!(check_talespire_asset_table(), Ok(()));
+        let mut raw: Value = serde_json::from_str(ASSET_TABLE_SOURCE).expect("таблица");
+        let assets = raw["assets"].as_object_mut().expect("ассеты");
+        let id = assets.keys().nth(7).cloned().expect("строка");
+        assets[&id][0] = json!("tile");
+        let error = check_talespire_asset_text(&raw.to_string()).err().map(|error| error.to_string());
+        assert_eq!(error, Some(format!("data/talespire-assets-v1.json: {id}: вид должен быть «t» или «p»")));
+    }
 }

@@ -22,6 +22,7 @@ use std::sync::LazyLock;
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
+use sk_core::content::{self, ContentError, ContentResult};
 use sk_core::indexmap::IndexSet;
 use sk_core::{js, re, text};
 
@@ -30,6 +31,8 @@ use crate::util::{array, head, is_str, js_len, spread_copy, squash, strict_eq, s
 pub const SCENARIO_ARC_VERSION: &str = "skazanie:scenario-arc-v1";
 pub const SCENARIO_ARC_PRESET: &str = "scenario";
 const SCENARIO_SCHEMA_VERSION: f64 = 1.0;
+/// Путь каталога сценариев от корня репозитория.
+pub const SCENARIO_CATALOG_FILE: &str = "data/campaign-scenarios-v1.json";
 const SCENARIO_CATALOG: &str = include_str!("../../../../data/campaign-scenarios-v1.json");
 
 const BEAT_KINDS: [&str; 4] = ["prologue", "chapter", "line", "finale"];
@@ -567,22 +570,46 @@ fn load_scenarios(raw: &Value) -> Result<Vec<Value>, String> {
     Ok(entries.clone())
 }
 
-static SCENARIOS: LazyLock<Vec<Value>> = LazyLock::new(|| {
-    // Каталог встроен в сборку: неверный каталог — ошибка сборки данных, а не
-    // данных игрока. JS в этом случае не загружал модуль вовсе.
-    let raw: Value = serde_json::from_str(SCENARIO_CATALOG).expect("каталог сценариев — JSON");
-    load_scenarios(&raw).unwrap_or_else(|error| panic!("{error}"))
-});
+/// Разбор и проверка каталога сценариев из текста: та же проверка, что у
+/// встроенного каталога, — для тестов на сломанных копиях.
+///
+/// Сценарий остаётся `Value`, а не типом `serde` (урок 7, п. 4): части
+/// карточек и узлов уходят в состояние и рассказ как есть (`spread_copy`,
+/// `insert_raw`) — с неизвестными полями и порядком ключей файла, а проверка
+/// формы — построчный перенос `validateScenario` JS с его текстами отказов,
+/// которые сверяет эталон `validation_matches_js`. Тип со своим разбором
+/// дал бы другие тексты на тех же сломанных данных.
+pub fn parse_scenario_catalog(text: &str) -> ContentResult<Vec<Value>> {
+    let raw = content::parse_json(SCENARIO_CATALOG_FILE, text)?;
+    load_scenarios(&raw).map_err(|message| ContentError::new(SCENARIO_CATALOG_FILE, message))
+}
+
+/// Каталог встроен в сборку: неверный каталог — ошибка сборки данных, а не
+/// данных игрока. JS в этом случае не загружал модуль вовсе; здесь отказ
+/// ловит проверка при старте сервера ([`check_scenario_catalog`]).
+static SCENARIOS: LazyLock<ContentResult<Vec<Value>>> = LazyLock::new(|| parse_scenario_catalog(SCENARIO_CATALOG));
+
+fn scenarios() -> &'static [Value] {
+    match &*SCENARIOS {
+        Ok(list) => list,
+        Err(error) => panic!("{error}"),
+    }
+}
+
+/// Проверка встроенного каталога (сервер зовёт её до приёма запросов).
+pub fn check_scenario_catalog() -> ContentResult<()> {
+    SCENARIOS.as_ref().map(|_| ()).map_err(Clone::clone)
+}
 
 /// Все сценарии каталога — для тестов и аудита.
 pub fn list_campaign_scenarios() -> &'static [Value] {
-    SCENARIOS.as_slice()
+    scenarios()
 }
 
 /// Сценарий мира по id шаблона мира.
 pub fn scenario_for_world_template(world_template_id: &str) -> Option<&'static Value> {
     let wanted = head(&squash(world_template_id), 80);
-    SCENARIOS.iter().find(|scenario| is_str(scenario.get("world_template_id"), &wanted))
+    scenarios().iter().find(|scenario| is_str(scenario.get("world_template_id"), &wanted))
 }
 
 /// План арки по сценарию. Числа темпа те же, что у вечерней арки: Режиссёр
@@ -629,7 +656,7 @@ pub fn campaign_scenario(state: &Value) -> Option<&'static Value> {
     if is_str(field(concept, "campaign_mode"), "persistent") {
         return None;
     }
-    let scenario = SCENARIOS.iter().find(|entry| strict_eq(entry.get("id"), field(arc, "scenario_id")))?;
+    let scenario = scenarios().iter().find(|entry| strict_eq(entry.get("id"), field(arc, "scenario_id")))?;
     strict_eq(scenario.get("version"), field(arc, "scenario_version")).then_some(scenario)
 }
 
@@ -1623,6 +1650,20 @@ mod tests {
         assert_eq!(load_scenarios(&json!({ "schema_version": 2, "scenarios": [] })), Err("Сценарий кампании: неизвестная версия каталога".into()));
         let twice = json!({ "schema_version": 1, "scenarios": [scenario.clone(), scenario] });
         assert_eq!(load_scenarios(&twice), Err("Сценарий кампании: повтор id astohan-dragon-hunt".into()));
+    }
+
+    /// Урок 7: опечатка в ключевом поле копии каталога — отказ разбора,
+    /// который называет файл и сценарий.
+    #[test]
+    fn broken_copy_names_file_and_scenario() {
+        assert_eq!(check_scenario_catalog(), Ok(()));
+        let mut raw: Value = serde_json::from_str(SCENARIO_CATALOG).expect("каталог");
+        let scenario = raw["scenarios"][0].as_object_mut().expect("сценарий");
+        let world = scenario.shift_remove("world_template_id").expect("поле");
+        scenario.insert("world_templat_id".into(), world);
+        let error = parse_scenario_catalog(&raw.to_string()).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("data/campaign-scenarios-v1.json: Сценарий кампании: astohan-dragon-hunt: world_template_id"));
+        assert!(parse_scenario_catalog("{").err().is_some_and(|error| error.to_string().starts_with("data/campaign-scenarios-v1.json: не JSON")));
     }
 
     /// Правка сценария по пути из эталона: замена значения или удаление.

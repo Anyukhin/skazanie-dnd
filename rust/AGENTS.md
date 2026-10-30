@@ -77,6 +77,15 @@
   `MECHANICS_NOT_VERIFIED` и `RULING_REQUIRED`. Новый обработчик карточки
   берёт `Executable`, а не `&Value`. Сводки каталогов —
   `spell_catalog_census`, `combat_action_catalog_census`, `item_catalog_census`.
+- **Каталоги контента проверяются при старте** (урок 7). Каталог `data/`
+  грузит его модуль: `LazyLock` с результатом разбора (`sk_core::content`),
+  `check_…()` и разбор — функцией от строки для тестов на сломанных копиях.
+  `skazanie-server` прогоняет все проверки до отметки писателя и приёма
+  запросов (`content_check::verify_before_listen`), ошибка — отказ старта с
+  файлом и записью. Новый каталог — в `content_check::catalogs()` и в описи
+  `docs/rust-content-catalogs.md`. Ядро (сценарий, сюжет, Режиссёр без модели,
+  правила) не зависит от `sk-agents`: сторож `sk-server/tests/crate_layers.rs`,
+  известное исключение `sk-turns` записано там с причиной.
 - **Быстродействие.** Мемо нормализации (`sk-rules` `normalize::fixed_point`)
   держится на том, что нормализация — чистая функция входа и режима
   хранения. Новое скрытое состояние в нормализаторе это ломает. Бюджеты
@@ -139,6 +148,9 @@ node eval/soak-parity.mjs           # боевой стенд одним сид�
   не читать и не копировать без владельца. После импорта —
   `skazanie-server audit-storage --storage <каталог>` (только чтение; 0 —
   чисто, 1 — расхождения, 3 — отказ: нет базы или на хранилище работает сервер).
+- Каталоги контента: `skazanie-server check-content [--data-dir <корень>]`
+  (0 — чисто, 1 — ошибки) — та же проверка, что при старте; после правки
+  `data/*.json`, которые читает сервер.
 - Docker: `Dockerfile.rust`, `compose.rust.yaml` (порт 8788, свой том) —
   `docs/rust-docker.md`. Docker поднимает только владелец.
 - Эталоны JS: `rust/crates/sk-*/fixtures/gen-*.mjs`, первая строка —

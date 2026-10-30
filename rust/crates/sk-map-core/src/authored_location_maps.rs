@@ -11,6 +11,7 @@ use std::sync::LazyLock;
 
 use serde_json::{Map, Value};
 use sk_core::fancy_regex::Regex;
+use sk_core::content::{self, ContentError, ContentResult};
 use sk_core::indexmap::IndexMap;
 use sk_core::{js, re, text};
 use sk_tactical::tactical_map::{deserialize_tactical_map, serialize_tactical_map, validate_tactical_map, TacticalMap, TacticalMapError};
@@ -143,13 +144,27 @@ pub fn normalize_authored_location_map_catalog(value: &Value, require_complete: 
     Ok(maps)
 }
 
-/// Каталог из данных сборки. Битые встроенные данные — отказ при первом
-/// обращении, как отказ импорта модуля в JS.
-static AUTHORED_LOCATION_MAPS: LazyLock<IndexMap<String, Value>> = LazyLock::new(|| {
-    let payload: Value = serde_json::from_str(CATALOG_SOURCE)
-        .unwrap_or_else(|error| panic!("Не удалось загрузить каталог authored-карт: {error}"));
-    normalize_authored_location_map_catalog(&payload, false).unwrap_or_else(|error| panic!("{error}"))
+/// Разбор и проверка каталога карт из текста — та же проверка, что у
+/// встроенного каталога (для тестов — сломанные копии).
+pub fn parse_authored_location_map_catalog(text: &str) -> ContentResult<IndexMap<String, Value>> {
+    let payload = content::parse_json(AUTHORED_LOCATION_MAP_CATALOG_FILE, text)?;
+    normalize_authored_location_map_catalog(&payload, false).map_err(|error| ContentError::new(AUTHORED_LOCATION_MAP_CATALOG_FILE, error.to_string()))
+}
+
+/// Каталог из данных сборки. Битые встроенные данные в JS — отказ импорта
+/// модуля; здесь — отказ проверки при старте сервера
+/// ([`check_authored_location_map_catalog`]).
+static PARSED: LazyLock<ContentResult<IndexMap<String, Value>>> = LazyLock::new(|| parse_authored_location_map_catalog(CATALOG_SOURCE));
+
+static AUTHORED_LOCATION_MAPS: LazyLock<&'static IndexMap<String, Value>> = LazyLock::new(|| match &*PARSED {
+    Ok(maps) => maps,
+    Err(error) => panic!("{error}"),
 });
+
+/// Проверка встроенного каталога карт (сервер зовёт её до приёма запросов).
+pub fn check_authored_location_map_catalog() -> ContentResult<()> {
+    PARSED.as_ref().map(|_| ()).map_err(Clone::clone)
+}
 
 /// `normalizedId(value)`: идентификатор места или пустая строка.
 fn normalized_id(value: Option<&Value>) -> String {
@@ -223,5 +238,27 @@ pub fn authored_location_map_meta_for(value: Option<&Value>) -> Option<AuthoredM
 
 /// `authoredLocationMapCatalogSnapshot()`: копия всего каталога.
 pub fn authored_location_map_catalog_snapshot() -> IndexMap<String, Value> {
-    AUTHORED_LOCATION_MAPS.clone()
+    (*AUTHORED_LOCATION_MAPS).clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Урок 7: опечатка в ключевом поле копии каталога — отказ, который
+    /// называет файл и запись.
+    #[test]
+    fn broken_copy_names_file_and_map() {
+        assert_eq!(check_authored_location_map_catalog(), Ok(()));
+        let mut raw: Value = serde_json::from_str(CATALOG_SOURCE).expect("каталог");
+        let entry = raw["maps"][3].as_object_mut().expect("карта");
+        let target = match entry.get_mut("map") {
+            Some(Value::Object(map)) => map,
+            _ => entry,
+        };
+        let tileset = target.shift_remove("tilesetId").expect("tilesetId");
+        target.insert("tilesetid".into(), tileset);
+        let error = parse_authored_location_map_catalog(&raw.to_string()).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("data/authored-location-maps-v1.json: catalog.maps[3] имеет неверный authored tilesetId"));
+    }
 }

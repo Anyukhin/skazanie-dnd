@@ -143,10 +143,20 @@ pub(crate) fn js_ordered_deep(value: Value) -> Value {
     }
 }
 
-/// Разобрать встроенный JSON из `data/`. Файлы проверены тестами, поэтому
-/// ошибка разбора — дефект сборки, а не данных игрока.
-pub(crate) fn embedded_json(source: &str) -> Value {
-    js_ordered_deep(serde_json::from_str(source).unwrap_or(Value::Null))
+/// Разобрать встроенный JSON из `data/` (`file` — путь для сообщения).
+/// Ошибка разбора — дефект сборки, а не данных игрока: её ловит проверка при
+/// старте сервера (урок 7), а не первый запрос.
+pub(crate) fn embedded_catalog(file: &str, source: &str) -> sk_core::content::ContentResult<Value> {
+    Ok(js_ordered_deep(sk_core::content::parse_json(file, source)?))
+}
+
+/// Значение каталога после проверки при старте; `Err` здесь — каталог не
+/// проверяли (тест или инструмент), и это дефект данных сборки.
+pub(crate) fn checked<T>(catalog: &sk_core::content::ContentResult<T>) -> &T {
+    match catalog {
+        Ok(value) => value,
+        Err(error) => panic!("{error}"),
+    }
 }
 
 /// Массив строк в JSON.

@@ -8,11 +8,12 @@ use std::fmt;
 use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
+use sk_core::content::{self, ContentError, ContentResult};
 use sk_core::{js, text};
 
 use crate::character_creation_class_options::{PHB_2014_SKILLS, PHB_2014_TOOL_IDS};
 use crate::ruleset_config::{ruleset_profile, ProfileOptions, RulesetSelectionError, DND_2014_RULESET_ID, LEGACY_DEFAULT_RULESET_ID};
-use crate::support::{array, defined, embedded_json, includes, path, prop, same_value_zero, spread_items, string_of, unique_strings, unique_values};
+use crate::support::{array, checked, defined, embedded_catalog, includes, path, prop, same_value_zero, spread_items, string_of, unique_strings, unique_values};
 
 const TOOL_LABELS: [(&str, &str); 39] = [
     ("alchemists_supplies", "Алхимические принадлежности"),
@@ -84,16 +85,51 @@ pub fn phb_tool_options() -> Value {
     )
 }
 
+/// Пути каталогов предысторий от корня репозитория.
+pub const CURRENT_CATALOG_FILE: &str = "data/backgrounds-srd-5-2-1.json";
+pub const CLASSIC_CATALOG_FILE: &str = "data/backgrounds-dnd-5e-2014.json";
 const CURRENT_CATALOG_SOURCE: &str = include_str!("../../../../data/backgrounds-srd-5-2-1.json");
 const CLASSIC_CATALOG_SOURCE: &str = include_str!("../../../../data/backgrounds-dnd-5e-2014.json");
 
+/// Разбор и проверка каталога предысторий редакции `ruleset_id` из текста.
+/// Проверяется то, на что полагается код: версия схемы и редакция, id
+/// записей (по нему ищет [`background_by_id`]) и группа выбора инструмента —
+/// без неё список вариантов молча пуст.
+pub fn parse_background_catalog(file: &str, text: &str, ruleset_id: &str) -> ContentResult<Value> {
+    let catalog = embedded_catalog(file, text)?;
+    content::root_object(file, &catalog)?;
+    content::schema_version(file, &catalog, "schemaVersion", 1.0)?;
+    content::root_str(file, &catalog, "rulesetId", ruleset_id)?;
+    for (index, (_, entry)) in content::keyed_records(file, &catalog, "backgrounds", "id")?.into_iter().enumerate() {
+        let label = content::record_label("backgrounds", index, entry);
+        content::required_str(file, entry, "name", &label)?;
+        let group = js::s(path(Some(entry), &["toolChoice", "group"]));
+        if !group.is_empty() && !prop(catalog.get("toolChoiceGroups"), &group).is_some_and(Value::is_array) {
+            return Err(ContentError::at(file, label, format!("группы инструментов «{group}» нет в toolChoiceGroups")));
+        }
+    }
+    Ok(catalog)
+}
+
 /// Каталоги в порядке `catalogs` (`Map`): сначала 2024, затем 2014.
-static CATALOGS: LazyLock<[(&'static str, Value); 2]> = LazyLock::new(|| {
-    [(LEGACY_DEFAULT_RULESET_ID, embedded_json(CURRENT_CATALOG_SOURCE)), (DND_2014_RULESET_ID, embedded_json(CLASSIC_CATALOG_SOURCE))]
+static CATALOGS: LazyLock<ContentResult<[(&'static str, Value); 2]>> = LazyLock::new(|| {
+    Ok([
+        (LEGACY_DEFAULT_RULESET_ID, parse_background_catalog(CURRENT_CATALOG_FILE, CURRENT_CATALOG_SOURCE, LEGACY_DEFAULT_RULESET_ID)?),
+        (DND_2014_RULESET_ID, parse_background_catalog(CLASSIC_CATALOG_FILE, CLASSIC_CATALOG_SOURCE, DND_2014_RULESET_ID)?),
+    ])
 });
 
+fn catalogs() -> &'static [(&'static str, Value); 2] {
+    checked(&CATALOGS)
+}
+
+/// Проверка встроенных каталогов предысторий (сервер зовёт её до приёма запросов).
+pub fn check_background_catalogs() -> ContentResult<()> {
+    CATALOGS.as_ref().map(|_| ()).map_err(Clone::clone)
+}
+
 fn classic_catalog() -> &'static Value {
-    &CATALOGS[1].1
+    &catalogs()[1].1
 }
 
 const ABILITY_IDS: [&str; 6] = ["str", "dex", "con", "int", "wis", "cha"];
@@ -207,7 +243,7 @@ pub fn resolve_background_customization(raw: Option<&Value>) -> Result<Option<Va
 /// `String(rulesetId ?? '')`, пустое — 2024 по умолчанию.
 fn catalog_for(ruleset_id: &str) -> Result<&'static Value, RulesetSelectionError> {
     let profile = ruleset_profile(ruleset_id, ProfileOptions::fallback(LEGACY_DEFAULT_RULESET_ID))?;
-    CATALOGS.iter().find(|(id, _)| *id == profile.id).map(|(_, catalog)| catalog).ok_or_else(|| {
+    catalogs().iter().find(|(id, _)| *id == profile.id).map(|(_, catalog)| catalog).ok_or_else(|| {
         RulesetSelectionError::new(format!("Нет каталога предысторий для {}", profile.id), "RULESET_INVALID")
     })
 }
@@ -578,7 +614,7 @@ pub fn background_benefits(
 /// `backgroundCatalogInfo()`: сводка каталогов предысторий по редакциям.
 pub fn background_catalog_info() -> Value {
     Value::Object(
-        CATALOGS
+        catalogs()
             .iter()
             .map(|(ruleset_id, catalog)| {
                 let info = json!({
@@ -595,6 +631,26 @@ pub fn background_catalog_info() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Урок 7: опечатка в ключевом поле копии каталога — отказ, который
+    /// называет файл и запись; группа инструментов без каталога — тоже.
+    #[test]
+    fn broken_copy_names_file_and_background() {
+        assert_eq!(check_background_catalogs(), Ok(()));
+        let mut raw: Value = serde_json::from_str(CLASSIC_CATALOG_SOURCE).expect("каталог");
+        let entry = raw["backgrounds"][2].as_object_mut().expect("предыстория");
+        let id = entry.shift_remove("id").expect("id");
+        entry.insert("idd".into(), id);
+        let name = js::s(entry.get("name"));
+        let error = parse_background_catalog(CLASSIC_CATALOG_FILE, &raw.to_string(), DND_2014_RULESET_ID).err().map(|error| error.to_string());
+        assert_eq!(error, Some(format!("data/backgrounds-dnd-5e-2014.json: backgrounds[2] «{name}»: нет поля «id»")));
+        let mut raw: Value = serde_json::from_str(CLASSIC_CATALOG_SOURCE).expect("каталог");
+        raw["toolChoiceGroups"].as_object_mut().expect("группы").shift_remove("gaming");
+        let error = parse_background_catalog(CLASSIC_CATALOG_FILE, &raw.to_string(), DND_2014_RULESET_ID).err().map(|error| error.to_string());
+        assert!(error.as_deref().is_some_and(|text| text.ends_with("«noble»: группы инструментов «gaming» нет в toolChoiceGroups")), "{error:?}");
+        let error = parse_background_catalog(CURRENT_CATALOG_FILE, CURRENT_CATALOG_SOURCE, DND_2014_RULESET_ID).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("data/backgrounds-srd-5-2-1.json: rulesetId должен быть «dnd_5e_2014»"));
+    }
 
     #[test]
     fn classic_backgrounds_give_no_ability_bonuses() {
