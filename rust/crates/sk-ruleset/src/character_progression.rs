@@ -7,9 +7,10 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
+use sk_core::content::{self, ContentError, ContentResult};
 use sk_core::{js, re, text};
 
-use crate::support::{array, defined, embedded_json, prop, slice_len, unique_strings};
+use crate::support::{array, checked, defined, embedded_catalog, prop, slice_len, unique_strings};
 
 const CATALOG_SOURCE: &str = include_str!("../../../../data/dndsu-class-build-rules-1-12.json");
 const MANIFEST_SOURCE: &str = include_str!("../../../../data/character-rules-manifest.json");
@@ -29,9 +30,29 @@ struct Catalog {
     skill_id_by_key: HashMap<String, String>,
 }
 
-static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
-    let provenance = embedded_json(MANIFEST_SOURCE);
-    let payload = embedded_json(CATALOG_SOURCE);
+/// Пути каталога развития классов и его манифеста от корня репозитория.
+pub const CATALOG_FILE: &str = "data/dndsu-class-build-rules-1-12.json";
+pub const MANIFEST_FILE: &str = "data/character-rules-manifest.json";
+
+/// Разбор и проверка каталога развития классов из текста каталога и
+/// манифеста: проверка JS при загрузке модуля (хеш, размер и предельный
+/// уровень против манифеста) и ключи записей, по которым ищет код — id
+/// навыка с характеристикой, `classKey` класса, id группы выбора.
+fn parse_character_rules(catalog_text: &str, manifest_text: &str) -> ContentResult<Catalog> {
+    let provenance = embedded_catalog(MANIFEST_FILE, manifest_text)?;
+    let payload = embedded_catalog(CATALOG_FILE, catalog_text)?;
+    content::root_object(MANIFEST_FILE, &provenance)?;
+    content::root_object(CATALOG_FILE, &payload)?;
+    provenance_check(&provenance, &payload, catalog_text).map_err(|message| ContentError::new(CATALOG_FILE, message))?;
+    for (index, (_, skill)) in content::keyed_records(CATALOG_FILE, &payload, "skills", "id")?.into_iter().enumerate() {
+        content::required_str(CATALOG_FILE, skill, "ability", &content::record_label("skills", index, skill))?;
+    }
+    content::keyed_records(CATALOG_FILE, &payload, "classes", "classKey")?;
+    content::keyed_records(CATALOG_FILE, &payload, "featureChoiceGroups", "id")?;
+    Ok(index_catalog(provenance, payload))
+}
+
+fn index_catalog(provenance: Value, payload: Value) -> Catalog {
     let mut skills: Vec<(String, Value)> = Vec::new();
     for entry in array(payload.get("skills")) {
         let id = js::s(entry.get("id"));
@@ -49,27 +70,37 @@ static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
         skills.iter().map(|(id, entry)| (canonical_skill_key(id), entry.get("ability").cloned().unwrap_or(Value::Null))).collect();
     let skill_id_by_key = skills.iter().map(|(id, _)| (canonical_skill_key(id), id.clone())).collect();
     Catalog { provenance, payload, skills, class_rules, feature_groups, skill_ability_by_key, skill_id_by_key }
-});
+}
+
+/// Каталог проверяется при старте сервера ([`check_character_rules`]).
+static PARSED: LazyLock<ContentResult<Catalog>> = LazyLock::new(|| parse_character_rules(CATALOG_SOURCE, MANIFEST_SOURCE));
+
+fn catalog() -> &'static Catalog {
+    checked(&PARSED)
+}
 
 /// `CHARACTER_RULES_PROVENANCE`: манифест происхождения каталога.
-pub static CHARACTER_RULES_PROVENANCE: LazyLock<Value> = LazyLock::new(|| CATALOG.provenance.clone());
+pub static CHARACTER_RULES_PROVENANCE: LazyLock<Value> = LazyLock::new(|| catalog().provenance.clone());
 
 /// Проверка, которую JS делает при загрузке модуля: каталог совпадает со своим
-/// манифестом (хеш, размер, предельный уровень). Данные встроены при сборке,
-/// поэтому здесь она — сторож в тестах, а не паника при первом обращении.
-#[cfg_attr(not(test), allow(dead_code))] // вызывается только тестами
-fn catalog_provenance_check() -> Result<(), String> {
-    let manifest = &CATALOG.provenance;
-    let hash = sk_core::hash::sha256_hex(CATALOG_SOURCE.as_bytes());
+/// манифестом (хеш, размер, предельный уровень). Здесь она — часть разбора,
+/// то есть проверки при старте сервера.
+fn provenance_check(manifest: &Value, payload: &Value, source: &str) -> Result<(), String> {
+    let hash = sk_core::hash::sha256_hex(source.as_bytes());
     if Some(hash.as_str()) != manifest.get("source_sha256").and_then(Value::as_str)
-        || Some(CATALOG_SOURCE.len() as u64) != manifest.get("source_size_bytes").and_then(Value::as_u64)
+        || Some(source.len() as u64) != manifest.get("source_size_bytes").and_then(Value::as_u64)
     {
         return Err("Character rules catalog does not match its versioned provenance manifest".into());
     }
-    if manifest.get("maximum_character_level") != CATALOG.payload.get("maximumCharacterLevel") {
+    if manifest.get("maximum_character_level") != payload.get("maximumCharacterLevel") {
         return Err("Character rules manifest level cap does not match the catalog".into());
     }
     Ok(())
+}
+
+/// Проверка встроенного каталога развития классов (сервер зовёт её до приёма запросов).
+pub fn check_character_rules() -> ContentResult<()> {
+    PARSED.as_ref().map(|_| ()).map_err(Clone::clone)
 }
 
 /// `normalizedName(value)`: нижний регистр, «ё» → «е», всё кроме букв и цифр —
@@ -88,7 +119,7 @@ fn role_text(actor: Option<&Value>) -> String {
 /// `characterClassKey(actor)`: класс из `characterClass`, иначе по словам роли.
 pub fn character_class_key(actor: Option<&Value>) -> Option<String> {
     let explicit = text::lower(&js::s(defined(prop(actor, "characterClass"))));
-    if CATALOG.class_rules.contains_key(&explicit) {
+    if catalog().class_rules.contains_key(&explicit) {
         return Some(explicit);
     }
     let role = role_text(actor);
@@ -114,7 +145,7 @@ pub fn character_class_key(actor: Option<&Value>) -> Option<String> {
 /// `classSkillRuleFor(actor)`: правило навыков класса героя.
 pub fn class_skill_rule_for(actor: Option<&Value>) -> Option<Value> {
     let class_key = character_class_key(actor)?;
-    CATALOG.class_rules.get(&class_key).cloned()
+    catalog().class_rules.get(&class_key).cloned()
 }
 
 /// Ключ сравнения навыка: `animal_handling` и `animal-handling` — одно.
@@ -129,7 +160,7 @@ fn canonical_skill_key_of(value: Option<&Value>) -> String {
 /// `catalogSkillId(value)`: написание навыка в каноне проекта
 /// (подчёркивания); незнакомое значение — как есть.
 pub fn catalog_skill_id(value: Option<&Value>) -> String {
-    CATALOG.skill_id_by_key.get(&canonical_skill_key_of(value)).cloned().unwrap_or_else(|| js::s(value))
+    catalog().skill_id_by_key.get(&canonical_skill_key_of(value)).cloned().unwrap_or_else(|| js::s(value))
 }
 
 /// `normalizedClassSkillProficiencies(actor)`: выбранные классовые навыки из
@@ -164,7 +195,7 @@ pub fn is_skill_proficient(actor: Option<&Value>, skill_id: Option<&Value>) -> b
 
 /// `skillAbility(skillId)`: характеристика навыка или `None`.
 pub fn skill_ability(skill_id: Option<&Value>) -> Option<Value> {
-    CATALOG.skill_ability_by_key.get(&canonical_skill_key_of(skill_id)).filter(|value| !value.is_null()).cloned()
+    catalog().skill_ability_by_key.get(&canonical_skill_key_of(skill_id)).filter(|value| !value.is_null()).cloned()
 }
 
 /// `choiceCountAtLevel(group, level)`: число выборов группы на уровне —
@@ -198,7 +229,7 @@ pub fn feature_choice_groups_for(actor: Option<&Value>) -> Vec<Value> {
     let level = hero_level(actor);
     let subclass_raw = defined(prop(actor, "subclass")).or_else(|| defined(prop(actor, "subClass"))).or_else(|| prop(actor, "archetype"));
     let subclass = normalized_name(subclass_raw);
-    CATALOG
+    catalog()
         .feature_groups
         .iter()
         .filter(|group| {
@@ -265,17 +296,17 @@ pub fn is_optional_feature_selected(actor: Option<&Value>, feature_id: Option<&V
 
 /// `classBuildCatalogInfo()`: сводка каталога для клиента и аудита.
 pub fn class_build_catalog_info() -> Value {
-    let payload = &CATALOG.payload;
+    let payload = &catalog().payload;
     let mut info = Map::new();
-    info.insert("provenance".into(), CATALOG.provenance.clone());
+    info.insert("provenance".into(), catalog().provenance.clone());
     if let Some(profile) = payload.get("rulesProfile") {
         info.insert("rulesProfile".into(), profile.clone());
     }
     if let Some(level) = payload.get("maximumCharacterLevel") {
         info.insert("maximumCharacterLevel".into(), level.clone());
     }
-    info.insert("skillCount".into(), json!(CATALOG.skills.len()));
-    info.insert("featureChoiceGroupCount".into(), json!(CATALOG.feature_groups.len()));
+    info.insert("skillCount".into(), json!(catalog().skills.len()));
+    info.insert("featureChoiceGroupCount".into(), json!(catalog().feature_groups.len()));
     info.insert("skills".into(), Value::Array(array(payload.get("skills")).to_vec()));
     let classes = array(payload.get("classes"))
         .iter()
@@ -302,9 +333,28 @@ pub fn class_build_catalog_info() -> Value {
 mod tests {
     use super::*;
 
+    /// Урок 7: копия каталога с опечаткой в ключевом поле (манифест пересчитан
+    /// под копию) — отказ, который называет файл и запись; копия без
+    /// пересчёта — отказ сверки с манифестом, как при загрузке модуля JS.
+    #[test]
+    fn broken_copy_names_file_and_class() {
+        let mut raw: Value = serde_json::from_str(CATALOG_SOURCE).expect("каталог");
+        let class = raw["classes"][4].as_object_mut().expect("класс");
+        let key = class.shift_remove("classKey").expect("classKey");
+        class.insert("classkey".into(), key);
+        let text = raw.to_string();
+        let error = parse_character_rules(&text, MANIFEST_SOURCE).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("data/dndsu-class-build-rules-1-12.json: Character rules catalog does not match its versioned provenance manifest"));
+        let mut manifest: Value = serde_json::from_str(MANIFEST_SOURCE).expect("манифест");
+        manifest["source_sha256"] = json!(sk_core::hash::sha256_hex(text.as_bytes()));
+        manifest["source_size_bytes"] = json!(text.len());
+        let error = parse_character_rules(&text, &manifest.to_string()).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("data/dndsu-class-build-rules-1-12.json: classes[4]: нет поля «classKey»"));
+    }
+
     #[test]
     fn catalog_matches_its_provenance_manifest() {
-        assert_eq!(catalog_provenance_check(), Ok(()));
+        assert_eq!(check_character_rules(), Ok(()));
     }
 
     #[test]

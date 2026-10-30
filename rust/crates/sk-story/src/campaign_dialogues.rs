@@ -15,6 +15,7 @@
 use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
+use sk_core::content::{self, ContentError, ContentResult};
 use sk_core::indexmap::IndexSet;
 use sk_core::{js, text};
 use sk_scenario::campaign_scenario::{campaign_scenario, scenario_clue_fact_id, scenario_found_clue_ids, scenario_informant_rules, scenario_location_id, scenario_treaty_rules};
@@ -361,12 +362,27 @@ pub fn normalize_dialogues(raw: &Value) -> Result<Vec<Dialogue>, String> {
     Ok(dialogues)
 }
 
-/// Каталог диалогов (`data/campaign-dialogues-v1.json`), проверенный при
-/// первом обращении. Данные поставляются вместе с сервером: сломанный каталог —
-/// ошибка сборки, её ловят тесты крейта.
-pub static DIALOGUES: LazyLock<Vec<Dialogue>> = LazyLock::new(|| {
-    let raw: Value = serde_json::from_str(DIALOGUES_SOURCE).expect("каталог диалогов — JSON");
-    normalize_dialogues(&raw).expect("каталог диалогов проходит проверку")
+/// Путь каталога диалогов от корня репозитория.
+pub const DIALOGUES_FILE: &str = "data/campaign-dialogues-v1.json";
+
+/// Разбор и проверка каталога диалогов из текста (для тестов — сломанные копии).
+pub fn parse_dialogue_catalog(text: &str) -> ContentResult<Vec<Dialogue>> {
+    normalize_dialogues(&content::parse_json(DIALOGUES_FILE, text)?).map_err(|message| ContentError::new(DIALOGUES_FILE, message))
+}
+
+static PARSED: LazyLock<ContentResult<Vec<Dialogue>>> = LazyLock::new(|| parse_dialogue_catalog(DIALOGUES_SOURCE));
+
+/// Проверка встроенного каталога диалогов (сервер зовёт её до приёма запросов).
+pub fn check_dialogue_catalog() -> ContentResult<()> {
+    PARSED.as_ref().map(|_| ()).map_err(Clone::clone)
+}
+
+/// Каталог диалогов (`data/campaign-dialogues-v1.json`). Данные поставляются
+/// вместе с сервером: сломанный каталог — ошибка сборки, её ловит проверка
+/// при старте сервера ([`check_dialogue_catalog`]), а не первый разговор.
+pub static DIALOGUES: LazyLock<&'static [Dialogue]> = LazyLock::new(|| match &*PARSED {
+    Ok(dialogues) => dialogues,
+    Err(error) => panic!("{error}"),
 });
 
 /// Диалог собеседника в этой кампании или `None`: только у кампании со
@@ -883,6 +899,20 @@ pub fn dialogue_check_line(check: Option<&Value>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Урок 7: опечатка в ключевом поле копии каталога — отказ, который
+    /// называет файл и диалог.
+    #[test]
+    fn broken_copy_names_file_and_dialogue() {
+        assert_eq!(check_dialogue_catalog(), Ok(()));
+        let mut raw: Value = serde_json::from_str(DIALOGUES_SOURCE).expect("каталог");
+        let dialogue = raw["dialogues"][1].as_object_mut().expect("диалог");
+        let id = js::s(dialogue.get("id"));
+        let npc = dialogue.shift_remove("npc_id").expect("npc_id");
+        dialogue.insert("npcid".into(), npc);
+        let error = parse_dialogue_catalog(&raw.to_string()).err().map(|error| error.to_string());
+        assert_eq!(error, Some(format!("data/campaign-dialogues-v1.json: Диалоги кампании: {id}: scenario_id и npc_id обязательны")));
+    }
 
     fn base() -> Value {
         json!({ "schema_version": 1, "dialogues": [{ "id": "d", "scenario_id": "s", "npc_id": "n", "greeting": "Здравствуй.", "options": [{ "id": "bye", "label": "Пока.", "reply": "Пока.", "ends": true }] }] })

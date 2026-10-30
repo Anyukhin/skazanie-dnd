@@ -1260,6 +1260,23 @@ static WORLD_TEMPLATES: LazyLock<R<Vec<Value>>> = LazyLock::new(|| match serde_j
     Err(error) => fail(format!("Не удалось загрузить каталог миров: {error}")),
 });
 
+/// Путь каталога миров от корня репозитория.
+pub const WORLD_TEMPLATE_CATALOG_FILE: &str = "data/campaign-worlds-v1.json";
+
+/// Разбор и проверка каталога миров из текста — та же проверка, что у
+/// встроенного каталога (для тестов — сломанные копии).
+pub fn parse_world_template_catalog(text: &str, image_exists: ImageExists<'_>) -> sk_core::content::ContentResult<Vec<Value>> {
+    let payload = sk_core::content::parse_json(WORLD_TEMPLATE_CATALOG_FILE, text)?;
+    validate_world_template_catalog(&payload, image_exists).map_err(|error| sk_core::content::ContentError::new(WORLD_TEMPLATE_CATALOG_FILE, error.message))
+}
+
+/// Проверка встроенного каталога (урок 7; сервер зовёт её до приёма запросов,
+/// как JS проверяет каталог при загрузке модуля). Картинки ищутся в
+/// `public/` корня данных процесса.
+pub fn check_world_template_catalog() -> sk_core::content::ContentResult<()> {
+    catalog().map(|_| ()).map_err(|error| sk_core::content::ContentError::new(WORLD_TEMPLATE_CATALOG_FILE, error.message))
+}
+
 fn catalog() -> R<&'static [Value]> {
     match &*WORLD_TEMPLATES {
         Ok(templates) => Ok(templates),
@@ -1421,4 +1438,23 @@ pub fn world_template_concept(template_value: Option<&Value>) -> R<Value> {
         out.insert(key.into(), template[key].clone());
     }
     Ok(Value::Object(out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Урок 7: опечатка в ключевом поле копии каталога — отказ, который
+    /// называет файл и шаблон.
+    #[test]
+    fn broken_copy_names_file_and_template() {
+        assert_eq!(check_world_template_catalog(), Ok(()));
+        assert!(parse_world_template_catalog(CATALOG_TEXT, &|_| true).is_ok());
+        let mut raw: Value = serde_json::from_str(CATALOG_TEXT).expect("каталог");
+        let template = raw["templates"][2].as_object_mut().expect("шаблон");
+        let id = template.shift_remove("id").expect("id");
+        template.insert("idd".into(), id);
+        let error = parse_world_template_catalog(&raw.to_string(), &|_| true).err().map(|error| error.to_string());
+        assert!(error.as_deref().is_some_and(|text| text.starts_with("data/campaign-worlds-v1.json: ") && text.contains("templates[2]")), "{error:?}");
+    }
 }

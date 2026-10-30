@@ -7,18 +7,72 @@
 use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
+use sk_core::content::{self, ContentError, ContentResult};
 use sk_core::js;
 
 use crate::ruleset_config::{ruleset_profile, ProfileOptions, RulesetSelectionError, DND_2014_RULESET_ID, LEGACY_DEFAULT_RULESET_ID};
-use crate::support::{array, defined, embedded_json, includes, js_ordered, prop, string_of, unique_values};
+use crate::support::{array, checked, defined, embedded_catalog, includes, js_ordered, prop, string_of, unique_values};
 
+/// Пути каталогов происхождения от корня репозитория.
+pub const CURRENT_POLICY_FILE: &str = "data/character-creation-policy-v1.json";
+pub const CLASSIC_POLICY_FILE: &str = "data/character-creation-dnd-5e-2014.json";
 const CURRENT_POLICY_SOURCE: &str = include_str!("../../../../data/character-creation-policy-v1.json");
 const CLASSIC_POLICY_SOURCE: &str = include_str!("../../../../data/character-creation-dnd-5e-2014.json");
 
+/// Разбор и проверка каталога происхождения редакции `ruleset_id` из текста:
+/// проверка JS при загрузке модуля (`assertPolicy`), редакция, id видов и
+/// профилей прибавок (по ним ищет код) и группы выбора вида — id группы
+/// уникален, варианты лежат в группе или в `choice_catalogs` и их не меньше
+/// `count` (как `pnpm content:verify`; без каталога варианты молча пусты).
+pub fn parse_creation_policy(file: &str, text: &str, ruleset_id: &str) -> ContentResult<Value> {
+    let policy = embedded_catalog(file, text)?;
+    content::root_object(file, &policy)?;
+    assert_policy(&policy).map_err(|message| ContentError::new(file, message))?;
+    content::root_str(file, &policy, "ruleset_id", ruleset_id)?;
+    content::keyed_records(file, &policy, "origin_bonus_profiles", "id")?;
+    for (index, (_, species)) in content::keyed_records(file, &policy, "species_options", "id")?.into_iter().enumerate() {
+        let label = content::record_label("species_options", index, species);
+        let groups = match species.get("choice_groups") {
+            None => &[][..],
+            Some(Value::Array(groups)) => groups.as_slice(),
+            Some(_) => return Err(ContentError::at(file, label, "choice_groups должен быть массивом")),
+        };
+        for (group_id, group) in content::keyed_items(file, groups, &format!("{label}.choice_groups"), "id")? {
+            let options = match group.get("options") {
+                Some(Value::Array(options)) => Some(options.len()),
+                _ => prop(policy.get("choice_catalogs"), &string_of(group.get("catalog"))).and_then(Value::as_array).map(Vec::len),
+            };
+            let Some(count) = options else {
+                return Err(ContentError::at(file, format!("{label}.{group_id}"), format!("нет вариантов: каталога «{}» нет в choice_catalogs", js::s(group.get("catalog")))));
+            };
+            let required = match group.get("count") {
+                None | Some(Value::Null) => 0.0,
+                value => js::number(value),
+            };
+            if (count as f64) < required {
+                return Err(ContentError::at(file, format!("{label}.{group_id}"), format!("вариантов {count} меньше count")));
+            }
+        }
+    }
+    Ok(policy)
+}
+
 /// Каталоги в порядке `policies` (`Map`): сначала 2024, затем 2014.
-static POLICIES: LazyLock<[(&'static str, Value); 2]> = LazyLock::new(|| {
-    [(LEGACY_DEFAULT_RULESET_ID, embedded_json(CURRENT_POLICY_SOURCE)), (DND_2014_RULESET_ID, embedded_json(CLASSIC_POLICY_SOURCE))]
+static POLICIES: LazyLock<ContentResult<[(&'static str, Value); 2]>> = LazyLock::new(|| {
+    Ok([
+        (LEGACY_DEFAULT_RULESET_ID, parse_creation_policy(CURRENT_POLICY_FILE, CURRENT_POLICY_SOURCE, LEGACY_DEFAULT_RULESET_ID)?),
+        (DND_2014_RULESET_ID, parse_creation_policy(CLASSIC_POLICY_FILE, CLASSIC_POLICY_SOURCE, DND_2014_RULESET_ID)?),
+    ])
 });
+
+fn policies() -> &'static [(&'static str, Value); 2] {
+    checked(&POLICIES)
+}
+
+/// Проверка встроенных каталогов происхождения (сервер зовёт её до приёма запросов).
+pub fn check_creation_policies() -> ContentResult<()> {
+    POLICIES.as_ref().map(|_| ()).map_err(Clone::clone)
+}
 
 const ABILITY_IDS: [&str; 6] = ["str", "dex", "con", "int", "wis", "cha"];
 
@@ -44,7 +98,7 @@ fn policy_for(ruleset_id: &str) -> Result<&'static Value, RulesetSelectionError>
     let profile = ruleset_profile(ruleset_id, ProfileOptions::fallback(LEGACY_DEFAULT_RULESET_ID))?;
     // Нет каталога у установленной редакции — `TypeError` в JS; обе
     // установленные редакции свой каталог имеют.
-    POLICIES.iter().find(|(id, _)| *id == profile.id).map(|(_, policy)| policy).ok_or_else(|| {
+    policies().iter().find(|(id, _)| *id == profile.id).map(|(_, policy)| policy).ok_or_else(|| {
         RulesetSelectionError::new(format!("Нет каталога создания героя для {}", profile.id), "RULESET_INVALID")
     })
 }
@@ -85,9 +139,8 @@ fn public_policy(policy: &Value) -> Value {
 }
 
 /// Проверка формы каталога, которую JS делает при загрузке модуля
-/// (`assertPolicy`). Каталоги встроены при сборке, поэтому здесь она —
-/// сторож в тестах.
-#[cfg_attr(not(test), allow(dead_code))] // вызывается только тестами
+/// (`assertPolicy`); здесь — в [`parse_creation_policy`], то есть при старте
+/// сервера.
 fn assert_policy(policy: &Value) -> Result<(), String> {
     let ruleset = string_of(policy.get("ruleset_id"));
     let valid = policy.get("schema_version") == Some(&json!(1))
@@ -358,7 +411,7 @@ pub fn validate_species_origin_bonuses(
 /// `characterCreationOriginCatalogInfo()`: сводка каталогов по редакциям.
 pub fn character_creation_origin_catalog_info() -> Value {
     Value::Object(
-        POLICIES
+        policies()
             .iter()
             .map(|(ruleset_id, policy)| {
                 let mut info = Map::new();
@@ -380,9 +433,30 @@ mod tests {
 
     const RULESET_ID: &str = "dnd_5e_2014";
 
+    /// Урок 7: опечатка в ключевом поле копии каталога — отказ, который
+    /// называет файл и запись; группа выбора без каталога вариантов — тоже.
+    #[test]
+    fn broken_copy_names_file_and_species() {
+        assert_eq!(check_creation_policies(), Ok(()));
+        let mut raw: Value = serde_json::from_str(CLASSIC_POLICY_SOURCE).expect("каталог");
+        let species = raw["species_options"][3].as_object_mut().expect("вид");
+        let id = species.shift_remove("id").expect("id");
+        species.insert("iid".into(), id);
+        let error = parse_creation_policy(CLASSIC_POLICY_FILE, &raw.to_string(), RULESET_ID).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("data/character-creation-dnd-5e-2014.json: species_options[3] «Лесной эльф»: нет поля «id»"));
+        let mut raw: Value = serde_json::from_str(CLASSIC_POLICY_SOURCE).expect("каталог");
+        raw["choice_catalogs"].as_object_mut().expect("каталоги").shift_remove("dwarf_tools");
+        let error = parse_creation_policy(CLASSIC_POLICY_FILE, &raw.to_string(), RULESET_ID).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("data/character-creation-dnd-5e-2014.json: species_options[0] «dwarf-hill».artisan-tool: нет вариантов: каталога «dwarf_tools» нет в choice_catalogs"));
+        let mut raw: Value = serde_json::from_str(CURRENT_POLICY_SOURCE).expect("каталог");
+        raw["origin_bonus_profiles"][1]["id"] = json!("");
+        let error = parse_creation_policy(CURRENT_POLICY_FILE, &raw.to_string(), LEGACY_DEFAULT_RULESET_ID).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("data/character-creation-policy-v1.json: origin_bonus_profiles[1] «Предыстория: +2 и +1»: поле «id» должно быть непустой строкой"));
+    }
+
     #[test]
     fn embedded_policies_pass_the_load_time_check() {
-        for (_, policy) in POLICIES.iter() {
+        for (_, policy) in policies().iter() {
             assert_eq!(assert_policy(policy), Ok(()));
         }
     }

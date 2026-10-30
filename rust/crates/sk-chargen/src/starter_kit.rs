@@ -21,6 +21,7 @@ use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
+use sk_core::content::{self, ContentError, ContentResult};
 use sk_core::indexmap::IndexMap;
 use sk_core::{js, re, text};
 use sk_items::item_catalog::{ammunition_catalog_id_for_weapon, catalog_item, materialize_catalog_item};
@@ -47,16 +48,99 @@ type KitResult<T> = Result<T, StarterKitError>;
 
 const STARTING_GOLD: i64 = 20;
 
-static CLASSIC_EQUIPMENT: LazyLock<Value> =
-    LazyLock::new(|| serde_json::from_str(include_str!("../../../../data/starter-equipment-dnd-5e-2014.json")).expect("data/starter-equipment-dnd-5e-2014.json — JSON"));
+/// Пути каталогов стартового снаряжения от корня репозитория.
+pub const STARTER_EQUIPMENT_FILE: &str = "data/starter-equipment-dnd-5e-2014.json";
+pub const STARTER_PRESENTATION_FILE: &str = "data/starter-item-presentation.json";
 
-static STARTER_PRESENTATION: LazyLock<Value> =
-    LazyLock::new(|| serde_json::from_str(include_str!("../../../../data/starter-item-presentation.json")).expect("data/starter-item-presentation.json — JSON"));
+/// Группы выбора профиля: id группы уникален в профиле, id варианта — в
+/// группе, вариантов не меньше `count` (как `pnpm content:verify`): по id
+/// группы и варианта код принимает выбор игрока.
+fn check_choice_groups(file: &str, profile: &Value, label: &str) -> ContentResult<()> {
+    let groups = match profile.get("choice_groups") {
+        None => return Ok(()),
+        Some(Value::Array(groups)) => groups,
+        Some(_) => return Err(ContentError::at(file, label, "choice_groups должен быть массивом")),
+    };
+    for (group_id, group) in content::keyed_items(file, groups, &format!("{label}.choice_groups"), "id")? {
+        let place = format!("{label}.{group_id}");
+        let required = match group.get("count") {
+            None | Some(Value::Null) => 0.0,
+            value => js::number(value),
+        };
+        // Варианты `dynamic_source` даёт код (`complete_background_choice_options`):
+        // неизвестный источник молча дал бы пустой выбор.
+        if let Some(source) = group.get("dynamic_source").filter(|source| js::truthy(Some(*source))) {
+            let dynamic = complete_background_choice_options(source.as_str());
+            if dynamic.is_empty() {
+                return Err(ContentError::at(file, place.as_str(), format!("неизвестный dynamic_source {source}")));
+            }
+            if (dynamic.len() as f64) < required {
+                return Err(ContentError::at(file, place.as_str(), format!("вариантов {} меньше count", dynamic.len())));
+            }
+            continue;
+        }
+        let options = content::array_field(file, group, "options").map_err(|error| ContentError::at(file, place.as_str(), error.message))?;
+        if (options.len() as f64) < required {
+            return Err(ContentError::at(file, place.as_str(), format!("вариантов {} меньше count", options.len())));
+        }
+        content::keyed_items(file, options, &format!("{place}.options"), "id")?;
+    }
+    Ok(())
+}
+
+/// Разбор и проверка стартового снаряжения 2014 из текста: версия и
+/// редакция, профили классов и полного набора по `class_id`, предыстории
+/// полного набора по `background_id`, группы выбора.
+pub fn parse_starter_equipment(text: &str) -> ContentResult<Value> {
+    let file = STARTER_EQUIPMENT_FILE;
+    let catalog = content::parse_json(file, text)?;
+    content::root_object(file, &catalog)?;
+    content::schema_version(file, &catalog, "schema_version", 2.0)?;
+    content::root_str(file, &catalog, "ruleset_id", DND_2014_RULESET_ID)?;
+    for (list, key) in [("classes", "class_id"), ("complete_classes", "class_id"), ("complete_backgrounds", "background_id")] {
+        for (id, profile) in content::keyed_records(file, &catalog, list, key)? {
+            check_choice_groups(file, profile, &format!("{list}.{id}"))?;
+        }
+    }
+    Ok(catalog)
+}
+
+/// Разбор и проверка оформления стартовых вещей из текста: `items` —
+/// объект «имя → оформление».
+pub fn parse_starter_presentation(text: &str) -> ContentResult<Value> {
+    let file = STARTER_PRESENTATION_FILE;
+    let catalog = content::parse_json(file, text)?;
+    content::schema_version(file, &catalog, "schema_version", 1.0)?;
+    for (name, item) in content::object_field(file, &catalog, "items")? {
+        if !item.is_object() {
+            return Err(ContentError::at(file, format!("items.{name}"), "оформление должно быть объектом"));
+        }
+    }
+    Ok(catalog)
+}
+
+static CLASSIC_EQUIPMENT: LazyLock<ContentResult<Value>> = LazyLock::new(|| parse_starter_equipment(include_str!("../../../../data/starter-equipment-dnd-5e-2014.json")));
+
+static STARTER_PRESENTATION: LazyLock<ContentResult<Value>> = LazyLock::new(|| parse_starter_presentation(include_str!("../../../../data/starter-item-presentation.json")));
+
+fn checked(catalog: &'static ContentResult<Value>) -> &'static Value {
+    match catalog {
+        Ok(value) => value,
+        Err(error) => panic!("{error}"),
+    }
+}
+
+/// Проверка встроенных каталогов стартового снаряжения (сервер зовёт её до
+/// приёма запросов).
+pub fn check_starter_catalogs() -> ContentResult<()> {
+    CLASSIC_EQUIPMENT.as_ref().map_err(Clone::clone)?;
+    STARTER_PRESENTATION.as_ref().map(|_| ()).map_err(Clone::clone)
+}
 
 static EMPTY: LazyLock<Value> = LazyLock::new(js::obj);
 
 fn classic() -> &'static Value {
-    &CLASSIC_EQUIPMENT
+    checked(&CLASSIC_EQUIPMENT)
 }
 
 fn classic_policy_version() -> Value {
@@ -150,7 +234,7 @@ static NARRATIVE_ITEM_DEFAULTS: LazyLock<Map<String, Value>> = LazyLock::new(|| 
 /// `narrativeItemPresentation(name)`: рисунок и описание описательной вещи из
 /// `data/starter-item-presentation.json`; `name` — уже `String(name ?? '')`.
 fn narrative_item_presentation(name: &str) -> &'static Value {
-    match STARTER_PRESENTATION.get("items").and_then(|items| items.get(name)) {
+    match checked(&STARTER_PRESENTATION).get("items").and_then(|items| items.get(name)) {
         Some(entry @ Value::Object(_)) => entry,
         _ => &EMPTY,
     }
@@ -1362,4 +1446,41 @@ pub fn with_starter_kit(hero: Option<&Value>, options: &StarterKitOptions) -> Ki
         result.insert("starterEquipmentChoices".into(), selected_starter_choices.unwrap_or_else(js::obj));
     }
     Ok(Value::Object(js_ordered(result)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Урок 7: опечатка в ключевом поле копии каталога — отказ, который
+    /// называет файл и запись.
+    #[test]
+    fn broken_copies_name_file_and_record() {
+        assert_eq!(check_starter_catalogs(), Ok(()));
+        let source = include_str!("../../../../data/starter-equipment-dnd-5e-2014.json");
+        let mut raw: Value = serde_json::from_str(source).expect("каталог");
+        let profile = raw["classes"][1].as_object_mut().expect("профиль");
+        let id = profile.shift_remove("class_id").expect("class_id");
+        profile.insert("classid".into(), id);
+        let error = parse_starter_equipment(&raw.to_string()).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("data/starter-equipment-dnd-5e-2014.json: classes[1]: нет поля «class_id»"));
+        let mut raw: Value = serde_json::from_str(source).expect("каталог");
+        let class_id = js::s(raw["classes"][0].get("class_id"));
+        let group_id = js::s(raw["classes"][0]["choice_groups"][0].get("id"));
+        let options = raw["classes"][0]["choice_groups"][0]["options"].as_array_mut().expect("варианты");
+        let first = options[0].clone();
+        options.push(first);
+        let error = parse_starter_equipment(&raw.to_string()).err().map(|error| error.to_string());
+        assert!(error.as_deref().is_some_and(|text| text.starts_with(&format!("data/starter-equipment-dnd-5e-2014.json: classes.{class_id}.{group_id}.options[")) && text.ends_with("повторяется")), "{error:?}");
+        let mut raw: Value = serde_json::from_str(source).expect("каталог");
+        let backgrounds = raw["complete_backgrounds"].as_array_mut().expect("предыстории");
+        let entertainer = backgrounds.iter_mut().find(|profile| profile["background_id"] == "entertainer").expect("артист");
+        entertainer["choice_groups"][0]["dynamic_source"] = json!("musicl");
+        let error = parse_starter_equipment(&raw.to_string()).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("data/starter-equipment-dnd-5e-2014.json: complete_backgrounds.entertainer.musical-instrument: неизвестный dynamic_source \"musicl\""));
+        let mut raw: Value = serde_json::from_str(include_str!("../../../../data/starter-item-presentation.json")).expect("оформление");
+        raw["items"]["Барабан"] = json!("барабан");
+        let error = parse_starter_presentation(&raw.to_string()).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("data/starter-item-presentation.json: items.Барабан: оформление должно быть объектом"));
+    }
 }

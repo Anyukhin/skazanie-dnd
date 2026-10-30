@@ -933,6 +933,12 @@ pub fn default_dndsu_2014_content() -> R<&'static Value> {
     DEFAULT_CONTENT.as_ref().map_err(Clone::clone)
 }
 
+/// Проверка встроенного справочника (урок 7; сервер зовёт её до приёма
+/// запросов): та же загрузка с хешами манифеста, отказ — с каталогом файла.
+pub fn check_dndsu_2014_content() -> sk_core::content::ContentResult<()> {
+    default_dndsu_2014_content().map(|_| ()).map_err(|error| sk_core::content::ContentError::new(DEFAULT_CONTENT_DIRECTORY, error.to_string()))
+}
+
 /// `assert2014Campaign(campaign)`.
 pub fn assert_2014_campaign(campaign: Option<&Value>) -> R<()> {
     require_that(jsv::is_str(opt(campaign, "ruleset_id"), CONTENT_RULESET_ID), "Select an explicitly 2014 campaign; never reinterpret an existing 2024 campaign")
@@ -1031,6 +1037,20 @@ pub fn load_reference_rule_pack<T>(load_rule_pack: impl FnOnce(&str, &Path) -> T
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Урок 7: справочник проходит проверку, а копия с опечаткой в ключевом
+    /// поле записи — отказ, который называет запись.
+    #[test]
+    fn broken_copy_names_record() {
+        assert_eq!(check_dndsu_2014_content(), Ok(()));
+        let mut content = default_dndsu_2014_content().expect("справочник").clone();
+        let monster = content["monsters"][5].as_object_mut().expect("запись");
+        let id = jsv::string_of(monster.get("id"));
+        let kind = monster.shift_remove("kind").expect("kind");
+        monster.insert("knd".into(), kind);
+        let error = validate_dndsu_2014_content(&content).err().map(|error| error.to_string());
+        assert_eq!(error, Some(format!("{id}.kind: expected nonempty string")));
+    }
 
     #[test]
     fn dice_parser_does_not_execute_expressions() {

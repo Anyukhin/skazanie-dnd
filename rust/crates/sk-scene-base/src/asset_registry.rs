@@ -15,6 +15,7 @@ use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use sk_core::content::{self, ContentError, ContentResult};
 
 use crate::detail_props::{ScaleRange, DETAIL_PROPS};
 use crate::util::{js_index_truthy, number_or_zero, repo_root, str_of};
@@ -542,6 +543,64 @@ pub fn registered_rights_ids(rights_file: Option<&Path>) -> HashSet<String> {
     }
 }
 
+/// Пути встроенных каталогов реестра от корня репозитория.
+pub const PROP_ATLAS_CATALOG_FILE: &str = "public/assets/maps/props/prop-atlas.json";
+pub const DETAIL_ATLAS_CATALOG_FILE: &str = "public/assets/maps/detail-v1/prop-atlas.json";
+pub const ASSET_RIGHTS_CATALOG_FILE: &str = "data/asset-rights.json";
+
+/// Строгая проверка встроенного манифеста атласа (урок 7). Чтение атласа
+/// терпимо ([`parse_prop_atlas`]): битый манифест молча даёт пустой атлас.
+/// Здесь то же становится отказом: есть картинка, есть кадры, и у каждого
+/// кадра — числа `x`, `y`, `w`, `h` (по ним клиент вырезает спрайт). Кадр без
+/// предмета в реестре — норма (набор детализации наполняется постепенно,
+/// `withAtlasArt` JS такие кадры не трогает), поэтому id кадров не сверяются.
+pub fn check_prop_atlas_text(file: &str, text: &str) -> ContentResult<PropAtlas> {
+    let raw = content::parse_json(file, text)?;
+    content::root_object(file, &raw)?;
+    content::required_str(file, &raw, "image", "манифест")?;
+    let frames = content::object_field(file, &raw, "frames")?;
+    if frames.is_empty() {
+        return Err(ContentError::new(file, "frames пуст"));
+    }
+    for (id, frame) in frames {
+        if let Some(key) = ["x", "y", "w", "h"].into_iter().find(|key| !frame.get(*key).and_then(Value::as_f64).is_some_and(f64::is_finite)) {
+            return Err(ContentError::at(file, format!("frames.{id}"), format!("нет числа «{key}»")));
+        }
+    }
+    Ok(parse_prop_atlas(text))
+}
+
+/// Строгая проверка реестра прав: `assets` — список `[путь, sha256, размер]`
+/// с непустым путём без повторов. Возвращает зарегистрированные пути.
+pub fn check_asset_rights_text(file: &str, text: &str) -> ContentResult<HashSet<String>> {
+    let raw = content::parse_json(file, text)?;
+    let mut paths = HashSet::new();
+    for (index, record) in content::array_field(file, &raw, "assets")?.iter().enumerate() {
+        let path = match record.as_array().and_then(|items| items.first()) {
+            Some(Value::String(path)) if !path.is_empty() => path,
+            _ => return Err(ContentError::at(file, format!("assets[{index}]"), "запись должна быть [путь, sha256, размер]")),
+        };
+        if !paths.insert(path.clone()) {
+            return Err(ContentError::at(file, format!("assets[{index}] «{path}»"), "путь повторяется"));
+        }
+    }
+    Ok(paths)
+}
+
+/// Проверка встроенных атласов и реестра прав (сервер зовёт её до приёма
+/// запросов): строгий разбор и права на картинку каждого атласа.
+pub fn check_asset_catalogs() -> ContentResult<()> {
+    let rights = check_asset_rights_text(ASSET_RIGHTS_CATALOG_FILE, ASSET_RIGHTS_JSON)?;
+    let props = check_prop_atlas_text(PROP_ATLAS_CATALOG_FILE, PROP_ATLAS_JSON)?;
+    let detail = detail_atlas_from(check_prop_atlas_text(DETAIL_ATLAS_CATALOG_FILE, DETAIL_ATLAS_JSON)?);
+    for (file, atlas) in [(PROP_ATLAS_CATALOG_FILE, props), (DETAIL_ATLAS_CATALOG_FILE, detail)] {
+        if !rights.contains(&atlas.image) {
+            return Err(ContentError::at(file, atlas.image, format!("права на картинку атласа не зарегистрированы в {ASSET_RIGHTS_CATALOG_FILE}")));
+        }
+    }
+    Ok(())
+}
+
 /// Замечание проверки реестра.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RegistryIssue {
@@ -617,4 +676,35 @@ pub fn validate_asset_registry(entries: &[AssetEntry], rights_ids: &HashSet<Stri
 /// `validateAssetRegistry()` без аргументов: весь реестр и встроенный реестр прав.
 pub fn validate_default_asset_registry() -> RegistryReport {
     validate_asset_registry(list_assets(), &registered_rights_ids(None))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Урок 7: встроенные атласы и реестр прав проходят строгую проверку, а
+    /// копии с опечаткой в ключевом поле — отказ, который называет файл и запись.
+    #[test]
+    fn broken_copies_name_file_and_record() {
+        assert_eq!(check_asset_catalogs(), Ok(()));
+        let mut atlas: Value = serde_json::from_str(PROP_ATLAS_JSON).expect("атлас");
+        let frames = atlas["frames"].as_object_mut().expect("кадры");
+        let (first, frame) = frames.iter_mut().next().expect("кадр");
+        let first = first.clone();
+        let frame = frame.as_object_mut().expect("кадр");
+        let width = frame.shift_remove("w").expect("ширина");
+        frame.insert("W".into(), width);
+        let error = check_prop_atlas_text(PROP_ATLAS_CATALOG_FILE, &atlas.to_string()).err().map(|error| error.to_string());
+        assert_eq!(error, Some(format!("public/assets/maps/props/prop-atlas.json: frames.{first}: нет числа «w»")));
+        let mut atlas: Value = serde_json::from_str(DETAIL_ATLAS_JSON).expect("атлас");
+        let image = atlas.as_object_mut().and_then(|map| map.shift_remove("image")).expect("картинка");
+        atlas["imag"] = image;
+        let error = check_prop_atlas_text(DETAIL_ATLAS_CATALOG_FILE, &atlas.to_string()).err().map(|error| error.to_string());
+        assert_eq!(error.as_deref(), Some("public/assets/maps/detail-v1/prop-atlas.json: манифест: нет поля «image»"));
+        let mut rights: Value = serde_json::from_str(ASSET_RIGHTS_JSON).expect("права");
+        let copy = rights["assets"][0].clone();
+        rights["assets"].as_array_mut().expect("права").push(copy);
+        let error = check_asset_rights_text(ASSET_RIGHTS_CATALOG_FILE, &rights.to_string()).err().map(|error| error.to_string());
+        assert!(error.as_deref().is_some_and(|text| text.starts_with("data/asset-rights.json: assets[") && text.ends_with("путь повторяется")), "{error:?}");
+    }
 }
