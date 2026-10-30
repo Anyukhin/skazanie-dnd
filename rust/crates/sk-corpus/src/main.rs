@@ -53,10 +53,9 @@ fn main() {
             let all: Vec<String> = if kinds == "all" {
                 let mut seen: Vec<String> = Vec::new();
                 for record in corpus.records().expect("записи корпуса") {
-                    if let Some(kind) = record.command.get("type").and_then(serde_json::Value::as_str) {
-                        if !seen.iter().any(|known| known == kind) {
-                            seen.push(kind.to_string());
-                        }
+                    let kind = record.command_type();
+                    if kind != "?" && !seen.iter().any(|known| known == kind) {
+                        seen.push(kind.to_string());
                     }
                 }
                 seen
