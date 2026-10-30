@@ -138,9 +138,9 @@ fn js_type_errors_on_garbage_are_errors() {
     assert!(combat_narration(&[event("TurnEnded", json!({}), &[])], &json!({ "players": [null] }), None).is_err());
     assert!(combat_narration(&[event("TurnEnded", json!({}), &[])], &json!({ "enemies": "волк" }), None).is_err());
     assert!(combat_narration(&[event("AttackResolved", json!({ "cover": true, "cover_blockers": "wolf" }), &["wolf"])], &state(), None).is_err());
-    // Ключ прототипа как вид урона ломает выбор глагола ближнего удара.
-    assert!(combat_narration(&[event("AttackResolved", json!({ "hit": true, "damage_type": "constructor" }), &["wolf"])], &state(), None).is_err());
-    // …а в строке иммунитета печатается текстом функции.
+    // Ключ прототипа как вид урона — незнакомый вид: глагол по умолчанию…
+    assert!(combat_narration(&[event("AttackResolved", json!({ "hit": true, "damage_type": "constructor" }), &["wolf"])], &state(), None).is_ok());
+    // …и общая подпись в строке иммунитета.
     let immune = narrate(&[event("DamageApplied", json!({ "immune": true, "raw_amount": 3, "damage_type": "constructor" }), &["wolf"])], &state());
-    assert_eq!(immune, "function Object() { [native code] } не действует на Волк.");
+    assert_eq!(immune, "Этот урон не действует на Волк.");
 }

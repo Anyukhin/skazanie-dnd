@@ -954,30 +954,12 @@ pub const TERRAIN_COVER: [(&str, &str); 16] = [
     ("well", "half"),
 ];
 
-/// Свойства `Object.prototype`: `TERRAIN_COVER[feature]` находит их у любого
-/// объекта JS — значение истинно, но это не уровень укрытия.
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
-/// Уровень `TERRAIN_COVER[feature]`: `None` — ложное значение; у ключей
-/// прототипа — истинное значение, не равное ни одному уровню.
+/// Уровень `TERRAIN_COVER[feature]` по собственному ключу.
 fn terrain_cover(feature: &str) -> Option<&'static str> {
     if let Some((_, level)) = TERRAIN_COVER.iter().find(|(name, _)| *name == feature) {
         return Some(level);
     }
-    OBJECT_PROTOTYPE_KEYS.contains(&feature).then_some("\u{0}prototype")
+    None
 }
 
 /// `COVER_BONUS[level]`.

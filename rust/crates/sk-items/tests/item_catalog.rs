@@ -8,7 +8,7 @@
 
 mod common;
 
-use common::{check, ok, ok_or_null, Args, Outcome, FUNCTION};
+use common::{check, ok, ok_or_null, Args, Outcome};
 use serde_json::{json, Value};
 use sk_core::js;
 use sk_items::item_catalog as m;
@@ -42,9 +42,6 @@ fn run(name: &str, args: &Args) -> Outcome {
             let id = args.s(0);
             match m::catalog_item(&id) {
                 Some(entry) => ok(entry.clone()),
-                // `ITEM_CATALOG['__proto__']` — сам `Object.prototype`, в JSON это `{}`.
-                None if id == "__proto__" => ok(json!({})),
-                None if m::catalog_item_truthy(&id) => ok(json!(FUNCTION)),
                 None => ok(Value::Null),
             }
         }
@@ -437,10 +434,10 @@ fn lifecycle_profiles_follow_catalog_and_ruleset() {
     // В редакции 2014 зелье пьётся основным действием.
     assert_eq!(m::item_lifecycle_profile("srd_5_2_1:potion-of-healing", "dnd_5e_2014").expect("зелье")["use"]["combat_action"], json!("action"));
     assert!(m::item_lifecycle_profile("custom:compass", "").is_none());
-    // Свойство прототипа: JS находит функцию и отдаёт пустой профиль.
-    assert_eq!(m::item_lifecycle_profile("constructor", "").expect("прототип"), json!({ "equippable": false, "stackable": true, "requires_attunement": false }));
+    // Ключ прототипа — не запись каталога.
+    assert!(m::item_lifecycle_profile("constructor", "").is_none());
     assert!(m::catalog_item("constructor").is_none());
-    assert!(m::catalog_item_truthy("__proto__"));
+    assert!(!m::catalog_item_truthy("__proto__"));
 }
 
 #[test]

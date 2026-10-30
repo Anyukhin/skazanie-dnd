@@ -133,7 +133,7 @@ function text(value, maximum) {
 function preparedNpcPortraitUrl(profile) {
   const id = text(profile?.id, 120)
   const assets = /** @type {Record<string, string>} */ (NPC_PORTRAIT_CHARACTER_ASSETS)
-  return assets[id] ?? ''
+  return ownEntry(assets, id) ?? ''
 }
 
 /**
@@ -477,4 +477,17 @@ export class NpcPortraitService {
       model: this.imageModel,
     }
   }
+}
+
+/**
+ * Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`,
+ * `toString`…) записями не считаются.
+ *
+ * @template T
+ * @param {Readonly<Record<string, T>>} table
+ * @param {unknown} key
+ * @returns {T | undefined}
+ */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

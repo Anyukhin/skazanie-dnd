@@ -191,3 +191,5 @@ test/http-route-fixes-api.test.mjs     # lifecycle/settings: конфликт к
 # Стенды на Rust (2026-10-26): журнал подкомандой бинаря не рвёт кириллицу на границе кусков stdout
 test/kit-journal-utf8.test.mjs # readJournal большого журнала: без U+FFFD (перекрёстный replay стенда Асстохана)
 test/request-body-utf8-api.test.mjs # тело из двух кусков с разрывом посреди буквы — кириллица цела
+# Старые сохранения (2026-10-26): null в реестрах, сырой law, NPC и обещания — комната открывается.
+test/old-save-load-api.test.mjs  # LegacyStateImported с мусором: GET /api/rooms 200, нормализация реестров, restart и replay

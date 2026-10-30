@@ -7,11 +7,7 @@
 //! неудачные попытки) и объявляется слагаемыми. Провал с хищником — укус.
 //! Приручённый — спутник, а не боевой актор: идёт за отрядом, держит стражу
 //! лагеря (преимущество на Восприятие) и отгоняет мелкую тварь строкой
-//! летописи. Список приручаемых закрыт (`BEAST_TAMING_DIETS`).
-//!
-//! Таблица повадок — объект JS: `BEAST_TAMING_DIETS['constructor']` находит
-//! унаследованную функцию, и такой «зверь» считается приручаемым с повадкой-
-//! функцией — это повторено ([`BeastDiet::Function`]).
+//! летописи. Список приручаемых закрыт (`BEAST_TAMING_DIETS`, собственные ключи).
 
 use std::collections::HashSet;
 
@@ -20,7 +16,7 @@ use sk_core::{js, re, text as jstext};
 use sk_geometry::actor_footprint::footprint_distance_feet;
 use sk_social::npc_social::campaign_elapsed_minutes;
 
-use crate::common::{array, coalesce, comparable, digest, get, integer, is_prototype_key, is_safe_f64, js_max, member, object_entries, spread, string, text, Member};
+use crate::common::{array, coalesce, comparable, digest, get, integer, is_safe_f64, js_max, member, object_entries, spread, string, text, Member};
 use crate::npc_positioning::scene_location_id;
 
 pub const BEAST_TAMING_SCHEMA_VERSION: i64 = 1;
@@ -87,10 +83,6 @@ fn stat_block_id_of(enemy: Option<&Value>) -> String {
 pub enum BeastDiet {
     Predator,
     Herbivore,
-    /// Унаследованная функция (`constructor`, `toString`…): в JSON её нет.
-    Function,
-    /// `Object.prototype` (ключ `__proto__`): в JSON — `{}`.
-    Prototype,
 }
 
 impl BeastDiet {
@@ -102,13 +94,11 @@ impl BeastDiet {
         }
     }
 
-    /// Значение JSON; `None` — функция, которую `JSON.stringify` не пишет.
+    /// Значение JSON.
     pub fn to_json(self) -> Option<Value> {
         match self {
             Self::Predator => Some(json!("predator")),
             Self::Herbivore => Some(json!("herbivore")),
-            Self::Function => None,
-            Self::Prototype => Some(json!({})),
         }
     }
 }
@@ -122,13 +112,7 @@ pub fn beast_diet_for(enemy: Option<&Value>) -> Option<BeastDiet> {
     if let Some((_, diet)) = BEAST_TAMING_DIETS.iter().find(|(key, _)| *key == id) {
         return BeastDiet::parse(diet);
     }
-    if id == "__proto__" {
-        Some(BeastDiet::Prototype)
-    } else if is_prototype_key(&id) {
-        Some(BeastDiet::Function)
-    } else {
-        None
-    }
+    None
 }
 
 /// `isTameableBeast(enemy)`.
@@ -330,8 +314,8 @@ fn actor_cell(state: &Value, id: &str) -> Option<Value> {
     actors.extend(array(get(Some(state), "enemies")).iter());
     let actor = actors.into_iter().find(|candidate| js::s(get(Some(candidate), "id")) == id);
     let stored = match member(get(get(Some(state), "mechanics"), "positions"), id) {
+        // Только собственная позиция: ключ прототипа — к листу актора.
         Member::Own(found) if !found.is_null() => Some(found),
-        Member::Function | Member::Prototype => None,
         _ => actor,
     };
     let x = js::number(get(stored, "x"));
@@ -727,12 +711,6 @@ fn label_lookup(table: &[(&str, &'static str)], value: Option<&Value>) -> Option
     if let Some((_, label)) = table.iter().find(|(name, _)| *name == key) {
         return Some(json!(label));
     }
-    if key == "__proto__" {
-        return Some(json!({}));
-    }
-    if is_prototype_key(&key) {
-        return None;
-    }
     Some(json!(""))
 }
 
@@ -991,11 +969,11 @@ mod tests {
     }
 
     #[test]
-    fn prototype_stat_block_is_tameable_like_js() {
+    fn prototype_stat_block_is_not_tameable() {
         assert_eq!(beast_diet_for(Some(&json!({ "creature_type": "Beast", "stat_block_id": "srd_5_2_1:wolf" }))), Some(BeastDiet::Predator));
-        assert_eq!(beast_diet_for(Some(&json!({ "creature_type": "beast", "stat_block_id": "constructor" }))), Some(BeastDiet::Function));
+        assert_eq!(beast_diet_for(Some(&json!({ "creature_type": "beast", "stat_block_id": "constructor" }))), None);
         assert_eq!(beast_diet_for(Some(&json!({ "creature_type": "beast", "stat_block_id": "srd_5_2_1:giant-spider" }))), None);
-        assert_eq!(beast_diet_label_value(Some(&json!("toString"))), None);
+        assert_eq!(beast_diet_label_value(Some(&json!("toString"))), Some(json!("")));
         assert_eq!(beast_diet_label(Some(&json!("herbivore"))), "травоядный");
     }
 }

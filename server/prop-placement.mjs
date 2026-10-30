@@ -355,7 +355,7 @@ const SEAT_GAP = 0.05
  * @returns {Array<[string, number]>}
  */
 function seatSpecFor(assetId) {
-  const fromCompanions = (COMPANIONS[assetId] ?? []).filter(([id]) => SEATS.has(id))
+  const fromCompanions = (ownEntry(COMPANIONS, assetId) ?? []).filter(([id]) => SEATS.has(id))
   if (fromCompanions.length) return fromCompanions
   if (assetId === 'table_royal') return [['chair', 6]]
   return SEATING_SURFACES.has(assetId) ? [['chair', 1]] : []
@@ -416,7 +416,7 @@ const CORE_CENTERPIECES = Object.freeze({
  */
 function coreCenterpiece(map, zoneId, purpose, cells, { allowed, caps, blocked }) {
   const zone = map.zones.find((entry) => entry.id === zoneId)
-  const choices = CORE_CENTERPIECES[purpose] ?? []
+  const choices = ownEntry(CORE_CENTERPIECES, purpose) ?? []
   if (zone?.kind !== 'interior' || cells.length < CORE_FILL_MIN_CELLS || !choices.length) return null
   const key = (/** @type {{x: number, y: number}} */ cell) => `${cell.x},${cell.y}`
   const own = new Set(cells.map(key))
@@ -833,7 +833,7 @@ function scoreCellForAsset(map, asset, cell, placed, context = {}, random = () =
   // Шаблон помещения: предмет набора тянется к своему центру — наковальня и
   // бочка к горну, курильница и подушки к алтарю, колода к плите. Без
   // центра поблизости предмет стоит где угодно, но с заметным штрафом.
-  const anchors = SET_ANCHORS[asset.id]
+  const anchors = ownEntry(SET_ANCHORS, asset.id)
   if (anchors) {
     const nearest = nearestPlaced(localPlaced, cell, (id) => anchors.includes(id))
     if (nearest != null) score += nearest <= 1 ? 14 : nearest === 2 ? 8 : nearest <= 4 ? 2 : -nearest
@@ -895,7 +895,7 @@ function scoreCellForAsset(map, asset, cell, placed, context = {}, random = () =
   // не встают ближе своего радиуса к другой такой же природе. Случайная
   // россыпь давала комья и пустоши, а сетка кандидатов — ряды; диск даёт
   // ровную, но не регулярную рассадку, как в настоящем подлеске.
-  const radius = SCATTER_RADIUS[asset.id]
+  const radius = ownEntry(SCATTER_RADIUS, asset.id)
   if (radius && map.zones.some((zone) => zone.id === context.zoneId && zone.kind === 'exterior')) {
     for (const record of localPlaced) {
       const other = SCATTER_RADIUS[record.assetId]
@@ -1030,7 +1030,8 @@ function semanticProfileFor(plan) {
   if (fromPurpose) return { purpose: explicit, ...fromPurpose }
   for (const rawTag of Array.isArray(plan?.tags) ? plan.tags : []) {
     const purpose = (/** @type {Record<string, string>} */ (TAG_PURPOSES))[String(rawTag ?? '').trim().toLocaleLowerCase('en').replace(/[-\s]+/gu, '_')]
-    if (purpose && SEMANTIC_PROFILES[purpose]) return { purpose, ...SEMANTIC_PROFILES[purpose] }
+    const profile = purpose ? ownEntry(SEMANTIC_PROFILES, purpose) : undefined
+    if (profile) return { purpose, ...profile }
   }
   return null
 }
@@ -1568,7 +1569,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         requiredCounts.set(asset.id, (requiredCounts.get(asset.id) ?? 0) + 1)
       }
       if (withCompanions) {
-        for (const [companionId, count] of COMPANIONS[asset.id] ?? []) {
+        for (const [companionId, count] of ownEntry(COMPANIONS, asset.id) ?? []) {
           // Сиденья приходят гарнитуром вместе с поверхностью (`arrangeSeats`).
           if (SEATS.has(companionId)) continue
           for (let index = 0; index < count && wanted.length < budget; index += 1) {
@@ -1590,7 +1591,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
     // Companions заполняют только оставшийся budget и никогда не занимают
     // слоты обязательных предметов.
     for (const asset of requiredAssets) {
-      for (const [companionId, count] of COMPANIONS[asset.id] ?? []) {
+      for (const [companionId, count] of ownEntry(COMPANIONS, asset.id) ?? []) {
         // Сиденья обязательного стола не зависят от бюджета: в ужатом зале
         // таверны бюджет съедали стойка, очаг и три стола, и стульев не
         // оставалось ни одного (обзор 2026-10-10).
@@ -1652,7 +1653,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         // разбирали стены зала, и в каждом третьем трактире полке не
         // оставалось места (обзор генератора 2026-10-10).
         const rank = (/** @type {import('./asset-registry.mjs').AssetEntry} */ asset) => {
-          const companions = (COMPANIONS[asset.id]?.length ?? 0) > 0
+          const companions = (ownEntry(COMPANIONS, asset.id)?.length ?? 0) > 0
           if (companions && asset.anchor === 'wall') return 0
           if (asset.id === 'bar_shelf') return 1
           return companions ? 2 : 3
@@ -2137,4 +2138,17 @@ function zoneCells(map, zoneId) {
     }
   }
   return cells
+}
+
+/**
+ * Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`,
+ * `toString`…) записями не считаются.
+ *
+ * @template T
+ * @param {Readonly<Record<string, T>>} table
+ * @param {unknown} key
+ * @returns {T | undefined}
+ */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

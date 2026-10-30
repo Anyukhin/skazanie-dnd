@@ -392,19 +392,13 @@ pub fn theme_min_size(id: &str) -> Option<ThemeMinSize> {
 
 // --- опознание -------------------------------------------------------------------
 
-/// Ключи `Object.prototype`: `table[key]` в JS находит их у любого объекта.
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor", "__defineGetter__", "__defineSetter__", "hasOwnProperty", "__lookupGetter__", "__lookupSetter__", "isPrototypeOf",
-    "propertyIsEnumerable", "toString", "valueOf", "__proto__", "toLocaleString",
-];
-
-/// Поиск в таблице-объекте JS: `Some(None)` — ключ прототипа (значение
-/// истинно, но темой не является), `None` — ключа нет.
+/// Поиск в таблице по собственному ключу (`ownEntry`): `None` — ключа нет.
+/// Внутренний `Option` сохраняет форму «значение есть, но темы нет».
 fn lookup(table: &[(&str, &'static str)], key: &str) -> Option<Option<&'static str>> {
     if let Some((_, value)) = table.iter().find(|(name, _)| *name == key) {
         return Some(Some(value));
     }
-    OBJECT_PROTOTYPE_KEYS.contains(&key).then_some(None)
+    None
 }
 
 /// Поле рыхлого входа.
@@ -468,8 +462,7 @@ const BY_PATTERN: [(&str, &str); 4] = [("crypt", "crypt"), ("cave-cluster", "cav
 const BY_LAYOUT: [(&str, &str); 3] = [("cavern", "cave"), ("streets", "settlement"), ("winding", "road")];
 
 /// `themeFromMapRequest({ pattern, layout })`: тема, которую заявка картографа
-/// называет однозначно. Ключ прототипа в узоре или планировке — `None`, как в
-/// JS (функция прототипа истинна, но темой не является).
+/// называет однозначно. Ключ прототипа в узоре или планировке — незнакомое слово.
 pub fn theme_from_map_request(request: &Value) -> Option<&'static SceneTheme> {
     let pattern = lower_param(field(request, "pattern"));
     let layout = lower_param(field(request, "layout"));
@@ -602,8 +595,7 @@ pub fn resolve_scene_theme(input: &Value) -> &'static SceneTheme {
     if let Some(by_name) = by_name {
         return by_name;
     }
-    // `WORLD_KIND_THEMES[kind] ?? ''`: ключ прототипа даёт истинную функцию,
-    // и `themeById` не находит её среди тем — тема по умолчанию.
+    // `ownEntry(WORLD_KIND_THEMES, kind) ?? ''`.
     let by_world = lookup(&WORLD_KIND_THEMES, &world_kind);
     if kind == "dungeon" && (world_kind == "fortress" || text::test(sk_core::re!(r"крепост|замок|замк|цитадел|бастион", "iu"), &scene_text)) {
         return theme_by_id("dungeon");

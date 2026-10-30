@@ -282,7 +282,7 @@ export function currentBiomeOf(state = {}) {
  * одинаковое небо сколько угодно раз подряд и после перезапуска сервера.
  */
 export function weatherOnDay({ seed = '', day = 0, biome = DEFAULT_BIOME } = {}) {
-  const weights = BIOME_WEATHER_WEIGHTS[String(biome)] ?? BIOME_WEATHER_WEIGHTS[DEFAULT_BIOME]
+  const weights = ownEntry(BIOME_WEATHER_WEIGHTS, biome) ?? BIOME_WEATHER_WEIGHTS[DEFAULT_BIOME]
   const table = WEATHER_CONDITION_IDS.flatMap((id) => Array.from({ length: Math.max(0, weights[id] ?? 0) }, () => id))
   if (!table.length) return 'clear'
   const roll = Number.parseInt(digest(seed, 'weather', Math.trunc(Number(day) || 0), biome).slice(0, 8), 16)
@@ -739,10 +739,10 @@ export function worldClockNarration(event = {}) {
   const type = String(event?.event_type ?? '')
   const payload = event?.payload ?? {}
   if (type === TIME_OF_DAY_CHANGED_EVENT) {
-    return PHASE_ARRIVAL_LINES[String(payload.phase_after)] ?? ''
+    return ownEntry(PHASE_ARRIVAL_LINES, payload.phase_after) ?? ''
   }
   if (type === WEATHER_CHANGED_EVENT) {
-    const line = WEATHER_ARRIVAL_LINES[String(payload.weather_after)] ?? ''
+    const line = ownEntry(WEATHER_ARRIVAL_LINES, payload.weather_after) ?? ''
     const summary = weatherConditionSummary(payload.weather_after)
     // Небо, сменившееся от перехода границы края, объявляется иначе: «зарядил
     // дождь» посреди пути звучало бы как погода, а не как другой климат.
@@ -750,4 +750,9 @@ export function worldClockNarration(event = {}) {
     return [prefix, line, summary].filter(Boolean).join(' ')
   }
   return ''
+}
+
+/** Значение таблицы только по собственному ключу: климат или фаза `constructor` — незнакомые. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

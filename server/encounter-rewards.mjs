@@ -134,7 +134,8 @@ function rewardCatalogEntryFor(state, statBlockId) {
   if (KNOWN_REWARD_RULESETS.has(prefix) && prefix !== rulesetId) {
     reject(`Stat block ${statBlockId} относится к другой редакции`, 'ENCOUNTER_RULESET_MISMATCH')
   }
-  return RULESET_REWARD_CATALOGS[rulesetId]?.get(statBlockId) ?? null
+  // Только собственный ключ: редакция `constructor` — неизвестная, а не TypeError.
+  return (Object.hasOwn(RULESET_REWARD_CATALOGS, rulesetId) ? RULESET_REWARD_CATALOGS[rulesetId] : undefined)?.get(statBlockId) ?? null
 }
 
 function frozenNoRewardPlan(state, encounter, encounterId, outcome) {

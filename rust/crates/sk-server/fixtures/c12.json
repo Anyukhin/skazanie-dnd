@@ -533,12 +533,12 @@
       "status": 302,
       "body_norm": null,
       "headers_norm": {
-        "location": "function toString() { [native code] }",
+        "location": "/assets/npcs/roles/priest.png",
         "cache-control": "private, no-store",
         "vary": "Cookie",
         "x-npc-portrait-source": "static",
         "x-npc-portrait-role": "priest",
-        "x-npc-portrait-reason": "prepared_asset"
+        "x-npc-portrait-reason": "secondary_npc"
       }
     },
     {
@@ -793,12 +793,6 @@
             "name": "Марта",
             "role": "merchant",
             "has_portrait": true
-          },
-          {
-            "id": "toString",
-            "name": "Прототип",
-            "role": "priest",
-            "has_portrait": true
           }
         ],
         "location_illustrations": [
@@ -1013,12 +1007,6 @@
             "id": "npc:marta",
             "name": "Марта",
             "role": "merchant",
-            "has_portrait": true
-          },
-          {
-            "id": "toString",
-            "name": "Прототип",
-            "role": "priest",
             "has_portrait": true
           }
         ],

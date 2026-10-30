@@ -166,7 +166,7 @@ function catalogAppraisal(source, policyId) {
   }
 
   const catalogId = normalizedId(source.catalog_id, 'catalog_id', { required: true })
-  const catalog = SRD_EQUIPMENT_CATALOG[catalogId]
+  const catalog = ownEntry(SRD_EQUIPMENT_CATALOG, catalogId)
   if (!catalog) {
     throw new ItemAppraisalError('catalog_id is absent from the server catalog', 'UNKNOWN_APPRAISAL_CATALOG_ITEM')
   }
@@ -262,4 +262,9 @@ export function appraiseItem(input, options = {}) {
 
   if (source.catalog_id != null) return catalogAppraisal(source, policyId)
   return homebrewAppraisal(source, policyId)
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

@@ -164,27 +164,13 @@ fn join(values: &[V], separator: &str) -> String {
     values.iter().map(|value| js::s(value.as_ref())).collect::<Vec<_>>().join(separator)
 }
 
-/// Свойства `Object.prototype`, которые находит поиск по ключу в литерале
-/// объекта (`{ … }[key]`), и их `String(…)`.
-fn prototype_member_text(key: &str) -> Option<String> {
-    match key {
-        "constructor" => Some("function Object() { [native code] }".into()),
-        "__proto__" => Some("[object Object]".into()),
-        "__defineGetter__" | "__defineSetter__" | "hasOwnProperty" | "__lookupGetter__" | "__lookupSetter__" | "isPrototypeOf" | "propertyIsEnumerable" | "toString" | "valueOf" | "toLocaleString" => {
-            Some(format!("function {key}() {{ [native code] }}"))
-        }
-        _ => None,
-    }
-}
-
-/// `({ … })[key]` для литерала-таблицы: значение таблицы, свойство прототипа
-/// текстом или `None`.
+/// `ownEntry(table, key)`: значение таблицы по собственному ключу или `None`.
 fn table_lookup(table: &[(&str, &str)], key: &V) -> V {
     let key = t(key);
     if let Some((_, label)) = table.iter().find(|(name, _)| *name == key) {
         return s(label);
     }
-    prototype_member_text(&key).map(Value::String)
+    None
 }
 
 /// Суффиксы спасброска: предмет, Аура защиты, Несгибаемый.

@@ -953,16 +953,13 @@ fn wild_scenes_get_dressing_and_pass_map_check() {
 // --- замечено в JS: перенесено как есть ---------------------------------------------------
 
 #[test]
-fn prototype_keys_in_map_request_and_world_kind_behave_as_in_js() {
-    // `byPattern['__proto__']` — объект прототипа: истинен, `??` до планировки
-    // не доходит, и тема не находится даже при `layout: 'cavern'`. Ключ ищется
-    // после `toLocaleLowerCase`, поэтому `toString` прототипом уже не будет.
-    assert!(theme_from_map_request(&json!({ "pattern": "__proto__", "layout": "cavern" })).is_none());
+fn prototype_keys_in_map_request_and_world_kind_are_unknown_words() {
+    // Ключ прототипа в узоре — незнакомое слово: тему даёт планировка.
+    assert_eq!(theme_from_map_request(&json!({ "pattern": "__proto__", "layout": "cavern" })).map(|theme| theme.id), Some("cave"));
     assert_eq!(theme_from_map_request(&json!({ "pattern": "toString", "layout": "cavern" })).map(|theme| theme.id), Some("cave"));
     assert!(theme_from_map_request(&json!({ "layout": "constructor" })).is_none());
-    // `WORLD_KIND_THEMES['constructor']` истинно, `themeById` его не находит —
-    // тема по умолчанию (здание), а не запасной путь по заявке.
-    assert_eq!(resolve(json!({ "location": "Кальмар", "worldKind": "constructor" })), "building");
+    // Вид мира — ключ прототипа: темы по карте мира нет, решает запасной путь.
+    assert_eq!(resolve(json!({ "location": "Кальмар", "worldKind": "constructor" })), "road");
     assert_eq!(resolve(json!({ "location": "Кальмар", "worldKind": "landmark" })), "road");
     // `worldKind === 'fortress'` во дворе крепости сравнивается без приведения
     // регистра, а подземелье в крепости — с приведением.

@@ -13,15 +13,10 @@
 
 | Модуль | Ошибка | Влияние |
 | --- | --- | --- |
-| `npc-social`, `world-memory` | одно значение `null` в коллекции старого сохранения (`npcs`, разговоры, обещания, торговцы, сущности памяти) или `clock: null` роняет нормализацию | **кампания не загружается** |
 | `world-memory` | `AdvanceQuestClock` с `proof_fact_ids` вида `['', ' ']`: сырые поля команды остаются в событии, редьюсер помечает чужие источники использованными без доказательства | дыра в доказательствах для часов поручения |
 | `character-progression`, `combat-actions`, `starter-kit` | образец `маг\b`: `\b` в JS — только ASCII | роль «Маг», «Маг огня» не распознаётся как волшебник |
 | `starter-kit` | герой 2014 без `characterClass`, но с узнаваемой ролью — «Для класса нет стартового набора 2014» | создание героя падает |
 | `starter-kit` | полный набор солдата — два предмета с одинаковым id `…-starter-background-choice-1` | возможна путаница вещей в инвентаре |
-| `npc-social` | `NpcRelationshipAdjusted` меняет счёт, но не `relationship_tiers`; пишет отношение для неизвестного NPC и пустого героя | ступень отношения устаревает до следующей нормализации |
-| `npc-social` | `ensureNpcSocialState` при первой нормализации теряет разговоры, обещания и отношения NPC, известных только как торговцы или сущности памяти | тихая потеря памяти разговоров |
-| `npc-social` | `promiseDueOffsetMinutes('нескоро')` — 240 минут («скоро» внутри «нескоро») | обещание «нескоро» созревает через 4 часа |
-| `law-and-order` | `applyLawEvent` пропускает сырой `state.law` без нормализации при `schema_version: 1` и массиве `crimes` | мусор старых сохранений доживает: `escape_attempts: "2"` после побега — `"21"` |
 | `encounter-assembler` (найдено сценарием внимания) | `CreateEncounter` (`raiders`, `easy`) при повторном визите отряда из двух героев в Редстоуновку — `NO_SAFE_PLACEMENT_CELLS` на всех шести сидах | встреча не собирается |
 | `scene-graph` | `reachableZones`: ключ, найденный в том же обходе после проверки запертой двери, её не открывает | ложный `GOAL_UNREACHABLE` при проверке карты |
 | `backup-service` | путь вида `storage/..имя` считается «снаружи» хранилища | копия пишется внутрь `storage` |
@@ -35,9 +30,8 @@
 | `adventure-director` | `outsideEntranceFor`: проверка `door.locked === true` не срабатывает никогда (у двери есть только `state`) | запертая дверь выбирается выходом наружу |
 | `loot-containers` | `coordinate(null)` → 0: контейнер выбывшего, которого не было на доске, встаёт на клетку 0:0; карточка без расстояния показывает `distance_feet: 0` | тело «в углу карты», обыск недоступен там, где задумано «досягаемо по сцене» |
 | `world-offices` | в `officesForViewer` ведущему читается `projected.holder`, которого у записи нет | ведущий не видит держателя должности |
-| `offscreen-world`, `captives`, `courier-letters`, `world-deeds`, `world-memory` | `null` внутри сохранённых реестров (`steps`, `entries`, пленные, письма, летопись) или `clock: null` у задания роняет нормализацию | **кампания не загружается** (тот же класс, что у `npc-social`) |
 | `campaign-lifecycle` | `npcs.filter(visibleToParty)` передаёт номер элемента как запасную видимость | NPC и записи без поля видимости не попадают в эпилог |
-| `world-deeds` | дробная поправка репутации (2.5) после нормализации обнуляет репутацию; вид поступка — ключ прототипа роняет такт молвы | слух и репутация пропадают |
+| `world-deeds` | дробная поправка репутации (2.5) после нормализации обнуляет репутацию | слух и репутация пропадают |
 | `combat-narration`, `scene-summary` | `QuestResolved` без `summary` — «квест завершён: undefined»; условие атаки без двоеточия — «атакующий undefined» | служебный мусор в тексте ведущего |
 | `weather` | `weatherCheckSwing`/`weatherRangedPenalty` без героя не подставляют активного, а шапка подставляет | на смешанной карте шапка и бросок расходятся |
 | `rules-engine` (Р2) | `litByLightCantrip`: носитель «Света» без позиции (`null <= радиус`) освещает всех | свет заговора на всю карту |
@@ -45,33 +39,17 @@
 
 ## P2 — мусор старых сохранений и ключи прототипа
 
-- **Ключи `Object.prototype`** (`constructor`, `toString`, `__proto__`) как id,
-  код каталога, навык, тактика, класс: таблицы-объекты находят функции.
-  Примеры: `catalogItem('constructor')` возвращает функцию;
-  `itemVisualForCatalogId('constructor')` — `{}`, вещь пропадает из `loadout`;
-  `NUMERALS['constructor']` — количество `NaN`; `tacticLead('toString')` —
-  исходник функции; NPC с id `toString` считается «предзаготовленным» и
-  получает портрет без `url`; `IMPROVISED_EFFECTS['constructor']` — функция
-  `Object` вместо эффекта (закрыто только проверкой в `action-adjudicator`).
-  `sizeClass: 'constructor'` у тактической карты отключает проверку
-  бюджетов размера.
-  Лечение — `Object.hasOwn` или `Map` во всех таблицах.
-- **Падения `TypeError` на не-массивах и `null`** в: брифах сценария (`null` в
-  `worldMap.locations`), карте мира (`null` вместо концепта, источника, сцены,
-  `knownLocations`), `improvised-effects` (списки участников), `clean()` в
+- **Падения `TypeError` на не-массивах и `null`** вне загрузки сохранения:
+  `improvised-effects` (списки участников), `clean()` в
   `scenario-attention` (объект с ключом `toString`), `questDecisionEvents`
   (нестроковый `questId`), `selectEncounterRoster` (дробный
-  `maximumCreatures`), `mapOnHit` (`damage_expression` без типа урона),
-  `campaignRulesetCanChange` (`null` в журнале перед блокирующим событием
-  разрешает смену редакции).
+  `maximumCreatures`), `mapOnHit` (`damage_expression` без типа урона).
 - **Нормализация.** `normalizeCampaignState` не идемпотентна на 12 % состояний
   корпуса (`turn_started_at`, сводка мест карты мира, `origin`/`stack_key` вещей,
   `group_initiative`, ресурсы врагов и призывов) — `rust/RULES-ENGINE-PLAN.md`
   §5. `normalizeNpcSocialState` не убирает повторы NPC (это делает только
   `ensure`); `NpcSocialProfileUpserted` вставляет профиль с пустым id.
-- **Rules Engine, разбор команды.** Тип команды — ключ прототипа
-  (`constructor`, `toString`) роняет `normalizeCommand` с `TypeError` вместо
-  `COMMAND_NOT_ALLOWED`; `safeInteger(x, undefined)` даёт 0 — у состояния без
+- **Rules Engine, разбор команды.** `safeInteger(x, undefined)` даёт 0 — у состояния без
   `state_version` команда получает `expected_state_version: 0`; `action_ids`
   окна реакции строкой проверяется поиском подстроки, объектом роняет
   `TypeError`; повтор целей заклинания `['', 'x']` считается повтором;
@@ -85,8 +63,7 @@
   попадает `"null"`; `ItemUsed` схемы 2 тратит экономику хода без проверки боя
   и героя (`action_economy["null"]`); `CaptiveTaken` с `captive: null` роняет
   реестр пленных. Геометрия (Р1): `npcSpellTargetsAt` в конусе и кубе «от
-  себя» берёт всех NPC сцены, а не выбранных; клетка с признаком
-  `constructor`/`toString` даёт половинное укрытие (`TERRAIN_COVER`);
+  себя» берёт всех NPC сцены, а не выбранных;
   «Подойди»/«Убегай» без позиции заклинателя (`null >= null`) отклоняют любой
   шаг.
 - **Тактическая карта.** Ребро без `x` проходит `canonicalEdge`
@@ -105,15 +82,13 @@
   а списки плотной и редкой застройки — из 6 (первый размер выпадает вдвое
   чаще); `design: null` роняет генерацию целиком. Развалины неизвестной формы
   (`castle`) строятся как дом, а в ответе остаётся `castle`.
-- **Встречи и подсказки.** `encounterDifficultyLabel('__proto__')` возвращает
-  базовый объект; вид добычи — ключ прототипа даёт подсказку «Можно function
-  Object() { [native code] }: Волк»; `null` первым адресатом почты роняет
-  `suggestedActionsFor`; герой с id `__proto__` считает зверя досягаемым.
+- **Встречи и подсказки.** `null` первым адресатом почты роняет
+  `suggestedActionsFor`.
 - **Base64.** `Buffer.from(text, 'base64')` читает младший байт каждой
   единицы UTF-16: кириллическая «н» (U+043D) для Node — `=`, разбор
   обрывается. Rust повторяет (`sk_core::js::buffer_from_base64`).
-- **Строки `"undefined"`/`"null"`**: `String(undefined)` в причине блокировки
-  смены редакции и в `tool_proficiencies`; `serverEncounterLoot({ encounterId:
+- **Строки `"undefined"`/`"null"`**: `String(undefined)` в
+  `tool_proficiencies`; `serverEncounterLoot({ encounterId:
   null })` — id `"null"`; `bossEncounterOutcome` без `encounter_id` — `"undefined"`;
   команда с `actor_id: "undefined"` находит героя без `id`.
 
@@ -183,10 +158,7 @@
   по сырому состоянию: удар по «живому» на проекции врагу отклоняется
   (`TARGET_DEFEATED`, `INVALID_SPELL_TARGET`). Влияние: автоход героя и бот
   прогонов теряют ход на отказе.
-- **P2.** `abilityForApproach`/`skillForApproach` находят методы прототипа
-  (`toString`) — в команду попадает функция. Стенд боёв: класс или тема
-  `constructor`/`__proto__` проходят проверку и падают `TypeError`; фигура
-  героя 2×2 не считается занятой целиком при расстановке врагов.
+- **P2.** Стенд боёв: фигура героя 2×2 не считается занятой целиком при расстановке врагов.
 - **Rust быстрее и здесь:** самый тяжёлый ход автотактики (волшебник 11 ур.)
   — 7,4 с против 10,9 с в JS: копия состояния нормализуется один раз, а не на
   каждого кандидата.
@@ -204,10 +176,7 @@
   телепорта и радиусе легендарного действия — цель **в** области.
   Пауза внутри удара вдогонку в `MoveActor` теряет записанные события
   (включая `CombatActionUsed` атакующего).
-- **P2.** Поиск по объекту-литералу находит ключи `Object.prototype`:
-  `eventSummary` (`unit: "constructor"` → «Проходит 2 function Object()…»),
-  триггер «Готовности» `constructor` падает `DataCloneError` вместо отказа.
-  CalmBeast: `...roll` после полей `BeastSoothingResolved` подменяет
+- **P2.** CalmBeast: `...roll` после полей `BeastSoothingResolved` подменяет
   `actor_id` зверя id героя. Нечисловой `initiative_bonus` роняет StartCombat.
   `closeFinishedSpellBuffs` у состояний без `effect_id` не закрывает усиление.
   «Поглощение стихий» в ударе: шаблон не совпадает с id `absorbing-element-rider:`.
@@ -218,16 +187,6 @@
 
 ## Дельта main: обстановка карт и кукла героя (#184, #188, 2026-10-25)
 
-- **P2, ключи прототипа.** `coreCenterpiece` берёт `CORE_CENTERPIECES[purpose]`
-  без проверки собственного ключа: назначение `constructor`, `hasOwnProperty`,
-  `isPrototypeOf`, `__lookupGetter__` (функция с `length ≥ 1`) в помещении от
-  30 клеток с пустой серединой роняет `placeProps` — `TypeError: choices is not
-  iterable` (`toString`, `valueOf`, `__proto__` — просто без середины).
-  Назначение приходит из замысла сцены (Архитектор). Так же
-  `COMPACT_ROOM_CELLS[theme]` в `compactArea` (тема `constructor` — корпус из
-  NaN) и `COMPANIONS[assetId]` в `seatSpecFor` (`seatAroundSurface` у
-  поверхности с видом `constructor` — `TypeError`). Rust считает такие ключи
-  неизвестными: середины нет, корпус — вся карта, сидений нет.
 - **P3.** `furnishEmptyQuarters` после стола четверти делает `break`, даже если
   `seatAroundSurface` не поставил ни одного сиденья, — стол остаётся без
   стульев, а прежний спутник рядом уже не ставится. Сиденья четверти
@@ -359,3 +318,17 @@ HTTP-маршруты и живой поток (ветка `rs/fix-http`): JS и
   Rust) — JS декодирует поток `TextDecoder` с `stream: true`, Rust и прежде
   читал тело целиком; `test/request-body-utf8-api.test.mjs` в обоих режимах
   (тело из двух кусков с разрывом посреди «Ё»).
+
+### Старые сохранения и ключи прототипа (ветка `rs/fix-saves`)
+
+Сквозной HTTP-контракт для всех пунктов о старом сохранении — `test/old-save-load-api.test.mjs` (в `test/contract-rust.list`, проходит в режимах `js` и `rust`).
+
+- **`null` в коллекциях старого сохранения** (`npc-social`: NPC, разговоры, обещания, торговцы; `world-memory`: сущности, `clock: null`, задания с `clock: null`; `offscreen-world`: шаги и записи; `captives`; `courier-letters`; летопись `world-deeds`) — пустая запись отсеивается, кампания загружается; JS `test/old-save-registries.test.mjs`, Rust `tests/old_save_registries.rs` в `sk-social`, `sk-memory`, `sk-world-story`, `sk-world-time`, `sk-world-life`.
+- **`applyLawEvent` нормализует сырой `state.law`** и при `schema_version: 1` с массивом `crimes` (`escape_attempts: "2"` после побега — 3); JS `test/old-save-registries.test.mjs`, Rust `sk-society/tests/old_save_law.rs`.
+- **`ensureNpcSocialState` хранит память** торговцев и NPC памяти мира без своего профиля (разговоры, обещания, отношения); JS `test/old-save-registries.test.mjs`, Rust `sk-social/tests/old_save_registries.rs`.
+- **`NpcRelationshipAdjusted`** меняет ступень вместе со счётом и пропускает неизвестного NPC и пустого героя (состояние сразу после события теперь несёт `relationship_tiers`, которые прежде появлялись только при следующей нормализации; после `normalizeCampaignState` состояние то же, корпус v2 — одна такая запись, `corpus-14232.jsonl:4`); JS `test/old-save-registries.test.mjs`, Rust `sk-social/tests/old_save_registries.rs`.
+- **«нескоро» не даёт 240 минут** («скоро» — только отдельным словом); JS `test/old-save-registries.test.mjs`, Rust `sk-social/tests/old_save_registries.rs`.
+- **Ключи `Object.prototype` в таблицах-объектах** — `Object.hasOwn` во всех таблицах `server/` (каталог вещей, облик снаряжения, портреты, стартовые наборы, тактики, сложность встречи, вид добычи, укрытие местности, тип команды, «Готовность», единица времени в сводке, подход проверки, стенд боёв, погода, темы сцены, глаголы и подписи боевого рассказа, середина комнаты, корпус склепа, спутники мебели, вид поступка и тяжесть в молве и др.); Rust-ветки, повторявшие находку функции прототипа, убраны; JS `test/prototype-keys.test.mjs`, Rust — тесты `prototype_*` в `sk-items`, `sk-economy`, `sk-character`, `sk-chargen`, `sk-tactical`, `sk-rules`, `sk-story`, `sk-themes`, `sk-world-time`.
+- **Враг с id `__proto__` в `attackForecast`** и герой `__proto__` у досягаемости зверя — состояния ищутся по собственному ключу (`actorConditionList`, как `sk_core::game::conditions`); JS `test/prototype-keys.test.mjs`.
+- **Карта мира старого сохранения** (`null` вместо концепта, источника, сцены, `knownLocations`, места-не-объекты в `worldLocationById`); JS `test/old-save-registries.test.mjs`, Rust — встроенный тест `sk-geometry` `world_map`.
+- **`campaignRulesetCanChange`**: `null` в журнале не скрывает событие после себя, запись без типа — «без типа», а не `undefined`; JS `test/old-save-registries.test.mjs`, Rust `sk-ruleset/tests/campaign_ruleset.rs` (`null_journal_entry_does_not_hide_later_event`).

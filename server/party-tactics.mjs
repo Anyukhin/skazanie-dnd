@@ -115,7 +115,7 @@ function approachCommands(state, actorIdValue, actor, targetId, keepDistanceFeet
 }
 
 function standUpPlan(state, actorIdValue, actor) {
-  const prone = (state?.mechanics?.conditions?.[String(actorIdValue)] ?? [])
+  const prone = actorConditionList(state, actorIdValue)
     .some((condition) => String(condition?.id ?? condition) === 'prone')
   if (!prone) return { commands: [], movementCost: 0 }
   const speed = effectiveSpeedFeet(state, actor, actorIdValue)
@@ -335,7 +335,7 @@ function downedAlly(actor) {
 }
 
 function conditionIdsForTactics(state, actorIdValue) {
-  return new Set((state?.mechanics?.conditions?.[String(actorIdValue)] ?? []).map((condition) => String(condition?.id ?? condition)))
+  return new Set(actorConditionList(state, actorIdValue).map((condition) => String(condition?.id ?? condition)))
 }
 
 function hasExtinguishableFlames(state, actorIdValue) {
@@ -956,4 +956,16 @@ export function planHeroCombatCommand(state, actorIdValue) {
     if (movement) return { command: movement.command, reason: `Сблизиться с ${combatId(target)} по доступному маршруту` }
   }
   return { command: end, reason: 'Нет безопасной поддержанной команды; завершить ход' }
+}
+
+/**
+ * Состояния актора: только собственный список словаря `mechanics.conditions`.
+ * Id вида `constructor` или `__proto__` и не-массив дают пустой список, а не
+ * метод прототипа (как `sk_core::game::conditions` в Rust).
+ */
+function actorConditionList(state, actorId) {
+  const conditions = state?.mechanics?.conditions
+  const key = String(actorId)
+  const list = conditions && typeof conditions === 'object' && Object.hasOwn(conditions, key) ? conditions[key] : undefined
+  return Array.isArray(list) ? list : []
 }

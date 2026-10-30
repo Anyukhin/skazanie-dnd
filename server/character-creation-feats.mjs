@@ -185,9 +185,9 @@ const isRecord = (value) => Boolean(value) && typeof value === 'object' && !Arra
 const token = (value) => String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase('en').replace(/[\s]+/gu, '-').replace(/_/gu, '-').replace(/—/gu, '-')
 const canonicalToken = (value) => {
   const raw = token(value)
-  return TOKEN_ALIASES[raw] ?? raw.replace(/-/gu, '_')
+  return ownEntry(TOKEN_ALIASES, raw) ?? raw.replace(/-/gu, '_')
 }
-const canonicalSpellId = (value) => SPELL_ID_ALIASES[token(value)] ?? token(value)
+const canonicalSpellId = (value) => ownEntry(SPELL_ID_ALIASES, token(value)) ?? token(value)
 const exactArray = (value, count, label) => {
   if (!Array.isArray(value) || value.length !== count) return { ok: false, code: 'CHOICE_COUNT_INVALID', reason: `${label}: нужно выбрать ${count}` }
   const result = value.map(canonicalToken)
@@ -844,4 +844,9 @@ export function resolveCharacterCreationFeat(featId, choices = {}, context = {})
   return {
     ok: true, feat: clone(feat), choices: clone(resolvedChoices), benefits: clone(benefits), mechanics_status: 'partial',
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

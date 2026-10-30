@@ -1053,7 +1053,7 @@ export function validateCharacterAbilityRollCommand(command, state, context = {}
     throw new CharacterLifecycleValidationError('Броски характеристик доступны только при создании героя D&D 2014', 'CHARACTER_ROLL_UNAVAILABLE')
   }
   if (command.command_type === 'RollCharacterWealth') {
-    if (!PHB_STARTING_WEALTH[command.character_class]) throw new CharacterLifecycleValidationError('Выберите класс PHB 2014', 'CHARACTER_CLASS_UNSUPPORTED')
+    if (!Object.hasOwn(PHB_STARTING_WEALTH, String(command.character_class))) throw new CharacterLifecycleValidationError('Выберите класс PHB 2014', 'CHARACTER_CLASS_UNSUPPORTED')
     if (actor.characterCreationRolls?.wealth) throw new CharacterLifecycleValidationError('Стартовое богатство уже определено', 'CHARACTER_WEALTH_ALREADY_ROLLED')
     return { command_type: 'RollCharacterWealth', actor_id: actorId, target_id: actorId, target_ids: [actorId], character_class: command.character_class, visibility: 'party' }
   }

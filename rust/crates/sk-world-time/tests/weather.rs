@@ -347,15 +347,17 @@ fn chronicle_line_is_deterministic_and_russian() {
     assert!(region.starts_with("За краем — другое небо."));
 }
 
-/// Замечено в JS: ключ прототипа вместо времени суток находит функцию
-/// `Object.prototype`, и летопись печатает её исходник.
+/// Ключ прототипа вместо времени суток, неба или климата — незнакомое значение:
+/// пустая строка летописи и климат по умолчанию.
 #[test]
-fn prototype_key_in_payload_prints_native_function_like_js() {
+fn prototype_key_in_payload_is_unknown_value() {
     let line = world_clock_narration(&json!({ "event_type": "TimeOfDayChanged", "payload": { "phase_after": "constructor" } }));
-    assert_eq!(line, "function Object() { [native code] }");
+    assert_eq!(line, "");
     let sky = world_clock_narration(&json!({ "event_type": "WeatherChanged", "payload": { "weather_after": "toString", "reason": "region" } }));
-    assert_eq!(sky, "За краем — другое небо. function toString() { [native code] }");
-    assert_eq!(weather_on_day(SEED, 3, "constructor"), "clear", "климат-ключ прототипа даёт пустую таблицу");
+    assert!(sky.starts_with("За краем — другое небо.") && !sky.contains("native code"), "{sky}");
+    // Климат-ключ прототипа берёт веса равнины (сид дня — по исходному слову).
+    let days: Vec<&str> = (0..9).map(|day| weather_on_day(SEED, day, "constructor")).collect();
+    assert_eq!(days, ["clear", "clear", "clear", "storm", "rain", "overcast", "overcast", "overcast", "clear"]);
 }
 
 /// Замечено в JS: число вместо героя `weatherForViewer` читает как минуты.

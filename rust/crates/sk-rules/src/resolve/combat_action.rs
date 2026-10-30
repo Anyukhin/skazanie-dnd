@@ -18,7 +18,7 @@ use super::resume::{self, at, reduce_events, resolve_pending, ruleset_options, P
 use super::{api, Resolve};
 use crate::checks::saves::{grapple_contest, roll_ability_check_with_conditions, saved_damage_amount, saving_throw_succeeded, D20Method};
 use crate::checks::skills::{challenge_rating_value, skill_proficiency_bonus};
-use crate::command::rules::{rule_ids, OBJECT_PROTOTYPE_KEYS};
+use crate::command::rules::rule_ids;
 use crate::constants::{ACTION_ECONOMY_EVENT_VERSION, EXTINGUISHABLE_FLAME_CONDITIONS, MONK_BONUS_UNARMED_ACTION_IDS, READIED_TRIGGERS};
 use crate::context::Context;
 use crate::core::{ability_modifier, armor_stealth_disadvantage, assert_mechanics_supported, coalesce, command_with, command_with_rules, condition_ids_for, dice_expression, event_from, player_actor, resource_pool, spread_value};
@@ -974,19 +974,11 @@ fn opportunity_attack(r: &mut Resolve<'_>, a: &Act) -> Step {
     Ok(())
 }
 
-/// `READIED_TRIGGERS[trigger]`: у ключей `Object.prototype` JS находит
-/// сам прототип (`{}`) или функцию — тогда `ActionReadied` несёт функцию, и
-/// первое же `structuredClone` события падает `DataCloneError` (`Err`).
+/// `READIED_TRIGGERS[trigger]` по собственному ключу: ключ прототипа —
+/// неизвестный триггер.
 fn readied_trigger_label(trigger: &str) -> Option<Result<Value, Halt>> {
     if let Some((_, label)) = READIED_TRIGGERS.iter().find(|(key, _)| *key == trigger) {
         return Some(Ok(Value::String((*label).into())));
-    }
-    if OBJECT_PROTOTYPE_KEYS.contains(&trigger) {
-        if trigger == "__proto__" {
-            return Some(Ok(js::obj()));
-        }
-        let name = if trigger == "constructor" { "Object".to_string() } else { trigger.to_string() };
-        return Some(Err(Fault::new("DataCloneError", format!("function {name}() {{ [native code] }} could not be cloned.")).into()));
     }
     None
 }

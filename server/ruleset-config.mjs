@@ -116,7 +116,7 @@ export class RulesetSelectionError extends Error {
 export function rulesetProfile(rulesetId, { fallback = null, requireCreation = false } = {}) {
   const requested = String(rulesetId ?? '').trim()
   const resolvedId = requested || fallback
-  const profile = RULESET_PROFILES[resolvedId]
+  const profile = ownEntry(RULESET_PROFILES, resolvedId)
   if (!profile) throw new RulesetSelectionError(`Неизвестный ruleset «${resolvedId || requested || '(пусто)'}»`)
   if (requireCreation && profile.creation_enabled !== true) {
     throw new RulesetSelectionError(`Ruleset ${profile.id} пока нельзя выбрать для новой кампании`, 'RULESET_CREATION_DISABLED')
@@ -149,7 +149,12 @@ export function publicRulesetProfiles() {
 
 export function rulesetRuleId(ruleId, rulesetId) {
   const value = String(ruleId ?? '')
-  const profile = RULESET_PROFILES[String(rulesetId ?? '')]
+  const profile = ownEntry(RULESET_PROFILES, String(rulesetId ?? ''))
   if (!profile || !value.startsWith(`${LEGACY_DEFAULT_RULESET_ID}:`)) return value
   return `${profile.id}:${value.slice(LEGACY_DEFAULT_RULESET_ID.length + 1)}`
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

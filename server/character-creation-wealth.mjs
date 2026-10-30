@@ -187,7 +187,7 @@ function weight(entry) {
 }
 
 function catalogPurchaseEntry(catalogId, entry) {
-  const override = PHB_CATALOG_OVERRIDES[catalogId] ?? {}
+  const override = ownEntry(PHB_CATALOG_OVERRIDES, catalogId) ?? {}
   const price = override.price_cp ?? priceCp(entry)
   const itemWeight = override.weight ?? weight(entry)
   if (!catalogId || !entry || isMagicItem(entry) || price == null || itemWeight == null) return null
@@ -338,7 +338,7 @@ function materializePurchase(entry, quantity, wealthRollId, index) {
   const known = entry.catalog_id?.startsWith('srd_5_2_1:') ? catalogItem(entry.catalog_id) : null
   if (known && !isMagicItem(known)) {
     const materialized = materializeCatalogItem(entry.catalog_id, { id, quantity, equipped: false })
-    const override = PHB_CATALOG_OVERRIDES[entry.catalog_id]
+    const override = ownEntry(PHB_CATALOG_OVERRIDES, entry.catalog_id)
     return {
       ...materialized,
       price_cp: entry.price_cp,
@@ -400,4 +400,9 @@ export function resolveStartingPurchases(classId, wealthRoll, purchases = []) {
     owned_assets: ownedAssets,
     remaining_currency: remainingCurrency(wealth.total_cp - spentCp),
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

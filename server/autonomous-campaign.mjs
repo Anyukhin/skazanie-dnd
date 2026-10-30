@@ -157,7 +157,9 @@ export function normalizeAutonomyState(input = {}) {
  */
 export function serverReputationDelta({ severity = 'minor', outcome = 'neutral' } = {}) {
   const table = { helpful: { minor: 2, major: 5 }, harmful: { minor: -2, major: -5 }, neutral: { minor: 0, major: 0 } }
-  return table[outcome]?.[severity] ?? 0
+  // Только собственные ключи: исход или тяжесть `constructor` — 0, а не функция.
+  const row = Object.hasOwn(table, String(outcome)) ? table[/** @type {keyof typeof table} */ (String(outcome))] : undefined
+  return (row && Object.hasOwn(row, String(severity)) ? row[/** @type {keyof typeof row} */ (String(severity))] : undefined) ?? 0
 }
 
 export function ensureAvailableHook(state = {}, source = 'fail-safe') {

@@ -171,7 +171,7 @@ function countBefore(before) {
     const word = raw.replace(/[^\p{L}\d]/gu, '')
     const digits = Number(word)
     if (/^\d{1,2}$/u.test(word) && digits > 0) return Math.min(MAX_COUNT, digits)
-    if (NUMERALS[word]) return Math.min(MAX_COUNT, NUMERALS[word])
+    if (ownEntry(NUMERALS, word)) return Math.min(MAX_COUNT, Number(ownEntry(NUMERALS, word)))
     if (!ADJECTIVE.test(word)) return 1
   }
   return 1
@@ -634,4 +634,17 @@ export function requirementsCoverage(requirements, props, terrain = {}) {
     else missing.push(requirement.id)
   }
   return { met, missing }
+}
+
+/**
+ * Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`,
+ * `toString`…) записями не считаются.
+ *
+ * @template T
+ * @param {Readonly<Record<string, T>>} table
+ * @param {unknown} key
+ * @returns {T | undefined}
+ */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

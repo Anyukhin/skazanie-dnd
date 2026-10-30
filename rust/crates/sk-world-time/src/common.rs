@@ -65,37 +65,6 @@ pub(crate) fn is_str(value: Option<&Value>, expected: &str) -> bool {
     matches!(value, Some(Value::String(text)) if text == expected)
 }
 
-/// Свойства `Object.prototype`, которые `obj[key]` находит у любого объекта.
-pub(crate) const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
-/// Ключ, который у любого объекта JS находит что-то унаследованное.
-pub(crate) fn is_prototype_key(key: &str) -> bool {
-    OBJECT_PROTOTYPE_KEYS.contains(&key)
-}
-
-/// `String(obj[key])` для унаследованного свойства `Object.prototype`:
-/// текст встроенной функции или самого прототипа.
-pub(crate) fn prototype_member_string(key: &str) -> String {
-    match key {
-        "__proto__" => "[object Object]".to_string(),
-        "constructor" => "function Object() { [native code] }".to_string(),
-        other => format!("function {other}() {{ [native code] }}"),
-    }
-}
-
 /// `createHash('sha256').update(parts.map((part) => String(part ?? '')).join('\0')).digest('hex')`.
 pub(crate) fn digest(parts: &[String]) -> String {
     hash::sha256_hex(parts.join("\0"))
@@ -191,12 +160,5 @@ mod tests {
         assert_eq!(replace_all_literal("a {x} b {x}", "{x}", "Y"), "a Y b Y");
         assert_eq!(replace_all_literal("a {x} b", "{x}", "$&$$"), "a {x}$ b");
         assert_eq!(replace_all_literal("a {x} b", "{x}", "[$`|$']"), "a [a | b] b");
-    }
-
-    #[test]
-    fn prototype_strings() {
-        assert_eq!(prototype_member_string("constructor"), "function Object() { [native code] }");
-        assert_eq!(prototype_member_string("toString"), "function toString() { [native code] }");
-        assert_eq!(prototype_member_string("__proto__"), "[object Object]");
     }
 }

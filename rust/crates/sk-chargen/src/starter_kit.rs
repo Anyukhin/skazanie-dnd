@@ -411,35 +411,15 @@ const KITS_2024: [(&str, Kit2024); 13] = [
     ("wizard", Kit2024 { items: &[("dagger", 2, true), ("arcane-focus-staff", 1, true)], gear: &["Мантия", "Книга заклинаний", "Набор учёного"] }),
 ];
 
-/// Свойства `Object.prototype`, которые `KITS_2024[key]` в JS находит у любого объекта.
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
-/// Что находит `KITS_2024[key]` в JS.
+/// Что находит `KITS_2024[key]` (собственный ключ) в JS.
 enum KitLookup {
     Kit(&'static Kit2024),
-    /// Свойство прототипа: истинное значение без `items` — JS падает на `kit.items.map`.
-    Prototype,
     Missing,
 }
 
 fn kit_2024(key: &str) -> KitLookup {
     if let Some((_, kit)) = KITS_2024.iter().find(|(id, _)| *id == key) {
         KitLookup::Kit(kit)
-    } else if OBJECT_PROTOTYPE_KEYS.contains(&key) {
-        KitLookup::Prototype
     } else {
         KitLookup::Missing
     }
@@ -457,7 +437,6 @@ fn kit_2024_for(class_key: Option<&Value>, abilities: &Value) -> KitLookup {
 /// только показ: выдаёт набор событие создания, а выбора внутри варианта A нет.
 /// Ловкий воин получит вариант B, о чём говорит подпись.
 pub fn starter_kit_2024_preview(class_key: &str) -> Option<Value> {
-    // Ключ прототипа в JS падает `TypeError` на `kit.items`; здесь — как неизвестный класс.
     let KitLookup::Kit(kit) = kit_2024(class_key) else {
         return None;
     };
@@ -1322,7 +1301,6 @@ pub fn with_starter_kit(hero: Option<&Value>, options: &StarterKitOptions) -> Ki
         Some(Value::Array(items)) if !items.is_empty() => Value::Array(items.clone()),
         _ => Value::Array(match kit {
             KitLookup::Kit(kit) => kit_2024_inventory(&hero_id, kit)?,
-            KitLookup::Prototype => return Err(StarterKitError::Runtime("Cannot read properties of undefined (reading 'map')".into())),
             KitLookup::Missing if ruleset_2014 => match classic_profile.as_ref() {
                 Some(classic_profile) => {
                     let version = options.starter_policy_version.clone().unwrap_or_else(classic_policy_version);

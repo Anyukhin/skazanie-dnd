@@ -1200,9 +1200,6 @@ fn tactical_narration_lines(list: &[Value], state: &Value, options: Option<&Valu
                     opportunity: opportunity_attacks.contains(&index),
                     lead: Some(&lead),
                 };
-                if melee_verbs_throw(&book, &input, payload, ev) {
-                    return Err(JsTypeError("MELEE_VERBS[damage_type].map is not a function"));
-                }
                 meaningful.push(attack_phrase(&mut book, &input, ev));
                 if js::is_true(get(damage_payload, "resistant")) {
                     meaningful.push("Удар словно вязнет — цель сопротивляется такому урону.".into());
@@ -1596,28 +1593,6 @@ fn tactical_narration_lines(list: &[Value], state: &Value, options: Option<&Valu
         }
     }
     Ok((if meaningful.is_empty() { turns } else { meaningful }, sky))
-}
-
-/// Бросит ли JS `TypeError` в `transitiveAttackVerbs` (`server/combat-phrases.mjs`):
-/// `MELEE_VERBS[String(damage_type)]` с ключом прототипа (`constructor`,
-/// `__proto__`…) находит функцию или прототип, и `.map` у них нет. Перенос в
-/// `sk_narration_base::combat_phrases` берёт здесь глаголы по умолчанию, поэтому
-/// исключение воспроизводится тут: если реплика зависит от вида урона (путь
-/// ближнего удара без природной атаки), то в JS до неё дело не дошло бы.
-fn melee_verbs_throw(book: &Phrasebook, input: &AttackPhraseInput<'_>, payload: &Value, event: Option<&Value>) -> bool {
-    let key = js::s(get(Some(payload), "damage_type"));
-    if ["slashing", "piercing", "bludgeoning", "default"].contains(&key.as_str()) || crate::jsv::object_prototype_text(&key).is_none() {
-        return false;
-    }
-    let probe = |damage_type: &str| {
-        let mut changed = payload.clone();
-        if let Some(object) = changed.as_object_mut() {
-            object.insert("damage_type".into(), Value::String(damage_type.into()));
-        }
-        let mut copy = book.clone();
-        attack_phrase(&mut copy, &AttackPhraseInput { payload: Some(&changed), ..*input }, event)
-    };
-    probe("slashing") != probe("piercing")
 }
 
 /// `a ?? b`, где `a` — уже вычисленное значение.

@@ -7,19 +7,6 @@ pub(crate) const PROTOTYPE_KEYS: [&str; 12] = [
     "isPrototypeOf", "propertyIsEnumerable", "toString", "valueOf", "__proto__", "toLocaleString",
 ];
 
-/// `String(obj[key])` для ключа прототипа у обычного объекта-словаря:
-/// метод печатается исходником `function name() { [native code] }`,
-/// `__proto__` — `[object Object]`. Иной ключ — `None`.
-pub(crate) fn prototype_string(key: &str) -> Option<String> {
-    if key == "__proto__" {
-        return Some("[object Object]".into());
-    }
-    PROTOTYPE_KEYS.contains(&key).then(|| {
-        let name = if key == "constructor" { "Object" } else { key };
-        format!("function {name}() {{ [native code] }}")
-    })
-}
-
 /// `text.length` в JS.
 pub(crate) fn utf16_len(text: &str) -> usize {
     text.encode_utf16().count()

@@ -105,7 +105,7 @@ export const IMPROVISED_EFFECTS = Object.freeze({
  * @returns {string|null}
  */
 export function scenePropIntentFor(effectId) {
-  const effect = IMPROVISED_EFFECTS[clean(effectId, 40)] ?? null
+  const effect = ownEntry(IMPROVISED_EFFECTS, clean(effectId, 40)) ?? null
   return effect?.target === 'scene_prop' ? String(effect.sceneIntent) : null
 }
 
@@ -185,7 +185,7 @@ function isAlive(state, actorIdValue) {
  * ответ игроку, а не молчаливое превращение в «ничего не произошло».
  */
 export function planImprovisedEffect(state, { actorId = '', effectId = 'none', targetId = '', hazardId = '', risk = 'minor' } = {}) {
-  const effect = IMPROVISED_EFFECTS[clean(effectId, 40)] ?? null
+  const effect = ownEntry(IMPROVISED_EFFECTS, clean(effectId, 40)) ?? null
   if (!effect) return { effect: IMPROVISED_EFFECTS.none, commands: [], summary: IMPROVISED_EFFECTS.none.summary }
   if (effect.target === 'none') return { effect, commands: [], summary: effect.summary }
   // Предмет обстановки сюда доходить не должен: маршрут в `OperateSceneObject`
@@ -218,9 +218,9 @@ export function planImprovisedEffect(state, { actorId = '', effectId = 'none', t
   }
 
   if (effect.requiresHazard) {
-    const hazard = ENVIRONMENT_HAZARDS[clean(hazardId, 40)] ?? null
+    const hazard = ownEntry(ENVIRONMENT_HAZARDS, clean(hazardId, 40)) ?? null
     if (!hazard) return { effect: IMPROVISED_EFFECTS.none, rejected: 'такой опасности нет в списке', commands: [], summary: IMPROVISED_EFFECTS.none.summary }
-    const expression = hazard.expressions[clean(risk, 20)] ?? hazard.expressions.minor
+    const expression = ownEntry(hazard.expressions, clean(risk, 20)) ?? hazard.expressions.minor
     return {
       effect,
       hazard,
@@ -262,4 +262,9 @@ export function resolveActionCost(state, actorId, requestedCost) {
   const economy = combat.action_economy?.[String(actorId)] ?? {}
   if (cost === 'bonus_action') return { cost, available: economy.bonus_action !== false, slot: 'бонусное действие' }
   return { cost, available: economy.action !== false, slot: 'действие' }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

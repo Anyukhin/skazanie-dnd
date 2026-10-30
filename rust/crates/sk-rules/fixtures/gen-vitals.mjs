@@ -489,11 +489,11 @@ for (let s = 0; s < states.length; s += 1) {
 // --- блоки проверки ----------------------------------------------------------------
 
 const blocks = {
-  b57: await blockFunction([[7003, 7003], [7007, 7014]], ['const actorFate', "if (command.command_type === 'ResolveHeroDeath')"], ['state', 'command', 'context'], 'return command'),
-  b58: await blockFunction([[7016, 7064]], ["if (['StartRest', 'SpendHitPointDie', 'CompleteRest']"], ['state', 'command', 'context'], 'return command'),
-  b61: await blockFunction([[7080, 7082]], ["if (command.command_type === 'ApplyHealing'"], ['state', 'command', 'context'], 'return command'),
-  b62: await blockFunction([[7083, 7085]], ["if (command.command_type === 'ReduceHitPointMaximum'"], ['state', 'command', 'context'], 'return command'),
-  b70: await blockFunction([[7591, 7607]], ["if (command.command_type === 'IdentifyEnemy')"], ['state', 'command', 'context'], 'return command'),
+  b57: await blockFunction([[7004, 7004], [7008, 7015]], ['const actorFate', "if (command.command_type === 'ResolveHeroDeath')"], ['state', 'command', 'context'], 'return command'),
+  b58: await blockFunction([[7017, 7065]], ["if (['StartRest', 'SpendHitPointDie', 'CompleteRest']"], ['state', 'command', 'context'], 'return command'),
+  b61: await blockFunction([[7081, 7083]], ["if (command.command_type === 'ApplyHealing'"], ['state', 'command', 'context'], 'return command'),
+  b62: await blockFunction([[7084, 7086]], ["if (command.command_type === 'ReduceHitPointMaximum'"], ['state', 'command', 'context'], 'return command'),
+  b70: await blockFunction([[7592, 7608]], ["if (command.command_type === 'IdentifyEnemy')"], ['state', 'command', 'context'], 'return command'),
 }
 const TYPES = ['ResolveHeroDeath', 'StartRest', 'SpendHitPointDie', 'SpendHitPointDie', 'CompleteRest', 'CompleteRest', 'ApplyHealing', 'ReduceHitPointMaximum', 'IdentifyEnemy', 'IdentifyEnemy', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition']
 const contexts = [{}, { isAdmin: true }, { serverAuthoritativeCombat: 1 }, { isNpcScheduler: true, isAdmin: true }, { isAdmin: 'yes' }]

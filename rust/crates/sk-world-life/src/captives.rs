@@ -409,10 +409,9 @@ fn captive_post(state: &Value, enemy: &Value) -> Option<Value> {
     let enemy_id = js::string(get(Some(enemy), "id"));
     let positions = get(get(Some(state), "mechanics"), "positions");
     let (x, y) = match member(positions, &enemy_id) {
-        Member::Own(Value::Null) | Member::Missing => (get(Some(enemy), "x"), get(Some(enemy), "y")),
+        // Только собственная позиция: ключ прототипа — к полям врага.
+        Member::Own(Value::Null) | Member::Missing | Member::Inherited => (get(Some(enemy), "x"), get(Some(enemy), "y")),
         Member::Own(position) => (get(Some(position), "x"), get(Some(position), "y")),
-        // Функция или прототип: своих `x`/`y` нет — `NaN`.
-        Member::Inherited => (None, None),
     };
     let (x, y) = (safe_integer(x)?, safe_integer(y)?);
     let candidate = json!({ "x": x, "y": y });

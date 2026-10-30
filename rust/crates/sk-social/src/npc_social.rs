@@ -383,7 +383,8 @@ pub fn promise_due_offset_minutes(value: &Value) -> Option<i64> {
     if text::test(re!(r"\btonight\b|сегодня(?:\s+вечером)?", "iu"), &hint) {
         return Some(720);
     }
-    if text::test(re!(r"\bsoon\b|скоро", "iu"), &hint) {
+    // «скоро» — отдельным словом: «нескоро» срока не задаёт.
+    if text::test(re!(r"\bsoon\b|(?<![\p{L}\p{N}])скоро", "iu"), &hint) {
         return Some(240);
     }
     let pattern = re!(r"(?:через|in)?\s*(\d{1,3})\s*(минут(?:у|ы)?|мин|час(?:а|ов)?|дн(?:я|ей)|minute(?:s)?|min|hour(?:s)?|hr|day(?:s)?)", "iu");
@@ -927,7 +928,10 @@ pub fn ensure_npc_social_state(input: &Value, state: &Value, options: &Value) ->
         });
         profiles.insert(tpl(id), safe_profile(&draft, &NULL));
     }
-    let mut merged = social.as_object().cloned().unwrap_or_default();
+    // Разговоры, обещания и отношения сверяются с полным списком NPC, а не с
+    // одними профилями входа: иначе память о торговце или NPC памяти мира без
+    // своего профиля терялась бы при первой нормализации.
+    let mut merged = input.as_object().cloned().unwrap_or_default();
     merged.insert("npcs".into(), Value::Array(profiles.into_values().collect()));
     normalize_npc_social_state(&Value::Object(merged), options)
 }
@@ -2164,20 +2168,36 @@ pub fn apply_npc_social_event(input: &Value, event: &Value, state: &Value, optio
             let npc_id = clean(get(payload_source, "npc_id"), 120);
             let hero_id = clean(get(payload_source, "hero_id"), 120);
             let delta = integer(get(payload_source, "delta"), 0).clamp(-25, 25);
-            // Счёт меняется, а ступени (`relationship_tiers`) — нет: в JS их
-            // пересчитывает только следующая нормализация.
-            let mut relationships = match social.get("relationships") {
-                Some(Value::Object(map)) => map.clone(),
-                _ => Map::new(),
-            };
-            let mut heroes = match relationships.get(&npc_id) {
-                Some(Value::Object(heroes)) => heroes.clone(),
-                _ => Map::new(),
-            };
-            let before = heroes.get(&hero_id).map_or(0, |score| integer(Some(score), 0));
-            heroes.insert(hero_id, Value::from((before + delta).clamp(-100, 100)));
-            relationships.insert(npc_id, Value::Object(js_order(heroes)));
-            social.insert("relationships".into(), Value::Object(js_order(relationships)));
+            // Отношение есть только у известного NPC и названного героя — ровно
+            // то, что оставит следующая нормализация; ступень меняется вместе
+            // со счётом.
+            let known = array(social.get("npcs")).iter().any(|npc| str_field(npc, "id") == npc_id);
+            if !npc_id.is_empty() && !hero_id.is_empty() && known {
+                let mut relationships = match social.get("relationships") {
+                    Some(Value::Object(map)) => map.clone(),
+                    _ => Map::new(),
+                };
+                let mut heroes = match relationships.get(&npc_id) {
+                    Some(Value::Object(heroes)) => heroes.clone(),
+                    _ => Map::new(),
+                };
+                let before = heroes.get(&hero_id).map_or(0, |score| integer(Some(score), 0));
+                let after = (before + delta).clamp(-100, 100);
+                heroes.insert(hero_id.clone(), Value::from(after));
+                relationships.insert(npc_id.clone(), Value::Object(js_order(heroes)));
+                social.insert("relationships".into(), Value::Object(js_order(relationships)));
+                let mut tiers = match social.get("relationship_tiers") {
+                    Some(Value::Object(map)) => map.clone(),
+                    _ => Map::new(),
+                };
+                let mut hero_tiers = match tiers.get(&npc_id) {
+                    Some(Value::Object(heroes)) => heroes.clone(),
+                    _ => Map::new(),
+                };
+                hero_tiers.insert(hero_id, string_value(relationship_tier_for(after)));
+                tiers.insert(npc_id, Value::Object(js_order(hero_tiers)));
+                social.insert("relationship_tiers".into(), Value::Object(js_order(tiers)));
+            }
         }
         Some("NpcPromiseRecorded") => {
             let promise = safe_promise(get(payload_source, "promise").unwrap_or(&NULL));

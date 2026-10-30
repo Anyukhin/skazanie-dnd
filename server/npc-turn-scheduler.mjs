@@ -167,7 +167,7 @@ function hasClearActorToPoint(state, actorId, from, to) {
 }
 
 function conditionIds(state, id) {
-  return new Set((state.mechanics?.conditions?.[String(id)] ?? []).map((condition) => String(condition?.id ?? condition)))
+  return new Set(actorConditionList(state, id).map((condition) => String(condition?.id ?? condition)))
 }
 
 function isCombatCapable(state, actor) {
@@ -1298,13 +1298,13 @@ export function planNpcTurn(rawState, enemyId) {
   if (incapacitatingConditionFor(state, enemyId)) return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
   // Изгнанная нежить бежит от изгнавшего как можно дальше и уклоняется,
   // а не атакует (PHB 2014, «Изгнание нежити»).
-  const turned = (state.mechanics?.conditions?.[String(enemyId)] ?? []).find((condition) => String(condition?.id ?? condition) === 'turned')
+  const turned = actorConditionList(state, enemyId).find((condition) => String(condition?.id ?? condition) === 'turned')
   if (turned) return turnedUndeadPlan(state, enemy, String(turned.source_actor ?? ''))
   // «Сбит с ног» без срока (редакция 2014) сам не проходит: существо встаёт,
   // тратя половину скорости. Остаток хода планировщик соберёт следующим
   // проходом, уже от состояния с потраченным движением.
   const standUp = { command_type: 'UseCombatAction', actor_id: String(enemyId), action_id: 'stand-up' }
-  if ((state.mechanics?.conditions?.[String(enemyId)] ?? []).some((condition) => String(condition?.id ?? condition) === 'prone')) {
+  if (actorConditionList(state, enemyId).some((condition) => String(condition?.id ?? condition) === 'prone')) {
     // Та же цена, что берёт Rules Engine: половина текущей скорости. Если её не
     // хватает, существо действует лёжа, а не упирается в отказ движка.
     const speed = effectiveSpeedFeet(state, enemy, enemyId)
@@ -1314,7 +1314,7 @@ export function planNpcTurn(rawState, enemyId) {
   // Пляшущее существо («Неудержимая пляска Отто») тратит действие на попытку
   // совладать с собой: бить с помехой, стоя на месте, ему всё равно хуже.
   const regainControl = { command_type: 'UseCombatAction', actor_id: String(enemyId), action_id: 'steady-nerves' }
-  if ((state.mechanics?.conditions?.[String(enemyId)] ?? []).some((condition) => condition?.action_save_ability)
+  if (actorConditionList(state, enemyId).some((condition) => condition?.action_save_ability)
     && npcCommandValid(state, regainControl)) return [regainControl, { command_type: 'EndTurn', actor_id: String(enemyId) }]
   const currentEconomy = state.mechanics?.combat?.action_economy?.[String(enemyId)] ?? {}
   const usedBeforePlan = Math.max(0, Number(currentEconomy.attacks_used) || 0)
@@ -1831,4 +1831,16 @@ export async function runNpcTurnScheduler({
     loaded = await eventStore.load(campaignId)
   }
   throw new RulesValidationError(`NPC scheduler exceeded ${maxTurns} turns`, 'NPC_TURN_LIMIT')
+}
+
+/**
+ * Состояния актора: только собственный список словаря `mechanics.conditions`.
+ * Id вида `constructor` или `__proto__` и не-массив дают пустой список, а не
+ * метод прототипа (как `sk_core::game::conditions` в Rust).
+ */
+function actorConditionList(state, actorId) {
+  const conditions = state?.mechanics?.conditions
+  const key = String(actorId)
+  const list = conditions && typeof conditions === 'object' && Object.hasOwn(conditions, key) ? conditions[key] : undefined
+  return Array.isArray(list) ? list : []
 }

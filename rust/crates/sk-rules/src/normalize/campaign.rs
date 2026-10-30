@@ -484,7 +484,7 @@ fn combat(source: &Value) -> Value {
         .into_iter()
         .filter(|(_, readied)| {
             let trigger = js::string(readied.get("trigger"));
-            READIED_TRIGGERS.contains(&trigger.as_str()) || crate::command::rules::OBJECT_PROTOTYPE_KEYS.contains(&trigger.as_str())
+            READIED_TRIGGERS.contains(&trigger.as_str())
         })
         .collect();
     combat.insert("readied".into(), Value::Object(readied));

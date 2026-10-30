@@ -16,26 +16,7 @@ use crate::geometry::footprint::distance_between_actor_positions;
 use crate::tactical_geometry::npc_positioning::{npc_combat_actor_for, npc_interaction_target_for_viewer, npc_placement_for};
 use crate::tactical_geometry::actor_point;
 
-/// Ключи `Object.prototype`, которые JS находит у таблицы-объекта.
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
 /// `creatureHeightFeet(actor)`: рост в футах — явный (1–30) или по размеру.
-///
-/// Как в JS, размер с именем свойства `Object.prototype` (`constructor`…)
-/// находит в таблице функцию; числом она — `NaN`.
 pub fn creature_height_feet(actor: Option<&Value>) -> f64 {
     let field = |key: &str| actor.and_then(|actor| actor.get(key));
     let explicit = js::number(crate::core::coalesce(&[field("height_feet"), field("heightFeet")]));
@@ -58,7 +39,6 @@ pub fn creature_height_feet(actor: Option<&Value>) -> f64 {
         "large" => 8.0,
         "huge" => 15.0,
         "gargantuan" => 25.0,
-        other if OBJECT_PROTOTYPE_KEYS.contains(&other) => f64::NAN,
         _ => 6.0,
     }
 }

@@ -180,8 +180,8 @@ fn chronicle_cards_for_the_three_ladder_steps_only() {
     assert!(beast_chronicle_entry(&json!({ "event_type": "BeastBit", "payload": { "beast_id": "beast:1" } })).is_none());
     assert!(beast_chronicle_entry(&json!({ "event_type": "BeastTamed", "payload": { "beast_id": "" } })).is_none());
     let fed = beast_chronicle_entry(&json!({ "event_type": "BeastFed", "payload": { "beast_id": "b", "diet": "constructor" } })).expect("карточка");
-    // Повадка-функция в JSON не пишется — поля подписи нет.
-    assert!(fed["beast"].get("diet_label").is_none());
+    // Повадка-ключ прототипа — незнакомая: подпись пустая.
+    assert_eq!(fed["beast"]["diet_label"], "");
     assert!(fed["text"].as_str().is_some_and(|text| text.contains("еду")));
     assert_eq!(BEAST_PLAYER_COMMAND_TYPES, ["CalmBeast", "FeedBeast", "ScareWithBeast"]);
 }

@@ -175,19 +175,19 @@ fn reputation_delta_by_severity_and_hop() {
     assert_eq!(rumor_reputation_delta(None, None), -2.0);
 }
 
-/// Замечено в JS: ключи `Object.prototype` проходят таблицы как свои.
+/// Ключи `Object.prototype` — незнакомые значения таблиц, а обещание без
+/// `npc_id` по-прежнему даёт свидетеля `undefined` (замечено в JS).
 #[test]
-fn js_prototype_quirks_are_kept() {
-    // Вид `constructor` — законный вид летописи (`DEED_KINDS[kind]` истинно).
+fn prototype_keys_are_unknown_table_values() {
+    // Вид `constructor` — не вид летописи: запись отбрасывается.
     let ledger = normalize_world_deeds_state(Some(&json!({ "deeds": [{ "id": "deed:x", "kind": "constructor" }] })));
-    assert_eq!(ledger["deeds"][0]["kind"], "constructor");
-    assert_eq!(ledger["deeds"][0]["severity"], "minor");
-    // Ступень `toString` даёт поправку NaN (в JSON — null).
-    assert!(rumor_reputation_delta(Some(&json!({ "severity": "toString" })), None).is_nan());
-    // Обстановка вида `constructor` — в предмете поступка текст встроенной функции.
+    assert_eq!(ledger["deeds"], json!([]));
+    // Ступень `toString` — незнакомая: поправка как у неизвестной ступени.
+    assert_eq!(rumor_reputation_delta(Some(&json!({ "severity": "toString" })), None), -2.0);
+    // Обстановка вида `constructor` — общее слово «обстановка».
     let state = witnessed();
     let deed = deed_from_event(&state, &json!({ "event_id": "e", "event_type": "SceneObjectOperated", "actor_id": "hero", "payload": { "prop_id": "p", "kind": "constructor", "intent": "topple" } })).unwrap_or_default();
-    assert_eq!(deed["subject"], "function Object() { [native code] }");
+    assert_eq!(deed["subject"], "обстановка");
     // Обещание без `npc_id`: свидетелем становится строка `undefined`.
     let mut promised = witnessed();
     promised["social"]["promises"] = json!([{ "id": "promise-1", "hero_id": "hero" }]);

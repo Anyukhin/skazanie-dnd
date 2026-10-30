@@ -24,7 +24,7 @@ use sk_society::reputation_policy::faction_ids_for_npc;
 use sk_world_life::captives::held_captive_for_npc;
 
 use crate::common::{
-    array, coalesce, digest, get, integer, integer_or, is_prototype_key, is_safe_id, is_str, prototype_member_string, replace_all_literal, string, text, text_str, unique, utf16_cmp,
+    array, coalesce, digest, get, integer, integer_or, is_safe_id, is_str, replace_all_literal, string, text, text_str, unique, utf16_cmp,
 };
 
 pub const WORLD_DEEDS_SCHEMA_VERSION: i64 = 1;
@@ -82,9 +82,10 @@ pub fn deed_kind(name: &str) -> Option<&'static DeedKind> {
     DEED_KINDS.iter().find(|(key, _)| *key == name).map(|(_, entry)| entry)
 }
 
-/// `DEED_KINDS[name]` истинно: собственный вид или ключ `Object.prototype`.
+/// Вид поступка известен: только собственный ключ таблицы (`Object.hasOwn` в JS),
+/// ключ `Object.prototype` видом не считается.
 fn known_kind(name: &str) -> bool {
-    deed_kind(name).is_some() || is_prototype_key(name)
+    deed_kind(name).is_some()
 }
 
 fn severity_of(name: &str) -> &'static str {
@@ -238,8 +239,7 @@ fn str_list(value: Option<&Value>) -> Vec<String> {
     array(value).iter().map(|entry| js::s(Some(entry))).collect()
 }
 
-/// `safeDeed(value)`. Значение `null` в JS роняет нормализацию
-/// (`null.kind`); здесь такая запись просто отбрасывается.
+/// `safeDeed(value)`: `null` старого сохранения — запись отбрасывается.
 fn safe_deed(value: Option<&Value>) -> Option<Value> {
     let value = value?;
     if value.is_null() {
@@ -395,11 +395,6 @@ fn with_scene_witnesses(first: String, state: &Value) -> Vec<String> {
 fn prop_kind_label(name: &str) -> String {
     if let Some((_, label)) = PROP_KIND_LABELS.iter().find(|(key, _)| *key == name) {
         return (*label).to_string();
-    }
-    if is_prototype_key(name) {
-        // `PROP_KIND_LABELS['constructor']` — встроенная функция, и в предмет
-        // поступка попадает её текст (так ведёт себя JS).
-        return prototype_member_string(name);
     }
     "обстановка".to_string()
 }
@@ -1088,13 +1083,12 @@ pub fn plan_world_rumor_tick(state: &Value, options: &Value) -> Value {
     json!({ "commands": commands, "targets": targets })
 }
 
-/// `rumorReputationDelta(deed, hop)`: поправка по тяжести и дальности. Ступень
-/// — ключ `Object.prototype` даёт в JS `NaN`, и здесь тоже.
+/// `rumorReputationDelta(deed, hop)`: поправка по тяжести и дальности.
+/// Неизвестная ступень (в том числе ключ `Object.prototype`) — как малая.
 pub fn rumor_reputation_delta(deed: Option<&Value>, hop: Option<&Value>) -> f64 {
     let severity = js::string(get(deed, "severity"));
     let base = match DEED_REPUTATION_BASE.iter().find(|(key, _)| *key == severity) {
         Some((_, value)) => *value,
-        None if is_prototype_key(&severity) => f64::NAN,
         None => 2.0,
     };
     let divisor = [1.0, 2.0, 4.0][integer(hop, 0).clamp(0, 2) as usize];

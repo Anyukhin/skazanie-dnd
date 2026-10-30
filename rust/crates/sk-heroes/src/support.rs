@@ -57,27 +57,6 @@ pub(crate) fn unique_values(values: impl IntoIterator<Item = Value>) -> Vec<Valu
     result
 }
 
-/// Собственные свойства `Object.prototype`: `{ … }[key]` находит их у любого
-/// объектного литерала.
-pub(crate) const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
-pub(crate) fn is_prototype_key(key: &str) -> bool {
-    OBJECT_PROTOTYPE_KEYS.contains(&key)
-}
-
 /// Вставить поле, если оно есть: `{ key: value }`, где `undefined` в JSON не
 /// попадает, а `null` — попадает.
 pub(crate) fn insert_present(map: &mut Map<String, Value>, key: &str, value: Option<&Value>) {

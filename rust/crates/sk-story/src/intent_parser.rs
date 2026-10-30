@@ -25,7 +25,7 @@ use sk_scenario::party_exit_intent::announces_movement;
 use sk_social::npc_social_check::{affirmative_action_text, classify_npc_social_check};
 use sk_world_story::scenario_knight::scenario_knight_action_from_text;
 
-use crate::support::{head_utf16, prototype_string, utf16_len};
+use crate::support::{head_utf16, utf16_len};
 
 /// Предел возвратов движка: у `fancy_regex` по умолчанию миллион, и на длинном
 /// мусоре шаблон «вернул бы» «нет» там, где JS находит совпадение.
@@ -464,13 +464,12 @@ const ROLE_ALIASES: [(&str, &[&str]); 5] = [
     ("blacksmith", &["кузнец"]),
 ];
 
-/// `ROLE_ALIASES[key] ?? []` с ключами прототипа: метод `Object` не массив,
-/// и `flatMap` кладёт его элементом — дальше он становится строкой.
+/// `ROLE_ALIASES[key] ?? []` по собственному ключу.
 fn role_aliases(key: &str) -> Vec<String> {
     if let Some((_, aliases)) = ROLE_ALIASES.iter().find(|(role, _)| *role == key) {
         return aliases.iter().map(|alias| (*alias).to_string()).collect();
     }
-    prototype_string(key).into_iter().collect()
+    Vec::new()
 }
 
 fn social_aliases_for(actor: &Value) -> Vec<String> {
@@ -1012,12 +1011,11 @@ mod tests {
     }
 
     #[test]
-    fn prototype_role_becomes_alias_like_js() {
-        // Замечено в JS: `ROLE_ALIASES['constructor']` — функция `Object`, она
-        // становится строкой-алиасом, и собеседник с ролью `constructor`
-        // находится по словам «function object native code».
+    fn prototype_role_has_no_aliases() {
+        // Роль-ключ прототипа — без алиасов: исходник функции не становится
+        // словом, по которому находят собеседника.
         let state = json!({ "scene": { "location": "X" }, "social": { "npcs": [{ "id": "n1", "name": "Пётр", "role": "constructor", "location": "X" }] } });
         let found = resolve_present_social_actors(Some(&s("function object native code")), Some(&state));
-        assert_eq!(found.len(), 1);
+        assert!(found.is_empty());
     }
 }

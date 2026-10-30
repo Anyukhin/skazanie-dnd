@@ -27,7 +27,7 @@ use sk_tactical::tactical_map::{
 };
 use sk_themes::scene_themes::{layout_organic_cave, LayoutOptions, ThemeError, SCENE_THEMES};
 
-use crate::weather::{object_prototype_text, slice_utf16, JsNum};
+use crate::weather::{slice_utf16, JsNum};
 
 /// `LEVEL_GENERATOR`: генератор этажей в записи карты.
 pub const LEVEL_GENERATOR_ID: &str = "level-generator";
@@ -207,14 +207,11 @@ fn type_error(key: &str, of: &str) -> ThemeError {
     ThemeError { name: "TypeError", code: None, message: format!("Cannot read properties of {of} (reading '{key}')") }
 }
 
-/// `SIZE_CLASSES[map.sizeClass].maxProps`. Ключ прототипа находит функцию без
-/// `maxProps` — `placeProps` берёт своё умолчание 250; неизвестный ключ — `TypeError`.
+/// `ownEntry(SIZE_CLASSES, map.sizeClass).maxProps`: неизвестный ключ (и ключ
+/// прототипа) — `TypeError`.
 fn max_props_of(map: &TacticalMap) -> Result<i64> {
     if let Some(limits) = tm::size_class(&map.size_class) {
         return Ok(limits.max_props);
-    }
-    if object_prototype_text(&map.size_class).is_some() {
-        return Ok(250);
     }
     Err(type_error("maxProps", "undefined"))
 }

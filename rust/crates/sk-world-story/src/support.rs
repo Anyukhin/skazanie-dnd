@@ -70,55 +70,6 @@ pub(crate) fn index0(value: Option<&Value>) -> Option<Value> {
     }
 }
 
-/// Что находит `obj[key]` у любого объекта JS по ключу прототипа.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ProtoMember {
-    /// Метод `Object.prototype`: текст функции в шаблоне строки.
-    Function(&'static str),
-    /// `__proto__`: сам `Object.prototype` — пустой объект.
-    Prototype,
-}
-
-impl ProtoMember {
-    /// Шаблон JS: `${value}`.
-    pub(crate) fn display(self) -> String {
-        match self {
-            Self::Function(name) => format!("function {name}() {{ [native code] }}"),
-            Self::Prototype => "[object Object]".into(),
-        }
-    }
-
-    /// Значение в `JSON.stringify`: функция пропадает, прототип — `{}`.
-    pub(crate) fn json(self) -> Option<Value> {
-        match self {
-            Self::Function(_) => None,
-            Self::Prototype => Some(Value::Object(serde_json::Map::new())),
-        }
-    }
-}
-
-/// Член `Object.prototype` по ключу или `None`.
-pub(crate) fn object_prototype_member(key: &str) -> Option<ProtoMember> {
-    Some(match key {
-        "constructor" => ProtoMember::Function("Object"),
-        "__defineGetter__" | "__defineSetter__" | "hasOwnProperty" | "__lookupGetter__" | "__lookupSetter__" | "isPrototypeOf"
-        | "propertyIsEnumerable" | "toString" | "valueOf" | "toLocaleString" => ProtoMember::Function(match key {
-            "__defineGetter__" => "__defineGetter__",
-            "__defineSetter__" => "__defineSetter__",
-            "hasOwnProperty" => "hasOwnProperty",
-            "__lookupGetter__" => "__lookupGetter__",
-            "__lookupSetter__" => "__lookupSetter__",
-            "isPrototypeOf" => "isPrototypeOf",
-            "propertyIsEnumerable" => "propertyIsEnumerable",
-            "toString" => "toString",
-            "valueOf" => "valueOf",
-            _ => "toLocaleString",
-        }),
-        "__proto__" => ProtoMember::Prototype,
-        _ => return None,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

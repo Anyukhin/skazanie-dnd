@@ -308,6 +308,7 @@ import {
   ensureNpcSocialState,
   npcPromiseDeadlineEvents,
   npcRelationshipEventDrafts,
+  npcRelationshipScore,
   npcSocialEvents,
   relationshipTier,
   validateNpcSocialCommand,
@@ -2044,7 +2045,7 @@ export function normalizeCampaignState(input = {}) {
   mechanics.combat.reaction_window = mechanics.combat.reaction_window && typeof mechanics.combat.reaction_window === 'object' ? clone(mechanics.combat.reaction_window) : null
   // Старые снимки поля не знают: заготовок просто нет, и это корректный ноль.
   mechanics.combat.readied = Object.fromEntries(Object.entries(clone(mechanics.combat.readied ?? {}))
-    .filter(([id, readied]) => id && readied && typeof readied === 'object' && READIED_TRIGGERS[String(readied.trigger)]))
+    .filter(([id, readied]) => id && readied && typeof readied === 'object' && ownEntry(READIED_TRIGGERS, readied.trigger)))
   mechanics.combat.group_initiative = mechanics.combat.group_initiative === true
   mechanics.combat.turn_completed = uniqueStrings(mechanics.combat.turn_completed)
   if (mechanics.combat.active && mechanics.combat.round_time_pending === true) mechanics.combat.round_time_pending = true
@@ -3273,13 +3274,13 @@ function weaponCatalogKey(item) {
 function shillelaghConditionFor(state, actorIdValue, item) {
   const itemKey = itemInstanceKey(item)
   if (!itemKey || !SHILLELAGH_WEAPON_KEYS.has(weaponCatalogKey(item))) return null
-  return (state?.mechanics?.conditions?.[String(actorIdValue)] ?? [])
+  return actorConditionList(state, actorIdValue)
     .find((condition) => String(condition?.id ?? condition) === SHILLELAGH_CONDITION
       && String(condition?.source_item_id ?? '') === itemKey) ?? null
 }
 
 function shillelaghConditionsFor(state, actorIdValue, itemKey = null) {
-  return (state?.mechanics?.conditions?.[String(actorIdValue)] ?? [])
+  return actorConditionList(state, actorIdValue)
     .filter((condition) => String(condition?.id ?? condition) === SHILLELAGH_CONDITION
       && (itemKey == null || String(condition?.source_item_id ?? '') === String(itemKey)))
 }
@@ -3307,7 +3308,7 @@ function shillelaghWeaponFor(item) {
 }
 
 function magicalWeaponConditionFor(state, actorIdValue) {
-  return (state?.mechanics?.conditions?.[String(actorIdValue)] ?? [])
+  return actorConditionList(state, actorIdValue)
     .some((condition) => MAGICAL_WEAPON_CONDITIONS.has(String(condition?.id ?? condition)))
 }
 
@@ -3392,7 +3393,7 @@ function weaponFightingStyleBonus(actor, item, mode, properties) {
  * @param {string} actorIdValue
  */
 function bardicInspirationFor(state, actorIdValue) {
-  const condition = (state.mechanics?.conditions?.[String(actorIdValue)] ?? []).find((entry) => String(entry?.id ?? entry) === 'bardic-inspiration')
+  const condition = actorConditionList(state, actorIdValue).find((entry) => String(entry?.id ?? entry) === 'bardic-inspiration')
   if (!condition) return null
   const bard = findActor(state, String(condition.source_actor ?? ''))
   const level = safeInteger(bard?.level, 1)
@@ -3817,7 +3818,7 @@ function attackSwingShape(state, attackerIdValue, targetIdValue, profile, {
     && isLivingActor(candidate) && adjacentTo(actorId(candidate), actorPosition(state, actorId(candidate)), targetIdValue, targetAt))
   const packTactics = Boolean(monsterTraitFor(attacker, 'pack-tactics') && alliedSupport)
   const highGround = highGroundBetween(state, actorAt, targetAt, distanceFeet)
-  const compelledAgainstOther = (state.mechanics?.conditions?.[attackerIdValue] ?? []).some((condition) => String(condition?.id ?? condition) === 'compelled-duel'
+  const compelledAgainstOther = actorConditionList(state, attackerIdValue).some((condition) => String(condition?.id ?? condition) === 'compelled-duel'
     && String(condition.source_actor ?? '') !== String(targetIdValue))
   const oneShotDisadvantage = attackerConditions.has('disadvantage-next-attack') || attackerConditions.has('disadvantage-next-weapon-attack') || compelledAgainstOther
 
@@ -3999,7 +4000,7 @@ function creatureHeightFeet(actor) {
   if (Number.isFinite(explicit) && explicit > 0) return Math.max(1, Math.min(30, explicit))
   const declared = actor?.size ?? actor?.creature_size ?? actor?.creatureSize
     ?? ({ 2: 'large', 3: 'huge', 4: 'gargantuan' }[footprintSizeFor(actor)] ?? 'medium')
-  return ({ tiny: 2, small: 4, medium: 6, large: 8, huge: 15, gargantuan: 25 })[String(declared).toLowerCase()] ?? 6
+  return ownEntry({ tiny: 2, small: 4, medium: 6, large: 8, huge: 15, gargantuan: 25 }, String(declared).toLowerCase()) ?? 6
 }
 
 function swingDetailsFor(state, actorIdValue, propId, { runningStart = false } = {}) {
@@ -4595,7 +4596,7 @@ function sourceIdsFor(command, state) {
   })
   if (foreign) throw new RulesValidationError(`Rule id ${foreign} принадлежит другой редакции`, 'RULESET_RULE_ID_MISMATCH')
   if (explicit.length) return explicit
-  return (COMMAND_RULES[command.command_type] ?? []).map((ruleId) => rulesetRuleId(ruleId, rulesetId))
+  return (ownEntry(COMMAND_RULES, command.command_type) ?? []).map((ruleId) => rulesetRuleId(ruleId, rulesetId))
 }
 
 function normalizeCommand(input, state) {
@@ -4933,7 +4934,7 @@ function skillConditionIsActive(state, condition) {
 }
 
 function temporarySkillConditionsFor(state, actorIdValue, prefix) {
-  return (state?.mechanics?.conditions?.[String(actorIdValue)] ?? [])
+  return actorConditionList(state, actorIdValue)
     .filter((condition) => skillConditionIsActive(state, condition))
     .map((condition) => ({ condition, skill: skillFromCondition(condition, prefix) }))
     .filter((entry) => entry.skill)
@@ -7043,7 +7044,7 @@ export function validateCommand(input, rawState, context = {}) {
       command.rest_id = expectedRestId
     }
     if (command.command_type === 'CompleteRest' && Number(activeRest?.schema_version) >= REST_EVENT_SCHEMA_VERSION) {
-      const minimum = Math.max(REST_MINIMUM_MINUTES.short, safeInteger(activeRest.minimum_duration_minutes, REST_MINIMUM_MINUTES[activeRest.kind]))
+      const minimum = Math.max(REST_MINIMUM_MINUTES.short, safeInteger(activeRest.minimum_duration_minutes, ownEntry(REST_MINIMUM_MINUTES, activeRest.kind)))
       if (elapsedRestMinutes(state, activeRest) < minimum) {
         throw new RulesValidationError('Отдых ещё не достиг минимальной длительности', 'REST_DURATION_INSUFFICIENT')
       }
@@ -7934,7 +7935,7 @@ function npcRelationshipEventsFrom(command, state, { npcId, heroId, delta, reaso
   const npc = String(npcId ?? '')
   const hero = String(heroId ?? '')
   if (!npc || !hero) return []
-  const before = ensureNpcSocialState(state.social, state).relationships[npc]?.[hero] ?? 0
+  const before = npcRelationshipScore(ensureNpcSocialState(state.social, state), npc, hero)
   const bounded = Math.max(-25, Math.min(25, safeInteger(delta, 0)))
   if (!bounded) return []
   const after = Math.max(-100, Math.min(100, before + bounded))
@@ -10546,7 +10547,7 @@ function areaEffectSparesActor(effect, actorIdValue) {
 function areaEffectAlreadyHolds(state, effect, actorIdValue) {
   if (effect?.skip_already_affected !== true || !effect?.condition) return false
   const effectId = String(effect.effect_id ?? effect.id ?? '')
-  return (state.mechanics.conditions?.[String(actorIdValue)] ?? [])
+  return actorConditionList(state, actorIdValue)
     .some((condition) => condition?.id === String(effect.condition) && String(condition.effect_id ?? '') === effectId)
 }
 
@@ -10791,15 +10792,11 @@ function livingPartySize(state) {
 }
 
 function conditionIdsFor(state, id) {
-  // Только собственный ключ: `conditions['__proto__']` иначе читает
-  // Object.prototype, и прогноз удара по такому врагу падал TypeError.
-  const conditions = state.mechanics?.conditions
-  const own = conditions && typeof conditions === 'object' && Object.hasOwn(conditions, String(id)) ? conditions[String(id)] : null
-  return new Set((own ?? []).map((condition) => String(condition?.id ?? condition)))
+  return new Set(actorConditionList(state, id).map((condition) => String(condition?.id ?? condition)))
 }
 
 function blessBonusEnabled(state, id) {
-  return (state.mechanics?.conditions?.[String(id)] ?? []).some((condition) =>
+  return actorConditionList(state, id).some((condition) =>
     String(condition?.id ?? condition) === 'bless-d4' && condition.bonus_enabled !== false)
 }
 
@@ -11111,7 +11108,7 @@ export function effectiveSpeedFeet(state, actor, id) {
 }
 
 function activeLongstriderConditions(state, id) {
-  return (state.mechanics?.conditions?.[id] ?? []).filter((condition) => condition.id === 'longstrider'
+  return actorConditionList(state, id).filter((condition) => condition.id === 'longstrider'
     && Number.isFinite(condition.expires_at_seconds) && condition.expires_at_seconds > worldTimeSeconds(state))
     .reverse()
     .sort((left, right) => Number(right.started_at_seconds) - Number(left.started_at_seconds))
@@ -11156,7 +11153,7 @@ function explorationMovementDurationSeconds(state, id, costFeet) {
   let elapsed = 0
   const start = worldTimeSeconds(state)
   const actor = findActor(state, id)
-  const conditions = state.mechanics.conditions?.[id] ?? []
+  const conditions = actorConditionList(state, id)
   const deadlines = [...new Set(conditions.flatMap((condition) => {
     const end = condition.expires_at_seconds ?? (condition.expires_at_minutes == null ? null : condition.expires_at_minutes * 60)
     return Number.isFinite(end) && end > start ? [Number(end)] : []
@@ -11666,7 +11663,7 @@ function bloodiedFrenzySaveAdvantage(state, targetId) {
 function activeAntitoxinSaveAdvantage(state, targetId, conditionContext) {
   if (String(conditionContext ?? '').toLowerCase() !== 'poisoned') return null
   const elapsedMinutes = Math.max(0, safeInteger(state.mechanics?.world_time?.elapsed_minutes, 0))
-  const effect = (state.mechanics?.conditions?.[String(targetId)] ?? []).find((condition) => (
+  const effect = actorConditionList(state, targetId).find((condition) => (
     String(condition?.id ?? condition) === 'antitoxin'
       && safeInteger(condition?.expires_at_minutes, -1) > elapsedMinutes
   ))
@@ -12565,7 +12562,7 @@ function resistanceChoicesObject(choices) {
 }
 
 function resistanceConditionFor(state, targetId) {
-  return (state?.mechanics?.conditions?.[String(targetId)] ?? [])
+  return actorConditionList(state, targetId)
     .find((candidate) => String(candidate?.id ?? candidate) === 'resistance-d4') ?? null
 }
 
@@ -16056,7 +16053,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       } else if (action.id === 'ready-action') {
         if (!state.mechanics.combat.active) throw new RulesValidationError('Готовиться можно только в бою', 'COMBAT_NOT_ACTIVE')
         const trigger = String(command.readied_trigger ?? '')
-        if (!READIED_TRIGGERS[trigger]) {
+        if (!ownEntry(READIED_TRIGGERS, trigger)) {
           throw new RulesValidationError(`Сервер распознаёт только такие триггеры готовности: ${Object.keys(READIED_TRIGGERS).join(', ')}`, 'READIED_TRIGGER_UNKNOWN')
         }
         const readiedSpellId = String(command.readied_spell_id ?? '')
@@ -21594,7 +21591,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const truce = truceFor(state)
       const combat = state.mechanics.combat
       const outcome = command.outcome
-      const term = PARLEY_TERMS[outcome] ?? PARLEY_TERMS.resume
+      const term = ownEntry(PARLEY_TERMS, outcome) ?? PARLEY_TERMS.resume
       const minutes = campaignElapsedMinutes(state)
       const leaving = outcome === 'resume' ? [] : standingEnemies(state)
       const actor = playerActor(state, command.actor_id)
@@ -22911,7 +22908,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       break
     }
     case 'RollCharacterWealth': {
-      const formula = PHB_STARTING_WEALTH[command.character_class]
+      const formula = ownEntry(PHB_STARTING_WEALTH, command.character_class)
       const roll = diceService.roll(formula.expression, 'character-starting-wealth', command.actor_id, 'party')
       rolls.push(roll)
       events.push(eventFrom(command, 'CharacterWealthRolled', { schema_version: 1, id: roll.roll_id, class_id: command.character_class, roll, total_gp: roll.total * formula.multiplier }, [command.actor_id]))
@@ -27453,7 +27450,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'SwingResolved': return payload.success === true
       ? 'Раскачка на люстре удалась; герой продолжает движение к цели.'
       : 'Герой срывается при попытке ухватиться за люстру и падает ничком у опоры; удар не происходит.'
-    case 'TimeAdvanced': return `Проходит ${payload.amount || 0} ${{ second: 'сек.', minute: 'мин.', hour: 'ч.', day: 'дн.', round: 'раунд.' }[payload.unit] ?? payload.unit ?? 'мин.'}`
+    case 'TimeAdvanced': return `Проходит ${payload.amount || 0} ${ownEntry({ second: 'сек.', minute: 'мин.', hour: 'ч.', day: 'дн.', round: 'раунд.' }, payload.unit) ?? payload.unit ?? 'мин.'}`
     case OFFSCREEN_WORLD_EVENT_TYPE: return `Пока отряда не было: ${(payload.step?.lines ?? []).join(' ') || 'мир сделал свой ход'}`
     case 'TimeOfDayChanged': return `${payload.phase_label || 'Время суток сменилось'} — ${payload.clock || ''}, день ${safeInteger(payload.day, 1)}`.trim()
     case 'WeatherChanged': return `Погода сменилась: ${payload.weather_label || payload.weather_after || 'неизвестно'}${payload.region_name ? ` (${payload.region_name})` : ''}`
@@ -27522,7 +27519,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'CourierLetterReturned': return `Письмо вернулось: ${payload.reason === 'dead' ? 'адресата нет в живых' : 'адресата не нашли'}`
     case 'CourierLetterUnanswered': return `Ответа от ${payload.addressee_name || payload.addressee_id || 'адресата'} не будет: ${payload.reason === 'dead' ? 'адресата нет в живых' : 'адресата больше не найти'}`
     case 'CourierLetterAnswered': return `Пришёл ответ от ${payload.addressee_name || payload.addressee_id || 'адресата'}`
-    case 'ReactionPreferenceChanged': return `${named(event.actor_id) || 'Герой'}: реакция «${REACTION_PREFERENCE_LABELS[payload.reaction_id] ?? payload.reaction_id}» — ${payload.mode === 'auto' ? 'сразу' : payload.mode === 'never' ? 'никогда' : 'спрашивать'}`
+    case 'ReactionPreferenceChanged': return `${named(event.actor_id) || 'Герой'}: реакция «${ownEntry(REACTION_PREFERENCE_LABELS, payload.reaction_id) ?? payload.reaction_id}» — ${payload.mode === 'auto' ? 'сразу' : payload.mode === 'never' ? 'никогда' : 'спрашивать'}`
     default: return event.event_type
   }
 }
@@ -27551,4 +27548,21 @@ export class RulesEngine {
   authorizeDirectorIntent(intent, state) {
     return authorizeDirectorIntent(normalizeCampaignState(state), intent)
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
+}
+
+/**
+ * Состояния актора: только собственный список словаря `mechanics.conditions`.
+ * Id вида `constructor` или `__proto__` и не-массив дают пустой список, а не
+ * метод прототипа (как `sk_core::game::conditions` в Rust).
+ */
+function actorConditionList(state, actorId) {
+  const conditions = state?.mechanics?.conditions
+  const key = String(actorId)
+  const list = conditions && typeof conditions === 'object' && Object.hasOwn(conditions, key) ? conditions[key] : undefined
+  return Array.isArray(list) ? list : []
 }

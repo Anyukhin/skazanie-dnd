@@ -62,8 +62,8 @@ fn catalog_price_overrides_snapshot_and_custom_has_no_authority() {
     assert_eq!(resolve_catalog_base_price_cp(Some(&json!({ "catalog_id": "srd_5_2_1:longbow", "base_price_cp": 1 }))), 5_000);
     assert_eq!(resolve_catalog_price(Some(&json!({ "catalog_id": "custom:ring", "base_price_cp": 100_000 }))), None);
     assert_eq!(resolve_catalog_price(Some(&json!({ "catalog_id": "custom:ring", "price_provenance": "custom-appraisal", "appraisal_policy_id": ECONOMY_POLICY_ID }))), None);
-    // Ключ прототипа в JS находит функцию: происхождение «catalog» без цены.
-    assert_eq!(resolve_catalog_price(Some(&json!({ "catalog_id": "toString" }))), Some(json!({ "provenance": "catalog" })));
+    // Ключ прототипа — не запись каталога: цены нет.
+    assert_eq!(resolve_catalog_price(Some(&json!({ "catalog_id": "toString" }))), None);
     assert_eq!(resolve_catalog_base_price_cp(Some(&json!({ "catalog_id": "constructor" }))), 0);
 }
 

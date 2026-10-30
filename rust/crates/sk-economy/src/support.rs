@@ -165,33 +165,6 @@ pub(crate) fn hex8(digest: &str) -> u64 {
     u64::from_str_radix(&digest[..8.min(digest.len())], 16).unwrap_or(0)
 }
 
-/// Свойства `Object.prototype` и то, как их печатает `String(...)`: так
-/// `obj[key]` в JS находит функцию (или сам прототип) у любого объекта.
-const OBJECT_PROTOTYPE: [(&str, &str); 12] = [
-    ("constructor", "function Object() { [native code] }"),
-    ("__defineGetter__", "function __defineGetter__() { [native code] }"),
-    ("__defineSetter__", "function __defineSetter__() { [native code] }"),
-    ("hasOwnProperty", "function hasOwnProperty() { [native code] }"),
-    ("__lookupGetter__", "function __lookupGetter__() { [native code] }"),
-    ("__lookupSetter__", "function __lookupSetter__() { [native code] }"),
-    ("isPrototypeOf", "function isPrototypeOf() { [native code] }"),
-    ("propertyIsEnumerable", "function propertyIsEnumerable() { [native code] }"),
-    ("toString", "function toString() { [native code] }"),
-    ("valueOf", "function valueOf() { [native code] }"),
-    ("__proto__", "[object Object]"),
-    ("toLocaleString", "function toLocaleString() { [native code] }"),
-];
-
-/// Ключ, который у любого объекта JS находит свойство прототипа.
-pub(crate) fn is_prototype_key(key: &str) -> bool {
-    OBJECT_PROTOTYPE.iter().any(|(name, _)| *name == key)
-}
-
-/// `String(Object.prototype[key])` для ключа прототипа.
-pub(crate) fn prototype_string(key: &str) -> Option<&'static str> {
-    OBJECT_PROTOTYPE.iter().find(|(name, _)| *name == key).map(|(_, printed)| *printed)
-}
-
 /// Поле `source[key]`, если оно есть (`undefined` в JSON не попадает).
 pub(crate) fn copy_field(target: &mut Map<String, Value>, key: &str, value: Option<&Value>) {
     if let Some(value) = value {

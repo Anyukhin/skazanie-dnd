@@ -333,13 +333,12 @@ fn blessing_offer_only_while_available() {
     assert!(!hints(&chapel(json!({ "blessed": true })), Some("hero")).iter().any(|hint| hint.id == "blessing:offer"));
 }
 
-/// Ключ прототипа в виде контейнера добычи JS находит у объекта фраз и печатает
-/// текст функции V8; Rust повторяет строку.
+/// Ключ прототипа в виде контейнера добычи — незнакомый вид: общая фраза.
 #[test]
-fn prototype_loot_kind_prints_like_v8() {
+fn prototype_loot_kind_is_unknown_kind() {
     let loot = |kind: &str| json!({ "loot_containers": { "containers": [{ "id": "c", "name": "Тело: Волк", "kind": kind, "item_count": 1, "can_inspect": true }] } });
-    assert_eq!(texts(&loot("constructor"), None), ["Можно function Object() { [native code] }: Волк"]);
-    assert_eq!(texts(&loot("__proto__"), None), ["Можно [object Object]: Волк"]);
-    assert_eq!(texts(&loot("toString"), None), ["Можно function toString() { [native code] }: Волк"]);
+    assert_eq!(texts(&loot("constructor"), None), ["Можно обыскать добычу: Волк"]);
+    assert_eq!(texts(&loot("__proto__"), None), ["Можно обыскать добычу: Волк"]);
+    assert_eq!(texts(&loot("toString"), None), ["Можно обыскать добычу: Волк"]);
     assert_eq!(texts(&loot("corpse"), None), ["Можно обыскать тело: Волк"]);
 }

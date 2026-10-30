@@ -649,7 +649,7 @@ function shuffle(items, random) {
  */
 export function compactArea(theme, zoneCount, width, height) {
   const whole = { minX: 0, minY: 0, maxX: width - 1, maxY: height - 1 }
-  const perRoom = COMPACT_ROOM_CELLS[theme]
+  const perRoom = ownEntry(COMPACT_ROOM_CELLS, theme)
   if (!perRoom) return whole
   const target = perRoom * Math.max(1, zoneCount)
   if (target >= width * height * 0.8) return whole
@@ -897,4 +897,17 @@ export function buildSceneFromGraph(graph, options = {}) {
     }
   }
   return { map: built.map, warnings: built.warnings, errors }
+}
+
+/**
+ * Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`,
+ * `toString`…) записями не считаются.
+ *
+ * @template T
+ * @param {Readonly<Record<string, T>>} table
+ * @param {unknown} key
+ * @returns {T | undefined}
+ */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

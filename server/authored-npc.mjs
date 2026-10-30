@@ -359,7 +359,7 @@ export function authoredNpcCombatant({ npc, mechanics: rawMechanics, position } 
   return {
     id: npcId,
     name,
-    ...(NPC_PORTRAIT_CHARACTER_ASSETS[npcId] ? { image: NPC_PORTRAIT_CHARACTER_ASSETS[npcId] } : {}),
+    ...(ownEntry(NPC_PORTRAIT_CHARACTER_ASSETS, npcId) ? { image: ownEntry(NPC_PORTRAIT_CHARACTER_ASSETS, npcId) } : {}),
     hp: mechanics.hp,
     maxHp: mechanics.hp,
     armor: mechanics.armor,
@@ -402,4 +402,9 @@ export function authoredNpcCombatant({ npc, mechanics: rawMechanics, position } 
       xp: mechanics.xp,
     },
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

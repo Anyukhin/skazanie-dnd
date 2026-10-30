@@ -53,27 +53,6 @@ pub const COMBAT_LAB_ENCOUNTER_THEMES: [&str; 8] = ["generic", "goblinoids", "un
 
 const CLASS_IDS: [&str; 12] = ["barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard"];
 
-/// Свойства `Object.prototype`: `CLASS_NAMES[key]` и
-/// `ENCOUNTER_THEME_ALIASES[key]` в JS находят их у любого объекта.
-const PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
-fn is_prototype_key(key: &str) -> bool {
-    PROTOTYPE_KEYS.contains(&key)
-}
-
 /// `CLASS_NAMES[classId]` по собственным ключам.
 fn class_name(class_id: &str) -> Option<&'static str> {
     Some(match class_id {
@@ -93,9 +72,9 @@ fn class_name(class_id: &str) -> Option<&'static str> {
     })
 }
 
-/// `CLASS_NAMES[key]` истинно: собственный ключ или ключ прототипа.
+/// `ownEntry(CLASS_NAMES, key)` истинно: собственный ключ.
 fn class_name_truthy(class_id: &str) -> bool {
-    class_name(class_id).is_some() || is_prototype_key(class_id)
+    class_name(class_id).is_some()
 }
 
 fn class_primary(class_id: &str) -> &'static str {
@@ -499,11 +478,6 @@ fn class_spells(class_id: &str, level: i64, abilities: &IndexMap<&'static str, i
 /// `trainingHero(classId, level, position, index)`.
 fn training_hero(class_id: &str, level: i64, position: (i64, i64), index: usize) -> Result<Value> {
     let Some(class_label) = class_name(class_id) else {
-        if is_prototype_key(class_id) {
-            // `CLASS_NAMES[key]` нашёл свойство прототипа; первым падает
-            // `CLASS_SPELLS[key].filter`.
-            return Err(CombatLabSetupError::type_error("tiers.filter is not a function"));
-        }
         return Err(CombatLabSetupError::new(format!("Класс {class_id} не входит в профиль 2014"), "UNKNOWN_COMBAT_LAB_CLASS"));
     };
     let abilities = standard_abilities(class_id);
@@ -804,10 +778,6 @@ pub fn combat_lab_heroes(sources: &Sources<'_>) -> Result<Vec<Value>> {
             let class_key = js::string(hero.get("characterClass"));
             let class_label = match class_name(&class_key) {
                 Some(label) => Some(Value::String(label.into())),
-                // `CLASS_NAMES.__proto__` — `Object.prototype` (`{}` в JSON),
-                // прочие ключи прототипа — функции, которых в JSON нет.
-                None if class_key == "__proto__" => Some(json!({})),
-                None if is_prototype_key(&class_key) => None,
                 None => {
                     let role = hero.get("role").filter(|value| js::truthy(Some(value))).map_or_else(|| "Герой".to_string(), |value| js::s(Some(value)));
                     let head = role.split('·').next().unwrap_or("");
@@ -832,14 +802,10 @@ pub fn combat_lab_heroes(sources: &Sources<'_>) -> Result<Vec<Value>> {
 
 // --- запрос стычки --------------------------------------------------------
 
-/// Тема стычки после `ENCOUNTER_THEME_ALIASES[raw]`.
+/// Тема стычки после `ownEntry(ENCOUNTER_THEME_ALIASES, raw)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Theme {
     Known(&'static str),
-    /// `ENCOUNTER_THEME_ALIASES.constructor` — функция `Object`.
-    PrototypeFunction,
-    /// `ENCOUNTER_THEME_ALIASES.__proto__` — `Object.prototype`.
-    PrototypeObject,
 }
 
 impl Theme {
@@ -847,17 +813,13 @@ impl Theme {
     fn label(self) -> &'static str {
         match self {
             Theme::Known(theme) => theme,
-            Theme::PrototypeFunction => "function Object() { [native code] }",
-            Theme::PrototypeObject => "[object Object]",
         }
     }
 
-    /// Значение в JSON; функция выпадает.
+    /// Значение в JSON.
     fn json(self) -> Option<Value> {
         match self {
             Theme::Known(theme) => Some(Value::String(theme.into())),
-            Theme::PrototypeFunction => None,
-            Theme::PrototypeObject => Some(json!({})),
         }
     }
 }
@@ -916,8 +878,6 @@ fn normalize_encounter_theme(value: Option<&Value>) -> Result<Theme> {
         "cult" | "cultists" => Theme::Known("cultists"),
         "dragons" | "dragon" => Theme::Known("dragons"),
         "dungeon" => Theme::Known("dungeon"),
-        "constructor" => Theme::PrototypeFunction,
-        "__proto__" => Theme::PrototypeObject,
         _ => return Err(CombatLabSetupError::new("Неизвестная тема автоматической стычки", "UNKNOWN_COMBAT_LAB_THEME")),
     };
     Ok(theme)
@@ -1098,9 +1058,7 @@ fn records_for_enemy_entries(entries: &[Value], monsters: &'static [Value]) -> R
 
 /// `themeMatches(record, theme)`.
 fn theme_matches(record: &Value, theme: Theme) -> bool {
-    let Theme::Known(theme) = theme else {
-        return false;
-    };
+    let Theme::Known(theme) = theme;
     if theme == "generic" {
         return true;
     }

@@ -44,34 +44,10 @@ fn kit_options(options: Option<&Value>) -> StarterKitOptions {
     }
 }
 
-/// Ключи `Object.prototype`: JS падает `TypeError` на `kit.items`, Rust
-/// считает такой класс неизвестным.
-const PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
 fn run(name: &str, args: &Args) -> Outcome {
     match name {
         "const:STARTER_KIT_2024_POLICY" => ok(STARTER_KIT_2024_POLICY.to_json()),
-        "starterKit2024Preview" => {
-            let key = js::string(args.get(0));
-            if PROTOTYPE_KEYS.contains(&key.as_str()) {
-                assert_eq!(m::starter_kit_2024_preview(&key), None, "{key}");
-                return Err(type_error("ключ прототипа"));
-            }
-            ok_or_null(m::starter_kit_2024_preview(&key))
-        }
+        "starterKit2024Preview" => ok_or_null(m::starter_kit_2024_preview(&js::string(args.get(0)))),
         "starterEquipmentCatalogFor" => ok_or_null(m::starter_equipment_catalog_for(&ruleset_arg(args, 0), js::truthy(args.option(1, "complete")))),
         "defaultStarterEquipmentChoices" => ok_or_null(m::default_starter_equipment_choices(args.get(0), &ruleset_arg(args, 1), js::truthy(args.option(2, "complete")))),
         "resolveStarterEquipmentChoices" => ok(m::resolve_starter_equipment_choices(args.get(0), args.get(1), &ruleset_arg(args, 2), js::truthy(args.option(3, "complete")))),
@@ -549,9 +525,12 @@ fn every_kit_item_and_weapon_list_is_in_the_catalog() {
 }
 
 #[test]
-fn prototype_class_key_fails_like_js_only_when_kit_is_needed() {
+fn prototype_class_key_is_unknown_class() {
+    // Класс-ключ прототипа — без набора 2024: запасной кинжал, а не `TypeError`.
     let options = StarterKitOptions { ruleset_id: RULESET_2024.into(), starter_policy_id: Some(STARTER_KIT_2024_POLICY.policy_id.into()), ..StarterKitOptions::default() };
-    assert!(matches!(m::with_starter_kit(Some(&json!({ "id": "x", "characterClass": "toString" })), &options), Err(StarterKitError::Runtime(_))));
+    let hero = m::with_starter_kit(Some(&json!({ "id": "x", "characterClass": "toString" })), &options).expect("герой");
+    let ids: Vec<&str> = hero["inventory"].as_array().expect("вещи").iter().filter_map(|item| item["catalog_id"].as_str()).collect();
+    assert_eq!(ids, ["srd_5_2_1:dagger"]);
     let imported = json!({ "id": "x", "characterClass": "toString", "inventory": [{ "id": "own" }] });
     assert!(m::with_starter_kit(Some(&imported), &options).is_ok(), "готовый инвентарь набор не трогает");
 }

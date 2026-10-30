@@ -19,7 +19,7 @@ use sk_ruleset::character_creation_class_options::{class_option_for, class_optio
 use sk_ruleset::character_creation_feats::{class_spell_list, resolve_character_creation_feat, PHB_2014_FEATS, PHB_CANTRIPS, PHB_FIRST_LEVEL_SPELLS};
 use sk_ruleset::ruleset_config::{RulesetSelectionError, DND_2014_RULESET_ID};
 
-use crate::support::{array, defined, includes, insert_present, is_prototype_key, prop, same_value_zero, unique_values};
+use crate::support::{array, defined, includes, insert_present, prop, same_value_zero, unique_values};
 
 const ABILITIES: [&str; 6] = ["str", "dex", "con", "int", "wis", "cha"];
 const CASTERS: [&str; 6] = ["bard", "cleric", "druid", "sorcerer", "warlock", "wizard"];
@@ -61,11 +61,8 @@ fn exception(table: &[(&str, &'static str)], key: &str) -> Option<&'static str> 
 }
 
 /// `phbSpellId(id)`: id заклинания классовых таблиц (`cure_wounds`) → id
-/// каталога заклинаний (`cure-wounds`). Ключ — `String(id)`, как у `obj[id]`.
-///
-/// Отличие от JS: на ключе `Object.prototype` (`constructor`, `toString`, …)
-/// JS возвращает функцию прототипа; здесь — ключ как есть (в JSON функция не
-/// попадает, а заклинаний с такими id нет).
+/// каталога заклинаний (`cure-wounds`). Ключ — `String(id)`, исключения — по
+/// собственному ключу таблицы.
 pub fn phb_spell_id(id: Option<&Value>) -> String {
     let key = js::string(id);
     exception(&SPELL_ID_EXCEPTIONS, &key).map_or_else(|| key.replace('_', "-"), str::to_string)
@@ -73,30 +70,15 @@ pub fn phb_spell_id(id: Option<&Value>) -> String {
 
 /// `phbToolId(id)`: id инструмента классов и черт (`land_vehicles`,
 /// `thieves-tools`) → id каталога инструментов PHB (`vehicles_land`,
-/// `thieves_tools`). Ключ — `String(id)`, как у `obj[id]`.
-///
-/// Отличие от JS — то же, что у [`phb_spell_id`]: на ключе `Object.prototype`
-/// JS возвращает функцию прототипа. Внутри сборки героя такой ответ
-/// повторён (см. `tool_id_value`): замена инструмента им всегда отвергается.
+/// `thieves_tools`). Ключ — `String(id)`, исключения — по собственному ключу.
 pub fn phb_tool_id(id: Option<&Value>) -> String {
     let key = js::string(id);
     exception(&TOOL_ID_EXCEPTIONS, &key).map_or_else(|| key.replace('-', "_"), str::to_string)
 }
 
-/// Значение «функция прототипа» вместо строки: такой «инструмент» не входит в
-/// каталог PHB, и у двух разных ключей прототипа функции разные — `Set`
-/// различает их так же, как различает эти строки.
-fn prototype_value(key: &str) -> Value {
-    Value::String(format!("\u{0}prototype:{key}"))
-}
-
 /// `phbToolId(id)` как значение JS: на ключе `Object.prototype` — не строка
 /// каталога, а свойство прототипа.
 fn tool_id_value(id: &Value) -> Value {
-    let key = js::string(Some(id));
-    if is_prototype_key(&key) && exception(&TOOL_ID_EXCEPTIONS, &key).is_none() {
-        return prototype_value(&key);
-    }
     Value::String(phb_tool_id(Some(id)))
 }
 
@@ -295,9 +277,7 @@ fn object_spread_into(target: &mut Map<String, Value>, value: Option<&Value>) {
 }
 
 /// `PHB_FIGHTING_STYLES[selected[0]]` при `selected.length === 1`: значение
-/// по ключу `String(selected[0])` или `None`, если стиль не выбран. Ключ
-/// прототипа объекта (`constructor`, `__proto__`) у JS тоже «находится» — и
-/// дальше отвергается проверкой класса как неизвестный стиль.
+/// по собственному ключу `String(selected[0])` или `None`, если стиль не выбран.
 fn selected_fighting_style(selected: Option<&Value>) -> Option<Value> {
     let (length_is_one, first) = match defined(selected) {
         // `?? []`: пустой список.
@@ -311,10 +291,7 @@ fn selected_fighting_style(selected: Option<&Value>) -> Option<Value> {
         return None;
     }
     let key = js::string(first.as_ref());
-    if let Some(style) = phb_fighting_style(&key) {
-        return Some(json!(style));
-    }
-    is_prototype_key(&key).then(|| prototype_value(&key))
+    phb_fighting_style(&key).map(|style| json!(style))
 }
 
 /// `resolvePhbCreation(source)`: проверенные выборы PHB 2014 и преимущества

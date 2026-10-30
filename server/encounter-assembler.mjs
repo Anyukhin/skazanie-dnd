@@ -806,7 +806,7 @@ export const ENCOUNTER_DIFFICULTY_LABELS = Object.freeze({
 export const DEADLY_ENCOUNTER_WARNING = 'Противник выглядит смертельно опасным — силы явно неравны. Ещё не поздно отступить или сменить план.'
 
 export function encounterDifficultyLabel(difficulty) {
-  return ENCOUNTER_DIFFICULTY_LABELS[String(difficulty ?? '')] ?? ENCOUNTER_DIFFICULTY_LABELS.medium
+  return ownEntry(ENCOUNTER_DIFFICULTY_LABELS, String(difficulty ?? '')) ?? ENCOUNTER_DIFFICULTY_LABELS.medium
 }
 
 // SRD 5.2.1, printed page 202: XP Budget per Character.
@@ -1477,4 +1477,9 @@ export class EncounterAssembler {
 
 export function assembleEncounter(input) {
   return new EncounterAssembler().assemble(input)
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

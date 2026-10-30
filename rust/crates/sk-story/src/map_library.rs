@@ -87,13 +87,6 @@ fn talestavern_kind(slug: &str) -> Option<&'static str> {
     })
 }
 
-/// Ключи `Object.prototype`: `TALESTAVERN_KINDS[key]` в JS находит их у
-/// любого объекта.
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor", "__defineGetter__", "__defineSetter__", "hasOwnProperty", "__lookupGetter__", "__lookupSetter__", "isPrototypeOf",
-    "propertyIsEnumerable", "toString", "valueOf", "__proto__", "toLocaleString",
-];
-
 /// Климат по местности TalesTavern; остальные местности климата не задают.
 fn talestavern_climate(slug: &str) -> Option<&'static str> {
     match slug {
@@ -196,16 +189,11 @@ pub fn place_kinds_for(types: &[String], terrains: &[String], passport: Option<&
             kinds.push(kind);
         }
     };
-    // Слаг — ключ прототипа (`toString`, `constructor`, …): в JS
-    // `TALESTAVERN_KINDS[slug]` находит функцию, и она встаёт в набор видом,
-    // который ни с чем не совпадает, но запасные виды по паспорту уже не
-    // ставятся. Здесь такой вид не выдаётся, а запас так же отключается.
-    let mut phantom = false;
+    // Слаг — только собственный ключ `TALESTAVERN_KINDS`: ключ прототипа вида
+    // не даёт и запасные виды по паспорту не отключает.
     for slug in types {
         if let Some(kind) = talestavern_kind(slug) {
             add(&mut kinds, kind);
-        } else if OBJECT_PROTOTYPE_KEYS.contains(&slug.as_str()) {
-            phantom = true;
         }
     }
     // Местность добавляет вид только там, где он однозначен.
@@ -218,7 +206,7 @@ pub fn place_kinds_for(types: &[String], terrains: &[String], passport: Option<&
     }
     let features = string_set(field(passport, "features"));
     let interior_share = js::number(field(passport, "interior_share"));
-    if kinds.is_empty() && !phantom {
+    if kinds.is_empty() {
         if features.contains("common_room") && features.contains("bedrooms") {
             add(&mut kinds, "tavern");
         }
@@ -229,7 +217,7 @@ pub fn place_kinds_for(types: &[String], terrains: &[String], passport: Option<&
             add(&mut kinds, "crypt");
         }
     }
-    if kinds.is_empty() && !phantom && terrains.iter().any(|slug| talestavern_kind(slug) == Some("wilds")) && interior_share < 0.3 {
+    if kinds.is_empty() && terrains.iter().any(|slug| talestavern_kind(slug) == Some("wilds")) && interior_share < 0.3 {
         add(&mut kinds, "wilds");
     }
     let mut result: Vec<String> = kinds.into_iter().map(str::to_string).collect();

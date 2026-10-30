@@ -88,29 +88,9 @@ fn role_asset(role: &str) -> &'static str {
 
 const IMPORTANT_TAGS: [&str; 11] = ["important", "major", "key_npc", "key-npc", "story_critical", "story-critical", "quest_giver", "quest-giver", "companion", "patron", "rival"];
 
-/// Свойства `Object.prototype`, которые `NPC_PORTRAIT_CHARACTER_ASSETS[id]`
-/// находит у любого объекта.
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
-/// Что находит `NPC_PORTRAIT_CHARACTER_ASSETS[id] ?? ''` в JS.
+/// Что находит `NPC_PORTRAIT_CHARACTER_ASSETS[id]` (собственный ключ) в JS.
 enum PreparedPortrait {
     Url(&'static str),
-    /// Свойство прототипа: истинное значение, но не строка. В JSON функция
-    /// пропадает, а `Object.prototype` (`__proto__`) пишется `{}`.
-    Prototype { object: bool },
     Missing,
 }
 
@@ -123,8 +103,7 @@ impl PreparedPortrait {
     fn json(&self) -> Option<Value> {
         match self {
             PreparedPortrait::Url(url) => Some(json!(url)),
-            PreparedPortrait::Prototype { object: true } => Some(js::obj()),
-            PreparedPortrait::Prototype { object: false } | PreparedPortrait::Missing => None,
+            PreparedPortrait::Missing => None,
         }
     }
 }
@@ -136,8 +115,6 @@ fn prepared_npc_portrait(profile: &Value) -> PreparedPortrait {
     let id = image_text(field(Some(profile), "id"), 120);
     if let Some((_, url)) = NPC_PORTRAIT_CHARACTER_ASSETS.iter().find(|(key, _)| *key == id) {
         PreparedPortrait::Url(url)
-    } else if OBJECT_PROTOTYPE_KEYS.contains(&id.as_str()) {
-        PreparedPortrait::Prototype { object: id == "__proto__" }
     } else {
         PreparedPortrait::Missing
     }

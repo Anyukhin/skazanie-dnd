@@ -29,7 +29,7 @@ use sk_world_time::weather::{
     world_clock_for_agents, BIOME_WEATHER_WEIGHTS, CAMPAIGN_START_MINUTE_OF_DAY, DAY_PHASES, WEATHER_CONDITION_IDS,
 };
 
-use crate::support::{array, head_utf16, is_str, object_prototype_member, path, prop, ProtoMember};
+use crate::support::{array, head_utf16, is_str, path, prop};
 use patterns::*;
 
 pub const SCENE_CANON_VERSION: &str = "scene-canon/v1";
@@ -253,10 +253,9 @@ fn wetness_for(indoors: bool, weather: &str, water_nearby: bool) -> (&'static st
     ("dry", "сухо")
 }
 
-/// Подпись вида места: `LOCATION_KIND_LABELS[kind] ?? ''` — с ключами прототипа.
+/// Подпись вида места: `ownEntry(LOCATION_KIND_LABELS, kind) ?? ''`.
 enum KindLabel {
     Text(&'static str),
-    Proto(ProtoMember),
 }
 
 impl KindLabel {
@@ -264,7 +263,7 @@ impl KindLabel {
         if let Some((_, label)) = LOCATION_KIND_LABELS.iter().find(|(id, _)| *id == kind) {
             return Self::Text(label);
         }
-        object_prototype_member(kind).map_or(Self::Text(""), Self::Proto)
+        Self::Text("")
     }
 
     fn truthy(&self) -> bool {
@@ -275,22 +274,13 @@ impl KindLabel {
     fn display(&self) -> String {
         match self {
             Self::Text(label) => (*label).to_string(),
-            Self::Proto(member) => member.display(),
         }
     }
 
-    /// `kind_label` в JSON: функция пропадает, прототип — `{}`.
+    /// `kind_label` в JSON.
     fn insert_into(&self, map: &mut Map<String, Value>) {
-        match self {
-            Self::Text(label) => {
-                map.insert("kind_label".into(), json!(label));
-            }
-            Self::Proto(member) => {
-                if let Some(value) = member.json() {
-                    map.insert("kind_label".into(), value);
-                }
-            }
-        }
+        let Self::Text(label) = self;
+        map.insert("kind_label".into(), json!(label));
     }
 }
 
@@ -608,8 +598,6 @@ pub fn campaign_start_canon(seed: Option<&Value>, request: Option<&Value>) -> Va
     let phase_key = js::s(prop(request, "phase"));
     let clock_minute = match OPENING_PHASE_CLOCK.iter().find(|(id, _)| *id == phase_key) {
         Some((_, minute)) => *minute,
-        // Ключ прототипа находит функцию или прототип: `function - 480` — NaN.
-        None if object_prototype_member(&phase_key).is_some() => f64::NAN,
         None => 480.0,
     };
     let elapsed = clock_minute - CAMPAIGN_START_MINUTE_OF_DAY as f64;

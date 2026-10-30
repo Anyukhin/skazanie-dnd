@@ -194,26 +194,6 @@ fn digest(parts: &[String]) -> String {
     hash::sha256_hex(parts.join("\0"))
 }
 
-/// Ключи `Object.prototype`, которые `obj[key]` находит у любого объекта, и их
-/// `String(...)`: функции печатаются исходником `[native code]`.
-pub(crate) fn object_prototype_text(key: &str) -> Option<&'static str> {
-    Some(match key {
-        "constructor" => "function Object() { [native code] }",
-        "__defineGetter__" => "function __defineGetter__() { [native code] }",
-        "__defineSetter__" => "function __defineSetter__() { [native code] }",
-        "hasOwnProperty" => "function hasOwnProperty() { [native code] }",
-        "__lookupGetter__" => "function __lookupGetter__() { [native code] }",
-        "__lookupSetter__" => "function __lookupSetter__() { [native code] }",
-        "isPrototypeOf" => "function isPrototypeOf() { [native code] }",
-        "propertyIsEnumerable" => "function propertyIsEnumerable() { [native code] }",
-        "toString" => "function toString() { [native code] }",
-        "valueOf" => "function valueOf() { [native code] }",
-        "toLocaleString" => "function toLocaleString() { [native code] }",
-        "__proto__" => "[object Object]",
-        _ => return None,
-    })
-}
-
 // ---------------------------------------------------------------------------
 // Часы: минута кампании → сутки и время суток
 // ---------------------------------------------------------------------------
@@ -308,13 +288,11 @@ pub fn current_biome_of(state: &Value) -> &'static str {
 
 /// `weatherOnDay({ seed, day, biome })`: погода одного дня, чистая функция.
 ///
-/// `day` приводится `Math.trunc(Number(day) || 0)`. Ключ прототипа вместо
-/// климата (`constructor`, `__proto__`) в JS находит не строку таблицы, а
-/// функцию или прототип — таблица выходит пустой, и день всегда ясный.
+/// `day` приводится `Math.trunc(Number(day) || 0)`. Климат читается по
+/// собственному ключу: незнакомый (и ключ прототипа) — равнина.
 pub fn weather_on_day(seed: &str, day: impl JsNum, biome: &str) -> &'static str {
     let weights = match biome_row(biome) {
         Some(row) => row,
-        None if object_prototype_text(biome).is_some() => return "clear",
         None => biome_row(DEFAULT_BIOME).unwrap_or(&[0; 5]),
     };
     let total: i64 = weights.iter().map(|weight| (*weight).max(0)).sum();
@@ -781,10 +759,9 @@ const WEATHER_ARRIVAL_LINES: [(&str, &str); 5] = [
     ("storm", "Собралась гроза."),
 ];
 
-/// `TABLE[key] ?? ''` над замороженным объектом JS: ключ прототипа находит
-/// функцию (её текст — `[native code]`).
+/// `ownEntry(TABLE, key) ?? ''`.
 fn line_of(table: &[(&str, &'static str)], key: &str) -> &'static str {
-    table.iter().find(|(id, _)| *id == key).map(|(_, line)| *line).or_else(|| object_prototype_text(key)).unwrap_or("")
+    table.iter().find(|(id, _)| *id == key).map(|(_, line)| *line).unwrap_or("")
 }
 
 /// `worldClockNarration(event)`: строка летописи про смену времени суток или

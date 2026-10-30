@@ -20,7 +20,7 @@ use sk_core::fancy_regex::Regex;
 use sk_core::{js, re, text};
 
 use crate::util::{
-    field, is_prototype_key, js_max, js_min, js_string, letter_before, nullish, number_or_zero, split_regex, str_of,
+    field, js_max, js_min, js_string, letter_before, nullish, number_or_zero, split_regex, str_of,
     utf16_back, utf16_head,
 };
 
@@ -148,13 +148,12 @@ const NUMERALS: [(&str, f64); 24] = [
     ("пять", 5.0), ("пяти", 5.0), ("шесть", 6.0), ("шести", 6.0), ("семь", 7.0), ("восемь", 8.0),
 ];
 
-/// `NUMERALS[word]`: число, «нет» (`undefined`) или `NaN` для унаследованного
-/// свойства объекта JS (`NUMERALS.constructor` — функция, `Math.min(6, fn)` — `NaN`).
+/// `NUMERALS[word]` по собственному ключу: число или «нет» (`undefined`).
 fn numeral(word: &str) -> Option<f64> {
     if let Some((_, value)) = NUMERALS.iter().find(|(key, _)| *key == word) {
         return Some(*value);
     }
-    is_prototype_key(word).then_some(f64::NAN)
+    None
 }
 
 /// Отрицание прямо перед словом снимает объект: «без навеса», «нет ни одного колодца».
@@ -208,8 +207,8 @@ fn count_before(before: &str) -> f64 {
 }
 
 /// Обещанный объект: вид и количество. Количество — число JS: из словаря
-/// приходит целое, но унаследованное свойство числительных даёт `NaN` (см.
-/// «Замечено в JS» в отчёте переноса), а JSON записывает его как `null`.
+/// приходит целое (ключ прототипа числительным не считается); нечисло JSON
+/// записал бы как `null`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Requirement {
     pub id: String,
@@ -794,10 +793,10 @@ mod tests {
     }
 
     #[test]
-    fn prototype_numeral_gives_nan() {
+    fn prototype_numeral_is_not_a_number_word() {
+        // Ключ прототипа числительным не считается: количество по умолчанию.
         let items = scene_requirements_from_text(&Value::String("constructor навес".into()));
         assert_eq!(items.len(), 1);
-        assert!(items[0].count.is_nan());
-        assert_eq!(serde_json::to_value(&items[0]).expect("json"), serde_json::json!({ "id": "shelter", "count": null }));
+        assert_eq!(serde_json::to_value(&items[0]).expect("json"), serde_json::json!({ "id": "shelter", "count": 1 }));
     }
 }

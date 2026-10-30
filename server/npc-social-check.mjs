@@ -55,7 +55,7 @@ function attitudeFor(social, npcId, heroId) {
 function difficultyFor(profile, skill, attitude, reputationShift = 0) {
   const configured = Number(profile.social_dcs?.[skill])
   if (Number.isSafeInteger(configured)) return clamp(configured, 5, 30)
-  const base = { friendly: 10, neutral: 12, guarded: 15, hostile: 18 }[attitude.stance] ?? 12
+  const base = ownEntry({ friendly: 10, neutral: 12, guarded: 15, hostile: 18 }, attitude.stance) ?? 12
   const relationshipAdjustment = attitude.relationship >= 50 ? -4
     : attitude.relationship >= 20 ? -2
       : attitude.relationship >= 5 ? -1
@@ -163,4 +163,9 @@ export function assertNpcSocialCheckFingerprint(event, policy) {
     error.code = 'IDEMPOTENCY_CONFLICT'
     throw error
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

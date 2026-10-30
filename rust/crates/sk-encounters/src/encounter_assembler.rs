@@ -421,44 +421,16 @@ pub fn encounter_difficulty_labels_json() -> Value {
 /// Предупреждение до точки невозврата: бой ещё не начат, отступить можно.
 pub const DEADLY_ENCOUNTER_WARNING: &str = "Противник выглядит смертельно опасным — силы явно неравны. Ещё не поздно отступить или сменить план.";
 
-/// Свойства `Object.prototype`: `ENCOUNTER_DIFFICULTY_LABELS[key]` находит их
-/// у замороженного объекта ярлыков.
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
 fn label_text(difficulty: &str) -> Option<&'static str> {
     ENCOUNTER_DIFFICULTY_LABELS.iter().find(|(key, _)| *key == difficulty).map(|(_, label)| *label)
 }
 
 /// `encounterDifficultyLabel(difficulty)`: ярлык сложности, незнакомое
-/// значение — «средний».
-///
-/// Ключи `Object.prototype` JS находит у объекта ярлыков: `__proto__` даёт
-/// `Object.prototype` (в JSON — `{}`), остальные — функцию, которую
-/// `JSON.stringify` пропускает вместе с полем. Здесь это `Some(json!({}))` и
-/// `None` соответственно (см. «Замечено в JS» отчёта переноса).
+/// значение (и ключ прототипа) — «средний».
 pub fn encounter_difficulty_label(difficulty: Option<&Value>) -> Option<Value> {
     let key = js::s(difficulty);
     if let Some(label) = label_text(&key) {
         return Some(Value::from(label));
-    }
-    if key == "__proto__" {
-        return Some(Value::Object(Map::new()));
-    }
-    if OBJECT_PROTOTYPE_KEYS.contains(&key.as_str()) {
-        return None;
     }
     label_text("medium").map(Value::from)
 }

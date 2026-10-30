@@ -30,22 +30,6 @@ pub const AGENT_CONTEXT_SCHEMA_VERSION: i64 = 1;
 /// `SPATIAL_CONTEXT_SCHEMA_VERSION`.
 pub const SPATIAL_CONTEXT_SCHEMA_VERSION: i64 = 2;
 
-/// Свойства `Object.prototype`: `obj[key]` в JS находит их у любого объекта.
-const OBJECT_PROTOTYPE_KEYS: [&str; 12] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "__proto__",
-    "toLocaleString",
-];
-
 // --- приведения JS -------------------------------------------------------------
 
 fn field<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
@@ -308,22 +292,16 @@ pub fn npc_known_by_name(state: &Value, npc: &Value) -> bool {
 
 // --- сводка поля ---------------------------------------------------------------
 
-/// Состояние словами стола. `HEALTH_WORDS[key]` в JS находит и ключи
-/// прототипа: `__proto__` — объект (`{}` в JSON), прочие — функцию, и поле
-/// `condition` из JSON пропадает.
+/// Состояние словами стола (`HEALTH_WORDS` по собственному ключу).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Condition {
     Text(&'static str),
-    PrototypeObject,
-    Function,
 }
 
 impl Condition {
     fn to_json(self) -> Option<Value> {
         match self {
             Self::Text(text) => Some(Value::from(text)),
-            Self::PrototypeObject => Some(Value::Object(Map::new())),
-            Self::Function => None,
         }
     }
 }
@@ -346,11 +324,7 @@ fn health_word(actor: &Value, hero: bool, dead: bool) -> Condition {
         if let Some((_, word)) = HEALTH_WORDS.iter().find(|(status, _)| *status == key) {
             return Condition::Text(word);
         }
-        return match key.as_str() {
-            "__proto__" => Condition::PrototypeObject,
-            key if OBJECT_PROTOTYPE_KEYS.contains(&key) => Condition::Function,
-            _ => Condition::Text("цел"),
-        };
+        return Condition::Text("цел");
     }
     let hp = 0.0_f64.max(number_or(field(actor, "hp"), 0.0));
     let maximum = 1.0_f64.max(number_or(coalesce(&[field(actor, "maxHp"), field(actor, "max_hp")]), 1.0));
@@ -649,9 +623,6 @@ pub fn scene_context_for_agent(state: &Value, actor_id: Option<&Value>) -> Value
     let positions = path(Some(state), &["mechanics", "positions"]);
     let position = match positions.and_then(Value::as_object).and_then(|positions| positions.get(&id)).filter(|value| !value.is_null()) {
         Some(stored) => Some(position_from(stored)),
-        // Ключ прототипа находит у объекта функцию (или сам прототип): позиция
-        // «есть», но координат у неё нет.
-        None if positions.is_some_and(Value::is_object) && OBJECT_PROTOTYPE_KEYS.contains(&id.as_str()) => Some(Position { truthy: true, x: f64::NAN, y: f64::NAN }),
         None => actor.map(position_from).or_else(|| {
             array(path(Some(state), &["npc_world", "placements"]))
                 .iter()

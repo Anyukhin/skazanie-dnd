@@ -118,15 +118,17 @@ pub fn campaign_ruleset_can_change(events: Option<&Value>, state: Option<&Value>
             "blocking_event_type": "ImportedCampaignState",
         });
     }
-    let blocking = array(events).iter().find(|event| js::s(defined(prop(Some(event), "event_type"))) != RULESET_EVENT_TYPE);
-    // `find` вернул запись; запрет даёт только истинная запись — `null` в
-    // журнале его не включает (как в JS).
-    match blocking.filter(|event| js::truthy(Some(event))) {
+    // Пустая запись старого сохранения (`null`) событием не считается и поиск
+    // не обрывает: редакцию фиксирует первая настоящая запись после неё. Тип
+    // без поля — пустая строка, а не `undefined`.
+    let blocking = array(events).iter().find(|event| js::truthy(Some(event)) && js::s(defined(prop(Some(event), "event_type"))) != RULESET_EVENT_TYPE);
+    match blocking {
         Some(event) => {
-            let event_type = string_of(prop(Some(event), "event_type"));
+            let event_type = js::s(defined(prop(Some(event), "event_type")));
+            let shown = if event_type.is_empty() { "без типа" } else { event_type.as_str() };
             json!({
                 "allowed": false,
-                "reason": format!("Редакция зафиксирована событием {event_type}"),
+                "reason": format!("Редакция зафиксирована событием {shown}"),
                 "blocking_event_type": event_type,
             })
         }

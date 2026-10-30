@@ -30,7 +30,7 @@ use sk_core::js;
 use sk_items::item_catalog::catalog_item;
 
 use crate::item_instances::{create_item_instance, normalize_item_instance, seeded_integer, ItemInstanceError};
-use crate::support::{array, coalesce, get, is_prototype_key, nfkc_text, plain, prototype_string, safe_int, sha256_hex};
+use crate::support::{array, coalesce, get, nfkc_text, plain, safe_int, sha256_hex};
 
 pub const ENEMY_LOADOUT_SCHEMA_VERSION: i64 = 1;
 pub const ENEMY_LOADOUT_POLICY_ID: &str = "enemy-loadout-v1";
@@ -186,10 +186,6 @@ fn loadout_error(code: &str, message: String) -> EnemyLoadoutError {
 /// граница шаблона, проверяется на каждом предмете при сборке.
 pub fn assert_enemy_loadout_item(catalog_id: &str, verified_only: bool, allow_spellcasting_component: bool) -> Result<&'static Value, EnemyLoadoutError> {
     let Some(entry) = catalog_item(catalog_id) else {
-        if is_prototype_key(catalog_id) {
-            // Запись-функция: признака `enemy_loadout_eligible` у неё нет.
-            return Err(loadout_error("ENEMY_LOADOUT_ITEM_NOT_ELIGIBLE", format!("Предмет {catalog_id} не разрешён в инвентарях противников")));
-        }
         return Err(loadout_error("ENEMY_LOADOUT_CATALOG_UNKNOWN", format!("Предмета {catalog_id} нет в каталоге")));
     };
     let spellcasting_component = allow_spellcasting_component && js::is_true(entry.get("component_pouch"));
@@ -229,10 +225,9 @@ fn spellcaster_needs_component_pouch(block: Option<&Value>) -> bool {
     true
 }
 
-/// `WEAPON_CATALOG_BY_ACTION[id]` в JS: ключ прототипа находит функцию, и её
-/// `String(...)` дальше ведёт себя как код каталога, которого нет.
+/// `WEAPON_CATALOG_BY_ACTION[id]` по собственному ключу.
 fn weapon_lookup(action_id: &str) -> Option<String> {
-    weapon_catalog_for_action(action_id).map(str::to_string).or_else(|| prototype_string(action_id).map(str::to_string))
+    weapon_catalog_for_action(action_id).map(str::to_string)
 }
 
 fn thrown_bundle(catalog_id: &str, primary: Option<&str>) -> bool {

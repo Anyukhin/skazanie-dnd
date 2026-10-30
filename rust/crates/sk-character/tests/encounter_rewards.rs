@@ -328,11 +328,11 @@ fn ruleset_catalogs_are_not_mixed() {
     assert_eq!(code(freeze_encounter_outcome_plan(&unknown, None)), "ENCOUNTER_STAT_BLOCK_UNKNOWN");
 }
 
-/// Замечено в JS: редакция-ключ прототипа (`constructor`) находит в
-/// `RULESET_REWARD_CATALOGS` функцию без `.get`, и заморозка падает `TypeError`.
+/// Редакция-ключ прототипа (`constructor`) — неизвестная: каталога наград нет,
+/// а не `TypeError`.
 #[test]
-fn prototype_ruleset_key_is_type_error_like_js() {
+fn prototype_ruleset_key_is_unknown_ruleset() {
     let mut state = reward_state(&[enemy("x", "homebrew:thing", json!({}))], &["hero"], json!({}), &[]);
     state["ruleset_id"] = json!("constructor");
-    assert_eq!(freeze_encounter_outcome_plan(&state, None).unwrap_err().name, "TypeError");
+    assert_eq!(code(freeze_encounter_outcome_plan(&state, None)), "ENCOUNTER_STAT_BLOCK_UNKNOWN");
 }

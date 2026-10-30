@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use sk_core::{indexmap, js, re, text};
 
-use crate::util::{is_prototype_key, nullish, str_of, utf16_head};
+use crate::util::{nullish, str_of, utf16_head};
 
 pub const EQUIPMENT_VISUAL_SCHEMA_VERSION: i64 = 2;
 
@@ -322,8 +322,6 @@ pub fn item_visual_for_catalog_id(catalog_id: Option<&Value>) -> Option<ItemVisu
             model_key: Some(visual.model_key.into()),
             variant: (visual.variant != "default").then(|| visual.variant.into()),
         }),
-        // Обычный объект JS находит по такому ключу функцию из прототипа.
-        None if is_prototype_key(&key) => Some(ItemVisual::default()),
         None => None,
     }
 }
@@ -345,10 +343,6 @@ fn legacy_visual_for_item(item: &Value) -> Option<WornVisual> {
     let name = normalized_legacy_name(item.get("name"));
     if let Some((_, slot, model_key)) = LEGACY_NAME_MODELS.iter().find(|(known, _, _)| *known == name) {
         return Some(WornVisual { slot: Some(slot.to_string()), model_key: Some(model_key.to_string()), variant: Some("default".into()) });
-    }
-    if is_prototype_key(&name) {
-        // `LEGACY_NAME_MODELS.constructor` — функция без слота.
-        return Some(WornVisual { slot: None, model_key: None, variant: None });
     }
     // Запасной слот: открытая самодельная вещь честно показывает `null`.
     let kind = item.get("type").and_then(Value::as_str);

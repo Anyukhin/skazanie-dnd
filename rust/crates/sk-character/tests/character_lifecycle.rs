@@ -421,14 +421,14 @@ fn custom_species_requires_name() {
     assert_eq!(parse(&custom(Some("Полудракон"))).unwrap().patch["species"], "Полудракон");
 }
 
-/// Замечено в JS: `PHB_STARTING_WEALTH[character_class]` находит ключи
-/// прототипа, и бросок богатства «класса» `constructor` проходит проверку.
+/// Класс-ключ прототипа (`constructor`) — не класс PHB: таблица читается по
+/// собственному ключу.
 #[test]
-fn wealth_roll_accepts_prototype_class_key_like_js() {
+fn wealth_roll_rejects_prototype_class_key() {
     let state = json!({ "ruleset_id": "dnd_5e_2014", "players": [{ "id": "slot", "characterSetupRequired": true }] });
     let command = json!({ "command_type": "RollCharacterWealth", "actor_id": "slot", "character_class": "constructor" });
-    let result = validate_character_ability_roll_command(Some(&command), Some(&state), Some(&json!({ "isAdmin": true }))).unwrap();
-    assert_eq!(result["character_class"], "constructor");
+    let error = validate_character_ability_roll_command(Some(&command), Some(&state), Some(&json!({ "isAdmin": true }))).unwrap_err();
+    assert_eq!(error.code(), Some("CHARACTER_CLASS_UNSUPPORTED"));
 }
 
 /// Замечено в JS: повторный импорт героя с 0 хитов поднимает его до

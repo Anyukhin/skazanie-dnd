@@ -20,7 +20,7 @@ use sk_core::{js, re, text};
 use sk_items::item_catalog::{catalog_item, materialize_catalog_item, normalize_item_recharge_profile, ITEM_MECHANICS_STATUSES, ITEM_ORIGIN_KINDS};
 
 use crate::merchant_economy::{normalize_inventory_item_rarity, normalize_inventory_item_type, normalize_inventory_passive_effects};
-use crate::support::{coalesce, get, is_prototype_key, js_order, nfkc_text, num, plain, safe_int, sha256_hex, hex8};
+use crate::support::{coalesce, get, js_order, nfkc_text, num, plain, safe_int, sha256_hex, hex8};
 
 pub const ITEM_INSTANCE_SCHEMA_VERSION: i64 = 1;
 /// Словарь происхождения один на оба мира — `ITEM_ORIGIN_KINDS` каталога.
@@ -78,17 +78,10 @@ fn template(value: Option<&Value>) -> String {
 
 enum Entry {
     Found(&'static Value),
-    /// Свойство `Object.prototype`: истинное, но без полей записи.
-    Prototype,
 }
 
 fn lookup(catalog_id: Option<&Value>) -> Option<Entry> {
-    let id = js::s(catalog_id);
-    match catalog_item(&id) {
-        Some(entry) => Some(Entry::Found(entry)),
-        None if is_prototype_key(&id) => Some(Entry::Prototype),
-        None => None,
-    }
+    catalog_item(&js::s(catalog_id)).map(Entry::Found)
 }
 
 fn unknown_catalog(catalog_id: Option<&Value>) -> ItemInstanceError {
@@ -100,8 +93,6 @@ fn unknown_catalog(catalog_id: Option<&Value>) -> ItemInstanceError {
 pub fn item_instance_snapshot(catalog_id: Option<&Value>) -> Result<Value, ItemInstanceError> {
     match lookup(catalog_id) {
         None => Err(unknown_catalog(catalog_id)),
-        // `materializeCatalogItem(undefined, {})` — пустой объект.
-        Some(Entry::Prototype) => Ok(Value::Object(Map::new())),
         Some(Entry::Found(entry)) => Ok(normalize_snapshot(Some(&materialize_catalog_item(&js::s(entry.get("catalog_id")), Some(&Value::Object(Map::new())))))),
     }
 }
@@ -322,10 +313,7 @@ pub fn create_item_instance(input: Option<&Value>) -> Result<Value, ItemInstance
     if !(1..=MAX_ITEM_INSTANCE_QUANTITY).contains(&count) {
         return reject("Количество экземпляра вне допустимых границ", "ITEM_INSTANCE_QUANTITY_OUT_OF_RANGE");
     }
-    let Entry::Found(entry) = entry else {
-        // `itemInstanceSnapshot(entry.catalog_id)` у функции-прототипа: `undefined`.
-        return Err(unknown_catalog(None));
-    };
+    let Entry::Found(entry) = entry;
     let snapshot = item_instance_snapshot(entry.get("catalog_id"))?;
     let instance_charges = normalize_charges(coalesce(field("charges"), snapshot.get("charges")));
     let lootable = match field("lootable") {

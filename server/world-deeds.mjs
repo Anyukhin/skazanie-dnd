@@ -220,21 +220,25 @@ const clone = (value) => structuredClone(value)
 const text = (value, maximum = 300) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const integer = (value, fallback = 0) => Number.isSafeInteger(Number(value)) ? Number(value) : fallback
 const comparable = (value) => text(value, 180).toLocaleLowerCase('ru')
+/** Запись таблицы только по собственному ключу: `constructor` и прочие ключи прототипа — не вид. */
+const own = (table, key) => (Object.hasOwn(table, String(key)) ? table[String(key)] : undefined)
 
 function digest(...parts) {
   return createHash('sha256').update(parts.map((part) => String(part ?? '')).join('\0')).digest('hex').slice(0, 20)
 }
 
 function severityOf(kind) {
-  return DEED_KINDS[kind]?.severity ?? 'minor'
+  return own(DEED_KINDS, kind)?.severity ?? 'minor'
 }
 
 function alignmentOf(kind) {
-  return DEED_KINDS[kind]?.alignment ?? 'dark'
+  return own(DEED_KINDS, kind)?.alignment ?? 'dark'
 }
 
-function safeDeed(value = {}) {
-  const kind = DEED_KINDS[text(value.kind, 40)] ? text(value.kind, 40) : ''
+function safeDeed(input = {}) {
+  // `null` в летописи старого сохранения — пустая запись: её отсеет проверка вида.
+  const value = input ?? {}
+  const kind = own(DEED_KINDS, text(value.kind, 40)) ? text(value.kind, 40) : ''
   if (!kind) return null
   const id = text(value.id, 120)
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u.test(id)) return null
@@ -257,7 +261,7 @@ function safeDeed(value = {}) {
     secret: witnessIds.length === 0,
     summary: text(value.summary, 500),
     source_event_ids: [...new Set((Array.isArray(value.source_event_ids) ? value.source_event_ids : []).map((entry) => text(entry, 120)).filter(Boolean))].slice(0, 10),
-    spread_at_minutes: Math.max(atMinutes, integer(value.spread_at_minutes, atMinutes + (DEED_LOCAL_DELAY_MINUTES[severity] ?? RUMOR_HOP_MINUTES))),
+    spread_at_minutes: Math.max(atMinutes, integer(value.spread_at_minutes, atMinutes + (own(DEED_LOCAL_DELAY_MINUTES, severity) ?? RUMOR_HOP_MINUTES))),
     reputation_faction_ids: [...new Set((Array.isArray(value.reputation_faction_ids) ? value.reputation_faction_ids : [])
       .map((entry) => text(entry, 120)).filter(Boolean))].sort().slice(0, 60),
     policy_id: WORLD_DEEDS_POLICY_ID,
@@ -480,7 +484,7 @@ function recognizeDeed(state, event) {
     return { kind: 'violence', key: text(payload.npc_id, 120), subject: text(payload.npc_name, 160) || npcNameFor(state, payload.npc_id), actorIds: [payload.source_actor_id ?? event.actor_id] }
   }
   if (type === 'SceneObjectOperated') {
-    const what = PROP_KIND_LABELS[text(payload.kind, 40)] ?? 'обстановка'
+    const what = own(PROP_KIND_LABELS, text(payload.kind, 40)) ?? 'обстановка'
     const key = text(payload.prop_id, 120)
     if (payload.intent === 'ignite') return { kind: 'arson', key, subject: what, actorIds: [event.actor_id] }
     if (payload.intent === 'topple') return { kind: 'vandalism', key, subject: what, actorIds: [event.actor_id] }
@@ -614,7 +618,7 @@ export function deedFromEvent(state = {}, event = {}) {
     at_minutes: atMinutes,
     witness_ids: witnessIds,
     source_event_ids: [text(event?.event_id, 120)].filter(Boolean),
-    spread_at_minutes: atMinutes + (DEED_LOCAL_DELAY_MINUTES[severity] ?? RUMOR_HOP_MINUTES),
+    spread_at_minutes: atMinutes + (own(DEED_LOCAL_DELAY_MINUTES, severity) ?? RUMOR_HOP_MINUTES),
   })
   if (!deed) return null
   return { ...deed, summary: summaryFor(state, deed) }
@@ -656,7 +660,7 @@ export function worldDeedsFeed(state = {}, { limit = 30 } = {}) {
     .slice(0, Math.max(1, Math.min(200, integer(limit, 30))))
     .map((deed) => ({
       ...clone(deed),
-      label: DEED_KINDS[deed.kind]?.label ?? deed.kind,
+      label: own(DEED_KINDS, deed.kind)?.label ?? deed.kind,
       witness_count: deed.witness_ids.length,
     }))
 }
@@ -736,11 +740,11 @@ export function rumorClaimId(deed, npcId) {
 
 /** Формулировка слуха по дальности пересказа: 0 — точно, 2 — уже небыль. */
 export function rumorWording(deed = {}, hop = 0) {
-  const variants = RUMOR_PHRASES[deed.kind] ?? FALLBACK_RUMOR_PHRASES
+  const variants = own(RUMOR_PHRASES, deed.kind) ?? FALLBACK_RUMOR_PHRASES
   const index = Math.max(0, Math.min(variants.length - 1, integer(hop, 0)))
   return text(variants[index]
     .replaceAll('{place}', deed.location_name || 'дальних краях')
-    .replaceAll('{who}', (deed.actor_names ?? []).join(', ') || 'чужаки')
+    .replaceAll('{who}', (Array.isArray(deed.actor_names) ? deed.actor_names : []).join(', ') || 'чужаки')
     .replaceAll('{what}', deed.subject || 'что-то'), 1_000)
 }
 
@@ -867,7 +871,7 @@ export function planWorldRumorTick(state = {}, { worldMinute, limit = 24 } = {})
 
 /** Поправка репутации по тяжести и дальности: чем дальше пересказ, тем слабее. */
 export function rumorReputationDelta(deed, hop) {
-  const base = DEED_REPUTATION_BASE[deed?.severity] ?? 2
+  const base = own(DEED_REPUTATION_BASE, deed?.severity) ?? 2
   const divisor = [1, 2, 4][Math.max(0, Math.min(2, integer(hop, 0)))] ?? 4
   const magnitude = Math.max(1, Math.round(base / divisor))
   return alignmentOf(deed?.kind) === 'bright' ? magnitude : -magnitude

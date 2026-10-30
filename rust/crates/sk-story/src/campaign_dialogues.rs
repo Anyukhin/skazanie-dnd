@@ -18,7 +18,7 @@ use serde_json::{json, Map, Value};
 use sk_core::indexmap::IndexSet;
 use sk_core::{js, text};
 use sk_scenario::campaign_scenario::{campaign_scenario, scenario_clue_fact_id, scenario_found_clue_ids, scenario_informant_rules, scenario_location_id, scenario_treaty_rules};
-use crate::support::{head_utf16, prototype_string, utf16_len, PROTOTYPE_KEYS};
+use crate::support::{head_utf16, utf16_len, PROTOTYPE_KEYS};
 use sk_world_story::scenario_knight::{scenario_knight_riddle_solved, scenario_knight_state, scenario_night_index};
 
 pub const DIALOGUES_SCHEMA_VERSION: i64 = 1;
@@ -872,7 +872,6 @@ pub fn dialogue_check_line(check: Option<&Value>) -> String {
         .iter()
         .find(|(key, _)| *key == skill)
         .map(|(_, label)| (*label).to_string())
-        .or_else(|| prototype_string(&skill))
         .unwrap_or_else(|| skill.clone());
     let total = js::number(field(check, "total"));
     let outcome = if js::is_true(field(check, "success")) { "успех" } else { "провал" };
@@ -925,8 +924,8 @@ mod tests {
         assert_eq!(dialogue_check_line(Some(&json!({ "skill": "persuasion", "success": true, "total": 19 }))), "Проверка «Убеждение»: успех (19).");
         assert_eq!(dialogue_check_line(Some(&json!({ "skill": "stealth", "success": 1 }))), "Проверка «stealth»: провал.");
         assert_eq!(dialogue_check_line(None), "");
-        // Ключ прототипа находит метод `Object` — так печатает JS.
-        assert_eq!(dialogue_check_line(Some(&json!({ "skill": "constructor" }))), "Проверка «function Object() { [native code] }»: провал.");
+        // Ключ прототипа — незнакомый навык: печатается как есть.
+        assert_eq!(dialogue_check_line(Some(&json!({ "skill": "constructor" }))), "Проверка «constructor»: провал.");
     }
 
     #[test]
