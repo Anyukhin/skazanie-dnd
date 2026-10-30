@@ -840,7 +840,6 @@
           "engine_mode": "enforce",
           "isNarrating": false,
           "pendingCheck": null,
-          "suggestions": [],
           "economyLog": [
             {
               "id": "<uuid>",
@@ -1970,7 +1969,6 @@
           "engine_mode": "enforce",
           "isNarrating": false,
           "pendingCheck": null,
-          "suggestions": [],
           "economyLog": [
             {
               "id": "<uuid>",
@@ -3177,7 +3175,6 @@
           "engine_mode": "enforce",
           "isNarrating": false,
           "pendingCheck": null,
-          "suggestions": [],
           "economyLog": [
             {
               "id": "<uuid>",
@@ -4257,7 +4254,6 @@
           "engine_mode": "enforce",
           "isNarrating": false,
           "pendingCheck": null,
-          "suggestions": [],
           "economyLog": [
             {
               "id": "<uuid>",
@@ -5574,7 +5570,6 @@
           "engine_mode": "enforce",
           "isNarrating": false,
           "pendingCheck": null,
-          "suggestions": [],
           "economyLog": [
             {
               "id": "<uuid>",
@@ -6743,7 +6738,6 @@
           "engine_mode": "enforce",
           "isNarrating": false,
           "pendingCheck": null,
-          "suggestions": [],
           "economyLog": [
             {
               "id": "<uuid>",
@@ -8236,7 +8230,6 @@
           "engine_mode": "enforce",
           "isNarrating": false,
           "pendingCheck": null,
-          "suggestions": [],
           "economyLog": [
             {
               "id": "<uuid>",
@@ -12194,7 +12187,6 @@
           "engine_mode": "enforce",
           "isNarrating": false,
           "pendingCheck": null,
-          "suggestions": [],
           "economyLog": [
             {
               "id": "<uuid>",

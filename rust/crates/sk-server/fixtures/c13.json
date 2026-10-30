@@ -1337,14 +1337,6 @@
             "reputation_standing": []
           },
           "state_projector_version": 19,
-          "locationLevels": {
-            "location-1-холм": [
-              {
-                "index": 0,
-                "label": "Первый этаж"
-              }
-            ]
-          },
           "scene": {
             "title": "Точка пересечения",
             "location": "Холм",
@@ -2481,14 +2473,6 @@
             "reputation_standing": []
           },
           "state_projector_version": 19,
-          "locationLevels": {
-            "location-1-холм": [
-              {
-                "index": 0,
-                "label": "Первый этаж"
-              }
-            ]
-          },
           "scene": {
             "title": "Точка пересечения",
             "location": "Холм",
@@ -6308,14 +6292,6 @@
             "reputation_standing": []
           },
           "state_projector_version": 19,
-          "locationLevels": {
-            "location-1-холм": [
-              {
-                "index": 0,
-                "label": "Первый этаж"
-              }
-            ]
-          },
           "scene": {
             "title": "Точка пересечения",
             "location": "Холм",
@@ -7437,14 +7413,6 @@
             "reputation_standing": []
           },
           "state_projector_version": 19,
-          "locationLevels": {
-            "location-1-холм": [
-              {
-                "index": 0,
-                "label": "Первый этаж"
-              }
-            ]
-          },
           "scene": {
             "title": "Точка пересечения",
             "location": "Холм",
@@ -8582,14 +8550,6 @@
             "reputation_standing": []
           },
           "state_projector_version": 19,
-          "locationLevels": {
-            "location-1-холм": [
-              {
-                "index": 0,
-                "label": "Первый этаж"
-              }
-            ]
-          },
           "scene": {
             "title": "Точка пересечения",
             "location": "Холм",
@@ -9561,14 +9521,6 @@
             "reputation_standing": []
           },
           "state_projector_version": 19,
-          "locationLevels": {
-            "location-1-холм": [
-              {
-                "index": 0,
-                "label": "Первый этаж"
-              }
-            ]
-          },
           "scene": {
             "title": "Точка пересечения",
             "location": "Холм",
@@ -11754,14 +11706,6 @@
             "reputation_standing": []
           },
           "state_projector_version": 19,
-          "locationLevels": {
-            "location-1-холм": [
-              {
-                "index": 0,
-                "label": "Первый этаж"
-              }
-            ]
-          },
           "scene": {
             "title": "Точка пересечения",
             "location": "Холм",
@@ -12883,14 +12827,6 @@
             "reputation_standing": []
           },
           "state_projector_version": 19,
-          "locationLevels": {
-            "location-1-холм": [
-              {
-                "index": 0,
-                "label": "Первый этаж"
-              }
-            ]
-          },
           "scene": {
             "title": "Точка пересечения",
             "location": "Холм",
