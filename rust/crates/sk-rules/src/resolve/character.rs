@@ -9,10 +9,10 @@ use sk_core::js;
 use super::Resolve;
 use crate::core::event_from;
 use crate::dice_record::RulesDice;
-use crate::pause::{Fault, Halt, Step};
+use crate::pause::{Fault, Interrupt, Flow};
 
 /// Ошибка `character-lifecycle` в разборе: JS её не переписывает.
-fn lifecycle_fault(error: sk_character::character_lifecycle::CharacterLifecycleError) -> Halt {
+fn lifecycle_fault(error: sk_character::character_lifecycle::CharacterLifecycleError) -> Interrupt {
     let fault = Fault::new(error.name, error.message);
     match error.code {
         Some(code) => fault.with_code(code).into(),
@@ -27,7 +27,7 @@ fn push_draft(r: &mut Resolve<'_>, draft: &Value) {
 }
 
 /// `SetCharacterChoices`, `SetSpellSelections` (22880–22885).
-pub fn character_build(r: &mut Resolve<'_>) -> Step {
+pub fn character_build(r: &mut Resolve<'_>) -> Flow {
     let Some(draft) = sk_combat_content::character_build::character_build_event(&r.command) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'event_type')").into());
     };
@@ -36,14 +36,14 @@ pub fn character_build(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `LevelUp` (22886–22890).
-pub fn level_up(r: &mut Resolve<'_>) -> Step {
+pub fn level_up(r: &mut Resolve<'_>) -> Flow {
     let draft = sk_character::character_lifecycle::level_up_event(Some(&r.command)).map_err(lifecycle_fault)?;
     push_draft(r, &draft);
     Ok(())
 }
 
 /// `ImportCharacter` (22891–22895).
-pub fn import_character(r: &mut Resolve<'_>) -> Step {
+pub fn import_character(r: &mut Resolve<'_>) -> Flow {
     let draft = sk_character::character_lifecycle::character_import_event(Some(&r.command)).map_err(lifecycle_fault)?;
     push_draft(r, &draft);
     Ok(())
@@ -57,7 +57,7 @@ fn best_three(roll: &Value) -> Value {
 }
 
 /// `RollCharacterAbilities` (22896–22908).
-pub fn roll_character_abilities(r: &mut Resolve<'_>) -> Step {
+pub fn roll_character_abilities(r: &mut Resolve<'_>) -> Flow {
     let actor_id = js::s(r.command.get("actor_id"));
     let Some(actor) = sk_core::game::find_actor(&r.state, &actor_id) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'characterCreationRolls')").into());
@@ -78,7 +78,7 @@ pub fn roll_character_abilities(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `RollCharacterWealth` (22909–22915).
-pub fn roll_character_wealth(r: &mut Resolve<'_>) -> Step {
+pub fn roll_character_wealth(r: &mut Resolve<'_>) -> Flow {
     let class_id = js::s(r.command.get("character_class"));
     let Some(formula) = sk_chargen::character_creation_wealth::phb_starting_wealth(&class_id).filter(|_| r.command.get("character_class").is_some_and(Value::is_string)) else {
         return Err(Fault::type_error("Cannot read properties of undefined (reading 'expression')").into());

@@ -18,7 +18,7 @@ use sk_core::js;
 use crate::command::rules::rule_ids;
 use crate::conditions::{area_effect_already_holds, area_effect_automatic_save, area_effect_spares_actor, auto_failed_save_condition_for, exhaustion_step_up_events, freedom_blocks_spell_condition, ExhaustionSource, EXHAUSTION_LADDER};
 use crate::core::{ability_modifier, command_with, command_with_rules, condition_ids_for, event_from, spread_value};
-use crate::pause::Halt;
+use crate::pause::Interrupt;
 use crate::replay::apply_game_event;
 use crate::resolve::kernel::undef;
 use crate::resolve::Resolve;
@@ -89,7 +89,7 @@ fn automatic_save(purpose: &str, actor_id: &str, visibility: Value) -> Value {
 }
 
 /// События — в список и в рабочее состояние.
-fn push_all(events: &mut Vec<Value>, working: &mut Value, added: Vec<Value>) -> Result<(), Halt> {
+fn push_all(events: &mut Vec<Value>, working: &mut Value, added: Vec<Value>) -> Result<(), Interrupt> {
     for event in added {
         *working = apply_game_event(working, &event)?;
         events.push(event);
@@ -100,7 +100,7 @@ fn push_all(events: &mut Vec<Value>, working: &mut Value, added: Vec<Value>) -> 
 impl Resolve<'_> {
     /// `lingeringAreaDamage(state, command, effect, targetId, { saved, trigger })`:
     /// урон длящейся области после уже брошенного спасброска.
-    pub fn lingering_area_damage(&mut self, state: &Value, effect: &Value, target_id: &str, saved: bool, trigger: &str) -> Result<Vec<Value>, Halt> {
+    pub fn lingering_area_damage(&mut self, state: &Value, effect: &Value, target_id: &str, saved: bool, trigger: &str) -> Result<Vec<Value>, Interrupt> {
         let expression = effect.get("damage").filter(|value| js::truthy(Some(value))).map(|value| js::string(Some(value)));
         let flat = js::safe_int(effect.get("damage_amount"), 0).max(0);
         if expression.is_none() && flat <= 0 {
@@ -157,7 +157,7 @@ impl Resolve<'_> {
 
     /// `lingeringAreaHealing(state, command, effect, targetId, { trigger })`:
     /// лечение длящейся области («Исцеляющий дух»); врага не лечит.
-    pub fn lingering_area_healing(&mut self, state: &Value, effect: &Value, target_id: &str, trigger: &str) -> Result<Vec<Value>, Halt> {
+    pub fn lingering_area_healing(&mut self, state: &Value, effect: &Value, target_id: &str, trigger: &str) -> Result<Vec<Value>, Interrupt> {
         let Some(expression) = effect.get("healing").filter(|value| js::truthy(Some(value))).map(|value| js::string(Some(value))) else { return Ok(Vec::new()) };
         let Some(target) = sk_core::game::find_actor(state, target_id).filter(|target| sk_core::game::is_living_actor(target)) else { return Ok(Vec::new()) };
         let owner = js::s(effect.get("source_actor"));
@@ -199,7 +199,7 @@ impl Resolve<'_> {
     /// Спасбросок области: модификаторы, бросок, событие, «Серебряная удача».
     /// Возвращает `saved`.
     #[allow(clippy::too_many_arguments)] // повторяет общий кусок двух функций JS
-    fn area_save(&mut self, events: &mut Vec<Value>, working: &mut Value, effect: &Value, actor_id: &str, actor: Option<&Value>, ability: &str, purpose: String, trigger: &str, turn: bool) -> Result<bool, Halt> {
+    fn area_save(&mut self, events: &mut Vec<Value>, working: &mut Value, effect: &Value, actor_id: &str, actor: Option<&Value>, ability: &str, purpose: String, trigger: &str, turn: bool) -> Result<bool, Interrupt> {
         let automatic = area_effect_automatic_save(working, actor_id, Some(effect));
         let automatic_saved = js::is_true(automatic.get("saved"));
         let ability_value = Value::String(ability.into());
@@ -259,7 +259,7 @@ impl Resolve<'_> {
     }
 
     /// Урон и лечение области — в список и в рабочее состояние.
-    fn area_damage_and_healing(&mut self, events: &mut Vec<Value>, working: &mut Value, effect: &Value, actor_id: &str, saved: bool, trigger: &str) -> Result<(), Halt> {
+    fn area_damage_and_healing(&mut self, events: &mut Vec<Value>, working: &mut Value, effect: &Value, actor_id: &str, saved: bool, trigger: &str) -> Result<(), Interrupt> {
         let state = working.clone();
         let damage = self.lingering_area_damage(&state, effect, actor_id, saved, trigger)?;
         push_all(events, working, damage)?;
@@ -300,7 +300,7 @@ impl Resolve<'_> {
 
     /// `areaEntryConsequences(state, command, movedId, from, to, { trigger = 'area-enter' })`:
     /// вход в длящуюся область шагом или принудительным перемещением.
-    pub fn area_entry_consequences(&mut self, state: &Value, moved_id: &str, from: Option<&Value>, to: Option<&Value>, trigger: Option<&str>) -> Result<Vec<Value>, Halt> {
+    pub fn area_entry_consequences(&mut self, state: &Value, moved_id: &str, from: Option<&Value>, to: Option<&Value>, trigger: Option<&str>) -> Result<Vec<Value>, Interrupt> {
         let trigger = trigger.unwrap_or("area-enter");
         if !js::truthy(to) {
             return Ok(Vec::new());
@@ -352,7 +352,7 @@ impl Resolve<'_> {
 
     /// `areaTurnConsequences(state, command, actorId, { trigger = 'turn-start' })`:
     /// начало или конец хода внутри длящейся области.
-    pub fn area_turn_consequences(&mut self, state: &Value, actor_id: Option<&Value>, trigger: Option<&str>) -> Result<Vec<Value>, Halt> {
+    pub fn area_turn_consequences(&mut self, state: &Value, actor_id: Option<&Value>, trigger: Option<&str>) -> Result<Vec<Value>, Interrupt> {
         let trigger = trigger.unwrap_or("turn-start");
         let id = js::s(actor_id);
         let Some(actor) = sk_core::game::find_actor(state, &id).cloned() else { return Ok(Vec::new()) };
@@ -479,7 +479,7 @@ impl Resolve<'_> {
     }
 
     /// Особый спасбросок концентрации в начале хода («Метель»).
-    fn area_concentration_save(&mut self, events: &mut Vec<Value>, working: &mut Value, effect: &Value, id: &str, trigger: &str) -> Result<(), Halt> {
+    fn area_concentration_save(&mut self, events: &mut Vec<Value>, working: &mut Value, effect: &Value, id: &str, trigger: &str) -> Result<(), Interrupt> {
         let Some(concentration) = sk_core::game::mechanics(working).get("concentration").and_then(|all| all.get(id)).filter(|value| js::truthy(Some(value))).cloned() else { return Ok(()) };
         let Some(actor) = sk_core::game::find_actor(working, id).filter(|actor| sk_core::game::is_living_actor(actor)).cloned() else { return Ok(()) };
         let con = Value::String("con".into());

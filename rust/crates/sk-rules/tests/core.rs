@@ -313,7 +313,6 @@ fn source_rule_ids_match_js() {
                 let name = match &halt {
                     sk_rules::pause::Halt::Rule(_) => "RulesValidationError".to_string(),
                     sk_rules::pause::Halt::Fault(fault) => fault.name.clone(),
-                    sk_rules::pause::Halt::Pause(_) => "Pause".to_string(),
                 };
                 assert_eq!(json!(name), error["name"], "sourceIdsFor {case}");
                 assert_eq!(halt.code().map(Value::from).unwrap_or(Value::Null), error["code"], "sourceIdsFor {case}");

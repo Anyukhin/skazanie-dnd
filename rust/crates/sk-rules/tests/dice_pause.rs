@@ -41,7 +41,6 @@ fn halt_name(halt: &Halt) -> String {
     match halt {
         Halt::Rule(_) => "RulesValidationError".into(),
         Halt::Fault(fault) => fault.name.clone(),
-        Halt::Pause(pause) => pause.kind.name().into(),
     }
 }
 

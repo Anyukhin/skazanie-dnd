@@ -12,11 +12,11 @@ use sk_economy::merchant_economy::{merchant_view_for, DEFAULT_MERCHANT_PURSE_CP,
 use sk_rules::context::{sequence_uuids, Context};
 use sk_rules::dice_record::ServiceDice;
 use sk_rules::normalize::normalize_campaign_state;
-use sk_rules::pause::Halt;
+use sk_rules::pause::Interrupt;
 use sk_rules::validate::{Validation, BLOCKS};
 
 /// `resolveCommand(input, state, { context })` без хвоста.
-fn resolve(input: Value, state: &Value, context: Value) -> Result<(Value, Vec<Value>), Halt> {
+fn resolve(input: Value, state: &Value, context: Value) -> Result<(Value, Vec<Value>), Interrupt> {
     let context = Context::from_json(&context);
     let validated_state = normalize_campaign_state(&normalize_campaign_state(state)?)?;
     let mut uuid = sequence_uuids("uuid");
@@ -26,7 +26,7 @@ fn resolve(input: Value, state: &Value, context: Value) -> Result<(Value, Vec<Va
         match (block.check)(&mut validation) {
             Ok(()) => {}
             Err(halt) if halt.is_unported() => {}
-            Err(halt) => return Err(halt),
+            Err(halt) => return Err(halt.into()),
         }
     }
     let mut dice = ServiceDice::new(DiceService::deterministic(SequenceRng::new(Vec::new()), "roll"));
@@ -38,7 +38,7 @@ fn reduce(state: &Value, events: &[Value]) -> Value {
     events.iter().fold(state.clone(), |state, event| sk_rules::replay::apply_game_event(&state, event).expect("событие применяется"))
 }
 
-fn code<T>(result: Result<T, Halt>) -> String {
+fn code<T>(result: Result<T, Interrupt>) -> String {
     match result {
         Ok(_) => "ok".into(),
         Err(halt) => halt.code().unwrap_or("?").to_string(),

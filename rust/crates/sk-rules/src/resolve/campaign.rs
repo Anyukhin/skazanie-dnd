@@ -9,10 +9,10 @@ use sk_economy::merchant_economy::{normalize_inventory_item, InventoryItemOption
 
 use super::Resolve;
 use crate::core::{command_with, event_from, item_granted_event_from, objective_within_limit, slice_utf16, unique_strings};
-use crate::pause::{Fault, Halt, Step};
+use crate::pause::{Fault, Interrupt, Flow};
 
 /// Ошибка `campaign-lifecycle` (`TypeError` на испорченном состоянии) — как есть.
-fn director_halt(error: sk_director::adventure_director::DirectorError) -> Halt {
+fn director_halt(error: sk_director::adventure_director::DirectorError) -> Interrupt {
     let fault = Fault::new(error.name, error.message);
     match error.code {
         Some(code) => fault.with_code(code).into(),
@@ -21,7 +21,7 @@ fn director_halt(error: sk_director::adventure_director::DirectorError) -> Halt 
 }
 
 /// Ошибка `questDecisionEvents`: класс модуля, не `RulesValidationError`.
-fn quest_decision_halt(error: sk_memory::party_decision::QuestDecisionError) -> Halt {
+fn quest_decision_halt(error: sk_memory::party_decision::QuestDecisionError) -> Interrupt {
     // `sk-memory` передаёт `TypeError` JS отказом с этим кодом.
     if error.code() == "WORLD_MEMORY_TYPE_ERROR" {
         return Fault::type_error(error.message()).into();
@@ -44,7 +44,7 @@ fn draft_event(command: &Value, draft: &Value) -> Value {
 }
 
 /// `ResolveQuestDecision` (22766–22770).
-pub fn resolve_quest_decision(r: &mut Resolve<'_>) -> Step {
+pub fn resolve_quest_decision(r: &mut Resolve<'_>) -> Flow {
     let drafts = sk_memory::party_decision::quest_decision_events(&r.command, &r.state, &r.context.json()).map_err(quest_decision_halt)?;
     for draft in drafts {
         r.events.push(draft_event(&r.command, &draft));
@@ -53,7 +53,7 @@ pub fn resolve_quest_decision(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `UpdateObjective` (22771–22773).
-pub fn update_objective(r: &mut Resolve<'_>) -> Step {
+pub fn update_objective(r: &mut Resolve<'_>) -> Flow {
     let objective = objective_within_limit(r.command.get("objective"), 120);
     r.events.push(event_from(&r.command, "ObjectiveUpdated", Some(json!({ "objective": objective })), Some(&json!([]))));
     Ok(())
@@ -61,7 +61,7 @@ pub fn update_objective(r: &mut Resolve<'_>) -> Step {
 
 /// Команды памяти мира (22782–22821): событие памяти и награда за найденную
 /// тайну сценария (оберег Ломара).
-pub fn world_memory(r: &mut Resolve<'_>) -> Step {
+pub fn world_memory(r: &mut Resolve<'_>) -> Flow {
     let Some(world_event) = sk_memory::world_memory::world_memory_event(&r.command) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'event_type')").into());
     };
@@ -103,7 +103,7 @@ fn or_null(value: Option<&Value>) -> Value {
 }
 
 /// `CompleteCampaign` (22822–22836).
-pub fn complete_campaign(r: &mut Resolve<'_>) -> Step {
+pub fn complete_campaign(r: &mut Resolve<'_>) -> Flow {
     let ending = sk_scenario::campaign_scenario::scenario_ending(&r.state);
     let mut payload = Map::new();
     payload.insert("status".into(), json!("completed"));
@@ -124,7 +124,7 @@ pub fn complete_campaign(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `AdvanceCampaignArc` (22837–22859).
-pub fn advance_campaign_arc(r: &mut Resolve<'_>) -> Step {
+pub fn advance_campaign_arc(r: &mut Resolve<'_>) -> Flow {
     let Some(closing) = sk_story::campaign_loop_policy::campaign_arc_plan(&r.state) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'seed')").into());
     };
@@ -158,7 +158,7 @@ pub fn advance_campaign_arc(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `UpsertNpcSocialProfile`, `RecordNpcSocialTurn`, `ResolveNpcPromise` (22860–22879).
-pub fn npc_social(r: &mut Resolve<'_>) -> Step {
+pub fn npc_social(r: &mut Resolve<'_>) -> Flow {
     let mut added = Vec::new();
     for social in sk_social::npc_social::npc_social_events(&r.command, &r.state) {
         let mut event = draft_event(&r.command, &social);

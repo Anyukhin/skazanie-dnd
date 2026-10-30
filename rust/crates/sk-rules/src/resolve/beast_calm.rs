@@ -15,7 +15,7 @@ use crate::checks::saves::check_roll_from_verified;
 use crate::command::rules::rule_ids;
 use crate::core::{command_with, command_with_rules, event_from, slice_utf16, spread_value};
 use crate::death::zero_hit_point_damage_consequences;
-use crate::pause::Step;
+use crate::pause::Flow;
 use crate::preview_checks::preview_d20_check;
 
 /// Поле, которое JS кладёт как есть (`undefined` в JSON не попадает).
@@ -26,7 +26,7 @@ fn insert_present(map: &mut Map<String, Value>, key: &str, value: Option<&Value>
 }
 
 /// `CalmBeast` (21267–21382).
-pub fn calm_beast(r: &mut Resolve<'_>) -> Step {
+pub fn calm_beast(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     // `actorId(candidate) === command.beast_actor_id`: строгое сравнение со строкой команды.

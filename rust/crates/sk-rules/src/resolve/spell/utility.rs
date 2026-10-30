@@ -11,11 +11,11 @@ use super::super::Resolve;
 use crate::checks::saves::saving_throw_succeeded;
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, spread_value};
-use crate::pause::Step;
+use crate::pause::Flow;
 use crate::tactical_geometry::point_json;
 
 /// Телепорт (18612–18645).
-pub(super) fn teleport(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
+pub(super) fn teleport(r: &mut Resolve<'_>, cast: &mut Cast) -> Flow {
     let state = r.state.clone();
     let spell = cast.spell.clone();
     let command = cast.command.clone();

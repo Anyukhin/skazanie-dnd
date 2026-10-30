@@ -15,7 +15,7 @@ use super::Resolve;
 use crate::checks::saves::{check_roll_from_verified, roll_d20_with_species_luck, D20Method};
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, command_with_rules, condition_ids_for, event_from, spread_value};
-use crate::pause::{rule, Step};
+use crate::pause::{rule, Flow};
 use crate::spells::enervation::remove_silvery_fortune_event;
 
 fn at<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
@@ -34,7 +34,7 @@ fn supplied_modifier(command: &Value) -> Option<f64> {
 }
 
 /// `DeclareAction` (13725–13727).
-pub fn declare_action(r: &mut Resolve<'_>) -> Step {
+pub fn declare_action(r: &mut Resolve<'_>) -> Flow {
     let action = r.command.get("action").filter(|value| js::truthy(Some(value))).map(|value| js::string(Some(value))).unwrap_or_default();
     let event = event_from(&r.command, "ActionDeclared", Some(json!({ "action": crate::core::slice_utf16(&action, 1000) })), Some(&json!([])));
     r.events.push(event);
@@ -42,7 +42,7 @@ pub fn declare_action(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `MakeAbilityCheck` (13728–13820).
-pub fn make_ability_check(r: &mut Resolve<'_>) -> Step {
+pub fn make_ability_check(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     let actor_id_value = command.get("actor_id");
@@ -198,7 +198,7 @@ pub fn make_ability_check(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `MakeSavingThrow` (13821–13878).
-pub fn make_saving_throw(r: &mut Resolve<'_>) -> Step {
+pub fn make_saving_throw(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     let actor_id_value = command.get("actor_id");
@@ -297,7 +297,7 @@ pub fn make_saving_throw(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `ApplyDamage` (15173–15179).
-pub fn apply_damage(r: &mut Resolve<'_>) -> Step {
+pub fn apply_damage(r: &mut Resolve<'_>) -> Flow {
     let amount = r.roll_amount("damage", 0.0)?;
     let state = r.state.clone();
     let target_id = js::s(Some(&r.target_id));
@@ -318,7 +318,7 @@ pub fn apply_damage(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `ApplyHealing` (15180–15188).
-pub fn apply_healing(r: &mut Resolve<'_>) -> Step {
+pub fn apply_healing(r: &mut Resolve<'_>) -> Flow {
     let target_id = js::s(Some(&r.target_id));
     let rolled = r.roll_amount("healing", 0.0)?;
     let actor = sk_core::game::find_actor(&r.state, &target_id);
@@ -341,7 +341,7 @@ pub fn apply_healing(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `GrantTemporaryHitPoints` (15238–15243).
-pub fn grant_temporary_hit_points(r: &mut Resolve<'_>) -> Step {
+pub fn grant_temporary_hit_points(r: &mut Resolve<'_>) -> Flow {
     let amount = r.roll_amount("temporary_hit_points", 0.0)?;
     let key = js::string(Some(&r.target_id));
     let before = js::safe_int(sk_core::game::mechanics(&r.state).get("temporary_hp").and_then(|all| all.get(&key)), 0).max(0);
@@ -352,7 +352,7 @@ pub fn grant_temporary_hit_points(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `SetSpellBonusPreference` (15336–15341).
-pub fn set_spell_bonus_preference(r: &mut Resolve<'_>) -> Step {
+pub fn set_spell_bonus_preference(r: &mut Resolve<'_>) -> Flow {
     let enabled = r.command.get("enabled");
     if r.command.get("spell_id").and_then(Value::as_str) != Some("bless") || !matches!(enabled, Some(Value::Bool(_))) || !condition_ids_for(&r.state, &js::s(r.command.get("actor_id"))).contains("bless-d4") {
         return Err(rule("Настройка доступна только получателю действующего Благословения", "SPELL_BONUS_PREFERENCE_INVALID"));
@@ -364,7 +364,7 @@ pub fn set_spell_bonus_preference(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `SetReactionPreference` (15342–15362).
-pub fn set_reaction_preference(r: &mut Resolve<'_>) -> Step {
+pub fn set_reaction_preference(r: &mut Resolve<'_>) -> Flow {
     let reaction_id = js::s(r.command.get("reaction_id"));
     let actor = r.command.get("actor_id");
     let is_hero = r.state.get("players").and_then(Value::as_array).is_some_and(|players| players.iter().any(|player| actor.and_then(Value::as_str) == Some(sk_core::game::actor_id(player).as_str())));
@@ -388,7 +388,7 @@ pub fn set_reaction_preference(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `RecordRuling` (23150–23152).
-pub fn record_ruling(r: &mut Resolve<'_>) -> Step {
+pub fn record_ruling(r: &mut Resolve<'_>) -> Flow {
     let ruling = crate::core::coalesce(&[r.command.get("ruling")]).cloned().unwrap_or_else(js::obj);
     let event = event_from(&r.command, "RulingRecorded", Some(json!({ "ruling": ruling })), Some(&json!([])));
     r.events.push(event);
@@ -396,6 +396,6 @@ pub fn record_ruling(r: &mut Resolve<'_>) -> Step {
 }
 
 /// неизвестный тип (`default`) (23153–23154).
-pub fn default_branch(_r: &mut Resolve<'_>) -> Step {
+pub fn default_branch(_r: &mut Resolve<'_>) -> Flow {
     Err(rule("Команда пока не реализована", "COMMAND_NOT_IMPLEMENTED"))
 }

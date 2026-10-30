@@ -15,7 +15,7 @@ use super::{Resolve, Resolved};
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, command_with, command_with_rules, condition_ids_for, event_from, spread_value, unique_strings};
 use crate::dice_record::{failed_saving_throw_event, RulesDice};
-use crate::pause::{Fault, Halt};
+use crate::pause::{Fault, Halt, Interrupt};
 use crate::replay::apply_game_event;
 use crate::spells::enervation::{remove_silvery_fortune_event, silvery_fortune_for};
 
@@ -23,9 +23,9 @@ fn at<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
     value.and_then(|value| value.as_object()).and_then(|map| map.get(key))
 }
 
-fn fault(name: &str, code: Option<String>, message: String) -> Halt {
+fn fault(name: &str, code: Option<String>, message: String) -> Interrupt {
     let fault = Fault::new(name, message);
-    Halt::Fault(match code {
+    Interrupt::Fault(match code {
         Some(code) => fault.with_code(code),
         None => fault,
     })
@@ -144,7 +144,7 @@ fn with_draft_visibility(command: &Value, draft: &Value) -> Value {
 
 impl Resolve<'_> {
     /// Вложенные последствия событий команды (23156–23318).
-    fn nested_consequences(&mut self) -> Result<(), Halt> {
+    fn nested_consequences(&mut self) -> Result<(), Interrupt> {
         if self.nested_consequences_resolved {
             return Ok(());
         }
@@ -221,7 +221,7 @@ impl Resolve<'_> {
     }
 
     /// Концентрация под уроном: обрыв на нуле хитов или спасбросок Телосложения.
-    fn damage_concentration(&mut self, mut triggered: Value, resolved: &Value, damaged: &str, damage_taken: i64) -> Result<Value, Halt> {
+    fn damage_concentration(&mut self, mut triggered: Value, resolved: &Value, damaged: &str, damage_taken: i64) -> Result<Value, Interrupt> {
         let Some(concentration) = at(sk_core::game::mechanics(&triggered).get("concentration"), damaged).filter(|value| js::truthy(Some(value))).cloned() else { return Ok(triggered) };
         let mut base = spread_value(Some(&self.command));
         base.insert("actor_id".into(), Value::String(damaged.into()));
@@ -316,7 +316,7 @@ impl Resolve<'_> {
 
     /// Состояния цели урона: снятие любым уроном, уроном союзника источника,
     /// повторный спасбросок.
-    fn damage_conditions(&mut self, mut triggered: Value, resolved: &Value, damaged: &str) -> Result<Value, Halt> {
+    fn damage_conditions(&mut self, mut triggered: Value, resolved: &Value, damaged: &str) -> Result<Value, Interrupt> {
         let command = self.command.clone();
         let conditions = sk_core::game::conditions(&triggered, damaged).to_vec();
         let targets = json!([damaged]);
@@ -414,7 +414,7 @@ impl Resolve<'_> {
     }
 
     /// Окно «Несгибаемого» после проваленного спасброска (23319–23365).
-    fn indomitable_window(&mut self) -> Result<Option<Value>, Halt> {
+    fn indomitable_window(&mut self) -> Result<Option<Value>, Interrupt> {
         if self.depth != 0 || self.context.is_true("indomitableResume") || !self.events.iter().any(failed_saving_throw_event) {
             return Ok(None);
         }
@@ -476,7 +476,7 @@ impl Resolve<'_> {
     }
 
     /// Последняя смерть героя кончает кампанию поражением (23367–23386).
-    fn party_defeat(&mut self) -> Result<(), Halt> {
+    fn party_defeat(&mut self) -> Result<(), Interrupt> {
         if self.depth != 0 || !self.events.iter().any(|event| event_type(event) == "HeroDied") || self.events.iter().any(|event| event_type(event) == "CampaignFailed") {
             return Ok(());
         }
@@ -499,7 +499,7 @@ impl Resolve<'_> {
 }
 
 /// Хвост после ветки и итог `{ command, events: resolvedEvents, rolls }`.
-pub fn finish(mut r: Resolve<'_>) -> Result<Resolved, Halt> {
+pub fn finish(mut r: Resolve<'_>) -> Result<Resolved, Interrupt> {
     r.nested_consequences()?;
     if let Some(window) = r.indomitable_window()? {
         return Ok(Resolved { command: r.command, events: vec![window], rolls: Vec::new() });
@@ -567,7 +567,7 @@ pub fn finish(mut r: Resolve<'_>) -> Result<Resolved, Halt> {
                 event["event_id"] = Value::String(world_consequence_id(&text));
             }
         }
-        if let Some(story) = sk_society::campaign_stories::campaign_story_completion_draft(&state, &resolved).map_err(Halt::Rule)? {
+        if let Some(story) = sk_society::campaign_stories::campaign_story_completion_draft(&state, &resolved).map_err(Interrupt::Rule)? {
             resolved.push(event_from(&with_draft_visibility(&command, &story), &js::s(story.get("event_type")), story.get("payload").cloned(), story.get("target_ids")));
         }
         if let Some(level_before) = sk_scenario::campaign_scenario::scenario_milestone_level(&state) {
@@ -593,7 +593,7 @@ pub fn finish(mut r: Resolve<'_>) -> Result<Resolved, Halt> {
 
 /// `append(drafts)` хвоста: черновики последствий мира в события с
 /// устойчивым `event_id`, состояние идёт следом.
-fn append_world_drafts(command: &Value, resolved: &mut Vec<Value>, projected: &mut Value, drafts: Vec<Value>) -> Result<(), Halt> {
+fn append_world_drafts(command: &Value, resolved: &mut Vec<Value>, projected: &mut Value, drafts: Vec<Value>) -> Result<(), Interrupt> {
     for draft in drafts {
         let mut event = event_from(&with_draft_visibility(command, &draft), &js::s(draft.get("event_type")), draft.get("payload").cloned(), draft.get("target_ids"));
         let id = match draft.get("event_id").filter(|value| js::truthy(Some(value))) {

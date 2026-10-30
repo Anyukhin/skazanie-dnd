@@ -35,7 +35,6 @@ fn normalize_command_matches_js() {
                 let name = match halt {
                     Halt::Rule(_) => "RulesValidationError".to_string(),
                     Halt::Fault(fault) => fault.name.clone(),
-                    Halt::Pause(_) => "Pause".into(),
                 };
                 json!(name) == error["name"] && halt.code().map(Value::from).unwrap_or(Value::Null) == error["code"]
             }

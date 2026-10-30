@@ -14,6 +14,7 @@ use sk_core::js;
 use sk_dice::{DiceError, DiceService, Rng};
 use sk_rules::context::{sequence_uuids, Context};
 use sk_rules::dice_record::ServiceDice;
+use sk_rules::outcome::Outcome;
 use sk_rules::pause::Halt;
 use sk_rules::preview_attack as pa;
 use sk_rules::resolve::api;
@@ -62,7 +63,6 @@ fn outcome(result: Result<Value, Halt>) -> Value {
         Ok(value) => json!({ "ok": out(&value) }),
         Err(Halt::Rule(error)) => json!({ "err": [error.code, error.message] }),
         Err(Halt::Fault(fault)) => json!({ "fault": fault.name }),
-        Err(Halt::Pause(pause)) => json!({ "pause": pause.kind.class_name(), "window": out(&pause.window_event), "command": out(&pause.command), "prefix": out(&Value::Array(pause.prefix_events.clone())) }),
     }
 }
 
@@ -226,7 +226,7 @@ fn resolve_command_matches_js() {
                 continue;
             }
         }
-        let actual = outcome(result.map(|resolved| json!({ "command": resolved.command, "events": resolved.events, "rolls": resolved.rolls })));
+        let actual = outcome(result.map(Outcome::into_resolved).map(|resolved| json!({ "command": resolved.command, "events": resolved.events, "rolls": resolved.rolls })));
         let expected = expected_outcome(&case["o"]);
         if js::stringify(&actual) != js::stringify(&expected) {
             failures.push(format!("{} s={s} {}: Rust {} ожидалось {}", input["command_type"], input["command_id"], actual, expected));

@@ -13,7 +13,7 @@ use crate::checks::saves::check_roll_from_verified;
 use crate::command::rules::rule_ids;
 use crate::core::{command_with_rules, event_from, npc_world_events_from, player_actor, spread_value};
 use crate::dice_record::RulesDice;
-use crate::pause::{Fault, Step};
+use crate::pause::{Fault, Flow};
 use crate::preview_checks::preview_d20_check;
 
 fn get(value: &Value, key: &str) -> Value {
@@ -21,7 +21,7 @@ fn get(value: &Value, key: &str) -> Value {
 }
 
 /// `ProposeParley` (21441–21588).
-pub fn propose_parley(r: &mut Resolve<'_>) -> Step {
+pub fn propose_parley(r: &mut Resolve<'_>) -> Flow {
     let round = sk_core::game::combat(&r.state).get("round").cloned();
     let morale = parley_morale_for(&r.state);
     let attempt = parley_attempts(&r.state) + 1;
@@ -153,7 +153,7 @@ pub fn propose_parley(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `SettleParley` (21589–21655).
-pub fn settle_parley(r: &mut Resolve<'_>) -> Step {
+pub fn settle_parley(r: &mut Resolve<'_>) -> Flow {
     let Some(truce) = truce_for(&r.state) else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'tribute_cp')").into());
     };

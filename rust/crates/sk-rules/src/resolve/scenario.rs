@@ -16,10 +16,10 @@ use super::{Resolve, Resolved};
 use crate::command::rules::rule_ids;
 use crate::core::{command_with, command_with_rules, event_from, item_granted_event_from, player_actor, slice_utf16, unique_strings};
 use crate::dice_record::RulesDice;
-use crate::pause::{Fault, Halt, Step};
+use crate::pause::{Fault, Interrupt, Flow};
 use crate::society_helpers::npc_departure_events;
 
-fn missing(key: &str) -> Halt {
+fn missing(key: &str) -> Interrupt {
     Fault::type_error(format!("Cannot read properties of null (reading '{key}')")).into()
 }
 
@@ -80,7 +80,7 @@ fn ability_check_rule(command: &Value) -> String {
 impl Resolve<'_> {
     /// `resolveCommandInternal(input, state, { diceService, context })`:
     /// вложенная команда с общими костями этой команды.
-    fn nested(&mut self, input: &Value) -> Result<Resolved, Halt> {
+    fn nested(&mut self, input: &Value) -> Result<Resolved, Interrupt> {
         super::resolve_command_internal(input, &self.state, &mut self.dice, &self.context, &mut *self.uuid)
     }
 
@@ -102,7 +102,7 @@ fn check_succeeded(events: &[Value]) -> bool {
 }
 
 /// `ReceiveScenarioPurse` (20702–20715).
-pub fn receive_scenario_purse(r: &mut Resolve<'_>) -> Step {
+pub fn receive_scenario_purse(r: &mut Resolve<'_>) -> Flow {
     let Some(rules) = sk_scenario::campaign_scenario::scenario_purse_rules(&r.state) else { return Err(missing("dice")) };
     let visibility = r.command.get("visibility").filter(|value| !value.is_null()).cloned().unwrap_or_else(|| json!("party"));
     let roll = r.dice.roll(&[field(&rules, "dice"), json!("scenario-purse"), field(&r.command, "actor_id"), visibility])?;
@@ -127,7 +127,7 @@ pub fn receive_scenario_purse(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `ResolveScenarioInformant` (20716–20749).
-pub fn resolve_scenario_informant(r: &mut Resolve<'_>) -> Step {
+pub fn resolve_scenario_informant(r: &mut Resolve<'_>) -> Flow {
     use sk_attention::scenario_attention::{SCENARIO_INFORMANT_EVENT, SCENARIO_INFORMANT_TURN_FAILED_EVENT};
     let wanted = field(&r.command, "informant_id");
     let Some(informant) = sk_scenario::campaign_scenario::scenario_informant_rules(&r.state).into_iter().find(|entry| entry.get("id") == Some(&wanted)) else {
@@ -196,7 +196,7 @@ fn check_record(option: &Value, events: &[Value]) -> Value {
 }
 
 /// `ChooseDialogueOption` (20750–20869).
-pub fn choose_dialogue_option(r: &mut Resolve<'_>) -> Step {
+pub fn choose_dialogue_option(r: &mut Resolve<'_>) -> Flow {
     let option = field(&r.command, "dialogue_option");
     if !option.is_object() {
         return Err(Fault::type_error("Cannot read properties of undefined (reading 'action')").into());
@@ -329,7 +329,7 @@ pub fn choose_dialogue_option(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `ChooseScenarioArmoryItem` (20870–20876).
-pub fn choose_scenario_armory_item(r: &mut Resolve<'_>) -> Step {
+pub fn choose_scenario_armory_item(r: &mut Resolve<'_>) -> Flow {
     let item = field(&r.command, "armory_item");
     let targets = actor_targets(&r.command);
     r.events.push(item_granted_event_from(&r.command, Some(json!({ "item": item })), Some(&targets)));
@@ -358,7 +358,7 @@ fn scenario_payload(command: &Value, npc_id: &Value, rest: &[(&str, Value)]) -> 
 }
 
 /// `NegotiateScenarioTreaty` (20877–20912).
-pub fn negotiate_scenario_treaty(r: &mut Resolve<'_>) -> Step {
+pub fn negotiate_scenario_treaty(r: &mut Resolve<'_>) -> Flow {
     use sk_attention::scenario_attention::{SCENARIO_TREATY_CONCLUDED_EVENT, SCENARIO_TREATY_REFUSED_EVENT};
     let rules = sk_scenario::campaign_scenario::scenario_treaty_rules(&r.state);
     let input = ability_check_input(&r.command, &field(&r.command, "command_id"), r.command.get("skill"), r.command.get("difficulty"), rule_list(&r.command, None));
@@ -390,7 +390,7 @@ pub fn negotiate_scenario_treaty(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `ReturnKnightHead` (20913–20919).
-pub fn return_knight_head(r: &mut Resolve<'_>) -> Step {
+pub fn return_knight_head(r: &mut Resolve<'_>) -> Flow {
     let Some(rules) = sk_world_story::scenario_knight::scenario_knight_rules(&r.state) else { return Err(missing("npc_id")) };
     let npc_id = field(&rules, "npc_id");
     let source = command_with_rules(&r.command, &[rule_ids::TURNS]);
@@ -401,7 +401,7 @@ pub fn return_knight_head(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `ReleaseCursedKnight` (20920–20951).
-pub fn release_cursed_knight(r: &mut Resolve<'_>) -> Step {
+pub fn release_cursed_knight(r: &mut Resolve<'_>) -> Flow {
     use sk_world_story::scenario_knight::{SCENARIO_KNIGHT_RELEASED_EVENT, SCENARIO_KNIGHT_RELEASE_FAILED_EVENT};
     let Some(rules) = sk_world_story::scenario_knight::scenario_knight_rules(&r.state) else { return Err(missing("release")) };
     let difficulty = at(Some(&rules), &["release", "dc"]).cloned();

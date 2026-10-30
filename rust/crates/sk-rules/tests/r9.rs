@@ -16,6 +16,7 @@ use sk_core::js;
 use sk_dice::{DiceError, DiceService, Rng};
 use sk_rules::context::{sequence_uuids, Context};
 use sk_rules::dice_record::ServiceDice;
+use sk_rules::outcome::Outcome;
 use sk_rules::pause::Halt;
 use sk_rules::resolve::api;
 
@@ -99,7 +100,6 @@ fn outcome(result: &Result<Value, Halt>) -> Value {
         Ok(value) => json!({ "ok": out(value) }),
         Err(Halt::Rule(error)) => json!({ "err": [error.code, error.message] }),
         Err(Halt::Fault(fault)) => json!({ "fault": fault.name }),
-        Err(Halt::Pause(pause)) => json!({ "pause": pause.kind.class_name(), "window": out(&pause.window_event), "command": out(&pause.command), "prefix": out(&Value::Array(pause.prefix_events.clone())) }),
     }
 }
 
@@ -125,7 +125,7 @@ fn cast_spell_matches_js() {
         let mut dice = dice(&case["v"]);
         let mut uuid = sequence_uuids("uuid");
         api::take_skipped_blocks();
-        let result = api::with_lenient_validation(|| api::resolve_command(&input, &raw, &mut dice, &context, &mut uuid)).map(|resolved| json!({ "command": resolved.command, "events": resolved.events, "rolls": resolved.rolls }));
+        let result = api::with_lenient_validation(|| api::resolve_command(&input, &raw, &mut dice, &context, &mut uuid)).map(Outcome::into_resolved).map(|resolved| json!({ "command": resolved.command, "events": resolved.events, "rolls": resolved.rolls }));
         let skipped = api::take_skipped_blocks();
         if let Err(halt) = &result {
             if halt.is_unported() {

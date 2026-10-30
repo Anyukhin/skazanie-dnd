@@ -90,7 +90,6 @@ impl Thrown {
         match halt {
             Halt::Rule(error) => Self::new(error.message.clone(), Some(&error.code)),
             Halt::Fault(fault) => Self { message: fault.message.clone(), code: fault.code.clone() },
-            Halt::Pause(pause) => Self::new(pause.message(), None),
         }
     }
 

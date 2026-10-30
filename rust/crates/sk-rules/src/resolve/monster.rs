@@ -16,7 +16,7 @@ use super::Resolve;
 use crate::checks::saves::{saved_damage_amount, saving_throw_succeeded};
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, command_with, command_with_rules, event_from, spread_value};
-use crate::pause::{Fault, Step};
+use crate::pause::{Fault, Flow};
 use crate::preview_attack::{condition_id_values, preview_monster_action};
 use crate::replay::apply_game_event;
 use crate::tactical_geometry::{actor_point, line_cells, point_json, points_json};
@@ -39,7 +39,7 @@ fn spread(base: &Value, fields: Vec<(&str, Value)>) -> Value {
 }
 
 /// `UseMonsterAction` (15032–15088).
-pub fn use_monster_action(r: &mut Resolve<'_>) -> Step {
+pub fn use_monster_action(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     let actor_id = js::string(command.get("actor_id"));
@@ -132,7 +132,7 @@ pub fn use_monster_action(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `UseLegendaryAction` (16697–16835).
-pub fn use_legendary_action(r: &mut Resolve<'_>) -> Step {
+pub fn use_legendary_action(r: &mut Resolve<'_>) -> Flow {
     let state = r.state.clone();
     let command = r.command.clone();
     let declared = command.get("legendary_action").cloned().unwrap_or(Value::Null);

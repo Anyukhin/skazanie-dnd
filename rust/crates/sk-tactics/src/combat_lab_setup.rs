@@ -218,7 +218,6 @@ impl From<sk_rules::pause::Halt> for CombatLabSetupError {
         match halt {
             Halt::Rule(error) => Self::other("RulesValidationError", error.message, Some(error.code)),
             Halt::Fault(fault) => Self::other(fault.name, fault.message, fault.code),
-            pause @ Halt::Pause(_) => Self::other("Error", pause.to_string(), None),
         }
     }
 }

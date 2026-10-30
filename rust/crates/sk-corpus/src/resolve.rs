@@ -22,7 +22,8 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 use sk_core::js;
 use sk_rules::context::{sequence_uuids, Context};
-use sk_rules::pause::Halt;
+use sk_rules::outcome::Outcome;
+use sk_rules::pause::{Halt, Interrupt};
 
 use crate::{first_difference, truncate, Corpus};
 
@@ -102,11 +103,13 @@ fn validate_ported(input: &Value, state: &Value, context: &Context, command_id: 
     Ok(validation.command)
 }
 
-fn halt_text(halt: &Halt) -> String {
+/// Остановка словами. Пауза приходит только из ветки без хвоста
+/// (`SK_CORPUS_BRANCH_ONLY=1`): полный путь отдаёт её итогом `Pending`.
+fn halt_text(halt: &Interrupt) -> String {
     match halt {
-        Halt::Rule(error) => format!("отказ {}: {}", error.code, error.message),
-        Halt::Fault(fault) => format!("ошибка {}: {}", fault.name, fault.message),
-        Halt::Pause(pause) => format!("пауза {}", pause.kind.name()),
+        Interrupt::Rule(error) => format!("отказ {}: {}", error.code, error.message),
+        Interrupt::Fault(fault) => format!("ошибка {}: {}", fault.name, fault.message),
+        Interrupt::Pause(pause) => format!("пауза {}", pause.kind.name()),
     }
 }
 
@@ -263,7 +266,9 @@ pub fn check_resolve_many(corpus: &Corpus, kinds: &[&str]) -> std::io::Result<Ve
                 sk_rules::resolve::api::take_skipped_blocks();
                 let result = sk_rules::resolve::api::with_lenient_validation(|| sk_rules::resolve::api::resolve_command(&record.command, &state, &mut recording, &context, &mut uuid));
                 skipped.extend(sk_rules::resolve::api::take_skipped_blocks());
-                return result;
+                // Корпус сверяет события: у ожидания решения они те же, что
+                // записал JS (префикс и окно).
+                return result.map(Outcome::into_resolved).map_err(Interrupt::from);
             }
             // JS: `resolveCommandInternal` нормализует состояние, `validateCommand`
             // — ещё раз (нормализация не всегда идемпотентна).
@@ -299,7 +304,7 @@ pub fn check_resolve_many(corpus: &Corpus, kinds: &[&str]) -> std::io::Result<Ve
         match (&result, record.ok()) {
             (Err(halt), _) if halt.is_unported() => {
                 let name = match halt {
-                    Halt::Rule(error) => error.message.clone(),
+                    Interrupt::Rule(error) => error.message.clone(),
                     _ => String::new(),
                 };
                 *report.unported.entry(name).or_default() += 1;

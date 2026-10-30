@@ -12,11 +12,11 @@ use super::super::Resolve;
 use super::{balance_cp, command_id_head, elapsed_minutes, insert_present, insert_wallet, social_npc_loose, string_or, with_field, with_visibility};
 use crate::command::rules::rule_ids;
 use crate::core::{command_with_rules, event_from, player_actor, slice_utf16};
-use crate::pause::{Fault, Step};
+use crate::pause::{Fault, Flow};
 use crate::preview_checks::{blessing_granted_events, scene_place_text, BlessingGrant};
 
 /// `ReceiveNpcBlessing` (22046–22096).
-pub fn receive_npc_blessing(r: &mut Resolve<'_>) -> Step {
+pub fn receive_npc_blessing(r: &mut Resolve<'_>) -> Flow {
     let Some(actor) = player_actor(&r.state, r.command.get("actor_id")).cloned() else {
         return Err(Fault::type_error("Cannot read properties of null (reading 'currency')").into());
     };

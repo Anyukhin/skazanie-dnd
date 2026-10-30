@@ -15,7 +15,7 @@ use sk_core::js;
 use sk_dice::{DiceService, SequenceRng};
 use sk_rules::context::{sequence_uuids, Context};
 use sk_rules::dice_record::ServiceDice;
-use sk_rules::pause::Halt;
+use sk_rules::pause::{Halt, Interrupt};
 use sk_rules::preview_checks as preview;
 use sk_rules::summary;
 use sk_rules::validate::{Validation, BLOCKS};
@@ -65,12 +65,12 @@ fn out(value: &Value) -> Value {
     }
 }
 
-fn outcome(result: Result<Value, Halt>, shape: impl Fn(&Value) -> Value) -> Value {
-    match result {
+fn outcome<E: Into<Interrupt>>(result: Result<Value, E>, shape: impl Fn(&Value) -> Value) -> Value {
+    match result.map_err(Into::into) {
         Ok(value) => json!({ "ok": shape(&value) }),
-        Err(Halt::Rule(error)) => json!({ "err": [error.code, error.message] }),
-        Err(Halt::Fault(fault)) => json!({ "fault": fault.name }),
-        Err(Halt::Pause(pause)) => json!({ "fault": pause.kind.name() }),
+        Err(Interrupt::Rule(error)) => json!({ "err": [error.code, error.message] }),
+        Err(Interrupt::Fault(fault)) => json!({ "fault": fault.name }),
+        Err(Interrupt::Pause(pause)) => json!({ "fault": pause.kind.name() }),
     }
 }
 
@@ -135,14 +135,14 @@ fn validate_blocks_match_js() {
 
 /// `validateCommand` перенесёнными блоками: заглушки чужих задач пропускаются
 /// (как `sk-corpus resolve`).
-fn validate_ported(input: &Value, state: &Value, context: &Context, uuid: &mut dyn FnMut() -> String) -> Result<Value, Halt> {
+fn validate_ported(input: &Value, state: &Value, context: &Context, uuid: &mut dyn FnMut() -> String) -> Result<Value, Interrupt> {
     let command = sk_rules::command::normalize::normalize_command(input, state, uuid)?;
     let mut validation = Validation { state, command, context, actor_fate: None };
     for block in BLOCKS {
         match (block.check)(&mut validation) {
             Ok(()) => {}
             Err(halt) if halt.is_unported() => {}
-            Err(halt) => return Err(halt),
+            Err(halt) => return Err(halt.into()),
         }
     }
     Ok(validation.command)
@@ -203,7 +203,7 @@ fn text_or_default(value: Option<Value>, fallback: &str) -> String {
 
 fn run_call(f: &str, state: &Value, args: &[Value]) -> Result<Value, Halt> {
     match f {
-        "previewD20Check" => preview::preview_d20_check(state, &arg(&args[0]).unwrap_or_else(|| json!({}))),
+        "previewD20Check" => Ok(preview::preview_d20_check(state, &arg(&args[0]).unwrap_or_else(|| json!({})))?),
         "previewTavernDiceRoll" => {
             let actor = arg(&args[0]);
             let approach = arg(&args[1]);

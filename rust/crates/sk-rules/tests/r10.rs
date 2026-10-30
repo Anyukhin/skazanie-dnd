@@ -53,7 +53,6 @@ fn outcome(result: Result<Value, Halt>) -> Value {
         Ok(value) => json!({ "ok": out(&value) }),
         Err(Halt::Rule(error)) => json!({ "err": [error.code, error.message] }),
         Err(Halt::Fault(fault)) => json!({ "fault": fault.name }),
-        Err(Halt::Pause(pause)) => json!({ "pause": pause.kind.class_name(), "window": out(&pause.window_event), "command": out(&pause.command), "prefix": out(&Value::Array(pause.prefix_events.clone())) }),
     }
 }
 
@@ -107,7 +106,7 @@ fn run(input: &Value, state: &Value, context: &Context, values: &Value, stubs: &
             return None;
         }
     }
-    Some(outcome(result.map(|resolved| resolved_json(&resolved))))
+    Some(outcome(result.map(|resolved| resolved_json(resolved.resolved()))))
 }
 
 #[test]

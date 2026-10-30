@@ -17,7 +17,7 @@ use super::Resolved;
 use crate::context::{Context, Uuid};
 use crate::core::{command_with, event_from, spread_value, unique_strings};
 use crate::dice_record::RulesDice;
-use crate::pause::Halt;
+use crate::pause::{Halt, Interrupt};
 use crate::replay::apply_game_event;
 
 /// `OPENING_STRIKE_COMMAND_TYPES`.
@@ -127,7 +127,7 @@ pub fn opening_strike_turn_state(started: &Value, before: &Value, hero_id: &str,
 }
 
 /// `resolveOpeningStrike(input, rawState, opening, { diceService, context })`.
-pub fn resolve_opening_strike(input: &Value, raw_state: &Value, opening: &OpeningStrike, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Halt> {
+pub fn resolve_opening_strike(input: &Value, raw_state: &Value, opening: &OpeningStrike, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
     let command_id = match crate::core::coalesce(&[input.get("command_id")]).or_else(|| crate::core::coalesce(&[input.get("commandId")])) {
         Some(id) => js::string(Some(id)),
         None => uuid(),
@@ -188,14 +188,14 @@ pub fn resolve_opening_strike(input: &Value, raw_state: &Value, opening: &Openin
     if free_strike || hero_acts_first {
         let resolved = match resolve_internal(&follow_up, &own_turn, dice, context, &mut *uuid) {
             Ok(resolved) => resolved,
-            Err(Halt::Pause(mut pause)) => {
+            Err(Interrupt::Pause(mut pause)) => {
                 let mut prefix = start.events.clone();
                 prefix.append(&mut pause.prefix_events);
                 pause.prefix_events = prefix;
                 let mut rolls = start.rolls.clone();
                 rolls.append(&mut pause.prefix_rolls);
                 pause.prefix_rolls = rolls;
-                return Err(Halt::Pause(pause));
+                return Err(Interrupt::Pause(pause));
             }
             Err(other) => return Err(other),
         };
@@ -213,7 +213,7 @@ pub fn resolve_opening_strike(input: &Value, raw_state: &Value, opening: &Openin
     }
     let mut dry = crate::dice_record::dry_run_dice();
     match resolve_internal(&follow_up, &own_turn, &mut dry, context, &mut *uuid) {
-        Ok(_) | Err(Halt::Pause(_)) => {}
+        Ok(_) | Err(Interrupt::Pause(_)) => {}
         Err(other) => return Err(other),
     }
     let command = crate::command::normalize::normalize_command(&strike, &state, &mut *uuid)?;

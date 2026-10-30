@@ -53,7 +53,6 @@ fn outcome(result: Result<Value, Halt>) -> Value {
         Ok(value) => json!({ "ok": value }),
         Err(Halt::Rule(error)) => json!({ "err": [error.code, error.message] }),
         Err(Halt::Fault(fault)) => json!({ "fault": fault.name }),
-        Err(Halt::Pause(_)) => json!({ "fault": "Pause" }),
     }
 }
 
@@ -302,5 +301,5 @@ fn engine_acceptance(f: &str, state: &Value, ok: &Value) -> Value {
     let context = Context::from_json(&json!({ "serverAuthoritativeCombat": true, "allowedActorIds": [actor_id] }));
     let mut dice = dice();
     let mut uuid = sk_rules::context::sequence_uuids("t2");
-    accepted(resolve_command(&command, state, &mut dice, &context, &mut uuid).map(|resolved| resolved.events.len()))
+    accepted(resolve_command(&command, state, &mut dice, &context, &mut uuid).map(|outcome| outcome.resolved().events.len()))
 }

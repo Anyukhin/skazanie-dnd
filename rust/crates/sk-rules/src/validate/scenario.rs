@@ -369,7 +369,7 @@ pub fn check_scenario_stranger(v: &mut Validation<'_>) -> Step {
     let arrive = v.command.get("stage").and_then(Value::as_str) == Some("arrive");
     let profile = sk_attention::scenario_attention::scenario_stranger_profile(v.state, arrive).unwrap_or(Value::Null);
     let request = json!({ "command_type": "UpsertNpcSocialProfile", "npc": profile });
-    let validated = sk_social::npc_social::validate_npc_social_command(&request, v.state, &json!({ "isDirector": true })).map_err(|error| rule(error.message, &error.code))?;
+    let validated = sk_social::npc_social::validate_npc_social_command(&request, v.state, &json!({ "isDirector": true })).map_err(|error| rule::<crate::pause::Halt>(error.message, &error.code))?;
     set_field(&mut v.command, "npc", validated.get("npc").cloned().unwrap_or(Value::Null));
     set_field(&mut v.command, "visibility", json!("public"));
     Ok(())

@@ -32,7 +32,6 @@ fn halt_json(halt: &Halt) -> Value {
     match halt {
         Halt::Rule(error) => json!({ "name": "RulesValidationError", "code": error.code, "message": error.message }),
         Halt::Fault(fault) => json!({ "name": fault.name, "code": fault.code }),
-        Halt::Pause(pause) => json!({ "name": pause.kind.name() }),
     }
 }
 

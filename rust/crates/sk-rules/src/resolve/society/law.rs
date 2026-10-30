@@ -14,7 +14,7 @@ use crate::checks::saves::check_roll_from_verified;
 use crate::command::rules::rule_ids;
 use crate::core::{command_with_rules, event_from, player_actor, slice_utf16, spread_value};
 use crate::dice_record::RulesDice;
-use crate::pause::{Fault, Step};
+use crate::pause::{Fault, Flow};
 use crate::preview_checks::preview_d20_check;
 
 fn get(value: &Value, key: &str) -> Value {
@@ -22,7 +22,7 @@ fn get(value: &Value, key: &str) -> Value {
 }
 
 /// `ClearWantedLevel` (22139–22152).
-pub fn clear_wanted_level(r: &mut Resolve<'_>) -> Step {
+pub fn clear_wanted_level(r: &mut Resolve<'_>) -> Flow {
     let region_id = js::string(r.command.get("region_id"));
     let region = Value::String(region_id.clone());
     let wanted = wanted_for(&r.state, &region);
@@ -61,7 +61,7 @@ fn defiance_crime(r: &Resolve<'_>, encounter: &Value, points: i64, witnesses: Va
 }
 
 /// `ResolveGuardEncounter` (22153–22331).
-pub fn resolve_guard_encounter(r: &mut Resolve<'_>) -> Step {
+pub fn resolve_guard_encounter(r: &mut Resolve<'_>) -> Flow {
     let encounter = guard_encounter_for(&r.state);
     if !js::truthy(Some(&encounter)) {
         return Err(Fault::type_error("Cannot read properties of null (reading 'region_id')").into());

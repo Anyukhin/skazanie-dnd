@@ -18,7 +18,8 @@ use sk_dice::{DiceService, SequenceRng};
 use sk_rules::areas::consequences as area;
 use sk_rules::context::{sequence_uuids, Context};
 use sk_rules::dice_record::{Recording, RulesDice, ServiceDice};
-use sk_rules::pause::Halt;
+use sk_rules::outcome::Outcome;
+use sk_rules::pause::{Halt, Interrupt};
 use sk_rules::reactions as re;
 use sk_rules::resolve::{api, kernel, opening_strike as os, post, Resolve, Resolved};
 use sk_rules::spells::{components as comp, enervation as en, slots};
@@ -122,12 +123,12 @@ fn out(value: &Value) -> Value {
     }
 }
 
-fn outcome(result: Result<Value, Halt>) -> Value {
-    match result {
+fn outcome<E: Into<Interrupt>>(result: Result<Value, E>) -> Value {
+    match result.map_err(Into::into) {
         Ok(value) => json!({ "ok": out(&value) }),
-        Err(Halt::Rule(error)) => json!({ "err": [error.code, error.message] }),
-        Err(Halt::Fault(fault)) => json!({ "fault": fault.name }),
-        Err(Halt::Pause(pause)) => json!({ "pause": pause.kind.class_name(), "window": out(&pause.window_event), "command": out(&pause.command), "prefix": out(&Value::Array(pause.prefix_events.clone())) }),
+        Err(Interrupt::Rule(error)) => json!({ "err": [error.code, error.message] }),
+        Err(Interrupt::Fault(fault)) => json!({ "fault": fault.name }),
+        Err(Interrupt::Pause(pause)) => json!({ "pause": pause.kind.class_name(), "window": out(&pause.window_event), "command": out(&pause.command), "prefix": out(&Value::Array(pause.prefix_events.clone())) }),
     }
 }
 
@@ -171,7 +172,7 @@ fn run_call(f: &str, s: usize, a: &Args) -> Result<Value, Halt> {
         "scaledSpellDice" => ok(opt(slots::scaled_spell_dice(a.v(0), a.v(1), a.v(2)))),
         "scaledDiceExpression" => ok(json!(slots::scaled_dice_expression(&js::string(a.v(0)), a.v(1), a.v(2), a.v(3)))),
         "reactionSlotChoice" => match a.v(1) {
-            Some(spell) => slots::reaction_slot_choice(st, &a.id(0), spell, a.null(2), a.v(3)),
+            Some(spell) => Ok(slots::reaction_slot_choice(st, &a.id(0), spell, a.null(2), a.v(3))?),
             None => ok(Value::Null),
         },
         "withSpellOptionOverrides" => ok(a.v(0).map_or_else(undefined, |spell| slots::with_spell_option_overrides(spell, a.v(1)))),
@@ -180,7 +181,7 @@ fn run_call(f: &str, s: usize, a: &Args) -> Result<Value, Halt> {
         "concentrationSaveAdvantageFor" => ok(json!(slots::concentration_save_advantage_for(a.v(0)))),
         "lifeDomainCaster" => ok(json!(slots::life_domain_caster(a.v(0)))),
         "assertBonusActionSpellAllowed" => match a.v(1) {
-            Some(spell) => slots::assert_bonus_action_spell_allowed(st, &a.id(0), spell, a.v(2)).map(|()| undefined()),
+            Some(spell) => Ok(slots::assert_bonus_action_spell_allowed(st, &a.id(0), spell, a.v(2)).map(|()| undefined())?),
             None => ok(Value::Null),
         },
         "beamCountFor" => ok(json!(slots::beam_count_for(a.v(0), a.v(1), a.v(2)))),
@@ -347,7 +348,7 @@ fn resolve_for<'a>(raw: &Value, command: Value, context: &Context, dice: &'a mut
     }
 }
 
-fn run_probe(r: &mut Resolve<'_>, f: &str, a: &[Option<Value>]) -> Result<Value, Halt> {
+fn run_probe(r: &mut Resolve<'_>, f: &str, a: &[Option<Value>]) -> Result<Value, Interrupt> {
     let st = r.state.clone();
     let v = |index: usize| a.get(index).and_then(Option::as_ref);
     let some = |index: usize| v(index).filter(|value| !value.is_null());
@@ -440,7 +441,7 @@ fn resolve_command_matches_js() {
         let context = Context::from_json(&case["context"]);
         let mut dice = sequence(&case["v"]);
         let mut uuid = sequence_uuids("uuid");
-        let result = api::with_lenient_validation(|| api::resolve_command(&input, raw, &mut dice, &context, &mut uuid));
+        let result = api::with_lenient_validation(|| api::resolve_command(&input, raw, &mut dice, &context, &mut uuid)).map(Outcome::into_resolved).map_err(Interrupt::from);
         let actual = outcome(result.map(|resolved| resolved_json(&resolved)));
         let expected = expected_outcome(&case["o"]);
         if js::stringify(&actual) != js::stringify(&expected) {
@@ -461,7 +462,7 @@ fn resolve_commands_matches_js() {
         let context = Context::from_json(&json!({ "isAdmin": true }));
         let mut dice = sequence(&case["v"]);
         let mut uuid = sequence_uuids("uuid");
-        let result = api::with_lenient_validation(|| api::resolve_commands(&commands, raw, &mut dice, &context, false, &mut uuid));
+        let result = api::with_lenient_validation(|| api::resolve_commands(&commands, raw, &mut dice, &context, false, &mut uuid)).map_err(Interrupt::from);
         let actual = outcome(result.map(|plan| {
             let mut state = plan.state;
             sk_rules::reduce::strip_derived(&mut state);

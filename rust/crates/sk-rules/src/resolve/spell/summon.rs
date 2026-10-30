@@ -12,7 +12,7 @@ use super::super::Resolve;
 use crate::command::rules::rule_ids;
 use crate::core::{ability_modifier, slice_utf16, spread_value, unique_strings};
 use crate::dice_record::RulesDice;
-use crate::pause::{pending_execution_for, Halt, Step};
+use crate::pause::{pending_execution_for, Interrupt, Flow};
 use crate::tactical_geometry::key_of;
 
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
@@ -24,7 +24,7 @@ fn dice_text(count: i64, sides: impl std::fmt::Display, modifier: i64) -> String
 }
 
 /// Призыв (18646–18778).
-pub(super) fn summon(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
+pub(super) fn summon(r: &mut Resolve<'_>, cast: &mut Cast) -> Flow {
     let state = r.state.clone();
     let spell = cast.spell.clone();
     let command = cast.command.clone();
@@ -223,7 +223,7 @@ pub(super) fn summon(r: &mut Resolve<'_>, cast: &mut Cast) -> Step {
 const PUSHED_AWAY_CODES: [&str; 4] = ["TRAJECTORY_BLOCKED", "TARGET_OUT_OF_RANGE", "TARGET_NOT_VISIBLE", "TOTAL_COVER"];
 
 /// Дополнительные лучи: каждый — вложенный разбор той же команды (18783–18820).
-pub(super) fn additional_beams(r: &mut Resolve<'_>, cast: &Cast) -> Step {
+pub(super) fn additional_beams(r: &mut Resolve<'_>, cast: &Cast) -> Flow {
     let spell = &cast.spell;
     if field(spell, "kind").and_then(Value::as_str) != Some("attack") || !crate::spells::slots::has_multiple_beams(Some(spell)) || r.context.truthy("additionalBeam") {
         return Ok(());
@@ -254,15 +254,15 @@ pub(super) fn additional_beams(r: &mut Resolve<'_>, cast: &Cast) -> Step {
         }
         beam_command.insert("target_id".into(), Value::String(beam_target.clone()));
         beam_command.insert("target_ids".into(), json!([beam_target]));
-        let result = crate::resolve::api::resolve_command(&Value::Object(beam_command), &beam_state, &mut r.dice, &context, &mut *r.uuid);
+        let result = crate::resolve::api::resolve_command_inner(&Value::Object(beam_command), &beam_state, &mut r.dice, &context, &mut *r.uuid);
         let resolved = match result {
             Ok(resolved) => resolved,
-            Err(Halt::Rule(error))
+            Err(Interrupt::Rule(error))
                 if PUSHED_AWAY_CODES.contains(&error.code.as_str()) && crate::tactical_geometry::actor_point(&r.state, &beam_target) != crate::tactical_geometry::actor_point(&beam_state, &beam_target) =>
             {
                 continue;
             }
-            Err(Halt::Pause(mut pause)) => {
+            Err(Interrupt::Pause(mut pause)) => {
                 pause.command = command.clone();
                 let transcript = Value::Array(r.dice.transcript.clone());
                 let execution = pending_execution_for(&r.context);
@@ -270,7 +270,7 @@ pub(super) fn additional_beams(r: &mut Resolve<'_>, cast: &Cast) -> Step {
                 payload.insert("pending_command".into(), command.clone());
                 payload.insert("pending_dice_transcript".into(), transcript);
                 payload.insert("pending_execution".into(), execution);
-                return Err(Halt::Pause(pause));
+                return Err(Interrupt::Pause(pause));
             }
             Err(other) => return Err(other),
         };

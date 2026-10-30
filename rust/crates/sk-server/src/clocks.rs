@@ -186,7 +186,9 @@ pub fn run_merchant_economy_clock(core: &GameCore, campaign_id: &str) -> Result<
                         "request_fingerprint": format!("clock:{}:{}", tpl(plan.get("scheduled_for_world_minute")), tpl(plan.get("processed_at_world_minute"))),
                     }),
                 );
-                let resolved = engine.resolve(&command, &projected, &context)?;
+                // Пополнение лавки окна реакции не открывает; события
+                // коммитятся одинаково при любом исходе.
+                let resolved = engine.resolve(&command, &projected, &context)?.into_resolved();
                 for event in resolved.events {
                     projected = sk_rules::replay::apply_game_event(&projected, &event)?;
                     events.push(event);

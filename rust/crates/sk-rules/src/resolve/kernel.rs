@@ -8,7 +8,7 @@
 //! стенограммы), `command`, `context` и выборы реакций; здесь — поля
 //! [`Resolve`]. Паузы боя (`ResistanceChoicePause`, `ResistanceAfterRollPause`,
 //! `ElementalDamageReactionPause`, `ProtectiveReactionPause`) бросаются как
-//! [`Halt::Pause`] со стенограммой костей на момент броска.
+//! [`Interrupt::Pause`] со стенограммой костей на момент броска.
 //!
 //! Опции бросков: ключ со значением `undefined` в JS держит место в объекте,
 //! поэтому здесь он помечается [`js::UNDEFINED`] (см. [`undef`]); кости и
@@ -22,7 +22,7 @@ use crate::dice_record::RulesDice;
 use crate::command::rules::rule_ids;
 use crate::constants::MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION;
 use crate::core::{command_with, command_with_rules, condition_ids_for, event_from, spread_value};
-use crate::pause::{resistance_choice_mode, resistance_choices_object, resistance_condition_for, ElementalDamageArgs, Halt, Pause, ProtectiveReactionArgs, ResistanceChoiceArgs};
+use crate::pause::{resistance_choice_mode, resistance_choices_object, resistance_condition_for, ElementalDamageArgs, Interrupt, Pause, ProtectiveReactionArgs, ResistanceChoiceArgs};
 
 /// `value` или маркер `undefined` (ключ есть, значения нет).
 pub fn undef(value: Option<&Value>) -> Value {
@@ -87,8 +87,8 @@ impl Resolve<'_> {
     }
 
     /// `diceService.roll(expression, purpose, actorId, visibility)`.
-    pub fn roll_dice(&mut self, expression: Value, purpose: &str, actor_id: Value, visibility: Value) -> Result<Value, Halt> {
-        self.dice.roll(&[expression, Value::String(purpose.into()), actor_id, visibility])
+    pub fn roll_dice(&mut self, expression: Value, purpose: &str, actor_id: Value, visibility: Value) -> Result<Value, Interrupt> {
+        Ok(self.dice.roll(&[expression, Value::String(purpose.into()), actor_id, visibility])?)
     }
 
     /// Выборы реакций для конструкторов пауз: Сопротивление, стихии, защиты.
@@ -98,7 +98,7 @@ impl Resolve<'_> {
 
     /// `spendBardicInspiration(sourceState, ownerId, trigger)` (13083):
     /// кость вдохновения к проваленному броску, один раз на владельца.
-    pub fn spend_bardic_inspiration(&mut self, source_state: &Value, owner_id: Option<&Value>, trigger: &str) -> Result<i64, Halt> {
+    pub fn spend_bardic_inspiration(&mut self, source_state: &Value, owner_id: Option<&Value>, trigger: &str) -> Result<i64, Interrupt> {
         let owner = js::s(owner_id);
         if self.inspiration_spent.contains(&owner) {
             return Ok(0);
@@ -131,7 +131,7 @@ impl Resolve<'_> {
 
     /// `consumeResistanceBonus(sourceState, targetId, condition)`: 1к4
     /// Сопротивления и снятие состояния (или концентрации его источника).
-    pub fn consume_resistance_bonus(&mut self, source_state: &Value, target_id: &str, condition: &Value) -> Result<i64, Halt> {
+    pub fn consume_resistance_bonus(&mut self, source_state: &Value, target_id: &str, condition: &Value) -> Result<i64, Interrupt> {
         let visibility = self.roll_visibility();
         let roll = self.roll_dice(Value::String("1d4".into()), "spell:resistance:save", Value::String(target_id.into()), visibility)?;
         self.rolls.push(roll.clone());
@@ -167,7 +167,7 @@ impl Resolve<'_> {
 
     /// `resistanceSaveState(sourceState, targetId, options)`: бонус
     /// Сопротивления к этому спасброску; окно выбора — пауза.
-    pub fn resistance_save_state(&mut self, source_state: &Value, target_id: Option<&Value>, options: &Value) -> Result<ResistanceState, Halt> {
+    pub fn resistance_save_state(&mut self, source_state: &Value, target_id: Option<&Value>, options: &Value) -> Result<ResistanceState, Interrupt> {
         let target = js::s(target_id);
         self.resistance_save_sequence += 1;
         let sequence = self.resistance_save_sequence;
@@ -210,7 +210,7 @@ impl Resolve<'_> {
                         protective_choices: Some(&protective),
                         phase: None,
                     });
-                    return Err(Halt::pause(pause));
+                    return Err(Interrupt::pause(pause));
                 }
                 if mode == "before-roll" {
                     bonus = self.consume_resistance_bonus(source_state, &target, condition_value)?;
@@ -222,7 +222,7 @@ impl Resolve<'_> {
 
     /// `rollSavingThrow(sourceState, targetId, options)`: спасбросок с
     /// Сопротивлением, паузой «после броска» и вдохновением барда.
-    pub fn roll_saving_throw(&mut self, source_state: &Value, target_id: Option<&Value>, options: &Value) -> Result<Value, Halt> {
+    pub fn roll_saving_throw(&mut self, source_state: &Value, target_id: Option<&Value>, options: &Value) -> Result<Value, Interrupt> {
         let resistance = self.resistance_save_state(source_state, target_id, options)?;
         let target = js::s(target_id);
         let mut roll_options = spread_value(Some(options));
@@ -248,7 +248,7 @@ impl Resolve<'_> {
                 Some(&save),
                 Some(&plain),
             );
-            return Err(Halt::pause(pause));
+            return Err(Interrupt::pause(pause));
         }
         let mut result = save.clone();
         if resistance.mode == "after-use" {
@@ -276,7 +276,7 @@ impl Resolve<'_> {
 
     /// `areaSaveModifierFor(sourceState, targetId)`: «Благословение», «Порча»
     /// и «Осколок разума» к спасброску области. События — отдельно.
-    pub fn area_save_modifier_for(&mut self, source_state: &Value, target_id: Option<&Value>) -> Result<SaveModifier, Halt> {
+    pub fn area_save_modifier_for(&mut self, source_state: &Value, target_id: Option<&Value>) -> Result<SaveModifier, Interrupt> {
         let target = js::s(target_id);
         let conditions = sk_core::game::conditions(source_state, &target).to_vec();
         let ids: sk_core::indexmap::IndexSet<String> = conditions.iter().map(sk_core::game::condition_id).collect();
@@ -347,7 +347,7 @@ impl Resolve<'_> {
     /// `resolveDamagePayload(sourceState, targetId, rawAmount, damageType,
     /// existingResistance = null, source = null)`: масло, защиты и 1к4
     /// заговора «Сопротивление» раз в ход.
-    pub fn resolve_damage_payload(&mut self, source_state: &Value, target_id: &str, raw_amount: Value, damage_type: &Value, existing_resistance: Option<&Value>, source: Option<&Value>) -> Result<Value, Halt> {
+    pub fn resolve_damage_payload(&mut self, source_state: &Value, target_id: &str, raw_amount: Value, damage_type: &Value, existing_resistance: Option<&Value>, source: Option<&Value>) -> Result<Value, Interrupt> {
         let mut raw_amount = raw_amount;
         if js::string(Some(damage_type)) == "fire" && !self.oiled_targets.contains(target_id) {
             let oiled = sk_core::game::conditions(source_state, target_id).iter().find(|candidate| js::safe_int(candidate.get("fire_damage_bonus"), 0) > 0).cloned();
@@ -359,7 +359,7 @@ impl Resolve<'_> {
             }
         }
         if existing_resistance.is_some_and(|existing| js::number(existing.get("reduction")) > 0.0) {
-            return crate::damage::damage_payload(source_state, target_id, Some(&raw_amount), Some(damage_type), existing_resistance, source);
+            return Ok(crate::damage::damage_payload(source_state, target_id, Some(&raw_amount), Some(damage_type), existing_resistance, source)?);
         }
         let preliminary = crate::damage::damage_payload(source_state, target_id, Some(&raw_amount), Some(damage_type), None, source)?;
         if js::truthy(preliminary.get("immune")) || js::number(preliminary.get("applied_amount")) + js::number(preliminary.get("temporary_hp_absorbed")) <= 0.0 {
@@ -390,13 +390,13 @@ impl Resolve<'_> {
         if let Some(roll_id) = roll.get("roll_id") {
             reduction.insert("roll_id".into(), roll_id.clone());
         }
-        crate::damage::damage_payload(source_state, target_id, Some(&raw_amount), Some(damage_type), Some(&Value::Object(reduction)), source)
+        Ok(crate::damage::damage_payload(source_state, target_id, Some(&raw_amount), Some(damage_type), Some(&Value::Object(reduction)), source)?)
     }
 
     /// `prepareElementalReactionDamage(sourceState, targetId, damagePayload,
     /// damageKey = null, reactionEvents = events)`: «Поглощение стихий» героя
     /// до урона области. `reaction_events: None` — события разбора.
-    pub fn prepare_elemental_reaction_damage(&mut self, source_state: &Value, target_id: &str, payload: Value, damage_key: Option<&Value>, reaction_events: Option<&mut Vec<Value>>) -> Result<Value, Halt> {
+    pub fn prepare_elemental_reaction_damage(&mut self, source_state: &Value, target_id: &str, payload: Value, damage_key: Option<&Value>, reaction_events: Option<&mut Vec<Value>>) -> Result<Value, Interrupt> {
         if sk_core::game::is_enemy_actor(source_state, target_id) {
             return Ok(payload);
         }
@@ -457,7 +457,7 @@ impl Resolve<'_> {
                 resistance_choices: Some(&resistance),
                 protective_choices: Some(&protective),
             });
-            return Err(Halt::pause(pause));
+            return Err(Interrupt::pause(pause));
         }
         if !use_absorb {
             return Ok(payload);
@@ -468,12 +468,12 @@ impl Resolve<'_> {
             Some(sink) => sink.extend(events),
             None => self.events.extend(events),
         }
-        crate::reactions::absorb_elements_damage_payload(&payload, source_state, target_id)
+        Ok(crate::reactions::absorb_elements_damage_payload(&payload, source_state, target_id)?)
     }
 
     /// `resolveDamageWithReactions(sourceState, targetId, rawAmount, damageType,
     /// existingResistance = null, reactionEvents = events)`.
-    pub fn resolve_damage_with_reactions(&mut self, source_state: &Value, target_id: &str, raw_amount: Value, damage_type: &Value, existing_resistance: Option<&Value>, reaction_events: Option<&mut Vec<Value>>) -> Result<Value, Halt> {
+    pub fn resolve_damage_with_reactions(&mut self, source_state: &Value, target_id: &str, raw_amount: Value, damage_type: &Value, existing_resistance: Option<&Value>, reaction_events: Option<&mut Vec<Value>>) -> Result<Value, Interrupt> {
         let payload = self.resolve_damage_payload(source_state, target_id, raw_amount, damage_type, existing_resistance, None)?;
         self.prepare_elemental_reaction_damage(source_state, target_id, payload, None, reaction_events)
     }
@@ -481,7 +481,7 @@ impl Resolve<'_> {
     /// `appendMagicMissileResolution({ sourceCommand, spell, target, slotLevel,
     /// damageType, sourceItem })`: снаряды «Волшебной стрелы» с иммунитетом
     /// предмета и «Щитом» цели.
-    pub fn append_magic_missile_resolution(&mut self, missile: MagicMissile<'_>) -> Result<(), Halt> {
+    pub fn append_magic_missile_resolution(&mut self, missile: MagicMissile<'_>) -> Result<(), Interrupt> {
         let MagicMissile { source_command, spell, target, slot_level, damage_type, source_item } = missile;
         let target_id = sk_core::game::actor_id(target);
         let level = crate::spells::slots::spell_level(spell);
@@ -578,7 +578,7 @@ impl Resolve<'_> {
                     resistance_choices: Some(&resistance),
                     elemental_choices: Some(&elemental),
                 });
-                return Err(Halt::pause(pause));
+                return Err(Interrupt::pause(pause));
             }
         }
         let missile_damage = js::num(per_projectile * projectiles);
@@ -609,7 +609,7 @@ impl Resolve<'_> {
 
     /// `rollAmount(purpose, fallback = 0)`: `command.expression` броском или
     /// `command.amount`.
-    pub fn roll_amount(&mut self, purpose: &str, fallback: f64) -> Result<i64, Halt> {
+    pub fn roll_amount(&mut self, purpose: &str, fallback: f64) -> Result<i64, Interrupt> {
         if !js::truthy(self.command.get("expression")) {
             let raw = match self.command.get("amount").filter(|value| !value.is_null()) {
                 Some(amount) => js::number(Some(amount)),

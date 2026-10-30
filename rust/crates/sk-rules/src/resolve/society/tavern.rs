@@ -21,7 +21,7 @@ use crate::command::rules::rule_ids;
 use crate::conditions::save_disadvantage_condition_for;
 use crate::core::{ability_modifier, command_with_rules, condition_ids_for, event_from, player_actor, slice_utf16, spread_value};
 use crate::dice_record::RulesDice;
-use crate::pause::{Fault, Halt, Step};
+use crate::pause::{Fault, Interrupt, Flow};
 use crate::preview_checks::{preview_d20_check, preview_tavern_dice_roll, scene_place_text};
 use crate::society_helpers::{npc_relationship_events_from, tavern_round_cancelled_event};
 
@@ -29,7 +29,7 @@ fn get(value: &Value, key: &str) -> Value {
     value.get(key).cloned().unwrap_or(Value::Null)
 }
 
-fn null_read(key: &str) -> Halt {
+fn null_read(key: &str) -> Interrupt {
     Fault::type_error(format!("Cannot read properties of null (reading '{key}')")).into()
 }
 
@@ -40,13 +40,13 @@ fn rolled_at(roll: &Value) -> Value {
 }
 
 /// `ResistanceChoice` и прочие места: `appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), minutes, 'minute')`.
-fn append_minutes(r: &mut Resolve<'_>, minutes: i64) -> Step {
+fn append_minutes(r: &mut Resolve<'_>, minutes: i64) -> Flow {
     let source = command_with_rules(&r.command, &[rule_ids::RESOURCE]);
     r.append_world_time_consequences(&source, Some(&json!(minutes)), Some(&json!("minute")), TimeAdvanceOptions::default())
 }
 
 /// `OpenTavernDiceRound` (21668–21736).
-pub fn open_tavern_dice_round(r: &mut Resolve<'_>) -> Step {
+pub fn open_tavern_dice_round(r: &mut Resolve<'_>) -> Flow {
     let gambler = tavern_gambler_for(&r.state, r.command.get("npc_id").unwrap_or(&Value::Null));
     let Some(actor) = player_actor(&r.state, r.command.get("actor_id")).cloned() else {
         return Err(null_read("currency"));
@@ -97,7 +97,7 @@ pub fn open_tavern_dice_round(r: &mut Resolve<'_>) -> Step {
 
 /// Проверка подхода за столом (`cheat`, `watch`): предпросмотр, серверный
 /// бросок, `AbilityCheckResolved`. Возвращает бросок.
-fn approach_check(r: &mut Resolve<'_>, ability: Option<&str>, skill: &str, difficulty: i64) -> Result<Value, Halt> {
+fn approach_check(r: &mut Resolve<'_>, ability: Option<&str>, skill: &str, difficulty: i64) -> Result<Value, Interrupt> {
     let mut preview_options = Map::new();
     insert_present(&mut preview_options, "actorId", r.command.get("actor_id"));
     preview_options.insert("kind".into(), json!("check"));
@@ -128,7 +128,7 @@ fn approach_check(r: &mut Resolve<'_>, ability: Option<&str>, skill: &str, diffi
 }
 
 /// `AnswerTavernDiceRound` (21737–21970).
-pub fn answer_tavern_dice_round(r: &mut Resolve<'_>) -> Step {
+pub fn answer_tavern_dice_round(r: &mut Resolve<'_>) -> Flow {
     let actor_id = get(&r.command, "actor_id");
     let Some(round) = tavern_round_for(&r.state, &actor_id) else {
         return Err(null_read("npc_id"));
@@ -291,7 +291,7 @@ pub fn answer_tavern_dice_round(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `LeaveTavernDiceRound` (21971–21982).
-pub fn leave_tavern_dice_round(r: &mut Resolve<'_>) -> Step {
+pub fn leave_tavern_dice_round(r: &mut Resolve<'_>) -> Flow {
     let Some(round) = tavern_round_for(&r.state, &get(&r.command, "actor_id")) else {
         return Err(null_read("npc_id"));
     };
@@ -302,7 +302,7 @@ pub fn leave_tavern_dice_round(r: &mut Resolve<'_>) -> Step {
 }
 
 /// `OrderTavernDrink` (21983–22039).
-pub fn order_tavern_drink(r: &mut Resolve<'_>) -> Step {
+pub fn order_tavern_drink(r: &mut Resolve<'_>) -> Flow {
     let actor_id = get(&r.command, "actor_id");
     let Some(actor) = player_actor(&r.state, Some(&actor_id)).cloned() else {
         return Err(null_read("currency"));
