@@ -117,6 +117,19 @@ pub(crate) fn save_room_with_ack(core: &Rc<GameCore>, code: &str, state: &Value,
     if base_version != current.version {
         return Ok((SavedRoom { conflict: true, room: current }, None));
     }
+    save_composed_room_with_ack(core, &key, state, base_version, ack)
+}
+
+/// [`save_room_with_ack`] для комнаты, которую вызывающий только что прочёл
+/// [`get_room`] той же версии `base_version` в том же потоке ядра: сверка
+/// версии и проверка, что накладка собирается, уже сделаны, второй сборки
+/// комнаты нет (урок 11). Версию в транзакции всё равно сверяет хранилище —
+/// чужая запись между чтением и записью даёт конфликт, как прежде.
+pub(crate) fn save_composed_room_with_ack(core: &Rc<GameCore>, code: &str, state: &Value, base_version: i64, ack: Option<RoomProjectionAck>) -> Result<(SavedRoom, Option<StoreResult<Value>>), Failure> {
+    if !state.is_object() {
+        return Err(Failure::new("Состояние комнаты должно быть объектом", Some("TYPE_ERROR")));
+    }
+    let key = room_key(code)?;
     // Признак загрузки принадлежит запросу браузера, а не кампании (JS 457–458).
     let persistent = js::spread(state, json!({ "isNarrating": false }));
     let body = {
