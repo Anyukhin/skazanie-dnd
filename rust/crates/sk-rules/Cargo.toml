@@ -1,0 +1,43 @@
+[package]
+name = "sk-rules"
+description = "Движок правил «Сказания»: редьюсер событий и разбор команд"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sk-core.workspace = true
+sk-dice.workspace = true
+sk-geometry = { path = "../sk-geometry" }
+sk-society = { path = "../sk-society" }
+sk-combat-base = { path = "../sk-combat-base" }
+sk-social = { path = "../sk-social" }
+sk-memory = { path = "../sk-memory" }
+sk-attention = { path = "../sk-attention" }
+sk-combat-content = { path = "../sk-combat-content" }
+sk-ruleset = { path = "../sk-ruleset" }
+sk-scene-base = { path = "../sk-scene-base" }
+sk-economy = { path = "../sk-economy" }
+sk-items = { path = "../sk-items" }
+sk-tactical = { path = "../sk-tactical" }
+# Урок 11: отрезки замера нормализации (`sk_store::perf`); sk-store уже в графе через sk-tactical.
+sk-store = { path = "../sk-store" }
+sk-heroes = { path = "../sk-heroes" }
+sk-npc-world = { path = "../sk-npc-world" }
+sk-items-life = { path = "../sk-items-life" }
+sk-world-time = { path = "../sk-world-time" }
+sk-world-story = { path = "../sk-world-story" }
+sk-character = { path = "../sk-character" }
+sk-director = { path = "../sk-director" }
+sk-scenario = { path = "../sk-scenario" }
+sk-story = { path = "../sk-story" }
+sk-world-life = { path = "../sk-world-life" }
+sk-encounters = { path = "../sk-encounters" }
+# Р5, Р6: стартовое богатство PHB (`RollCharacterWealth`).
+sk-chargen = { path = "../sk-chargen" }
+sk-narration = { path = "../sk-narration" }
+
+[dev-dependencies]
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }

@@ -168,3 +168,14 @@ test('особый приём коммитится один раз и переж
   assert.equal(loaded.state.players[0].hp, 484)
   assert.equal(loaded.state.mechanics.combat.action_economy[dragon.id].action, false)
 })
+
+test('начатая мультиатака не сменяется дыханием: действие уже потрачено', () => {
+  // Стенд боёв 7-го уровня 2026-10-13: укус дракона открыл окно реакции героя,
+  // после него планировщик строил ход заново и выбирал дыхание — ACTION_SPENT.
+  const { state, dragon } = arena()
+  assert.ok(planNpcTurn(state, dragon.id).some(command => command.command_type === 'UseMonsterAction'), 'со свежим действием дракон дышит')
+  const midSeries = structuredClone(state)
+  Object.assign(midSeries.mechanics.combat.action_economy[dragon.id], { action: false, attacks_used: 1, attacks_allowed: 3, multiattack_action_id: 'bite', multiattack_action_ids: ['bite'] })
+  const plan = planNpcTurn(normalizeCampaignState(midSeries), dragon.id)
+  assert.ok(!plan.some(command => command.command_type === 'UseMonsterAction'), JSON.stringify(plan))
+})

@@ -166,7 +166,9 @@ export const offscreenCampaignDay = (minutes) => campaignDayOf(Math.max(0, integ
 // Состояние
 // ---------------------------------------------------------------------------
 
-function safeEntry(value = {}) {
+function safeEntry(input = {}) {
+  // `null` в шагах старого сохранения — пустая запись: её отсеет проверка вида.
+  const value = input ?? {}
   const kind = text(value.kind, 40)
   if (!Object.hasOwn(OFFSCREEN_ENTRY_LABELS, kind)) return null
   return {
@@ -183,7 +185,8 @@ function safeEntry(value = {}) {
   }
 }
 
-function safeStep(value = {}) {
+function safeStep(input = {}) {
+  const value = input ?? {}
   const id = text(value.id, 140)
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,139}$/u.test(id)) return null
   const entries = []
@@ -204,7 +207,8 @@ function safeStep(value = {}) {
   }
 }
 
-function safeWatch(value = {}) {
+function safeWatch(input = {}) {
+  const value = input ?? {}
   const questId = text(value.quest_id, 120)
   if (!questId) return null
   return { quest_id: questId, since_minutes: Math.max(0, integer(value.since_minutes, 0)) }
@@ -250,7 +254,7 @@ function partyQuests(state) {
   return (Array.isArray(state?.worldMemory?.quests) ? state.worldMemory.quests : [])
     .filter((quest) => quest?.id && quest.status === 'active' && visibleToParty(quest.visibility))
     .slice()
-    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), 'en'))
 }
 
 const questClockOf = (quest) => {
@@ -275,7 +279,7 @@ export function antagonistFactionFor(state = {}) {
   const tagged = factions
     .filter((entity) => (Array.isArray(entity.tags) ? entity.tags : [])
       .some((tag) => ['antagonist', 'enemy', 'hostile'].includes(text(tag, 60))))
-    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), 'en'))
   if (tagged.length) return tagged[0]
   const reputations = state?.autonomy?.reputations && typeof state.autonomy.reputations === 'object'
     ? state.autonomy.reputations
@@ -283,7 +287,7 @@ export function antagonistFactionFor(state = {}) {
   return factions
     .map((entity) => ({ entity, score: integer(reputations[String(entity.id)], 0) }))
     .filter((row) => row.score < 0)
-    .sort((left, right) => left.score - right.score || String(left.entity.id).localeCompare(String(right.entity.id)))[0]?.entity ?? null
+    .sort((left, right) => left.score - right.score || String(left.entity.id).localeCompare(String(right.entity.id), 'en'))[0]?.entity ?? null
 }
 
 /**
@@ -307,7 +311,7 @@ function hostageCandidates(state, takenIds) {
     .filter((npc) => npc.available !== false && vitals[String(npc.id)]?.alive !== false)
     .filter((npc) => !present.has(String(npc.id)) && !takenIds.has(String(npc.id)))
     .filter((npc) => !merchants.has(String(npc.id)))
-    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), 'en'))
 }
 
 /** Где стоит отряд — только для формулировки хода фракции. */
@@ -360,7 +364,7 @@ const FACTION_MOVE_SUMMARY = Object.freeze({
  * кампании не открывались одной и той же фразой.
  */
 function factionMoveSummary(moveKind, { seed, factionId, alreadyMoved, faction, place, npc }) {
-  const variants = FACTION_MOVE_SUMMARY[moveKind]
+  const variants = ownEntry(FACTION_MOVE_SUMMARY, moveKind)
   const start = Number.parseInt(digest(seed, factionId, moveKind).slice(8, 16), 16) % variants.length
   return variants[(start + Math.max(0, integer(alreadyMoved, 0))) % variants.length]({ faction, place, npc })
 }
@@ -769,7 +773,7 @@ export function applyOffscreenWorldEvent(input, event) {
     : normalizeOffscreenWorldState(input)
   if (String(event?.event_type ?? '') !== OFFSCREEN_WORLD_EVENT_TYPE) return normalized
   const step = safeStep(event?.payload?.step)
-  if (!step || normalized.steps.some((entry) => entry.id === step.id)) return normalized
+  if (!step || normalized.steps.some((entry) => entry?.id === step.id)) return normalized
   return normalizeOffscreenWorldState({
     ...normalized,
     steps: [...normalized.steps, step],
@@ -781,7 +785,7 @@ export function applyOffscreenWorldEvent(input, event) {
 export function offscreenWorldFeed(state = {}, { limit = 20 } = {}) {
   return normalizeOffscreenWorldState(state?.offscreen_world).steps
     .slice()
-    .sort((left, right) => right.at_minutes - left.at_minutes || left.id.localeCompare(right.id))
+    .sort((left, right) => right.at_minutes - left.at_minutes || left.id.localeCompare(right.id, 'en'))
     .slice(0, Math.max(1, Math.min(MAX_STEPS, integer(limit, 20))))
     .map((step) => ({
       ...step,
@@ -810,4 +814,9 @@ export function offscreenChronicleEntry(event = {}) {
       lines: step.lines,
     },
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

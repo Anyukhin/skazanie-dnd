@@ -1,0 +1,99 @@
+[package]
+name = "sk-server"
+description = "HTTP-сервер «Сказания» на axum: вход, сессии, кампании, команды, живой поток, раздача клиента"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "skazanie-server"
+path = "src/main.rs"
+
+# Зависимости волны маршрутов (С0, решение владельца в `rust/SERVER-PLAN.md`):
+# все крейты движка подключены сразу, чтобы исполнители С1–С18 не правили этот
+# файл. Внешние — точными версиями из `Cargo.lock` (корневой `Cargo.toml` не
+# трогаем). `dotenvy` в офлайн-кэше нет: `.env` читает свой разборщик в
+# `main.rs`, новой зависимости не нужно.
+# `test-hooks` — тестовые крючки из данных (`src/test_hooks.rs`): кости
+# `DND_TEST_DICE_RULES`, сбои журнала `DND_COMMIT_FAULTS`, подкоманда
+# `journal`. Бинарь для контрактных тестов JS:
+# `cargo build --release -p sk-server --features test-hooks`. Тесты крейта
+# получают фичу через dev-зависимость на себя (ниже); боевая сборка — без неё.
+[features]
+test-hooks = ["dep:regex"]
+# Замер (урок 11): распределитель бинаря считает выделения памяти, строка
+# `[perf]` (`SKAZANIE_PERF_TRACE=1`) показывает МБ на запрос и на отрезок.
+# Только для стендов: каждое выделение платит атомарным сложением.
+alloc-count = []
+
+[dependencies]
+regex = { workspace = true, optional = true }
+axum = "0.8.9"
+futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
+hyper = { version = "1.12.0", features = ["server", "http1"] }
+# Ск2: распределитель бинаря `skazanie-server` (`src/main.rs`), решение владельца.
+mimalloc = { version = "0.1.52", default-features = false }
+hyper-util = { version = "0.1.21", features = ["server", "server-graceful", "service", "tokio", "http1"] }
+indexmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio = { version = "1.53.2", features = ["full"] }
+tower = { version = "0.5.3", features = ["util"] }
+uuid.workspace = true
+
+sk-core.workspace = true
+sk-dice.workspace = true
+sk-rules.workspace = true
+sk-agents = { path = "../sk-agents" }
+sk-agents-base = { path = "../sk-agents-base" }
+# С18.4: сцена незнакомца сценария в строке Режиссёра (`scenarioStrangerNarration`).
+sk-attention = { path = "../sk-attention" }
+sk-character = { path = "../sk-character" }
+# С1: карточки летописи из событий (`journalCandidatesFor`) и решения отряда.
+sk-memory = { path = "../sk-memory" }
+sk-npc-world = { path = "../sk-npc-world" }
+# С18.5, С18.1: `gameOrchestrator` и `autonomousCampaign` в ядре (`src/orchestration.rs`) для `/api/narrate` и `/commands`.
+sk-orchestrator = { path = "../sk-orchestrator" }
+# С18.5: собеседник рассказа (`explicitNarrationNpcId`, `index.mjs:2326–2359`).
+sk-social = { path = "../sk-social" }
+sk-world-life = { path = "../sk-world-life" }
+sk-world-story = { path = "../sk-world-story" }
+sk-chargen = { path = "../sk-chargen" }
+# С5: арены боевого стенда (`materializeCatalogItem`) и имена заклинаний в
+# кадрах наблюдателя (`canonicalCombatSpellFor`).
+sk-combat-content = { path = "../sk-combat-content" }
+sk-items = { path = "../sk-items" }
+# Урок 7: проверка каталогов при старте (`src/content_check.rs`) — справочник
+# 2014, карты мест, атласы и реестр прав.
+sk-combat-base = { path = "../sk-combat-base" }
+sk-map-core = { path = "../sk-map-core" }
+sk-scene-base = { path = "../sk-scene-base" }
+sk-director = { path = "../sk-director" }
+sk-economy = { path = "../sk-economy" }
+sk-encounters = { path = "../sk-encounters" }
+# С13: место на карте мира (`worldLocationById`) и импорт слэба TaleSpire
+# (`importTaleSpireSlab` — предпросмотр и импортёр движка).
+sk-geometry = { path = "../sk-geometry" }
+sk-talespire = { path = "../sk-talespire" }
+sk-infra = { path = "../sk-infra" }
+sk-narration = { path = "../sk-narration" }
+sk-narration-base = { path = "../sk-narration-base" }
+sk-projection = { path = "../sk-projection" }
+sk-rulepack = { path = "../sk-rulepack" }
+# С8: план отката и событие `CampaignRewound` (`campaign_controls`).
+sk-scenario = { path = "../sk-scenario" }
+sk-ruleset = { path = "../sk-ruleset" }
+sk-society = { path = "../sk-society" }
+sk-store = { path = "../sk-store" }
+sk-story = { path = "../sk-story" }
+sk-tactical = { path = "../sk-tactical" }
+sk-tactics = { path = "../sk-tactics" }
+sk-turns = { path = "../sk-turns" }
+# С4: каталог шаблонов мира (`/api/world-templates`).
+sk-world-time = { path = "../sk-world-time" }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+sk-server = { path = ".", features = ["test-hooks"] }
+regex.workspace = true

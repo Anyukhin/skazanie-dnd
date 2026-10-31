@@ -1,0 +1,89 @@
+# Rust-сервер «Сказания» рядом с JS-сервером (С19.3). Подробно —
+# docs/rust-docker.md.
+#
+#   docker compose -f compose.rust.yaml up -d --build
+#   docker compose -f compose.rust.yaml logs -f skazanie-rust
+#   docker compose -f compose.rust.yaml down          # том хранилища остаётся
+#
+# Отдельный проект (name ниже): compose.yaml и его контейнеры и сеть этот
+# файл не видит и не трогает; из ./storage — только каталог состояния
+# туннеля (storage/generated/.tunnel), откуда лаунчер читает публичную
+# ссылку. compose.override.yaml с ним не подхватывается — сертификат
+# антивируса подключён здесь же (local-ca).
+#
+# С 2026-10-31 Rust — основной сервер: START_DND.cmd поднимает этот файл
+# (с туннелем, профиль public) на 8787, если в .env DND_SERVER=rust.
+# Разовый перенос хранилища — tools/rust-cutover.ps1 (шаги ниже).
+#
+# Переключение на 8787 вручную:
+#   1. docker compose stop skazanie            — остановить JS-сервис;
+#   2. pnpm backup (или копия ./storage)       — снимок старого хранилища;
+#   3. импорт старого storage в том Rust-сервиса (сначала с --dry-run):
+#        docker compose -f compose.rust.yaml run --rm --no-deps #          -v ./storage:/legacy-storage:ro skazanie-rust import-legacy --from /legacy-storage
+#   3a. аудит тома до запуска (0 — чисто, 1 — блокеры):
+#        docker compose -f compose.rust.yaml run --rm --no-deps skazanie-rust audit-storage
+#   4. SKAZANIE_RUST_PORT=8787 в окружении (или в .env) и
+#        docker compose -f compose.rust.yaml up -d
+#   Откат: docker compose -f compose.rust.yaml down && docker compose up -d —
+#   ./storage JS-сервера импорт не меняет.
+name: skazanie-rust
+
+services:
+  skazanie-rust:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+      args:
+        CARGO_BUILD_JOBS: ${CARGO_BUILD_JOBS:-3}
+    image: skazanie-rust:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      AGENT_HOST: 0.0.0.0
+      AGENT_PORT: 8787
+      DND_DATA_DIR: /app
+      DND_STORAGE_DIR: /app/storage
+      DND_DEFAULT_RULESET_ID: ${DND_DEFAULT_RULESET_ID:-srd_5_2_1}
+      DND_DEFAULT_RULESET_VERSION: ${DND_DEFAULT_RULESET_VERSION:-5.2.1}
+      # Корневой сертификат антивируса (аналог NODE_EXTRA_CA_CERTS из
+      # compose.override.yaml JS-сервиса). Пусто — только системные корни.
+      # На машине с Kaspersky: DND_EXTRA_CA_CERTS=/app/local-ca/kaspersky-root.pem в .env.
+      DND_EXTRA_CA_CERTS: ${DND_EXTRA_CA_CERTS:-}
+    ports:
+      # 8788 — чтобы не мешать JS-сервису на 8787; лаунчер в режиме rust и
+      # tools/rust-cutover.ps1 (через .env) задают 8787.
+      - "127.0.0.1:${SKAZANIE_RUST_PORT:-8788}:8787"
+    volumes:
+      # Своё хранилище, не ./storage JS-сервиса: двух писателей у одного
+      # storage быть не должно.
+      - storage:/app/storage
+      # local-ca/ в .gitignore; если каталога нет, Docker создаст пустой.
+      - ./local-ca:/app/local-ca:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Проверка здоровья — из образа (HEALTHCHECK в Dockerfile.rust).
+
+  # Публичная ссылка для друзей, как у JS-сервиса (compose.yaml). Каталог
+  # состояния тот же: STATUS_DND.cmd и лаунчер читают ссылку оттуда.
+  tunnel:
+    build:
+      context: .
+      dockerfile: tunnel/Dockerfile
+    profiles: ["public"]
+    restart: unless-stopped
+    environment:
+      TUNNEL_TARGET: skazanie-rust:8787
+      TUNNEL_STATE_DIR: /state
+    volumes:
+      - ./storage/generated/.tunnel:/state
+    depends_on:
+      skazanie-rust:
+        condition: service_healthy
+
+volumes:
+  storage:

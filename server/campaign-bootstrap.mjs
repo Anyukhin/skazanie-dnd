@@ -596,7 +596,7 @@ function openingInteriorAnchor(map, texts) {
     free.get(cell.zone)?.push({ x, y })
   }
   const roomiest = (/** @type {string[]} */ ids) => ids
-    .sort((left, right) => (free.get(right)?.length ?? 0) - (free.get(left)?.length ?? 0) || left.localeCompare(right))[0]
+    .sort((left, right) => (free.get(right)?.length ?? 0) - (free.get(left)?.length ?? 0) || left.localeCompare(right, 'en'))[0]
   const labelled = map.zones.filter((zone) => interior.has(zone.id) && place.zone.test(zone.label)).map((zone) => zone.id)
   const wholeBuilding = ['building', 'temple'].includes(String(map.theme ?? ''))
   const zoneId = roomiest(labelled) ?? (wholeBuilding ? roomiest([...free.keys()]) : undefined)

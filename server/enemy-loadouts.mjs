@@ -234,10 +234,10 @@ export function optionalEnemyLoadoutItem(catalogId) {
 
 function weaponCatalogIdsFor(block) {
   const profiles = Array.isArray(block?.action_profiles) ? block.action_profiles : []
-  const primary = WEAPON_CATALOG_BY_ACTION[String(profiles[0]?.id ?? '')] ?? null
+  const primary = ownEntry(WEAPON_CATALOG_BY_ACTION, String(profiles[0]?.id ?? '')) ?? null
   const ordered = []
   for (const profile of profiles) {
-    const catalogId = WEAPON_CATALOG_BY_ACTION[String(profile?.id ?? '')]
+    const catalogId = ownEntry(WEAPON_CATALOG_BY_ACTION, String(profile?.id ?? ''))
     if (catalogId && !ordered.includes(catalogId)) ordered.push(catalogId)
   }
   return { primary, ordered }
@@ -315,7 +315,7 @@ export function enemyLoadoutFor({ statBlockId, block, ownerId, seed, sourceId = 
   const [ammunitionMinimum, ammunitionMaximum] = resolvedTemplate.ammunition
   const ammunitionSeen = new Set()
   for (const catalogId of ordered) {
-    const ammunitionId = AMMUNITION_BY_WEAPON[catalogId]
+    const ammunitionId = ownEntry(AMMUNITION_BY_WEAPON, catalogId)
     if (!ammunitionId || ammunitionSeen.has(ammunitionId)) continue
     ammunitionSeen.add(ammunitionId)
     push(ammunitionId, {
@@ -361,4 +361,9 @@ export function normalizeEnemyLoadout(input) {
       .filter(Boolean),
     purse_cp: Math.max(0, Math.min(MAX_ENEMY_PURSE_CP, integer(source.purse_cp ?? source.purseCp, 0))),
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

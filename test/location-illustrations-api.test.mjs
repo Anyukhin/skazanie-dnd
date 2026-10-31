@@ -4,63 +4,15 @@
 // Рантайм-флаг здесь намеренно выключен — это боевая настройка стола. Сторож
 // проверяет, что при выключенном флаге подготовка всё равно работает, а
 // игровой путь не зовёт модель ни разу.
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
+import { startFakeProvider } from './kit/llm.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { createServer as createHttpServer } from 'node:http'
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 
 const WEBP = Buffer.from('524946460400000057454250', 'hex')
-
-function startServer({ port, storage, providerBaseUrl, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: 'location-api-test-key',
-      ROUTERAI_BASE_URL: providerBaseUrl,
-      DND_IMAGE_MODEL: 'test/location-image-v1',
-      DND_RUNTIME_IMAGE_GENERATION: 'off',
-      DND_AI_MODEL: 'test/text-model',
-      DND_AI_FALLBACK_MODELS: '',
-      ADMIN_SETUP_TOKEN: 'location-api-setup',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Test server did not stop')), 5_000)
-    child.once('exit', () => { clearTimeout(timer); resolve() })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, log) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Test server exited with ${child.exitCode}\n${log()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return response
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Test server did not become healthy\n${log()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie, body, headers } = {}) {
   return fetch(`${baseUrl}${path}`, {
@@ -153,58 +105,50 @@ function campaignState() {
 }
 
 test('иллюстрации локаций готовятся заранее, а в игре берутся только из кеша', { timeout: runnerTimeout(40_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-location-art-api-'))
-  let logs = ''
-  let child = null
   const imageRequests = []
-  const provider = createHttpServer(async (req, res) => {
-    if (req.url !== '/api/v1/images' || req.method !== 'POST') {
-      res.writeHead(503, { 'Content-Type': 'application/json' })
-      return res.end('{"error":"text model disabled in location test"}')
+  const provider = await startFakeProvider(t, (request) => {
+    if (request.url !== '/api/v1/images' || request.method !== 'POST') {
+      return { status: 503, body: '{"error":"text model disabled in location test"}' }
     }
-    let raw = ''
-    for await (const chunk of req) raw += String(chunk)
-    imageRequests.push(JSON.parse(raw))
+    imageRequests.push(JSON.parse(request.text))
     // Каждая генерация даёт свои байты: одинаковые скрыли бы главное в проверке
     // перегенерации — новый ETag и новую картинку у уже открытой вкладки.
     const bytes = imageRequests.length === 1 ? WEBP : Buffer.concat([WEBP, Buffer.from([imageRequests.length])])
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    return res.end(JSON.stringify({
-      data: [{ b64_json: bytes.toString('base64') }],
-      usage: { input_tokens: 4, output_tokens: 8, total_tokens: 12 },
-      cost: 0.03,
-    }))
-  })
-  await new Promise((resolve, reject) => { provider.once('error', reject); provider.listen(0, '127.0.0.1', resolve) })
-  const providerAddress = provider.address()
-  const providerPort = typeof providerAddress === 'object' && providerAddress ? providerAddress.port : 0
-  t.after(async () => {
-    await stopServer(child)
-    await new Promise((resolve) => provider.close(() => resolve()))
-    rmSync(storage, { recursive: true, force: true })
+    return {
+      status: 200,
+      json: {
+        data: [{ b64_json: bytes.toString('base64') }],
+        usage: { input_tokens: 4, output_tokens: 8, total_tokens: 12 },
+        cost: 0.03,
+      },
+    }
   })
 
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({
-    port,
-    storage,
-    providerBaseUrl: `http://127.0.0.1:${providerPort}/api/v1`,
-    appendLog: (chunk) => { logs += chunk },
+  const server = await startTestServer(t, {
+    storagePrefix: 'skazanie-location-art-api-',
+    setupToken: 'location-api-setup',
+    env: {
+      ...provider.env,
+      DND_IMAGE_MODEL: 'test/location-image-v1',
+      DND_RUNTIME_IMAGE_GENERATION: 'off',
+      DND_AI_MODEL: 'test/text-model',
+      DND_AI_FALLBACK_MODELS: '',
+    },
   })
-  await waitForHealth(baseUrl, child, () => logs)
+  const logs = server.output
+  const baseUrl = server.baseUrl
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
     body: { name: 'GM', email: 'gm@location.test', password: 'very-secure-admin-password', setupToken: 'location-api-setup' },
   })
-  assert.equal(setup.status, 201, logs)
+  assert.equal(setup.status, 201, logs())
   const adminCookie = cookie(setup)
   const player = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
     body: { name: 'Ада', email: 'player@location.test', password: 'very-secure-player-password' },
   })
-  assert.equal(player.status, 201, logs)
+  assert.equal(player.status, 201, logs())
   const playerCookie = cookie(player)
 
   const created = await request(baseUrl, '/api/campaigns', {
@@ -212,13 +156,13 @@ test('иллюстрации локаций готовятся заранее, �
     cookie: adminCookie,
     body: { code: 'LOCATION-ART', name: 'Иллюстрации локаций', state: campaignState() },
   })
-  assert.equal(created.status, 201, `${await created.text()}\n${logs}`)
+  assert.equal(created.status, 201, `${await created.text()}\n${logs()}`)
   const users = await json(await request(baseUrl, '/api/admin/users', { cookie: adminCookie }))
   const playerUser = users.users.find((candidate) => candidate.email === 'player@location.test')
   const assigned = await request(baseUrl, `/api/admin/users/${playerUser.id}`, {
     method: 'PATCH', cookie: adminCookie, body: { heroIds: ['hero'] },
   })
-  assert.equal(assigned.status, 200, `${await assigned.text()}\n${logs}`)
+  assert.equal(assigned.status, 200, `${await assigned.text()}\n${logs()}`)
 
   const roadPath = `/api/campaigns/LOCATION-ART/locations/${encodeURIComponent('loc-norvin-road')}/illustration`
   const lairPath = `/api/campaigns/LOCATION-ART/locations/${encodeURIComponent('loc:cult-lair')}/illustration`
@@ -259,7 +203,7 @@ test('иллюстрации локаций готовятся заранее, �
     method: 'POST', cookie: adminCookie, body: { location_ids: ['loc-norvin-road'] },
   })
   const preparedBody = await json(prepared)
-  assert.equal(prepared.status, 200, `${JSON.stringify(preparedBody)}\n${logs}`)
+  assert.equal(prepared.status, 200, `${JSON.stringify(preparedBody)}\n${logs()}`)
   assert.deepEqual(preparedBody.prepared, [{ id: 'loc-norvin-road', kind: 'location_illustration', status: 'ready' }])
   assert.equal(imageRequests.length, 1)
   assert.equal(imageRequests[0].model, 'test/location-image-v1')
@@ -280,7 +224,7 @@ test('иллюстрации локаций готовятся заранее, �
 
   // Теперь игрок получает картинку — из кеша, без обращения к модели.
   const served = await request(baseUrl, roadPath, { cookie: playerCookie })
-  assert.equal(served.status, 200, logs)
+  assert.equal(served.status, 200, logs())
   assert.equal(served.headers.get('content-type'), 'image/webp')
   assert.equal(served.headers.get('x-location-illustration-cache'), 'hit')
   // Адрес иллюстрации один на всю жизнь локации, версии в нём нет. Час
@@ -318,8 +262,8 @@ test('иллюстрации локаций готовятся заранее, �
   assert.equal(Buffer.from(await afterRegeneration.arrayBuffer()).equals(Buffer.concat([WEBP, Buffer.from([2])])), true)
 
   // Кеш локаций разведён по кампаниям и не хранит ни кода, ни id открытым
-  // текстом.
-  const cacheRoot = join(storage, 'generated', 'locations')
+  // текстом. Раскладка файлового кеша — устройство JS-хранилища, не HTTP-контракт.
+  const cacheRoot = join(server.storageDir, 'generated', 'locations')
   const campaignDirectories = readdirSync(cacheRoot)
   assert.equal(campaignDirectories.length, 1)
   assert.match(campaignDirectories[0], /^[a-f0-9]{24}$/u)
@@ -332,7 +276,7 @@ test('иллюстрации локаций готовятся заранее, �
   const preparedHidden = await request(baseUrl, '/api/campaigns/LOCATION-ART/asset-preparation', {
     method: 'POST', cookie: adminCookie, body: { location_ids: ['loc:cult-lair'] },
   })
-  assert.equal(preparedHidden.status, 200, `${JSON.stringify(await json(preparedHidden))}\n${logs}`)
+  assert.equal(preparedHidden.status, 200, `${JSON.stringify(await json(preparedHidden))}\n${logs()}`)
   assert.equal(imageRequests.length, 3)
   const stillHidden = await request(baseUrl, lairPath, { cookie: playerCookie })
   assert.equal(stillHidden.status, 404)

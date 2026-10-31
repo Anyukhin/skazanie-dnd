@@ -89,7 +89,7 @@ export function healingTargetFor(state, actorIdValue) {
   return candidates.sort((left, right) => {
     const downed = Number(hpOf(left) > 0) - Number(hpOf(right) > 0)
     if (downed !== 0) return downed
-    return hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right))
+    return hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right), 'en')
   })[0] ?? null
 }
 
@@ -115,7 +115,7 @@ function approachCommands(state, actorIdValue, actor, targetId, keepDistanceFeet
 }
 
 function standUpPlan(state, actorIdValue, actor) {
-  const prone = (state?.mechanics?.conditions?.[String(actorIdValue)] ?? [])
+  const prone = actorConditionList(state, actorIdValue)
     .some((condition) => String(condition?.id ?? condition) === 'prone')
   if (!prone) return { commands: [], movementCost: 0 }
   const speed = effectiveSpeedFeet(state, actor, actorIdValue)
@@ -187,7 +187,7 @@ export function planHeroTurn(state, actorIdValue) {
   //    возможности ради цели, до которой ещё надо дожить.
   const adjacent = livingEnemies
     .filter((enemy) => actorDistanceFeet(state, actorIdValue, idOf(enemy), from) <= HEALING_RANGE_FEET)
-    .sort((left, right) => hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right)))[0]
+    .sort((left, right) => hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right), 'en'))[0]
   if (adjacent) {
     return {
       rule: 'attack-adjacent',
@@ -196,7 +196,7 @@ export function planHeroTurn(state, actorIdValue) {
   }
 
   // 3. Иначе — прежнее сосредоточение огня на самом раненом противнике.
-  const target = [...livingEnemies].sort((left, right) => hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right)))[0]
+  const target = [...livingEnemies].sort((left, right) => hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right), 'en'))[0]
   const targetId = idOf(target)
   const commands = []
   let position = from
@@ -230,7 +230,7 @@ export const UNCANNY_DODGE_DAMAGE_PERCENT = 25
  * цена и свой повод, и выбирать их вслепую значило бы тратить ресурс героя за
  * игрока, а не играть за него.
  */
-export const AUTONOMOUS_REACTION_PRIORITY = Object.freeze(['opportunity-attack', 'cast:shield', 'uncanny-dodge'])
+export const AUTONOMOUS_REACTION_PRIORITY = Object.freeze(['opportunity-attack', 'fighter-zaschita', 'paladin-zaschita', 'bard-kollegiya-znaniy-ostroe-slovtso', 'cast:shield', 'uncanny-dodge'])
 
 /** Сколько ОЗ снял удар, открывший окно: обычный урон плюс съеденный временный. */
 function reactionDamageTaken(reactionWindow) {
@@ -335,7 +335,7 @@ function downedAlly(actor) {
 }
 
 function conditionIdsForTactics(state, actorIdValue) {
-  return new Set((state?.mechanics?.conditions?.[String(actorIdValue)] ?? []).map((condition) => String(condition?.id ?? condition)))
+  return new Set(actorConditionList(state, actorIdValue).map((condition) => String(condition?.id ?? condition)))
 }
 
 function hasExtinguishableFlames(state, actorIdValue) {
@@ -560,7 +560,7 @@ function spellCandidatesFor(state, actorIdValue, actor, add) {
       }
       if (HEALING_SPELL_KINDS.has(spell.kind) && spell.target !== 'point') {
         const targets = allies.filter((ally) => !isDeadHero(state, combatId(ally)) && (downedAlly(ally) || Number(ally.hp) <= Math.max(1, Math.floor(combatMaxHp(ally) * HEAL_THRESHOLD_RATIO))))
-          .sort((left, right) => Number(left.hp) - Number(right.hp) || combatId(left).localeCompare(combatId(right)))
+          .sort((left, right) => Number(left.hp) - Number(right.hp) || combatId(left).localeCompare(combatId(right), 'en'))
         for (const target of targets) {
           const command = { ...base, target_id: combatId(target), target_ids: [combatId(target)] }
           const healing = Number(spell.healingAmount) || spellDamageEstimate(actor, { ...spell, damage: spell.healing, upcastDicePerLevel: spell.upcastHealingDicePerLevel }, slot?.level)
@@ -608,7 +608,7 @@ function spellCandidatesFor(state, actorIdValue, actor, add) {
           const area = areaTargetsForTactics(validationState, actorIdValue, spell, null)
           if (area.enemies.length && !area.allies.length) addSpell(base, spellTacticalScore(actor, spell, slot?.level, area.enemies.length), `${spell.name} поражает врагов рядом`)
         } else if (spell.target === 'enemy') {
-          const targets = enemies.slice().sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right)))
+          const targets = enemies.slice().sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right), 'en'))
           for (const target of targets) {
             if (combatDistance(state, actorIdValue, combatId(target)) > Number(spell.range ?? 0)) continue
             const command = { ...base, target_id: combatId(target), target_ids: [combatId(target)] }
@@ -704,8 +704,57 @@ function movementCandidateFor(state, actorIdValue, targetIdValue, itemId = null)
     chosen = step
     chosenCost = spent
   }
+  if (!chosen && !adjacentThreats.length) {
+    // Путь к опорной клетке цели мог упереться в лежащего союзника и в само
+    // тело цели: совомед 2×2 у края карты, рядом двое упавших — и бой стоял
+    // 30 раундов (прогон Асстохана 2026-10-13). Тогда ищется свободная клетка
+    // вокруг цели, откуда удар достаёт и до которой хватает движения.
+    const alternative = attackCellNearTarget(validationState, actorIdValue, targetIdValue, itemId, budget, occupied)
+    if (alternative) {
+      chosen = alternative.cell
+      chosenCost = alternative.cost
+    }
+  }
   if (!chosen || !validatesTacticCommand(state, actorIdValue, { command_type: 'MoveActor', actor_id: actorIdValue, to: chosen, server_authoritative: true })) return null
   return { command: { command_type: 'MoveActor', actor_id: actorIdValue, to: chosen, server_authoritative: true }, cost: chosenCost }
+}
+
+/**
+ * Ближайшая по цене пути свободная клетка вокруг цели (на клетку от её
+ * фишки), с которой прогноз удара достаёт. `null` — такой нет в пределах
+ * оставшегося движения.
+ * @param {Record<string, any>} state техническая копия для проверки
+ * @param {string} actorIdValue
+ * @param {string} targetIdValue
+ * @param {string | null} itemId
+ * @param {number} budget оставшееся движение, футы
+ * @param {Set<string>} occupied занятые клетки, кроме самого героя
+ */
+function attackCellNearTarget(state, actorIdValue, targetIdValue, itemId, budget, occupied) {
+  const actor = findActor(state, actorIdValue)
+  const target = findActor(state, targetIdValue)
+  const targetAt = combatPosition(state, targetIdValue)
+  if (!actor || !target || !targetAt) return null
+  const body = footprintCellsFor(target, targetAt)
+  const bodyKeys = new Set(body.map((cell) => `${cell.x},${cell.y}`))
+  const ring = new Map()
+  for (const cell of body) for (let dx = -1; dx <= 1; dx += 1) for (let dy = -1; dy <= 1; dy += 1) {
+    const key = `${cell.x + dx},${cell.y + dy}`
+    if (!bodyKeys.has(key)) ring.set(key, { x: cell.x + dx, y: cell.y + dy })
+  }
+  let best = null
+  for (const cell of ring.values()) {
+    if (footprintCellsFor(actor, cell).some((part) => occupied.has(`${part.x},${part.y}`) || bodyKeys.has(`${part.x},${part.y}`))) continue
+    const path = shortestTacticalPath(state, actorIdValue, cell)
+    if (!path?.length) continue
+    const cost = movementCostOfPath(state, actorIdValue, path)
+    if (cost > budget || (best && cost >= best.cost)) continue
+    const attackState = structuredClone(state)
+    attackState.mechanics.positions[actorIdValue] = { x: cell.x, y: cell.y }
+    const forecast = attackForecast(attackState, actorIdValue, targetIdValue, itemId ? { itemId } : {})
+    if (forecast?.reachable ?? forecast?.in_range) best = { cell, cost }
+  }
+  return best
 }
 
 function addAttackCandidates(state, actorIdValue, actor, add) {
@@ -752,6 +801,23 @@ function addActionCandidates(state, actorIdValue, actor, add) {
       if (target && economy.bonus_action !== false && movementCandidateFor(state, actorIdValue, combatId(target))) add(commandWithTarget(actorIdValue, { command_type: 'UseCombatAction', action_id: action.id }), 120, 'Получить дополнительное перемещение бонусным действием')
       continue
     }
+    // Дикий облик Круга луны — бонусным действием, пока идёт бой, как в BG3:
+    // у зверя свои хиты и атака. Круг земли тратит на облик действие, ему
+    // выгоднее заклинания — автотактика облик ему не предлагает.
+    const shape = state?.mechanics?.shapes?.[String(actorIdValue)] ?? null
+    if (action.effect?.kind === 'wild_shape') {
+      if (!shape && action.actionType === 'bonus_action' && economy.bonus_action !== false && enemies.length) {
+        add(commandWithTarget(actorIdValue, { command_type: 'UseCombatAction', action_id: action.id }), 1_000, 'Принять Дикий облик бонусным действием')
+      }
+      continue
+    }
+    if (action.effect?.kind === 'wild_shape_heal') {
+      const hp = combatHp(actor)
+      if (shape?.form?.wild_shape === true && hp != null && hp / combatMaxHp(actor) <= .5 && economy.bonus_action !== false) {
+        add(commandWithTarget(actorIdValue, { command_type: 'UseCombatAction', action_id: action.id }), 2_000, 'Целебный облик: ячейка в хиты зверя')
+      }
+      continue
+    }
     if (action.effect?.kind === 'heal') {
       const targets = (action.target === 'self' ? [actor] : allies.filter(ally => combatId(ally) !== String(actorIdValue)))
         .filter((ally) => !isDeadHero(state, combatId(ally))
@@ -765,7 +831,11 @@ function addActionCandidates(state, actorIdValue, actor, add) {
       continue
     }
     if (['stabilize', 'first-aid'].includes(action.id)) {
-      const target = allies.find((ally) => downedAlly(ally) && combatDistance(state, actorIdValue, combatId(ally)) <= Number(action.range ?? 5))
+      // Стабилизировать можно только того, кто ещё бросает спасброски от смерти:
+      // погибший и уже стабильный движок отклонит (стенд 7-го уровня, 2026-10-13).
+      const target = allies.find((ally) => downedAlly(ally) && !isDeadHero(state, combatId(ally))
+        && state?.mechanics?.death?.saving_throws?.[combatId(ally)]?.stable !== true
+        && combatDistance(state, actorIdValue, combatId(ally)) <= Number(action.range ?? 5))
       if (target) add(commandWithTarget(actorIdValue, { command_type: 'UseCombatAction', action_id: action.id, target_id: combatId(target), target_ids: [combatId(target)] }), 8_000, `${action.name} спасает лежащего союзника`)
       continue
     }
@@ -783,12 +853,15 @@ function addActionCandidates(state, actorIdValue, actor, add) {
     const target = action.target === 'self' ? null : action.target === 'ally'
       ? allies.filter(visibleLivingAlly).filter((ally) => action.id !== 'extinguish-ally' || hasExtinguishableFlames(state, combatId(ally)))
         .filter(ally => combatId(ally) !== String(actorIdValue) && !alreadyAffected(ally))
-        .sort((left, right) => Number(left.hp) - Number(right.hp) || combatId(left).localeCompare(combatId(right)))[0]
+        .sort((left, right) => Number(left.hp) - Number(right.hp) || combatId(left).localeCompare(combatId(right), 'en'))[0]
       : enemies.filter(enemy => !alreadyAffected(enemy) && combatDistance(state, actorIdValue, combatId(enemy)) <= Number(action.range ?? 5))
-        .sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right)))[0]
+        .sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right), 'en'))[0]
     if (action.target === 'enemy' && (!target || combatDistance(state, actorIdValue, combatId(target)) > Number(action.range ?? 5))) continue
     if (action.target === 'ally' && !target) continue
-    if (action.target === 'self' && !['dash', 'dodge', 'rage', 'reckless-attack'].includes(action.id)) continue
+    // Изгнание нежити — когда рядом есть неизгнанная нежить; без неё действие пустое.
+    const undeadNear = action.effect?.areaUndead === true && enemies.some((enemy) => /undead|нежит/u.test(String(enemy.creature_type ?? enemy.creatureType ?? '').toLowerCase())
+      && !conditionIdsForTactics(state, combatId(enemy)).has('turned') && combatDistance(state, actorIdValue, combatId(enemy)) <= Number(action.effect.radius ?? 30))
+    if (action.target === 'self' && !['dash', 'dodge', 'rage', 'reckless-attack'].includes(action.id) && !undeadNear) continue
     if (action.id === 'dash' && !enemies.some((enemy) => movementCandidateFor(state, actorIdValue, combatId(enemy)))) continue
     if (action.id === 'dodge' && !enemies.some((enemy) => combatDistance(state, actorIdValue, combatId(enemy)) <= 5)
       && Number(actor.hp) > combatMaxHp(actor) * .4) continue
@@ -797,10 +870,12 @@ function addActionCandidates(state, actorIdValue, actor, add) {
       ...(target ? { target_id: combatId(target), target_ids: [combatId(target)] } : {}),
       ...(action.requiresWeapon && equippedWeapon(actor) ? { item_id: String(equippedWeapon(actor).id) } : {}),
     })
-    let score = action.id === 'rage' ? 900 : action.id === 'reckless-attack' ? 750 : 70
+    let score = action.id === 'rage' ? 900 : action.id === 'reckless-attack' ? 750 : undeadNear ? 800 : 70
     if (action.effect?.kind === 'weapon_attack' && target) {
       const forecast = attackForecast(state, actorIdValue, combatId(target), command.item_id ? { itemId: command.item_id } : {})
-      const extraDamage = action.effect.extraDamageByLevel === 'sneak' ? `${Math.ceil(Number(actor.level) / 2)}d6` : action.effect.extraDamage
+      // Кара оценивается младшей ячейкой: её движок и возьмёт без названного круга.
+      const extraDamage = action.effect.extraDamageByLevel === 'sneak' ? `${Math.ceil(Number(actor.level) / 2)}d6`
+        : action.effect.divineSmite ? '2d8' : action.effect.extraDamage
       const extra = spellDamageEstimate(actor, { level: 1, damage: extraDamage })
       const attacks = Math.max(1, Number(action.effect.attacks) || 1)
       score = 500 + (Math.max(0, Number(forecast?.average_damage) || 0) + extra) * attacks * 30
@@ -860,8 +935,8 @@ export function planHeroCombatCommand(state, actorIdValue) {
   addAttackCandidates(state, actorId, actor, add)
 
   const ranked = candidates.sort((left, right) => right.score - left.score
-    || String(left.command.command_type).localeCompare(String(right.command.command_type))
-    || JSON.stringify(left.command).localeCompare(JSON.stringify(right.command)))
+    || String(left.command.command_type).localeCompare(String(right.command.command_type), 'en')
+    || JSON.stringify(left.command).localeCompare(JSON.stringify(right.command), 'en'))
   let best = ranked[0]
   if (best?.command.command_type === 'CastSpell' && best.command.slot_level > 0) {
     // При почти равной полезности одного заклинания бережём старшую ячейку,
@@ -875,10 +950,22 @@ export function planHeroCombatCommand(state, actorIdValue) {
   }
   if (best) return { command: best.command, reason: best.reason }
 
-  const target = enemiesForTactics(state).sort((left, right) => combatDistance(state, actorId, combatId(left)) - combatDistance(state, actorId, combatId(right)) || combatId(left).localeCompare(combatId(right)))[0]
+  const target = enemiesForTactics(state).sort((left, right) => combatDistance(state, actorId, combatId(left)) - combatDistance(state, actorId, combatId(right)) || combatId(left).localeCompare(combatId(right), 'en'))[0]
   if (target && economy.action !== false) {
     const movement = movementCandidateFor(state, actorId, combatId(target))
     if (movement) return { command: movement.command, reason: `Сблизиться с ${combatId(target)} по доступному маршруту` }
   }
   return { command: end, reason: 'Нет безопасной поддержанной команды; завершить ход' }
+}
+
+/**
+ * Состояния актора: только собственный список словаря `mechanics.conditions`.
+ * Id вида `constructor` или `__proto__` и не-массив дают пустой список, а не
+ * метод прототипа (как `sk_core::game::conditions` в Rust).
+ */
+function actorConditionList(state, actorId) {
+  const conditions = state?.mechanics?.conditions
+  const key = String(actorId)
+  const list = conditions && typeof conditions === 'object' && Object.hasOwn(conditions, key) ? conditions[key] : undefined
+  return Array.isArray(list) ? list : []
 }

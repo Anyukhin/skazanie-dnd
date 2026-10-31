@@ -27,11 +27,11 @@ function attackProfile(actor) {
 }
 
 function abilityForApproach(approach) {
-  return ({ strength: 'str', stealth: 'dex', arcana: 'int', investigation: 'int', perception: 'wis', survival: 'wis', persuasion: 'cha', intimidation: 'cha' })[approach] ?? 'wis'
+  return ownEntry({ strength: 'str', stealth: 'dex', arcana: 'int', investigation: 'int', perception: 'wis', survival: 'wis', persuasion: 'cha', intimidation: 'cha' }, approach) ?? 'wis'
 }
 
 function skillForApproach(approach) {
-  return ({
+  return ownEntry({
     strength: 'athletics',
     stealth: 'stealth',
     arcana: 'arcana',
@@ -40,7 +40,7 @@ function skillForApproach(approach) {
     intimidation: 'intimidation',
     investigation: 'investigation',
     survival: 'survival',
-  })[String(approach ?? '')] ?? ''
+  }, String(approach ?? '')) ?? ''
 }
 
 function difficultyCategoryFromValue(value) {
@@ -371,4 +371,9 @@ export class Adjudicator {
       confidence: Math.min(base.confidence, 0.5),
     }
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

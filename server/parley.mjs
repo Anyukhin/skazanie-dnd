@@ -156,7 +156,7 @@ function pick(list, seed, salt = '') {
 // ---------------------------------------------------------------------------
 
 function conditionIdSet(state, actorId) {
-  return new Set((state?.mechanics?.conditions?.[String(actorId)] ?? [])
+  return new Set(actorConditionList(state, actorId)
     .map((condition) => String(condition?.id ?? condition)))
 }
 
@@ -179,7 +179,7 @@ function traitIds(enemy = {}) {
 export function standingEnemies(state = {}) {
   return (Array.isArray(state?.enemies) ? state.enemies : [])
     .filter((enemy) => isStanding(state, enemy))
-    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), 'en'))
 }
 
 /**
@@ -310,7 +310,7 @@ export function parleyAttempts(state = {}) {
 /** Условия перемирия карточкой: подписи и пояснения берутся из каталога. */
 export function parleyTermsFor(truce = {}) {
   return (Array.isArray(truce?.outcomes) ? truce.outcomes : [])
-    .map((outcome) => PARLEY_TERMS[outcome])
+    .map((outcome) => ownEntry(PARLEY_TERMS, outcome))
     .filter(Boolean)
     .map((term) => ({ ...term }))
 }
@@ -439,4 +439,21 @@ export function parleyCombatPatch(combat = {}, event = {}) {
   // истины о том, идёт ли бой.
   if (type === 'TruceBroken' || type === 'ParleySettled') return { truce: null }
   return null
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
+}
+
+/**
+ * Состояния актора: только собственный список словаря `mechanics.conditions`.
+ * Id вида `constructor` или `__proto__` и не-массив дают пустой список, а не
+ * метод прототипа (как `sk_core::game::conditions` в Rust).
+ */
+function actorConditionList(state, actorId) {
+  const conditions = state?.mechanics?.conditions
+  const key = String(actorId)
+  const list = conditions && typeof conditions === 'object' && Object.hasOwn(conditions, key) ? conditions[key] : undefined
+  return Array.isArray(list) ? list : []
 }

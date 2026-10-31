@@ -78,7 +78,7 @@ test('все 2340 сочетания расы, класса и предысто�
 })
 
 test('повтор навыка заменяется свободным владением и сохраняется после replay', () => {
-  const document = classicFighter({ backgroundChoices: { tools: ['dice_set'], languages: [], replacementSkills: ['stealth'] } })
+  const document = classicFighter({ backgroundChoices: { tools: ['dice_set'], languages: [], replacementSkills: ['stealth'] }, phbCreation: { schema_version: 1, classChoices: {} } })
   const parsed = parseCharacterImport(document, { rulesetId: RULESET_ID })
   assert.equal(parsed.sheet.skills.stealth.proficient, true)
   assert.equal(parsed.sheet.skills.stealth.total, 4)
@@ -144,6 +144,21 @@ function classicFighter(overrides = {}) {
     },
   }
 }
+
+test('каталог отдаёт мастеру кость хитов и спасброски класса из тех же таблиц, что и лист', () => {
+  const expected = {
+    barbarian: [12, 'str/con'], bard: [8, 'dex/cha'], cleric: [8, 'wis/cha'], druid: [8, 'int/wis'],
+    fighter: [10, 'str/con'], monk: [8, 'str/dex'], paladin: [10, 'wis/cha'], ranger: [10, 'str/dex'],
+    rogue: [8, 'dex/int'], sorcerer: [6, 'con/cha'], warlock: [8, 'wis/cha'], wizard: [6, 'int/wis'],
+  }
+  for (const rulesetId of [RULESET_ID, 'srd_5_2_1']) {
+    const classes = characterCreationCatalog(rulesetId).classes
+    assert.equal(classes.length, 12)
+    for (const entry of classes) {
+      assert.deepEqual([entry.hit_die, entry.saving_throws.join('/')], expected[entry.id], `${rulesetId}:${entry.id}`)
+    }
+  }
+})
 
 test('каталог создания 2014 отделён по ruleset_id и содержит PHB расы, подрасы и предыстории', () => {
   const catalog = characterCreationCatalog(RULESET_ID)
@@ -247,7 +262,7 @@ test('импорт героя 2014 выдаёт классовое и фонов
     mechanics: { combat: { active: false } },
   }
   const command = validateCharacterImportCommand({
-    command_type: 'ImportCharacter', actor_id: 'hero-slot-1', document: classicFighter(),
+    command_type: 'ImportCharacter', actor_id: 'hero-slot-1', document: classicFighter({ phbCreation: { schema_version: 1, classChoices: {} } }),
   }, state, { allowedActorIds: ['hero-slot-1'] })
   assert.equal(command.ruleset_id, RULESET_ID)
   assert.deepEqual(command.source_rule_ids, [`${RULESET_ID}:resources:spending`])
@@ -259,8 +274,14 @@ test('импорт героя 2014 выдаёт классовое и фонов
   assert.equal(hero.currency.gold, 10)
   assert.equal(hero.starterEquipmentPolicyId, 'skazanie.starter-equipment.dnd-5e-2014')
   assert.ok(hero.inventory.some((item) => item.catalog_id === 'srd_5_2_1:chain-mail'))
-  assert.ok(hero.inventory.some((item) => item.name === 'Солдат: личные вещи'))
+  // Путь PHB раскладывает вещи предыстории по отдельным предметам.
+  assert.ok(hero.inventory.some((item) => item.name === 'Знак звания'))
   assert.deepEqual(applyCharacterLifecycleEvent(state, event), after)
+  // Новый герой 2014 без выборов PHB больше не создаётся: прежде такой
+  // документ обходил проверки класса, черт и снаряжения.
+  assert.throws(() => validateCharacterImportCommand({
+    command_type: 'ImportCharacter', actor_id: 'hero-slot-1', document: classicFighter(),
+  }, state, { allowedActorIds: ['hero-slot-1'] }), (error) => error.code === 'IMPORT_PHB_CREATION_REQUIRED')
 })
 
 test('каждый класс 2014 получает непустой детерминированный стартовый набор', () => {

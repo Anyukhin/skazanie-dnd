@@ -1,0 +1,20 @@
+[package]
+name = "sk-buildings"
+description = "Генератор зданий «Сказания»: дом с участком по назначению (комнаты, стены, двери, окна, обстановка), фигурный корпус, крепость Ареса и безопасная комната"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sk-core.workspace = true
+sk-tactical = { path = "../sk-tactical" }
+sk-map-core = { path = "../sk-map-core" }
+sk-props = { path = "../sk-props" }
+sk-scene-base = { path = "../sk-scene-base" }
+
+[dev-dependencies]
+# Входы конвейера (карты поселений) хранятся в gzip. Версия и набор
+# возможностей — как у sk-scene-base и sk-props, нового в Cargo.lock нет.
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }

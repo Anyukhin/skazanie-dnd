@@ -1,60 +1,11 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const SESSION = 'NPC-COMBAT-ENTRY'
 const SETUP_TOKEN = 'npc-combat-entry-setup-token'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: SETUP_TOKEN,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Тестовый сервер не завершился')), 5_000)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolve()
-    })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился до health\n${logs()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return
-    } catch { /* listener ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не стал healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -107,27 +58,15 @@ function characterDocument() {
         speciesOptionId: 'human',
       },
       baseSpeed: 30, hitPointIncreases: [], classSkillProficiencies: ['athletics', 'perception'],
-      selectedFeatureIds: [], knownSpellIds: [], preparedSpellIds: [],
+      selectedFeatureIds: ['fighting-style-defense'], knownSpellIds: [], preparedSpellIds: [],
     },
   }
 }
 
 test('обычный игрок начинает бой с видимым NPC через команды, а replay переживает рестарт', { timeout: runnerTimeout(45_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-npc-combat-entry-'))
-  let logs = ''
-  let child = null
-  let baseUrl = ''
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-  const launch = async () => {
-    const port = await freePort()
-    baseUrl = `http://127.0.0.1:${port}`
-    child = startServer(port, storage, (chunk) => { logs += chunk })
-    await waitForHealth(baseUrl, child, () => logs)
-  }
-  await launch()
+  const server = await startTestServer(t, { setupToken: SETUP_TOKEN, storagePrefix: 'skazanie-npc-combat-entry-' })
+  // После restart() порт новый — адрес перечитывается ниже.
+  let baseUrl = server.baseUrl
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST', body: { name: 'NPC admin', email: 'npc-entry-admin@example.test', password: 'secure-npc-entry-password', setupToken: SETUP_TOKEN },
@@ -224,9 +163,8 @@ test('обычный игрок начинает бой с видимым NPC ч
 
   const beforeRestart = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie })
   assert.equal(beforeRestart.status, 200, beforeRestart.text)
-  await stopServer(child)
-  child = null
-  await launch()
+  await server.restart()
+  baseUrl = server.baseUrl
   const afterRestart = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie })
   assert.equal(afterRestart.status, 200, afterRestart.text)
   assert.equal(afterRestart.body.state.mechanics.combat.active, combatActive)

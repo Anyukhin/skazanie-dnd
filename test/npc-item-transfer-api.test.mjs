@@ -1,57 +1,13 @@
-import { freePort } from './free-port.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
+import { startTestServer } from './kit/http.mjs'
 import {
   createTacticalMap,
   serializeTacticalMap,
   setCell,
 } from '../server/tactical-map.mjs'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'npc-transfer-api-setup',
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => {
-    child.once('exit', resolve)
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, {
   method = 'GET',
@@ -158,18 +114,9 @@ function initialState() {
 }
 
 test('HTTP TransferItem передаёт предмет видимому NPC с ACL, idempotency и приватным restart projection', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-npc-transfer-api-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { setupToken: 'npc-transfer-api-setup', storagePrefix: 'skazanie-npc-transfer-api-' })
+  const logs = server.output
+  let baseUrl = server.baseUrl
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -180,17 +127,17 @@ test('HTTP TransferItem передаёт предмет видимому NPC с 
       setupToken: 'npc-transfer-api-setup',
     },
   })
-  assert.equal(admin.status, 201, `${admin.text}\n${logs}`)
+  assert.equal(admin.status, 201, `${admin.text}\n${logs()}`)
   const owner = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
     body: { name: 'Owner', email: 'owner@npc-transfer.test', password: 'secure-owner-password' },
   })
-  assert.equal(owner.status, 201, `${owner.text}\n${logs}`)
+  assert.equal(owner.status, 201, `${owner.text}\n${logs()}`)
   const foreign = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
     body: { name: 'Foreign', email: 'foreign@npc-transfer.test', password: 'secure-foreign-password' },
   })
-  assert.equal(foreign.status, 201, `${foreign.text}\n${logs}`)
+  assert.equal(foreign.status, 201, `${foreign.text}\n${logs()}`)
   const adminCookie = sessionCookie(admin)
   const ownerCookie = sessionCookie(owner)
   const foreignCookie = sessionCookie(foreign)
@@ -202,7 +149,7 @@ test('HTTP TransferItem передаёт предмет видимому NPC с 
     cookie: adminCookie,
     body: { heroIds: ['hero'] },
   })
-  assert.equal(ownership.status, 200, `${ownership.text}\n${logs}`)
+  assert.equal(ownership.status, 200, `${ownership.text}\n${logs()}`)
 
   const created = await request(baseUrl, '/api/campaigns', {
     method: 'POST',
@@ -213,7 +160,7 @@ test('HTTP TransferItem передаёт предмет видимому NPC с 
       state: initialState(),
     },
   })
-  assert.equal(created.status, 201, `${created.text}\n${logs}`)
+  assert.equal(created.status, 201, `${created.text}\n${logs()}`)
 
   const key = 'npc-transfer-http-idempotent'
   const commandBody = {
@@ -232,7 +179,7 @@ test('HTTP TransferItem передаёт предмет видимому NPC с 
     key: 'foreign-transfer',
     body: { ...commandBody, idempotency_key: 'foreign-transfer' },
   })
-  assert.equal(foreignAttempt.status, 403, `${foreignAttempt.text}\n${logs}`)
+  assert.equal(foreignAttempt.status, 403, `${foreignAttempt.text}\n${logs()}`)
 
   const first = await request(baseUrl, '/api/campaigns/NPC-TRANSFER-API/commands', {
     method: 'POST',
@@ -240,7 +187,7 @@ test('HTTP TransferItem передаёт предмет видимому NPC с 
     key,
     body: commandBody,
   })
-  assert.equal(first.status, 200, `${first.text}\n${logs}`)
+  assert.equal(first.status, 200, `${first.text}\n${logs()}`)
   assert.equal(first.body.mechanics[0].event_type, 'ItemTransferred')
   assert.equal(first.body.mechanics[0].payload.recipient_kind, 'npc')
   assert.equal(first.body.authoritative_state.players[0].inventory.find((item) => item.id === 'gift').quantity, 2)
@@ -253,26 +200,22 @@ test('HTTP TransferItem передаёт предмет видимому NPC с 
     key,
     body: commandBody,
   })
-  assert.equal(duplicate.status, 200, `${duplicate.text}\n${logs}`)
+  assert.equal(duplicate.status, 200, `${duplicate.text}\n${logs()}`)
   assert.equal(duplicate.body.idempotent_replay, true)
   assert.equal(duplicate.body.authoritative_state.players[0].inventory.find((item) => item.id === 'gift').quantity, 2)
 
   const adminRoom = await request(baseUrl, '/api/rooms/NPC-TRANSFER-API', { cookie: adminCookie })
-  assert.equal(adminRoom.status, 200, `${adminRoom.text}\n${logs}`)
+  assert.equal(adminRoom.status, 200, `${adminRoom.text}\n${logs()}`)
   assert.equal(adminRoom.body.state.npc_world.inventories.marta.length, 1)
   assert.equal(adminRoom.body.state.npc_world.inventories.marta[0].quantity, 2)
 
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.restart()
+  baseUrl = server.baseUrl
 
   const meAfterRestart = await request(baseUrl, '/api/auth/me', { cookie: ownerCookie })
-  assert.equal(meAfterRestart.status, 200, `${meAfterRestart.text}\n${logs}`)
+  assert.equal(meAfterRestart.status, 200, `${meAfterRestart.text}\n${logs()}`)
   const roomAfterRestart = await request(baseUrl, '/api/rooms/NPC-TRANSFER-API', { cookie: ownerCookie })
-  assert.equal(roomAfterRestart.status, 200, `${roomAfterRestart.text}\n${logs}`)
+  assert.equal(roomAfterRestart.status, 200, `${roomAfterRestart.text}\n${logs()}`)
   assert.equal(roomAfterRestart.body.state.players[0].inventory.find((item) => item.id === 'gift').quantity, 2)
   assert.equal(roomAfterRestart.body.state.npc_world, undefined)
   assert.doesNotMatch(JSON.stringify(roomAfterRestart.body.state), /inventories/u)
@@ -283,13 +226,13 @@ test('HTTP TransferItem передаёт предмет видимому NPC с 
     key,
     body: commandBody,
   })
-  assert.equal(replayAfterRestart.status, 200, `${replayAfterRestart.text}\n${logs}`)
+  assert.equal(replayAfterRestart.status, 200, `${replayAfterRestart.text}\n${logs()}`)
   assert.equal(replayAfterRestart.body.idempotent_replay, true)
   assert.equal(replayAfterRestart.body.authoritative_state.players[0].inventory.find((item) => item.id === 'gift').quantity, 2)
   assert.equal(replayAfterRestart.body.authoritative_state.npc_world, undefined)
 
   const durableAdminRoom = await request(baseUrl, '/api/rooms/NPC-TRANSFER-API', { cookie: adminCookie })
-  assert.equal(durableAdminRoom.status, 200, `${durableAdminRoom.text}\n${logs}`)
+  assert.equal(durableAdminRoom.status, 200, `${durableAdminRoom.text}\n${logs()}`)
   assert.equal(durableAdminRoom.body.state.npc_world.inventories.marta.length, 1)
   assert.equal(durableAdminRoom.body.state.npc_world.inventories.marta[0].quantity, 2)
 })

@@ -687,6 +687,8 @@ function WaitingForHero({ account, onRefresh, onLogout }: { account: Account; on
 function ReactionPrompt({ actorName, sourceName, window, clock, busy, beneficiaries, slotLevels = [], onChoose, onDecline }: { actorName: string; sourceName: string; window: CombatReactionWindow; clock?: GameState['turn_clock']; busy: boolean; beneficiaries: Array<{ id: string; name: string }>; slotLevels?: number[]; onChoose: (actionId: string, beneficiaryId?: string, slotLevel?: number) => void; onDecline: () => void }) {
   const hit = ['attack-hit', 'spell-attack-hit'].includes(window.trigger)
   const protectiveAttack = ['attack-shield-choice', 'attack-protective-choice'].includes(window.trigger)
+  const cuttingWords = window.trigger === 'attack-cutting-words-choice'
+  const protection = window.trigger === 'attack-protection-choice'
   const magicMissile = ['magic-missile-targeted', 'magic-missile-shield-choice'].includes(window.trigger)
   const opportunity = window.trigger === 'enemy-left-reach'
   const spellCast = window.trigger === 'spell-cast'
@@ -713,7 +715,7 @@ function ReactionPrompt({ actorName, sourceName, window, clock, busy, beneficiar
   return <div className="reaction-backdrop hud-react-layer" style={boardFrame ? { left: boardFrame.left, width: boardFrame.width, right: 'auto', bottom: boardFrame.bottom + 12 } : undefined}><section className="reaction-prompt" role="alertdialog" aria-label={savingThrowBonus ? 'Выбор бонуса спасброска' : 'Выбор реакции'}>
     {reactionClock && <CombatTurnClock clock={reactionClock} actorName={actorName} compact />}
     <header><div><RefreshCw size={21} /><span><small>{savingThrowBonus ? 'БОНУС СПАСБРОСКА' : failedSave ? 'ПРОВАЛЕННЫЙ СПАСБРОСОК' : 'ПРЕРЫВАЮЩАЯ РЕАКЦИЯ'}</small><strong>{savingThrowBonus ? `${actorName}, добавить бонус?` : failedSave ? `${actorName}, использовать особенность?` : `${actorName}, реагировать?`}</strong></span></div><em>{savingThrowBonus ? 'Сопротивление' : failedSave ? 'Спасбросок' : elementalDamage ? elementalDamageLabel || 'Стихийный урон' : spellCast || magicMissile ? 'Заклинание' : opportunity ? 'Движение' : hit || protectiveAttack ? 'Попадание' : 'Промах'}</em></header>
-    <p>{savingThrowBonus ? savingThrowBonusText : failedSave ? failedSaveText : elementalDamage ? `${actorName} может защититься от стихийного урона. Последствия будут определены после выбора реакции.` : magicMissile ? `${sourceName} направляет «Волшебную стрелу» на героя. Щит может полностью остановить её урон.` : protectiveAttack ? `${sourceName} попадает по герою. Можно защититься до применения урона.` : spellCast ? `${sourceName} начинает накладывать «${window.pending_spell?.name ?? 'заклинание'}»${window.pending_spell?.slot_level ? ` ячейкой ${window.pending_spell.slot_level} уровня` : ''}.` : opportunity ? `${sourceName} покидает досягаемость героя.` : hit ? `${sourceName} попадает по герою${window.damage?.applied_amount ? ` и наносит ${window.damage.applied_amount} урона` : ''}.` : `${sourceName} промахивается в ближнем бою.`} {savingThrowBonus ? 'Выберите, использовать ли бонус сейчас.' : failedSave ? 'Выберите «Несгибаемый» или оставьте исходный провал.' : 'Выберите одну доступную реакцию или продолжите бой без неё.'}</p>
+    <p>{savingThrowBonus ? savingThrowBonusText : failedSave ? failedSaveText : elementalDamage ? `${actorName} может защититься от стихийного урона. Последствия будут определены после выбора реакции.` : magicMissile ? `${sourceName} направляет «Волшебную стрелу» на героя. Щит может полностью остановить её урон.` : protectiveAttack ? `${sourceName} попадает по герою. Можно защититься до применения урона.` : cuttingWords ? `${sourceName} бросает атаку по союзнику: ${window.trigger_roll?.total ?? '—'} против КД ${window.trigger_roll?.armor_class ?? '—'}. Острое словцо вычтет кость Вдохновения — удар может сорваться.` : protection ? `${sourceName} атакует союзника рядом с ${actorName}. «Оборона» щитом наложит помеху на бросок.` : spellCast ? `${sourceName} начинает накладывать «${window.pending_spell?.name ?? 'заклинание'}»${window.pending_spell?.slot_level ? ` ячейкой ${window.pending_spell.slot_level} уровня` : ''}.` : opportunity ? `${sourceName} покидает досягаемость героя.` : hit ? `${sourceName} попадает по герою${window.damage?.applied_amount ? ` и наносит ${window.damage.applied_amount} урона` : ''}.` : `${sourceName} промахивается в ближнем бою.`} {savingThrowBonus ? 'Выберите, использовать ли бонус сейчас.' : failedSave ? 'Выберите «Несгибаемый» или оставьте исходный провал.' : 'Выберите одну доступную реакцию или продолжите бой без неё.'}</p>
     {needsBeneficiary && <label className="reaction-beneficiary"><span>Преимущество получит</span><select value={beneficiaryId} disabled={busy} onChange={(event) => setBeneficiaryId(event.target.value)}>{beneficiaries.map((beneficiary) => <option key={beneficiary.id} value={beneficiary.id}>{beneficiary.name}</option>)}</select></label>}
     <div className="reaction-options">{window.action_options.map((option) => {
       const slotChoices = reactionSlotChoices(option, slotLevels)
@@ -849,7 +851,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const { confirmPendingAction, cancelPendingAction } = gameSession
   const { advanceAdventure, directorBusy } = gameSession
   const { pendingTacticalCommand, retryPendingTacticalCommand } = gameSession
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, setSpellBonusPreference, setReactionPreference, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, setSpellBonusPreference, setReactionPreference, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, chooseDialogueOption, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
   const [checkDiceScene, setCheckDiceScene] = useState<PendingCheckDiceScene | null>(null)
   const checkDiceSceneRef = useRef<PendingCheckDiceScene | null>(null)
   const checkDiceTimerRef = useRef<number | null>(null)
@@ -1849,6 +1851,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onSendLetter={(kind, addresseeId, body) => sendLetter(activePlayer.id, kind, addresseeId, body)}
             onReceiveNpcBlessing={(npcId) => receiveNpcBlessing(activePlayer.id, npcId)}
             onTransferItem={(itemId, npcId, quantity) => transferItem(activePlayer.id, itemId, npcId, quantity)}
+            onDialogueOption={(npcId, optionId) => chooseDialogueOption(activePlayer.id, npcId, optionId)}
             onStartRest={(kind) => startRest(activePlayer.id, kind)}
             onSpendHitPointDie={() => spendHitPointDie(activePlayer.id)}
             onCompleteRest={() => completeRest(activePlayer.id)}
@@ -1899,7 +1902,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
            combatBonusActionAvailable={state.mechanics?.combat?.action_economy?.[activePlayer.id]?.bonus_action !== false}
           busy={tacticalBusy}
           error={tacticalError}
-          onEquip={(itemId, equipped) => equipItem(activePlayer.id, itemId, equipped)}
+          onEquip={(itemId, equipped, slot) => equipItem(activePlayer.id, itemId, equipped, slot)}
           onUse={(itemId, options) => useItem(activePlayer.id, itemId, options)}
           onTransfer={(itemId, recipientId, quantity) => transferItem(activePlayer.id, itemId, recipientId, quantity)}
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
@@ -2022,7 +2025,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         requestLevelUp={editorRequestLevelUp}
         onClose={() => { setEditingPlayerId(null); setEditorInitialTab('sheet'); setEditorRequestLevelUp(false); setHeroWizardDismissed(true) }}
         onSave={(patch) => updatePlayer(editingPlayerId, patch)}
-        onImport={(source) => importCharacter(editingPlayerId, source)}
+        onImport={isAdmin || state.players.find((player) => player.id === editingPlayerId)?.characterSetupRequired
+          ? (source) => importCharacter(editingPlayerId, source)
+          : undefined}
         onLevelUp={() => {
           const player = state.players.find((candidate) => candidate.id === editingPlayerId)
           return player ? levelUpCharacter(player.id, player.level) : Promise.resolve({ ok: false, error: 'Герой не найден' })

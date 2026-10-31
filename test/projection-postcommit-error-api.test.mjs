@@ -1,56 +1,16 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { fileURLToPath, pathToFileURL } from 'node:url'
 import { projectionHash } from '../server/projection-integrity.mjs'
-import { freePort } from './free-port.mjs'
+import { readJournal, readRoom, startTestServer, writeRoom } from './kit/index.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
-const PROJECTION_FAULT_PRELOAD = pathToFileURL(fileURLToPath(new URL('./fixtures/fail-projection-ack-once.mjs', import.meta.url))).href
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, [
-    '--import', PROJECTION_FAULT_PRELOAD,
-    'server/index.mjs',
-  ], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      DND_PROJECTION_FAULT_CAMPAIGN: 'PROJECTION-FAULT',
-      DND_PROJECTION_FAULT_VERSION: '1',
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'projection-fault-setup',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
+/** Подтверждение проекции версии 1 кампании PROJECTION-FAULT падает один раз за процесс. */
+function startServer(t) {
+  return startTestServer(t, {
+    setupToken: 'projection-fault-setup',
+    storagePrefix: 'skazanie-commands-projection-fault-',
+    faults: { projection_ack: [{ campaign: 'PROJECTION-FAULT', version: 1 }] },
   })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 160; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился\n${logs()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return
-    } catch { /* сервер ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не запустился\n${logs()}`)
 }
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
@@ -71,13 +31,8 @@ function cookie(result) {
 }
 
 test('ошибка проекции после commit возвращает 500, а повтор читает сохранённое событие', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-commands-projection-fault-'))
-  let logs = ''
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  const child = startServer(port, storage, (chunk) => { logs += chunk })
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startServer(t)
+  const baseUrl = server.baseUrl
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -140,13 +95,11 @@ test('ошибка проекции после commit возвращает 500, 
 // подтверждал комнату без сверки. Комната, испорченная вне журнала, снимала
 // pending checkpoint и оставалась расходящейся до следующего GET.
 test('подтверждение проекции при той же версии сверяет содержимое комнаты', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-commands-projection-fault-'))
-  let logs = ''
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  const child = startServer(port, storage, (chunk) => { logs += chunk })
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startServer(t)
+  const baseUrl = server.baseUrl
+  // Комната и отметка проекции — через набор: у JS это файл комнаты и
+  // metadata.json, у Rust — накладка и метаданные журнала в SQLite.
+  const logs = server.output
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -171,36 +124,36 @@ test('подтверждение проекции при той же верси�
   // Подтверждение версии 1 падает один раз (фоновое, ответ не ломает):
   // checkpoint остаётся позади журнала.
   const paused = await request(baseUrl, '/api/campaigns/PROJECTION-FAULT/lifecycle', { method: 'POST', cookie: adminCookie, body: pause })
-  assert.equal(paused.status, 200, `${paused.text}\n${logs}`)
+  assert.equal(paused.status, 200, `${paused.text}\n${logs()}`)
 
-  const campaignsRoot = join(storage, 'engine', 'campaigns')
-  const campaignDir = join(campaignsRoot, readdirSync(campaignsRoot).find((name) => name.toUpperCase().includes('PROJECTION-FAULT')))
-  const metadata = () => JSON.parse(readFileSync(join(campaignDir, 'metadata.json'), 'utf8'))
-  assert.equal(metadata().projection_checkpoint_version, 0, 'после сбоя подтверждения проекция ждёт сверки')
+  const metadata = async () => (await readJournal(server, 'PROJECTION-FAULT')).projection_checkpoint
+  assert.equal((await metadata()).version, 0, 'после сбоя подтверждения проекция ждёт сверки')
 
   // Внешний дрейф при той же версии: каноническое поле комнаты испорчено, и в
   // ней появилось каноническое поле, которого движок не держит вовсе.
-  const roomFile = join(storage, 'rooms', 'PROJECTION-FAULT.json')
-  const room = JSON.parse(readFileSync(roomFile, 'utf8'))
+  const room = await readRoom(server, 'PROJECTION-FAULT')
   assert.equal(room.state.state_version, 1)
   assert.equal(room.state.tacticalTurn, undefined)
-  room.state.enemies = room.state.enemies.map((enemy) => (enemy.id === 'goblin' ? { ...enemy, hp: 1 } : enemy))
-  room.state.tacticalTurn = { actorId: 'hero', round: 3, actionUsed: true }
-  writeFileSync(roomFile, JSON.stringify(room, null, 2), 'utf8')
+  const drifted = await writeRoom(server, 'PROJECTION-FAULT', {
+    ...room.state,
+    enemies: room.state.enemies.map((enemy) => (enemy.id === 'goblin' ? { ...enemy, hp: 1 } : enemy)),
+    tacticalTurn: { actorId: 'hero', round: 3, actionUsed: true },
+  })
+  assert.equal(drifted.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 1, 'дрейф записан')
 
   const replay = await request(baseUrl, '/api/campaigns/PROJECTION-FAULT/lifecycle', { method: 'POST', cookie: adminCookie, body: pause })
-  assert.equal(replay.status, 200, `${replay.text}\n${logs}`)
+  assert.equal(replay.status, 200, `${replay.text}\n${logs()}`)
 
   // Подтверждение фоновое: ждём, пока checkpoint догонит журнал.
-  let checkpoint = metadata()
-  for (let attempt = 0; attempt < 40 && checkpoint.projection_checkpoint_version !== 1; attempt += 1) {
+  let checkpoint = await metadata()
+  for (let attempt = 0; attempt < 40 && checkpoint.version !== 1; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 50))
-    checkpoint = metadata()
+    checkpoint = await metadata()
   }
-  const repaired = JSON.parse(readFileSync(roomFile, 'utf8'))
+  const repaired = await readRoom(server, 'PROJECTION-FAULT')
   assert.equal(repaired.state.state_version, 1)
   assert.equal(repaired.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 8, 'комната восстановлена из журнала')
   assert.equal(repaired.state.tacticalTurn, undefined, 'поле, которого движок не держит, из комнаты снято')
-  assert.equal(checkpoint.projection_checkpoint_version, 1)
-  assert.equal(checkpoint.projection_checkpoint_hash, projectionHash(repaired.state), 'подтверждён hash восстановленной комнаты')
+  assert.equal(checkpoint.version, 1)
+  assert.equal(checkpoint.hash, projectionHash(repaired.state), 'подтверждён hash восстановленной комнаты')
 })

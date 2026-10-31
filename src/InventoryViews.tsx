@@ -160,7 +160,7 @@ function CharacterDevelopmentWizard({
   </div>
 }
 
-export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = player.level, initialTab = 'sheet', requestLevelUp = false, onClose, onSave, onImport, onLevelUp }: { player: Player; rulesetId?: string; phbCatalog?: PhbCharacterOptionsCatalog; targetLevel?: number; initialTab?: 'sheet' | 'story' | 'advancement'; requestLevelUp?: boolean; onClose: () => void; onSave: (patch: Partial<Player>) => void | Promise<void>; onImport: (source: string) => Promise<void>; onLevelUp: () => void | Promise<{ ok?: boolean; error?: string } | void> }) {
+export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = player.level, initialTab = 'sheet', requestLevelUp = false, onClose, onSave, onImport, onLevelUp }: { player: Player; rulesetId?: string; phbCatalog?: PhbCharacterOptionsCatalog; targetLevel?: number; initialTab?: 'sheet' | 'story' | 'advancement'; requestLevelUp?: boolean; onClose: () => void; onSave: (patch: Partial<Player>) => void | Promise<void>; onImport?: (source: string) => Promise<void>; onLevelUp: () => void | Promise<{ ok?: boolean; error?: string } | void> }) {
   const [draft, setDraft] = useState<Player>(() => structuredClone(player))
   const [tab, setTab] = useState<'sheet' | 'story' | 'advancement'>(() => player.characterSetupStage === 'leveling' ? 'advancement' : initialTab)
   const [notice, setNotice] = useState('')
@@ -357,6 +357,7 @@ export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = p
   const importSheet = async (file?: File) => {
     if (!file) return
     try {
+      if (!onImport) return
       await onImport(await file.text())
       setNotice('Документ отправлен на серверную проверку и импорт.')
     } catch (error) {
@@ -579,7 +580,8 @@ export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = p
           <div><span>ЛИСТ ПЕРСОНАЖА</span><h2>{draft.character}</h2><p>{playerRoleLabel(draft)}</p></div>
           <div className="editor-actions">
             <input ref={importInput} hidden type="file" accept="application/json,.json" onChange={(event) => importSheet(event.target.files?.[0])} />
-            <button onClick={() => importInput.current?.click()} disabled={saving}><Upload size={15} />Импорт Skazanie JSON</button>
+            {/* Готового героя лист целиком заменяет только ведущий: игроку сервер откажет. */}
+            {onImport && <button onClick={() => importInput.current?.click()} disabled={saving}><Upload size={15} />Импорт Skazanie JSON</button>}
             <button onClick={exportSheet}><Download size={15} />Экспорт</button>
             <button className="close-editor" onClick={onClose} disabled={saving} aria-label="Закрыть лист персонажа"><X size={20} /></button>
           </div>
@@ -807,7 +809,7 @@ export function InventoryView({
   combatBonusActionAvailable?: boolean
   busy?: boolean
   error?: string | null
-  onEquip: (itemId: string, equipped: boolean) => void
+  onEquip: (itemId: string, equipped: boolean, slot?: 'off_hand') => void
   onUse: (itemId: string, options?: ItemUseOptions) => void
   onTransfer: (itemId: string, recipientId: string, quantity: number) => void
   onAttune: (itemId: string, attuned: boolean) => void
@@ -863,7 +865,7 @@ export function InventoryView({
     const assigned = new Map<DollSlotId, InventoryItem>()
     const extra: InventoryItem[] = []
     for (const item of player.inventory.filter((entry) => entry.equipped)) {
-      const slot = equipSlotOf(item)
+      const slot = item.equipped_slot === 'off_hand' ? 'off_hand' : equipSlotOf(item)
       const place = DOLL_SLOTS.find((entry) => entry.accepts(slot) && !assigned.has(entry.id))
       if (place) assigned.set(place.id, item)
       else extra.push(item)
@@ -1105,7 +1107,8 @@ export function InventoryView({
     const catalogDescription = item.capabilities?.catalog_description ?? starterItemPresentationFor(item)?.description
     const combat = item.combat
     const combatRange = combat ? combat.kind === 'melee' ? `${combat.normalRange} фт.` : `${combat.normalRange}/${combat.longRange ?? combat.normalRange} фт.` : ''
-    const equipSlot = item.capabilities?.equip_slot ? equipSlotNames[item.capabilities.equip_slot] ?? item.capabilities.equip_slot : ''
+    const equipSlot = item.equipped_slot === 'off_hand' ? equipSlotNames.off_hand
+      : item.capabilities?.equip_slot ? equipSlotNames[item.capabilities.equip_slot] ?? item.capabilities.equip_slot : ''
     const activated = item.capabilities?.activated ?? item.activated === true
     const useDisabledReason = item.capabilities?.usable ? useDisabledReasonFor(item) : ''
     const activationDisabledReason = item.capabilities?.activatable ? activationDisabledReasonFor(item) : ''
@@ -1143,6 +1146,7 @@ export function InventoryView({
       </div>
       <div className="inv-detail-actions item-actions">
         {item.capabilities?.equippable && <button className={item.equipped ? '' : 'item-action-main'} disabled={busy || Boolean(equipDisabledReasonFor(item))} title={equipDisabledReasonFor(item) || equipCostHintFor(item) || undefined} onClick={() => onEquip(item.id, !item.equipped)}>{item.equipped ? 'Снять' : 'Надеть'}{combatActive && !equipDisabledReasonFor(item) ? (combatObjectInteractionAvailable ? ' · бесплатно' : ' · действие') : ''}</button>}
+        {item.capabilities?.off_hand && !item.equipped && <button disabled={busy || Boolean(equipDisabledReasonFor(item))} title="Бой двумя оружиями: лёгкое оружие во второй руке, удар бонусным действием после атаки" onClick={() => onEquip(item.id, true, 'off_hand')}>Во вторую руку</button>}
         {item.capabilities?.equippable && combatActive && <small className="item-use-hint" role="status">{equipDisabledReasonFor(item) || equipCostHintFor(item)}</small>}
         {item.capabilities?.usable && item.capabilities.use?.use_modes && <label className="item-use-target">
           <span>Режим</span>

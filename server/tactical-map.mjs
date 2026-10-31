@@ -434,7 +434,7 @@ export function createTacticalMap({
     theme: boundedText(theme, 60),
     tilesetId: boundedText(tilesetId, 60),
     overlays: { compass: false, scaleBar: false, roomLabels: [] },
-    sizeClass: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (sizeClass)]
+    sizeClass: ownEntry(SIZE_CLASSES, sizeClass)
       ? sizeClass
       : sizeClassFor(safeWidth, safeHeight),
     legacyShape: [...LEGACY_OPTIONAL_FIELDS],
@@ -1537,7 +1537,7 @@ export function deserializeTacticalMap(value) {
     tilesetId: boundedText(raw.tilesetId, 60),
     ...(surroundingsOf(raw) ? { surroundings: /** @type {{ biome?: string, sides?: Record<string, string> }} */ (surroundingsOf(raw)) } : {}),
     overlays: { compass: raw.overlays?.compass === true, scaleBar: raw.overlays?.scaleBar === true, roomLabels: [] },
-    sizeClass: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (raw.sizeClass)] ? String(raw.sizeClass) : sizeClassFor(width, height),
+    sizeClass: ownEntry(SIZE_CLASSES, raw.sizeClass) ? String(raw.sizeClass) : sizeClassFor(width, height),
     legacyShape: Array.isArray(raw.legacyShape)
       ? LEGACY_OPTIONAL_FIELDS.filter((field) => raw.legacyShape.includes(field))
       : [...LEGACY_OPTIONAL_FIELDS],
@@ -1717,7 +1717,7 @@ export function validateTacticalMap(map) {
     }
   }
 
-  const limits = SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)] ?? SIZE_CLASSES.region
+  const limits = ownEntry(SIZE_CLASSES, map.sizeClass) ?? SIZE_CLASSES.region
   if (length > limits.maxCells) fail('CELL_BUDGET_EXCEEDED', `Клеток ${length}, бюджет класса ${map.sizeClass} — ${limits.maxCells}`)
   if (map.props.length > limits.maxProps) fail('PROP_BUDGET_EXCEEDED', `Предметов ${map.props.length}, бюджет — ${limits.maxProps}`)
   const wallEdges = edgeList(map).filter((edge) => edge.kind === 'wall').length
@@ -2175,4 +2175,17 @@ export function orientTacticalMap(map, side) {
   }
   next.legacyShape = [...map.legacyShape]
   return next
+}
+
+/**
+ * Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`,
+ * `toString`…) записями не считаются.
+ *
+ * @template T
+ * @param {Readonly<Record<string, T>>} table
+ * @param {unknown} key
+ * @returns {T | undefined}
+ */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

@@ -20,3 +20,9 @@ assets-src/
 # Локальная настройка Docker под эту машину (например, корневой сертификат антивируса)
 compose.override.yaml
 local-ca/
+
+# Rust: артефакты сборки
+rust/target/
+
+# Личные заметки Claude под эту машину
+CLAUDE.local.md

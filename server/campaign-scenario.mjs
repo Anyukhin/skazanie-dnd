@@ -484,6 +484,19 @@ export function scenarioSecretsFor(state, locationId) {
 }
 
 /**
+ * Найденные тайны сценария по их id в данных (`ash-gate`, `camp-gedrik`):
+ * условие варианта диалога ссылается на тайну, а не на факт памяти.
+ * @param {any} state
+ * @returns {Set<string>}
+ */
+export function scenarioFoundClueIds(state) {
+  const scenario = campaignScenario(state)
+  if (!scenario) return new Set()
+  const prefix = scenarioClueFactId(scenario, '')
+  return new Set([...foundClueFactIds(state)].filter((factId) => factId.startsWith(prefix)).map((factId) => factId.slice(prefix.length)))
+}
+
+/**
  * Найденные тайны: удачный поиск (`discovery`) или рассказ хранителя тайны в
  * разговоре (`KnowledgeRevealed` → `worldMemory.knowledge_revealed`).
  * @param {any} state
@@ -635,6 +648,9 @@ export function scenarioInformantRules(state) {
     name: clean(informant.name, 120),
     location_id: String(informant.location_id),
     name_stems: informant.name_stems.map(String),
+    // Собеседник-осведомитель и исходы, после которых он уходит из сцены.
+    npc_id: clean(informant.npc_id, 120),
+    departs_on: (Array.isArray(informant.departs_on) ? informant.departs_on : []).map(String),
     revealed: found.has(scenarioClueFactId(scenario, informant.clue)),
     expose_delta: Number(informant.expose_delta),
     turn: { skill: String(informant.turn.skill), dc: Number(informant.turn.dc), delta: Number(informant.turn.delta) },
@@ -931,7 +947,13 @@ export function scenarioDestinationIds(state = {}) {
     .flatMap((beat) => beat.location_ids)
     .filter((id) => id !== here && !visited.has(id))
   const finaleReady = progress.lines_completed >= Math.min(2, progress.lines_total) || !lineUnvisited.length
-  const finaleIds = here !== finale.boss.location_id ? [finale.boss.location_id] : []
+  // Финал зовёт в логово и на подступ к нему: дорогу в логово открывает сам
+  // подступ (перевал, `map_reveals`). Без подступа логово недостижимо, и
+  // Режиссёр уводил отряд в ближайшее непосещённое место — на Озеро и в
+  // Проклятый лес (прогон Асстохана 2026-10-13). В логове звать некуда.
+  const finaleIds = here !== finale.boss.location_id
+    ? [...new Set([finale.boss.location_id, ...(finale.location_ids ?? [])])].filter((id) => id !== here)
+    : []
   // Пролог и первая глава не открыты — сначала они: финал до заставы — это
   // не свобода, а пропущенная завязка.
   if (opening.some((id) => id !== here)) {

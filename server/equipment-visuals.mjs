@@ -260,7 +260,7 @@ export function normalizeEquipmentModelKey(value) {
  * известен этому выпуску визуального каталога.
  */
 export function itemVisualForCatalogId(catalogId) {
-  const value = ITEM_VISUALS[clean(catalogId, 120)]
+  const value = ownEntry(ITEM_VISUALS, clean(catalogId, 120))
   if (!value) return null
   return value.variant === 'default'
     ? { slot: value.slot, model_key: value.model_key }
@@ -271,7 +271,7 @@ export function itemVisualForCatalogId(catalogId) {
 export const equipmentVisualForCatalogId = itemVisualForCatalogId
 
 function legacyVisualForItem(item) {
-  const exact = LEGACY_NAME_MODELS[normalizedLegacyName(item?.name)]
+  const exact = ownEntry(LEGACY_NAME_MODELS, normalizedLegacyName(item?.name))
   if (exact) return exact
   // Fallback-слот нужен, чтобы открытая, но самодельная вещь могла честно
   // показать `null`: это надето, однако сервер не знает однозначной геометрии.
@@ -347,4 +347,9 @@ export function normalizePublicLoadout(value) {
 export function modelKeysForEquipmentSlot(slot) {
   const normalized = normalizeEquipmentVisualSlot(slot)
   return normalized ? Object.freeze([...SLOT_MODEL_KEYS[normalized]].sort()) : Object.freeze([])
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

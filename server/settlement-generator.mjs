@@ -1394,7 +1394,7 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   // Масштаб задаёт наименьший размер: деревня — от 40×34, город — от 48×44,
   // столица — от 56×52. Прежде любой город сжимался в 26–40 клеток и
   // получал четыре-девять домов.
-  const minimum = SETTLEMENT_MIN_SIZE[/** @type {'village'|'town'|'city'} */ (chosen.scale)] ?? { width: 26, height: 26 }
+  const minimum = ownEntry(SETTLEMENT_MIN_SIZE, chosen.scale) ?? { width: 26, height: 26 }
   const safeWidth = clamp(Math.max(integer(width, 30), minimum.width), 26, 60)
   const safeHeight = clamp(Math.max(integer(height, 30), minimum.height), 26, 60)
   const materialsForMap = materials(chosen, theme)
@@ -1494,4 +1494,9 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
     roomLabels: map.zones.filter((zone) => zone.label).map((zone) => ({ zoneId: zone.id, label: zone.label })),
   }
   return { map, warnings: [], uses: buildingUses }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

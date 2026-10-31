@@ -69,6 +69,22 @@ test('expired and failed reservations release quota without storing prompts', (t
   assert.equal(ledger.report().reserved_tokens, 0)
 })
 
+test('повтор резерва с пустыми scope и model возвращает прежнюю запись', (t) => {
+  // Запись хранит пустые scope и model как 'global' и 'unknown'; повтор
+  // сравнивался с сырым `clean(...)` и всегда давал USAGE_IDEMPOTENCY_CONFLICT.
+  const { ledger } = fixture(t)
+  const first = ledger.reserve({ requestId: 'blank', estimatedTokens: 10, scope: '', model: '   ' })
+  assert.equal(first.scope, 'global')
+  assert.equal(first.model, 'unknown')
+  assert.deepEqual(ledger.reserve({ requestId: 'blank', estimatedTokens: 10, scope: '', model: '   ' }), first)
+  assert.deepEqual(ledger.reserve({ requestId: 'blank', estimatedTokens: 10, scope: 'global', model: 'unknown' }), first)
+  assert.equal(ledger.report().reserved_tokens, 10)
+  assert.throws(
+    () => ledger.reserve({ requestId: 'blank', estimatedTokens: 10, scope: 'campaign:a', model: '' }),
+    (error) => error.code === 'USAGE_IDEMPOTENCY_CONFLICT',
+  )
+})
+
 test('metered client rejects over-budget requests before provider invocation', async (t) => {
   const { ledger } = fixture(t)
   let calls = 0
@@ -226,7 +242,11 @@ test('COST-01: каскад моделей сохраняет расход ка�
 // server/index.mjs создаётся внутри MeteredLLMClient — летописец больше не
 // получает голый RouterAIClient, — а картинки идут через общий проверяющий
 // генератор, без собственного fetch к поставщику.
-test('AI-02: server/index.mjs не держит неучтённых путей к поставщику', () => {
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust тот же сторож проводки —
+// rust/crates/sk-server/tests/server_guards.rs (model_and_image_clients_are_built_only_at_the_entry_point,
+// app_state_holds_models_only_as_metered).
+test('JS-only (server/index.mjs): AI-02: server/index.mjs не держит неучтённых путей к поставщику', () => {
   const source = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
   const providerClients = source.match(/new RouterAIClient\(/gu) ?? []
   const meteredClients = source.match(/new MeteredLLMClient\(\{\s*client: new RouterAIClient\(/gu) ?? []

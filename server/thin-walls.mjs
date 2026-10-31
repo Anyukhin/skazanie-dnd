@@ -64,7 +64,7 @@ export function thinWalls(map, { keepBorder = true } = {}) {
     if (zone) roomSize.set(zone, (roomSize.get(zone) ?? 0) + 1)
   }
   const preferred = (/** @type {string[]} */ zones) => [...new Set(zones)]
-    .sort((left, right) => (roomSize.get(left) ?? 0) - (roomSize.get(right) ?? 0) || left.localeCompare(right))[0]
+    .sort((left, right) => (roomSize.get(left) ?? 0) - (roomSize.get(right) ?? 0) || left.localeCompare(right, 'en'))[0]
 
   /** @type {Map<string, {x: number, y: number, zone: string, source: {x: number, y: number}}>} */
   const owner = new Map()
@@ -109,7 +109,7 @@ export function thinWalls(map, { keepBorder = true } = {}) {
         if (entry) byZone.set(entry.zone, [...(byZone.get(entry.zone) ?? []), [dx, dy]])
       }
       const ranked = [...byZone].sort((left, right) => right[1].length - left[1].length
-        || (roomSize.get(left[0]) ?? 0) - (roomSize.get(right[0]) ?? 0) || left[0].localeCompare(right[0]))
+        || (roomSize.get(left[0]) ?? 0) - (roomSize.get(right[0]) ?? 0) || left[0].localeCompare(right[0], 'en'))
       for (const [zone, sides] of ranked) {
         if (sides.length < 2) continue
         // Диагональ между двумя перпендикулярными соседями — комната той же зоны.

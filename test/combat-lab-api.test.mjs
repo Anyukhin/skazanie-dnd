@@ -1,61 +1,11 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const CAMPAIGN = 'COMBAT-LAB'
-
-function startServer({ port, storage, setupToken, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ROUTERAI_BASE_URL: '',
-      ADMIN_SETUP_TOKEN: setupToken,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Combat lab server did not stop')), 5_000)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolve()
-    })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, log) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Combat lab server exited with ${child.exitCode}\n${log()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return response.json()
-    } catch { /* сервер ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Combat lab server did not become healthy\n${log()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -180,25 +130,15 @@ function livingEnemy(state) {
 }
 
 test('стенд проводит ограниченный бой двух игроков через HTTP и проверяет идемпотентность атаки', { timeout: runnerTimeout(120_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-combat-lab-'))
   const setupToken = 'combat-lab-setup-token'
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-combat-lab-', setupToken })
+  const baseUrl = server.baseUrl
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
     body: { name: 'Combat lab setup', email: 'admin@combat-lab.test', password: 'secure-admin-password', setupToken },
   })
-  assertStatus(admin, 201, () => logs)
+  assertStatus(admin, 201, server.output)
   const adminCookie = cookie(admin)
 
   const account = async (suffix, name) => {
@@ -206,7 +146,7 @@ test('стенд проводит ограниченный бой двух иг�
       method: 'POST',
       body: { name, email: `${suffix}@combat-lab.test`, password: `secure-${suffix}-password` },
     })
-    assertStatus(result, 201, () => logs)
+    assertStatus(result, 201, server.output)
     return { id: result.body.user.id, cookie: cookie(result) }
   }
   const playerA = await account('player-a', 'Игрок А')
@@ -217,18 +157,18 @@ test('стенд проводит ограниченный бой двух иг�
     cookie: adminCookie,
     body: { code: CAMPAIGN, name: 'HTTP combat lab', state: initialState() },
   })
-  assertStatus(created, 201, () => logs)
+  assertStatus(created, 201, server.output)
   assert.equal(created.body.state.ruleset_id, 'dnd_5e_2014')
   assert.equal(created.body.state.ruleset_version, '2014.1.0')
   assert.deepEqual(created.body.state.enabled_rule_packs, ['dnd_5e_2014'])
 
   const users = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
-  assertStatus(users, 200, () => logs)
+  assertStatus(users, 200, server.output)
   const assign = async (user, heroId) => {
     const result = await request(baseUrl, `/api/admin/users/${user.id}`, {
       method: 'PATCH', cookie: adminCookie, body: { heroIds: [heroId] },
     })
-    assertStatus(result, 200, () => logs)
+    assertStatus(result, 200, server.output)
   }
   await assign(playerA, 'hero-a')
   await assign(playerB, 'hero-b')
@@ -237,19 +177,19 @@ test('стенд проводит ограниченный бой двух иг�
   const started = await command(baseUrl, playerA.cookie, 'combat-lab-start-1', {
     command_type: 'StartCombat', actor_id: 'hero-a',
   })
-  assertStatus(started, 200, () => logs)
+  assertStatus(started, 200, server.output)
   assert.ok(started.body.authoritative_state?.mechanics?.combat?.active)
 
   const beforeForeignCommand = await request(baseUrl, `/api/rooms/${CAMPAIGN}`, { cookie: playerB.cookie })
-  assertStatus(beforeForeignCommand, 200, () => logs)
+  assertStatus(beforeForeignCommand, 200, server.output)
   const foreignVersion = beforeForeignCommand.body.state.state_version
   const foreignCommand = await command(baseUrl, playerB.cookie, 'combat-lab-foreign-actor-1', {
     command_type: 'EndTurn', actor_id: 'hero-a',
   })
-  assertStatus(foreignCommand, 403, () => logs)
+  assertStatus(foreignCommand, 403, server.output)
   assert.equal(foreignCommand.body.code, 'ACTOR_FORBIDDEN')
   const afterForeignCommand = await request(baseUrl, `/api/rooms/${CAMPAIGN}`, { cookie: playerB.cookie })
-  assertStatus(afterForeignCommand, 200, () => logs)
+  assertStatus(afterForeignCommand, 200, server.output)
   assert.equal(afterForeignCommand.body.state.state_version, foreignVersion, 'отказ чужому actor_id не должен менять версию состояния')
 
   let state = started.body.authoritative_state
@@ -269,7 +209,7 @@ test('стенд проводит ограниченный бой двух иг�
       const declined = await command(baseUrl, actorCookie, `combat-lab-reaction-${step}`, {
         command_type: 'UseCombatAction', actor_id: actorId, action_id: 'decline-reaction',
       })
-      assertStatus(declined, 200, () => logs)
+      assertStatus(declined, 200, server.output)
       reactionCount += 1
       journal.push(...(declined.body.mechanics ?? []))
       state = declined.body.authoritative_state
@@ -284,14 +224,14 @@ test('стенд проводит ограниченный бой двух иг�
     const attackKey = `combat-lab-attack-${step}`
     const attackCommand = { command_type: 'MakeAttack', actor_id: actorId, target_id: target.id }
     const attacked = await command(baseUrl, actorCookie, attackKey, attackCommand)
-    assertStatus(attacked, 200, () => logs)
+    assertStatus(attacked, 200, server.output)
     attackCount += 1
     journal.push(...(attacked.body.mechanics ?? []))
     const attackedState = attacked.body.authoritative_state
 
     if (!attackReplayChecked) {
       const replay = await command(baseUrl, actorCookie, attackKey, attackCommand)
-      assertStatus(replay, 200, () => logs)
+      assertStatus(replay, 200, server.output)
       assert.equal(replay.body.idempotent_replay, true)
       assert.equal(replay.body.authoritative_state.state_version, attackedState.state_version)
       attackReplayChecked = true
@@ -303,7 +243,7 @@ test('стенд проводит ограниченный бой двух иг�
     const ended = await command(baseUrl, actorCookie, `combat-lab-end-${step}`, {
       command_type: 'EndTurn', actor_id: actorId,
     })
-    assertStatus(ended, 200, () => logs)
+    assertStatus(ended, 200, server.output)
     endTurnCount += 1
     journal.push(...(ended.body.mechanics ?? []))
     state = ended.body.authoritative_state

@@ -125,6 +125,9 @@ export class CampaignNarrationStream {
     // При maxActive=1 удаление единственной старой записи убирает Map из
     // верхнего реестра; возвращаем тот же ограниченный контейнер перед записью.
     if (!this.active.has(normalized)) this.active.set(normalized, entries)
+    // Повторный `start` того же сообщения начинает его заново: отложенный
+    // снимок прежнего текста уже не нужен и не должен уйти после старта.
+    this._cancel(entries.get(id))
     const entry = {
       messageId: id,
       text: '',
@@ -147,17 +150,28 @@ export class CampaignNarrationStream {
     if (!entry) {
       throw streamError('Повествование не было начато после commit', 'NARRATION_STREAM_NOT_STARTED')
     }
-    entry.text = boundedText(text)
+    // Кадр проверяется здесь, а не в таймере: 12 КБ текста с кавычками и
+    // переводами строк в JSON вырастают больше 16 КБ, и исключение из
+    // `setTimeout` уронило бы процесс. Слишком большой снимок отклоняется
+    // вызывающему, а у клиента остаётся прежний текст до финала.
+    const nextText = boundedText(text)
+    publicPayload({ messageId: id, text: nextText, phase: 'streaming' })
+    entry.text = nextText
     entry.updatedAt = this.now()
     if (entry.timer != null) return
     entry.timer = this.setTimer(() => {
       entry.timer = null
-      if (!entries.has(id)) return
-      const payload = publicPayload({
-        messageId: id,
-        text: entry.text,
-        phase: 'streaming',
-      })
+      if (entries.get(id) !== entry) return
+      let payload
+      try {
+        payload = publicPayload({
+          messageId: id,
+          text: entry.text,
+          phase: 'streaming',
+        })
+      } catch {
+        return
+      }
       this._broadcast(normalized, 'narration.chunk', payload)
     }, this.coalesceMs)
     entry.timer?.unref?.()

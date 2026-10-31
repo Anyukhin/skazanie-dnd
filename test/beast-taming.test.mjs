@@ -292,6 +292,17 @@ test('вне боя попытка уговора стоит игрового в
   assert.equal(fighting.events.some((event) => event.event_type === 'TimeAdvanced'), false)
 })
 
+// Находка переноса (docs/rust-port-js-findings.md): спред броска стоял после
+// `actor_id` события и подменял зверя героем.
+test('событие уговора называет зверя в actor_id, героя — в hero_id', () => {
+  const state = campaign()
+  const attempt = run(state, { command_type: 'CalmBeast', beast_id: beastId(state) }, { rng: [18] })
+  const soothing = attempt.events.find((event) => event.event_type === 'BeastSoothingResolved')
+  assert.equal(soothing.payload.actor_id, 'enemy-wolf')
+  assert.equal(soothing.payload.hero_id, 'hero')
+  assert.deepEqual(soothing.target_ids, ['enemy-wolf', 'hero'])
+})
+
 test('кормление вне боя стоит тех же минут, что и уговор', () => {
   // Средняя ступень лестницы была единственной бесплатной: в бою кормление
   // платило действием, а вне боя не стоило ни действия, ни минуты — и цена

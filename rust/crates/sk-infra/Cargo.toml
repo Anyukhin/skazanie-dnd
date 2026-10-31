@@ -1,0 +1,28 @@
+[package]
+name = "sk-infra"
+description = "Инфраструктура сервера «Сказания»: реестр бросков, учёт расхода модели, живой поток рассказа, зашифрованные копии хранилища, проверка картинок и подготовка ассетов"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+indexmap.workspace = true
+rand.workspace = true
+sk-core.workspace = true
+sk-dice.workspace = true
+aes-gcm = { version = "0.11.1", default-features = false, features = ["aes"] }
+base64 = "0.23.1"
+scrypt = { version = "0.12.0", default-features = false }
+tokio = { version = "1.53.2", features = ["full"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_SystemInformation"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.190"
+
+[dev-dependencies]
+tempfile = "3.27.0"

@@ -159,7 +159,11 @@ export function undeclinedPlaceNames(text, state) {
   const found = []
   for (const name of names) {
     // В кавычках название как имя собственное допустимо и в именительном («идём в «Пепельная застава»»).
-    const match = new RegExp(`(?<![\\p{L}])(?:в|во|на|из|к|ко|у|до|от|по)\\s+${escape(name)}(?![\\p{L}»])`, 'iu').exec(source)
+    // У мужского и среднего рода винительный неодушевлённого совпадает с
+    // именительным: «ходил в Дикий лес» верно, поэтому после «в»/«на» ловится
+    // только женский род («в Пепельная застава»).
+    const prepositions = /^[А-ЯЁ]\p{L}+ая /u.test(name) ? 'в|во|на|из|к|ко|у|до|от|по' : 'из|к|ко|у|до|от|по'
+    const match = new RegExp(`(?<![\\p{L}])(?:${prepositions})\\s+${escape(name)}(?![\\p{L}»])`, 'iu').exec(source)
     if (match) found.push({ code: 'PLACE_NAME_NOT_DECLINED', severity: 'minor', message: `название места без склонения: «${match[0]}»`, evidence: match[0] })
   }
   return found

@@ -105,7 +105,7 @@ export function placeKindsFor(types, terrains, passport, title = '') {
   if (/\b(ship|boat|galleon|sloop|vessel|ketch|cog|frigate|caravel|brig|longship|airship|spelljammer|barque|bark|lugger|cutter|xebec|warship|schooner|corvette|uss|hms)\b/iu.test(title)) return ['ship']
   /** @type {Set<PlaceKind>} */
   const kinds = new Set()
-  for (const slug of types) if (TALESTAVERN_KINDS[slug]) kinds.add(TALESTAVERN_KINDS[slug])
+  for (const slug of types) if (ownEntry(TALESTAVERN_KINDS, slug)) kinds.add(/** @type {PlaceKind} */ (ownEntry(TALESTAVERN_KINDS, slug)))
   // Местность добавляет вид только там, где он однозначен.
   for (const slug of terrains) if (['dungeon', 'underground', 'docks', 'castle'].includes(slug)) kinds.add(TALESTAVERN_KINDS[slug])
   const features = new Set(passport.features)
@@ -125,7 +125,7 @@ export function placeKindsFor(types, terrains, passport, title = '') {
  * @param {{ material: string }} passport
  */
 export function climateFor(terrains, passport) {
-  for (const slug of terrains) if (TALESTAVERN_CLIMATES[slug]) return TALESTAVERN_CLIMATES[slug]
+  for (const slug of terrains) if (ownEntry(TALESTAVERN_CLIMATES, slug)) return /** @type {string} */ (ownEntry(TALESTAVERN_CLIMATES, slug))
   if (passport.material === 'sand') return 'arid'
   if (passport.material === 'ice') return 'cold'
   return ''
@@ -310,7 +310,7 @@ export function chooseLibraryMap(entries, request, { seed, usedIds = [] }) {
     // Площадь уличной сцены проверяется по совпавшему виду места и по заявке:
     // карта меньше половины заказанной площади — не та сцена.
     if (request.exterior) {
-      const minimum = Math.max(MIN_EXTERIOR_CELLS[request.placeKinds[primary]] ?? 0, Math.floor(request.area / 2))
+      const minimum = Math.max(ownEntry(MIN_EXTERIOR_CELLS, request.placeKinds[primary]) ?? 0, Math.floor(request.area / 2))
       if (groundCells(entry) < minimum) continue
     }
     const features = new Set(entry.passport.features)
@@ -319,7 +319,7 @@ export function chooseLibraryMap(entries, request, { seed, usedIds = [] }) {
     // местности. Метка автора здесь не довод — так одинокий дом с тегом
     // «ферма» становился деревней (этап 0 `docs/map-generation-plan.md`).
     // У построек паспорт ошибается чаще автора, поэтому там метки хватает.
-    const evidence = KIND_EVIDENCE[request.placeKinds[primary]] ?? []
+    const evidence = ownEntry(KIND_EVIDENCE, request.placeKinds[primary]) ?? []
     if (request.exterior && evidence.length && !evidence.some((feature) => features.has(feature))) continue
     let score = 10 - primary * 2
     // Карта своего климата лучше нейтральной: пустынный трактир в пустыне.
@@ -351,7 +351,7 @@ export function chooseLibraryMap(entries, request, { seed, usedIds = [] }) {
     scored.push({ entry, score })
   }
   if (!scored.length) return null
-  scored.sort((left, right) => right.score - left.score || left.entry.id.localeCompare(right.entry.id))
+  scored.sort((left, right) => right.score - left.score || left.entry.id.localeCompare(right.entry.id, 'en'))
   // Из близких по качеству — по сиду места, чтобы две таверны одного мира
   // не оказывались одной и той же лучшей картой.
   const top = scored.filter((candidate) => candidate.score >= scored[0].score - 2).slice(0, 4)
@@ -584,7 +584,7 @@ export class MapLibrary {
     mkdirSync(join(this.dir, 'maps'), { recursive: true })
     writeJsonAtomic(join(this.dir, 'maps', `${entry.id}.json`), { schema_version: MAP_LIBRARY_SCHEMA_VERSION, id: entry.id, levels })
     const entries = [...this.entries().filter((candidate) => candidate.id !== entry.id), entry]
-      .sort((left, right) => left.id.localeCompare(right.id))
+      .sort((left, right) => left.id.localeCompare(right.id, 'en'))
     writeJsonAtomic(this.indexFile, { schema_version: MAP_LIBRARY_SCHEMA_VERSION, entries })
     this.cache = null
   }
@@ -657,4 +657,17 @@ export function setActiveMapLibrary(library) {
 /** @returns {MapLibrary|null} */
 export function activeMapLibrary() {
   return active
+}
+
+/**
+ * Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`,
+ * `toString`…) записями не считаются.
+ *
+ * @template T
+ * @param {Readonly<Record<string, T>>} table
+ * @param {unknown} key
+ * @returns {T | undefined}
+ */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

@@ -393,6 +393,10 @@ export function characterCreationCatalog(rulesetId = LEGACY_DEFAULT_RULESET_ID) 
         label: classOption.label,
         source_url: classOption.sourceUrl,
         subclass_level: classOption.subclassLevel,
+        // Предпросмотр мастера (хиты 1 уровня, спасброски) берёт числа отсюда,
+        // а не из своей копии таблиц: лист всё равно пересчитывает сервер.
+        hit_die: hitDieFor(actor),
+        saving_throws: savingThrowProficienciesFor(actor),
         subclasses: phbClass?.subclass_level === 1 ? phbClass.subclass_options.map((entry) => ({ id: entry.id, name: entry.label })) : classOption.subclassOptions,
         class_skills: skillRule ? {
           choice_count: skillRule.choiceCount,
@@ -554,16 +558,19 @@ export function deriveArmorClass(actor, { abilities = normalizedAbilityScores(ac
     ? 10 + dexterityModifier + abilityModifier(abilities.con)
     : classKey === 'monk' && !equipped.some((entry) => entry.profile.kind === 'shield')
       ? 10 + dexterityModifier + abilityModifier(abilities.wis)
-      : 10 + dexterityModifier
+      // «Доспех теней» колдуна — «Доспехи мага» по желанию: 13 + Ловкость без доспеха.
+      : classKey === 'warlock' && normalizedSelectedFeatureIds(actor).includes('armor-of-shadows')
+        ? 13 + dexterityModifier
+        : 10 + dexterityModifier
   const bodyArmor = equipped.filter((entry) => entry.profile.kind === 'armor')
     .map((entry) => ({
       ...entry,
       base: integer(entry.profile.armorClassBase, `armor profile ${entry.catalogId}.armorClassBase`, { minimum: 1, maximum: 30 }),
       dexterityCap: entry.profile.dexterityCap == null ? null : integer(entry.profile.dexterityCap, `armor profile ${entry.catalogId}.dexterityCap`, { minimum: -5, maximum: 10 }),
     }))
-    .sort((left, right) => right.base - left.base || left.catalogId.localeCompare(right.catalogId))[0] ?? null
+    .sort((left, right) => right.base - left.base || left.catalogId.localeCompare(right.catalogId, 'en'))[0] ?? null
   const shields = equipped.filter((entry) => entry.profile.kind === 'shield')
-    .sort((left, right) => left.catalogId.localeCompare(right.catalogId)).slice(0, 1)
+    .sort((left, right) => left.catalogId.localeCompare(right.catalogId, 'en')).slice(0, 1)
   const levelFeatIds = Object.values(actor?.levelFeats ?? {})
     .filter((entry) => entry && typeof entry === 'object')
     .map((entry) => String(entry.id ?? ''))
@@ -779,6 +786,11 @@ function stagedCharacterSetupFor(state, actor) {
  * и заклинаний этого уровня.
  */
 export function characterCreationChoicesComplete(actor, options = {}) {
+  return missingCharacterCreationChoice(actor, options) === null
+}
+
+/** Первый незавершённый выбор текущего уровня словами для игрока, либо `null`. */
+export function missingCharacterCreationChoice(actor, options = {}) {
   const abilityChoices = actor?.abilityScoreIncreases && typeof actor.abilityScoreIncreases === 'object' && !Array.isArray(actor.abilityScoreIncreases)
     ? actor.abilityScoreIncreases
     : {}
@@ -792,39 +804,41 @@ export function characterCreationChoicesComplete(actor, options = {}) {
     return !((Array.isArray(asi) && [1, 2].includes(asi.length))
       || (feat && typeof feat === 'object' && String(feat.id ?? '').trim()))
   })
-  if (missingAbilityChoice) return false
+  if (missingAbilityChoice) return 'Выберите повышение характеристик или черту уровня'
 
   const classRule = classSkillRuleFor(actor)
-  if (classRule && normalizedClassSkillProficiencies(actor).length !== classRule.choiceCount) return false
+  if (classRule && normalizedClassSkillProficiencies(actor).length !== classRule.choiceCount) {
+    return `Выберите классовые навыки: ${classRule.choiceCount}`
+  }
 
   const classKey = characterClassKey(actor)
   const classInfo = combatClassCatalogInfo().classes.find((entry) => entry.classKey === classKey)
   if (classInfo && normalizedLevel(actor.level) >= Number(classInfo.subclassLevel ?? 1)
-    && classInfo.subclasses > 0 && !normalizedCombatSubclassFor(actor)) return false
+    && classInfo.subclasses > 0 && !normalizedCombatSubclassFor(actor)) return 'Выберите подкласс'
 
   const selectedFeatures = new Set(normalizedSelectedFeatureIds(actor))
   for (const group of featureChoiceGroupsFor(actor)) {
     const selected = group.options.filter((option) => selectedFeatures.has(option.id)).length
-    if (selected !== group.choiceCount) return false
+    if (selected !== group.choiceCount) return `${group.name}: выберите ${group.choiceCount}`
   }
 
   const spellRules = spellSelectionRulesFor(actor)
-  if (!spellRules) return true
+  if (!spellRules) return null
   const selected = normalizedSpellSelectionsFor(actor, options)
   const known = new Set(selected.knownSpellIds ?? [])
   const spells = new Map(combatSpellsFor(actor, options).map((spell) => [spell.id, spell]))
   const cantrips = [...known].filter((id) => spells.get(id)?.level === 0).length
   const leveled = [...known].filter((id) => (spells.get(id)?.level ?? 0) > 0).length
-  if (cantrips !== spellRules.cantrips) return false
-  if (spellRules.mode === 'known' && leveled !== spellRules.spellsKnown) return false
-  if (spellRules.mode === 'spellbook' && leveled < spellRules.spellbookMinimum) return false
-  return true
+  if (cantrips !== spellRules.cantrips) return `Выберите заговоры: ${spellRules.cantrips}`
+  if (spellRules.mode === 'known' && leveled !== spellRules.spellsKnown) return `Выберите известные заклинания: ${spellRules.spellsKnown}`
+  if (spellRules.mode === 'spellbook' && leveled < spellRules.spellbookMinimum) return `Впишите в книгу заклинаний: ${spellRules.spellbookMinimum}`
+  return null
 }
 
-function assertActorAuthority(actorId, context) {
+function assertActorAuthority(actorId, context, message = 'Повысить уровень может только владелец героя') {
   const allowed = new Set((context?.allowedActorIds ?? []).map(String))
   if (context?.isAdmin !== true && !allowed.has(actorId)) {
-    throw new CharacterLifecycleValidationError('Повысить уровень может только владелец героя', 'ACTOR_FORBIDDEN')
+    throw new CharacterLifecycleValidationError(message, 'ACTOR_FORBIDDEN')
   }
 }
 
@@ -961,7 +975,18 @@ export function validateCharacterImportCommand(command, state, context = {}) {
   }
   const actorId = cleanIdentifier(command.actor_id ?? command.actorId, 'actor_id')
   const actor = actorFromState(state, actorId)
-  assertActorAuthority(actorId, context)
+  assertActorAuthority(actorId, context, 'Импортировать лист может только владелец героя')
+  /* Импорт поверх готового героя переписывает уровень, опыт и броски хитов
+     документом клиента: прежде игрок одной командой делал воина 1-го уровня
+     двенадцатым с максимальными хитами или менял класс, сохраняя снаряжение.
+     Готового героя развивает только LevelUp; перезаписать лист целиком может
+     ведущий. */
+  if (actor.characterSetupRequired !== true && context?.isAdmin !== true) {
+    throw new CharacterLifecycleValidationError(
+      'Герой уже создан: развивайте его повышением уровня, а заменить лист целиком может ведущий',
+      'CHARACTER_ALREADY_CREATED',
+    )
+  }
   const rulesetId = String(state?.ruleset_id ?? LEGACY_DEFAULT_RULESET_ID)
   const parsed = parseCharacterImport(command.document, { rulesetId, validateCreationLanguages: true, trustedAbilityRoll: actor.characterCreationRolls?.abilities, trustedWealthRoll: actor.characterCreationRolls?.wealth })
   if (actor.characterSetupRequired === true && parsed.patch.level !== 1) {
@@ -972,7 +997,23 @@ export function validateCharacterImportCommand(command, state, context = {}) {
   }
   const starterCatalog = starterEquipmentCatalogFor(rulesetId)
   const speciesPolicy = characterCreationPolicyFor(rulesetId)
-  return {
+  /* Новый герой обязан прийти с полным набором выборов первого уровня. Прежде
+     сервер срезал лишнее, но не требовал недостающего: документ без навыков,
+     без боевого стиля или без заклинаний давал «готового» героя, а в кампании
+     2014 без `phbCreation` пропускались и все проверки PHB. */
+  if (actor.characterSetupRequired === true) {
+    if (rulesetId === DND_2014_RULESET_ID && !parsed.creation) {
+      throw new CharacterLifecycleValidationError('Герой редакции 2014 создаётся с выборами PHB (phbCreation)', 'IMPORT_PHB_CREATION_REQUIRED')
+    }
+  }
+  // В 2024 прибавки характеристик даёт предыстория, и сверяются они с ней
+  // (`parseCharacterImport`). Без предыстории сверять не с чем — значит, и
+  // прибавок нет; прежде +2/+1 ложились на любые характеристики.
+  const declaredOriginBonuses = Object.values(parsed.patch.abilityGeneration?.originBonuses ?? {})
+  if (speciesPolicy.bonus_source === 'background' && !parsed.patch.backgroundId && declaredOriginBonuses.some((value) => Number(value) !== 0)) {
+    throw new CharacterLifecycleValidationError('Прибавки характеристик даёт предыстория: выберите её', 'IMPORT_BACKGROUND_REQUIRED')
+  }
+  const validated = {
     command_type: 'ImportCharacter',
     actor_id: actorId,
     target_id: actorId,
@@ -992,17 +1033,27 @@ export function validateCharacterImportCommand(command, state, context = {}) {
       : [`${rulesetId}:resources:spending`],
     visibility: 'party',
   }
+  // При стартовом уровне выше первого выборы досдаются командами подготовки, и
+  // полноту сторожит LevelUp. Здесь — случай, когда импорт сразу завершает
+  // создание. Полноту проверяем на том герое, которого запишет reducer: часть
+  // выборов (заклинания домена и покровителя, навыки PHB) выводится при сборке.
+  if (actor.characterSetupRequired === true && characterCreationTargetLevel(state) <= 1) {
+    const imported = actorFromState(applyCharacterLifecycleEvent(state, characterImportEvent(validated)), actorId)
+    const missing = missingCharacterCreationChoice({ ...imported, level: 1 }, { rulesetId })
+    if (missing) throw new CharacterLifecycleValidationError(`Герой не завершён: ${missing}`, 'IMPORT_CHOICES_INCOMPLETE')
+  }
+  return validated
 }
 
 export function validateCharacterAbilityRollCommand(command, state, context = {}) {
   const actorId = cleanIdentifier(command.actor_id, 'actor_id')
   const actor = actorFromState(state, actorId)
-  assertActorAuthority(actorId, context)
+  assertActorAuthority(actorId, context, 'Бросать за героя может только владелец героя')
   if (state.ruleset_id !== DND_2014_RULESET_ID || !actor.characterSetupRequired || state.mechanics?.combat?.active) {
     throw new CharacterLifecycleValidationError('Броски характеристик доступны только при создании героя D&D 2014', 'CHARACTER_ROLL_UNAVAILABLE')
   }
   if (command.command_type === 'RollCharacterWealth') {
-    if (!PHB_STARTING_WEALTH[command.character_class]) throw new CharacterLifecycleValidationError('Выберите класс PHB 2014', 'CHARACTER_CLASS_UNSUPPORTED')
+    if (!Object.hasOwn(PHB_STARTING_WEALTH, String(command.character_class))) throw new CharacterLifecycleValidationError('Выберите класс PHB 2014', 'CHARACTER_CLASS_UNSUPPORTED')
     if (actor.characterCreationRolls?.wealth) throw new CharacterLifecycleValidationError('Стартовое богатство уже определено', 'CHARACTER_WEALTH_ALREADY_ROLLED')
     return { command_type: 'RollCharacterWealth', actor_id: actorId, target_id: actorId, target_ids: [actorId], character_class: command.character_class, visibility: 'party' }
   }
@@ -1055,7 +1106,7 @@ export function applyCharacterLifecycleEvent(state, event) {
   const next = clone(state ?? {})
   const actorId = String(event.target_ids?.[0] ?? event.actor_id ?? '')
   const index = (next.players ?? []).findIndex((candidate) => String(candidate?.id) === actorId)
-  if (index < 0) throw new CharacterLifecycleValidationError('Событие LevelUp ссылается на отсутствующего героя', 'ACTOR_NOT_FOUND')
+  if (index < 0) throw new CharacterLifecycleValidationError(`Событие ${String(event.event_type)} ссылается на отсутствующего героя`, 'ACTOR_NOT_FOUND')
   const actor = next.players[index]
   const payload = event.payload ?? {}
   const eventRulesetId = String(payload.ruleset_id ?? next.ruleset_id ?? LEGACY_DEFAULT_RULESET_ID)

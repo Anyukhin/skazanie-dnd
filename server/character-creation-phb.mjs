@@ -11,8 +11,12 @@ export const PHB_FIGHTING_STYLES = Object.freeze({
   'fighting-style-great-weapon': 'great_weapon_fighting', 'fighting-style-protection': 'protection',
   'fighting-style-two-weapon': 'two_weapon_fighting', 'fighting-style-archery': 'archery',
 })
-export const phbSpellId = (id) => ({ tashas_hideous_laughter: 'tasha-s-hideous-laughter', tensers_floating_disk: 'tenser-s-floating-disk' }[id] ?? String(id).replaceAll('_', '-'))
-export const phbToolId = (id) => ({ dragonchess_set: 'dragonchess', three_dragon_ante_set: 'three_dragon_ante', playing_card_set: 'playing_cards', land_vehicles: 'vehicles_land', water_vehicles: 'vehicles_water' }[id] ?? String(id).replaceAll('-', '_'))
+const PHB_SPELL_ID_EXCEPTIONS = Object.freeze({ tashas_hideous_laughter: 'tasha-s-hideous-laughter', tensers_floating_disk: 'tenser-s-floating-disk' })
+const PHB_TOOL_ID_EXCEPTIONS = Object.freeze({ dragonchess_set: 'dragonchess', three_dragon_ante_set: 'three_dragon_ante', playing_card_set: 'playing_cards', land_vehicles: 'vehicles_land', water_vehicles: 'vehicles_water' })
+// Исключения читаются по собственному ключу: id `constructor` — обычная строка, а не функция.
+const ownException = (table, id) => (Object.hasOwn(table, String(id)) ? table[String(id)] : undefined)
+export const phbSpellId = (id) => ownException(PHB_SPELL_ID_EXCEPTIONS, id) ?? String(id).replaceAll('_', '-')
+export const phbToolId = (id) => ownException(PHB_TOOL_ID_EXCEPTIONS, id) ?? String(id).replaceAll('-', '_')
 const languageId = (id) => String(id).replaceAll('_', '-')
 const unique = (values) => [...new Set(values)]
 const fail = (reason) => { throw new TypeError(reason) }
@@ -70,8 +74,9 @@ export function resolvePhbCreation(source) {
   const choices = { ...(raw.classChoices ?? {}), skills: source.classSkillProficiencies ?? [], ...(source.subclass ? { subclass: source.subclass } : {}) }
   if (source.characterClass === 'fighter') {
     const selected = source.selectedFeatureIds ?? []
-    if (selected.length !== 1 || !PHB_FIGHTING_STYLES[selected[0]]) fail('Воин выбирает один из шести боевых стилей PHB 2014')
-    choices.fighting_style = PHB_FIGHTING_STYLES[selected[0]]
+    const style = selected.length === 1 ? ownException(PHB_FIGHTING_STYLES, selected[0]) : undefined
+    if (!style) fail('Воин выбирает один из шести боевых стилей PHB 2014')
+    choices.fighting_style = style
   }
   const classResult = validateClassChoices(source.characterClass, choices, {
     skill_proficiencies: [...knownSkills, ...(feat?.benefits.skill_proficiencies ?? [])], tool_proficiencies: knownTools,

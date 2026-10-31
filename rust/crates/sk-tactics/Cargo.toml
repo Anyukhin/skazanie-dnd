@@ -1,0 +1,29 @@
+[package]
+name = "sk-tactics"
+description = "Права и полномочия, разбор свободного действия, автотактика героев, прогноз удара, стенд боёв и аудит переключения «Сказания»"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sk-core.workspace = true
+sk-dice.workspace = true
+sk-rules.workspace = true
+sk-chargen = { path = "../sk-chargen" }
+sk-combat-base = { path = "../sk-combat-base" }
+sk-combat-content = { path = "../sk-combat-content" }
+sk-economy = { path = "../sk-economy" }
+sk-geometry = { path = "../sk-geometry" }
+sk-map-core = { path = "../sk-map-core" }
+sk-narration-base = { path = "../sk-narration-base" }
+sk-ruleset = { path = "../sk-ruleset" }
+sk-store = { path = "../sk-store" }
+sk-story = { path = "../sk-story" }
+sk-tactical = { path = "../sk-tactical" }
+sk-world-story = { path = "../sk-world-story" }
+sk-world-time = { path = "../sk-world-time" }
+
+[dev-dependencies]
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }

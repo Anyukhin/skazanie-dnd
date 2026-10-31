@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
+import { expireSession } from './kit/sessions.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
@@ -20,33 +19,6 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
  * - после смены героев поток отдаёт ту же проекцию, что свежий GET;
  * - потеря доступа к кампании закрывает поток.
  */
-
-function startServer(port, storage, emptyEnv, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      DOTENV_CONFIG_PATH: emptyEnv, ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'live-access-setup',
-      COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* сервер ещё стартует */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -165,35 +137,21 @@ async function expectRevoked(stream, reason, maxVersion) {
   assert.ok(rooms.every((version) => version <= maxVersion), `отозванный поток получил комнату новее ${maxVersion}: ${rooms}`)
 }
 
-/** Истекает ровно одна сессия — по хешу её токена, как и хранит её сервер. */
-function expireSession(storage, cookie) {
-  const token = decodeURIComponent(cookie.slice(cookie.indexOf('=') + 1))
-  const tokenHash = createHash('sha256').update(token).digest('hex')
-  const file = join(storage, 'auth.json')
-  const auth = JSON.parse(readFileSync(file, 'utf8'))
-  const session = auth.sessions.find((candidate) => candidate.tokenHash === tokenHash)
-  assert.ok(session, 'сессия для истечения не найдена')
-  session.expiresAt = Date.now() - 1
-  const temporary = `${file}.${process.pid}.tmp`
-  writeFileSync(temporary, JSON.stringify(auth, null, 2), 'utf8')
-  renameSync(temporary, file)
-}
-
 async function bootServer(t, prefix) {
-  const storage = mkdtempSync(join(tmpdir(), prefix))
-  const emptyEnv = join(storage, '.env.empty')
-  writeFileSync(emptyEnv, '', 'utf8')
-  let logs = ''
+  // Потоки обрываются раньше остановки сервера: этот t.after стоит до запуска.
   const aborts = []
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  const child = startServer(port, storage, emptyEnv, (chunk) => { logs += chunk })
-  t.after(async () => {
-    for (const controller of aborts) controller.abort()
-    if (child.exitCode == null) await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-    rmSync(storage, { recursive: true, force: true })
+  t.after(() => { for (const controller of aborts) controller.abort() })
+  // Пустой .env — в своём каталоге: хранилище создаёт набор, до старта его нет.
+  const envDir = mkdtempSync(join(tmpdir(), `${prefix}env-`))
+  t.after(() => rmSync(envDir, { recursive: true, force: true }))
+  const emptyEnv = join(envDir, '.env.empty')
+  writeFileSync(emptyEnv, '', 'utf8')
+  const server = await startTestServer(t, {
+    storagePrefix: prefix,
+    setupToken: 'live-access-setup',
+    env: { DOTENV_CONFIG_PATH: emptyEnv },
   })
-  await waitForHealth(baseUrl, child, () => logs)
+  const baseUrl = server.baseUrl
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
     body: { name: 'Ведущий', email: 'live-admin@test.local', password: 'secure-live-admin-password', setupToken: 'live-access-setup' },
@@ -201,7 +159,7 @@ async function bootServer(t, prefix) {
   assert.equal(admin.status, 201, admin.text)
   const adminCookie = sessionCookie(admin)
   return {
-    storage,
+    kit: server,
     baseUrl,
     adminCookie,
     async stream(campaignId, cookie) {
@@ -281,7 +239,8 @@ test('logout и истечение сессии закрывают поток т
   // Истечение второго входа: события об этом нет, поток закрывает ближайшая
   // рассылка — и она же уже не считает героя в сети.
   const beforeExpiry = await server.version('LIVSES')
-  expireSession(server.storage, firstSecondLogin)
+  // Истекает ровно одна сессия — по хешу её токена, как и хранит её сервер.
+  await expireSession(server.kit, firstSecondLogin)
   assert.equal((await request(server.baseUrl, '/api/auth/me', { cookie: firstSecondLogin })).body.user, null)
   await server.commit('LIVSES', 'hero-2', 'live-after-expiry')
   await expectRevoked(firstB, 'session_ended', beforeExpiry)

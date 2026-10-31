@@ -159,7 +159,7 @@ export const NPC_ITEM_TACTICS = Object.freeze({
 export const NPC_ITEM_TACTIC_IDS = Object.freeze(['heal', 'flask', 'coat'])
 
 export function npcItemTacticFor(catalogId) {
-  const tactic = NPC_ITEM_TACTICS[text(catalogId, 120)]
+  const tactic = ownEntry(NPC_ITEM_TACTICS, text(catalogId, 120))
   return tactic ?? null
 }
 
@@ -309,7 +309,7 @@ export function npcWeaponBindings(enemy) {
   if (!templateId) return bindings
   for (const profile of profiles) {
     const actionId = text(profile?.id, 120)
-    const catalogId = WEAPON_CATALOG_BY_ACTION[actionId]
+    const catalogId = ownEntry(WEAPON_CATALOG_BY_ACTION, actionId)
     if (!actionId || !catalogId) continue
     // Кандидат ищется по каталожному идентификатору, а его отсутствие — не
     // «привязки не было», а «вещь кончилась»: израсходованный пучок дротиков
@@ -319,7 +319,7 @@ export function npcWeaponBindings(enemy) {
     const item = items.find((candidate) => text(candidate?.catalog_id, 120) === catalogId) ?? null
     const check = npcWeaponBindingCheck(enemy, profile, item?.snapshot?.combat ?? catalogItem(catalogId)?.combat)
     if (!check.ok) continue
-    const ammunitionCatalogId = AMMUNITION_BY_WEAPON[catalogId] ?? null
+    const ammunitionCatalogId = ownEntry(AMMUNITION_BY_WEAPON, catalogId) ?? null
     const ammunition = ammunitionCatalogId
       ? items.find((candidate) => text(candidate?.catalog_id, 120) === ammunitionCatalogId) ?? null
       : null
@@ -478,4 +478,9 @@ export function npcNeedsHealingPotion(enemy) {
   const hp = Math.max(0, integer(enemy?.hp, 0))
   const maximum = Math.max(1, integer(enemy?.maxHp ?? enemy?.max_hp, 1))
   return hp > 0 && hp * 100 <= maximum * NPC_HEALING_POTION_HP_PERCENT
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

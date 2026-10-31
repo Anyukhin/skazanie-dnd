@@ -1,0 +1,2687 @@
+{
+  "format": "skazanie.golden/1",
+  "scenario": "POST /api/campaigns/:id/commands: права, запреты, атомарность, бой, повтор и конфликт ключа, реакция, ручной бросок в две фазы, летопись",
+  "exchanges": [
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/auth/setup-admin",
+      "headers": {},
+      "body": {
+        "email": "gm@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Ведущий",
+        "setupToken": "setup-code"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "setupRequired": false
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "anya@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Аня"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "vera@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Вера"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "vera@mail.ru",
+          "name": "Вера",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "CMD-1",
+        "name": "Команды стола",
+        "state": {
+          "sessionCode": "CMD-1",
+          "campaign": "Команды стола",
+          "partyName": "Отряд",
+          "partyMemberIds": [
+            "hero"
+          ],
+          "activePlayerId": "hero",
+          "isNarrating": false,
+          "pendingCheck": null,
+          "suggestions": [],
+          "messages": [],
+          "players": [
+            {
+              "id": "hero",
+              "name": "Аня",
+              "character": "Астер",
+              "hp": 60,
+              "maxHp": 60,
+              "armor": 18,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 16,
+                "dex": 14,
+                "con": 14,
+                "int": 10,
+                "wis": 12,
+                "cha": 10
+              },
+              "inventory": [],
+              "online": true,
+              "x": 0,
+              "y": 1,
+              "attackBonus": 7,
+              "damageDice": 6,
+              "damageBonus": 2,
+              "damageType": "slashing",
+              "attackRange": 5
+            }
+          ],
+          "enemies": [
+            {
+              "id": "sentinel",
+              "name": "Каменный страж",
+              "hp": 60,
+              "maxHp": 60,
+              "armor": 11,
+              "speed": 30,
+              "attackBonus": 4,
+              "damageDice": 4,
+              "damageBonus": 1,
+              "damageType": "bludgeoning",
+              "attackRange": 5,
+              "abilities": {
+                "str": 14,
+                "dex": 12,
+                "con": 14,
+                "int": 6,
+                "wis": 10,
+                "cha": 5
+              },
+              "proficiency": 2,
+              "x": 1,
+              "y": 1,
+              "alive": true
+            }
+          ],
+          "scene": {
+            "title": "Арена",
+            "location": "Арена",
+            "mood": "",
+            "objective": "Проверить команды",
+            "turn": 1,
+            "grid": {
+              "width": 8,
+              "height": 3
+            },
+            "cells": [
+              {
+                "x": 0,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              }
+            ]
+          },
+          "tacticalTurn": {
+            "sceneTurn": 1,
+            "actorId": "hero",
+            "movementSpent": 0,
+            "actionUsed": false
+          },
+          "adventure": {
+            "chapter": 1,
+            "history": [],
+            "visitedLocations": [
+              "Арена"
+            ]
+          },
+          "engine_mode": "enforce"
+        }
+      },
+      "status": 201,
+      "body_norm": "<c6>"
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "CMD-2",
+        "name": "Реакция",
+        "state": {
+          "sessionCode": "CMD-2",
+          "campaign": "Реакция",
+          "partyName": "Отряд",
+          "partyMemberIds": [
+            "hero",
+            "ally"
+          ],
+          "activePlayerId": "enemy",
+          "ruleset_id": "dnd_5e_2014",
+          "ruleset_version": "2014.1.0",
+          "enabled_house_rules": [
+            "skazanie:2014-preview-legacy-catalogs-v1"
+          ],
+          "players": [
+            {
+              "id": "hero",
+              "name": "Аня",
+              "character": "Ведьма",
+              "characterClass": "wizard",
+              "level": 3,
+              "hp": 30,
+              "maxHp": 30,
+              "armor": 14,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 8,
+                "dex": 14,
+                "con": 12,
+                "int": 16,
+                "wis": 10,
+                "cha": 10
+              },
+              "knownSpellIds": [
+                "silvery-barbs"
+              ],
+              "preparedSpellIds": [
+                "silvery-barbs"
+              ],
+              "inventory": [],
+              "x": 1,
+              "y": 1
+            },
+            {
+              "id": "ally",
+              "name": "Союзник",
+              "character": "Лира",
+              "characterClass": "fighter",
+              "level": 3,
+              "hp": 30,
+              "maxHp": 30,
+              "armor": 16,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 16,
+                "dex": 12,
+                "con": 14,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": [],
+              "x": 1,
+              "y": 2
+            }
+          ],
+          "enemies": [
+            {
+              "id": "enemy",
+              "name": "Враг",
+              "characterClass": "fighter",
+              "level": 3,
+              "hp": 30,
+              "maxHp": 30,
+              "armor": 12,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 14,
+                "dex": 12,
+                "con": 12,
+                "int": 8,
+                "wis": 8,
+                "cha": 8
+              },
+              "attackBonus": 4,
+              "damageDice": 4,
+              "damageBonus": 1,
+              "attackRange": 5,
+              "inventory": [],
+              "x": 3,
+              "y": 1,
+              "alive": true
+            }
+          ],
+          "scene": {
+            "turn": 1,
+            "title": "Полигон реакций",
+            "location": "reaction-http",
+            "cells": [
+              {
+                "x": 0,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              }
+            ]
+          },
+          "mechanics": {
+            "resources": {
+              "hero": {
+                "spell_slots_1": {
+                  "current": 4,
+                  "max": 4
+                }
+              }
+            },
+            "conditions": {
+              "ally": [
+                {
+                  "id": "silvery-fortune",
+                  "effect_id": "older-silvery-barbs",
+                  "source_actor": "ally",
+                  "duration": "rounds:10"
+                }
+              ]
+            },
+            "combat": {
+              "active": true,
+              "round": 1,
+              "initiative": [
+                {
+                  "actor_id": "enemy",
+                  "total": 20
+                },
+                {
+                  "actor_id": "hero",
+                  "total": 12
+                },
+                {
+                  "actor_id": "ally",
+                  "total": 10
+                }
+              ],
+              "active_index": 0,
+              "action_economy": {
+                "enemy": {
+                  "action": true,
+                  "bonus_action": true,
+                  "reaction": true,
+                  "movement": true,
+                  "movement_spent": 0
+                },
+                "hero": {
+                  "action": true,
+                  "bonus_action": true,
+                  "reaction": true,
+                  "movement": true,
+                  "movement_spent": 0
+                },
+                "ally": {
+                  "action": true,
+                  "bonus_action": true,
+                  "reaction": true,
+                  "movement": true,
+                  "movement_spent": 0
+                }
+              },
+              "reaction_window": {
+                "id": "reaction-http-silvery",
+                "trigger": "attack-hit",
+                "actor_id": "hero",
+                "source_actor_id": "enemy",
+                "target_id": "hero",
+                "action_ids": [
+                  "cast:silvery-barbs"
+                ],
+                "action_options": [
+                  {
+                    "id": "cast:silvery-barbs",
+                    "name": "Искусная острота",
+                    "description": "Перебросить попадание.",
+                    "resource": "spell_slots_1",
+                    "slot_level": 1,
+                    "cost": 1,
+                    "requires_beneficiary": true
+                  }
+                ],
+                "damage": {
+                  "applied_amount": 3,
+                  "damage_type": "slashing",
+                  "hp_before": 30,
+                  "hp_after": 27
+                },
+                "trigger_roll": {
+                  "kept": 18,
+                  "modifier": 4,
+                  "total": 22,
+                  "armor_class": 12,
+                  "hit": true,
+                  "critical": false
+                }
+              }
+            }
+          },
+          "engine_mode": "enforce"
+        }
+      },
+      "status": 201,
+      "body_norm": "<c6>"
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "CMD-3",
+        "name": "Переговоры",
+        "state": {
+          "sessionCode": "CMD-3",
+          "campaign": "Переговоры",
+          "partyName": "Отряд",
+          "partyMemberIds": [
+            "hero"
+          ],
+          "activePlayerId": "hero",
+          "engine_mode": "enforce",
+          "isNarrating": false,
+          "pendingCheck": null,
+          "messages": [],
+          "scene": {
+            "title": "Тракт",
+            "location": "Разбитый тракт",
+            "location_id": "road",
+            "mood": "",
+            "objective": "",
+            "turn": 2,
+            "grid": {
+              "width": 8,
+              "height": 8
+            },
+            "cells": [
+              {
+                "x": 0,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 4,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 4,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 4,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 4,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 4,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 4,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 4,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 4,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 5,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 5,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 5,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 5,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 5,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 5,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 5,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 5,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 6,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 6,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 6,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 6,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 6,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 6,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 6,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 6,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 7,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 7,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 7,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 7,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 7,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 7,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 6,
+                "y": 7,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 7,
+                "y": 7,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              }
+            ]
+          },
+          "players": [
+            {
+              "id": "hero",
+              "name": "Аня",
+              "character": "Ада",
+              "hp": 48,
+              "maxHp": 48,
+              "armor": 12,
+              "speed": 30,
+              "x": 1,
+              "y": 1,
+              "level": 9,
+              "abilities": {
+                "str": 10,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 12,
+                "cha": 18
+              },
+              "proficiency": 4,
+              "backgroundSkillProficiencies": [
+                "persuasion"
+              ],
+              "inventory": [],
+              "online": true
+            }
+          ],
+          "worldMap": {
+            "seed": "cmd-3",
+            "locations": [
+              {
+                "id": "road",
+                "name": "Разбитый тракт",
+                "kind": "wilds",
+                "x": 100,
+                "y": 300
+              }
+            ],
+            "routes": []
+          },
+          "enemies": [
+            {
+              "id": "enemy-leader",
+              "name": "Разбойник 1",
+              "hp": 1,
+              "maxHp": 11,
+              "armor": 12,
+              "speed": 30,
+              "x": 2,
+              "y": 1,
+              "alive": true,
+              "creature_type": "humanoid",
+              "stat_block_id": "srd_5_2_1:bandit",
+              "provenance": {
+                "xp": 25
+              },
+              "attackBonus": 3,
+              "damageDice": 6,
+              "damageBonus": 1
+            },
+            {
+              "id": "enemy-fallen-1",
+              "name": "Разбойник 2",
+              "hp": 0,
+              "maxHp": 11,
+              "armor": 12,
+              "speed": 30,
+              "x": 5,
+              "y": 2,
+              "alive": false,
+              "creature_type": "humanoid",
+              "stat_block_id": "srd_5_2_1:bandit",
+              "provenance": {
+                "xp": 25
+              },
+              "attackBonus": 3,
+              "damageDice": 6,
+              "damageBonus": 1
+            },
+            {
+              "id": "enemy-fallen-2",
+              "name": "Разбойник 3",
+              "hp": 0,
+              "maxHp": 11,
+              "armor": 12,
+              "speed": 30,
+              "x": 5,
+              "y": 3,
+              "alive": false,
+              "creature_type": "humanoid",
+              "stat_block_id": "srd_5_2_1:bandit",
+              "provenance": {
+                "xp": 25
+              },
+              "attackBonus": 3,
+              "damageDice": 6,
+              "damageBonus": 1
+            },
+            {
+              "id": "enemy-fallen-3",
+              "name": "Разбойник 4",
+              "hp": 0,
+              "maxHp": 11,
+              "armor": 12,
+              "speed": 30,
+              "x": 5,
+              "y": 4,
+              "alive": false,
+              "creature_type": "humanoid",
+              "stat_block_id": "srd_5_2_1:bandit",
+              "provenance": {
+                "xp": 25
+              },
+              "attackBonus": 3,
+              "damageDice": 6,
+              "damageBonus": 1
+            }
+          ],
+          "social": {
+            "npcs": []
+          },
+          "mechanics": {
+            "world_time": {
+              "amount": 0,
+              "unit": "minute",
+              "elapsed_minutes": 0
+            },
+            "combat": {
+              "active": true,
+              "round": 2,
+              "initiative": [
+                {
+                  "actor_id": "hero",
+                  "total": 18
+                },
+                {
+                  "actor_id": "enemy-leader",
+                  "total": 9
+                }
+              ],
+              "active_index": 0,
+              "action_economy": {
+                "hero": {
+                  "action": true,
+                  "bonus_action": true,
+                  "reaction": true,
+                  "movement_spent": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "status": 201,
+      "body_norm": "<c6>"
+    },
+    {
+      "as": "admin",
+      "method": "ASSIGN",
+      "path": "anya@mail.ru",
+      "headers": {},
+      "body": [
+        "hero",
+        "ally"
+      ],
+      "status": 200,
+      "body_norm": null
+    },
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "command": {
+          "command_type": "StartCombat",
+          "actor_id": "hero"
+        }
+      },
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/NOPE-1/commands",
+      "headers": {},
+      "body": {
+        "command": {
+          "command_type": "StartCombat",
+          "actor_id": "hero"
+        }
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "command": {
+          "command_type": "StartCombat",
+          "actor_id": "hero"
+        }
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {},
+      "status": 400,
+      "body_norm": {
+        "error": "Нужна command или commands"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "commands": []
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Нужна command или commands"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "command": {
+          "command_type": "AdvanceScene",
+          "actor_id": "hero"
+        }
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Игроку доступен только безопасный набор боевых команд",
+        "code": "PLAYER_COMMAND_FORBIDDEN"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "command": {
+          "command_type": "AdvanceScene",
+          "actor_id": "hero"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Переход сцены может создать только серверный контур Директора после подтверждённого решения группы",
+        "code": "DIRECTOR_COMMAND_REQUIRED"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "command": {
+          "command_type": "CreateEncounter",
+          "actor_id": "hero"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Создание столкновения принимается только endpoint /encounters/assemble",
+        "code": "ENCOUNTER_LIFECYCLE_ENDPOINT_REQUIRED"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "command": {
+          "command_type": "CreateMerchant",
+          "actor_id": "hero"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Lifecycle-команды торговцев принимаются только отдельным административным endpoint /merchants/commands",
+        "code": "MERCHANT_LIFECYCLE_ENDPOINT_REQUIRED"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "forged",
+        "roll": {
+          "total": 30
+        },
+        "command": {
+          "command_type": "StartCombat",
+          "actor_id": "hero"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Принимается только серверный roll_id",
+        "code": "UNVERIFIED_ROLL"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "foreign",
+        "command": {
+          "command_type": "StartCombat",
+          "actor_id": "sentinel"
+        }
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Команда доступна только владельцу героя или его призванного существа",
+        "code": "ACTOR_FORBIDDEN"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "mixed",
+        "commands": [
+          {
+            "command_type": "MakeAttack",
+            "actor_id": "hero",
+            "target_id": "sentinel"
+          },
+          {
+            "command_type": "EndTurn",
+            "actor_id": "hero"
+          }
+        ]
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Атаки нельзя смешивать с другими командами в одном атомарном batch",
+        "code": "PLAYER_COMMAND_FORBIDDEN"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "rest-batch",
+        "commands": [
+          {
+            "command_type": "StartRest",
+            "actor_id": "hero",
+            "kind": "short"
+          },
+          {
+            "command_type": "EndTurn",
+            "actor_id": "hero"
+          }
+        ]
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Отдых принимается одной семантической командой",
+        "code": "PLAYER_COMMAND_FORBIDDEN"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "start-1",
+        "command": {
+          "command_type": "StartCombat",
+          "actor_id": "hero"
+        }
+      },
+      "status": 200,
+      "body_norm": {
+        "narration": "<combat-line>",
+        "effects": {
+          "roll": {
+            "roll_id": "<uuid>",
+            "actor_id": "hero",
+            "value": 18,
+            "modifier": 2,
+            "total": 20,
+            "label": "Инициатива",
+            "visibility": "public"
+          },
+          "reveal": [],
+          "spawn": [],
+          "objective": null,
+          "grantItems": []
+        },
+        "provider": "deterministic-mechanics",
+        "model": "orchestrated",
+        "turn_id": "turn-e679f7ba34067d483018138d38f09903",
+        "engine_mode": "enforce",
+        "state_version": 2,
+        "mechanics": [
+          {
+            "campaign_id": "CMD-1",
+            "command_id": "start-1",
+            "event_type": "CombatStarted",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero",
+              "sentinel"
+            ],
+            "payload": {
+              "round": 1,
+              "initiative": [
+                {
+                  "actor_id": "hero",
+                  "total": 20,
+                  "modifier": 2,
+                  "roll": 18,
+                  "dice": [
+                    18
+                  ],
+                  "roll_id": "<uuid>"
+                },
+                {
+                  "actor_id": "sentinel"
+                }
+              ],
+              "active_index": 0,
+              "party_ids": [
+                "hero"
+              ],
+              "enemy_ids": [
+                "sentinel"
+              ],
+              "combat_instance_id": "combat-instance:6608ab4f8aeafabc53b27f0e8f3c303b53265da3cc66aabfb3f230cb613bcdc4"
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:initiative"
+            ],
+            "house_rule_id": null,
+            "ruling_id": null,
+            "visibility": "public",
+            "event_id": "combat-started:start-1:1",
+            "idempotency_key": "start-1",
+            "reducer_version": 15,
+            "state_version_before": 0,
+            "state_version_after": 1,
+            "created_at": "<time>"
+          },
+          {
+            "campaign_id": "CMD-1",
+            "command_id": "start-1",
+            "event_type": "TurnStarted",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero"
+            ],
+            "payload": {
+              "round": 1,
+              "active_index": 0
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:initiative",
+              "srd_5_2_1:combat:turn-economy"
+            ],
+            "house_rule_id": null,
+            "ruling_id": null,
+            "visibility": "public",
+            "event_id": "<uuid>",
+            "idempotency_key": "start-1",
+            "reducer_version": 15,
+            "state_version_before": 1,
+            "state_version_after": 2,
+            "created_at": "<time>"
+          }
+        ],
+        "visible_state_changes": [
+          {
+            "event_type": "CombatStarted",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero",
+              "sentinel"
+            ],
+            "payload": {
+              "round": 1,
+              "initiative": [
+                {
+                  "actor_id": "hero",
+                  "total": 20,
+                  "modifier": 2,
+                  "roll": 18,
+                  "dice": [
+                    18
+                  ],
+                  "roll_id": "<uuid>"
+                },
+                {
+                  "actor_id": "sentinel"
+                }
+              ],
+              "active_index": 0,
+              "party_ids": [
+                "hero"
+              ],
+              "enemy_ids": [
+                "sentinel"
+              ],
+              "combat_instance_id": "combat-instance:6608ab4f8aeafabc53b27f0e8f3c303b53265da3cc66aabfb3f230cb613bcdc4"
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:initiative"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "TurnStarted",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero"
+            ],
+            "payload": {
+              "round": 1,
+              "active_index": 0
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:initiative",
+              "srd_5_2_1:combat:turn-economy"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          }
+        ],
+        "authoritative_state": "<sha256:acb90475b4771579425fd53bfa080bd59113c5155c1027d971eb84369919d14d:21020>",
+        "verification": {
+          "valid": true,
+          "violations": [],
+          "narration": "Бой начинается; порядок действий определён. Начинается ход Астер."
+        },
+        "ruling": null,
+        "explanation_url": "/api/campaigns/CMD-1/turns/turn-e679f7ba34067d483018138d38f09903/explanation",
+        "idempotent_replay": false,
+        "npc_turns": [],
+        "narration_message_id": "combat-1fe50df9512b2606b1ce",
+        "narration_speaker": "system",
+        "narration_author": "Система боя",
+        "creative_trigger": null,
+        "creative_provider": null,
+        "room_version": 2
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "start-1",
+        "command": {
+          "command_type": "StartCombat",
+          "actor_id": "hero"
+        }
+      },
+      "status": 200,
+      "body_norm": {
+        "narration": "<combat-line>",
+        "effects": {
+          "roll": null,
+          "reveal": [],
+          "spawn": [],
+          "objective": null,
+          "grantItems": []
+        },
+        "provider": "deterministic-mechanics",
+        "model": "orchestrated",
+        "turn_id": "turn-e679f7ba34067d483018138d38f09903",
+        "engine_mode": "enforce",
+        "state_version": 2,
+        "mechanics": [
+          {
+            "campaign_id": "CMD-1",
+            "command_id": "start-1",
+            "event_type": "CombatStarted",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero",
+              "sentinel"
+            ],
+            "payload": {
+              "round": 1,
+              "initiative": [
+                {
+                  "actor_id": "hero",
+                  "total": 20,
+                  "modifier": 2,
+                  "roll": 18,
+                  "dice": [
+                    18
+                  ],
+                  "roll_id": "<uuid>"
+                },
+                {
+                  "actor_id": "sentinel"
+                }
+              ],
+              "active_index": 0,
+              "party_ids": [
+                "hero"
+              ],
+              "enemy_ids": [
+                "sentinel"
+              ],
+              "combat_instance_id": "combat-instance:6608ab4f8aeafabc53b27f0e8f3c303b53265da3cc66aabfb3f230cb613bcdc4"
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:initiative"
+            ],
+            "house_rule_id": null,
+            "ruling_id": null,
+            "visibility": "public",
+            "event_id": "combat-started:start-1:1",
+            "idempotency_key": "start-1",
+            "reducer_version": 15,
+            "state_version_before": 0,
+            "state_version_after": 1,
+            "created_at": "<time>"
+          },
+          {
+            "campaign_id": "CMD-1",
+            "command_id": "start-1",
+            "event_type": "TurnStarted",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero"
+            ],
+            "payload": {
+              "round": 1,
+              "active_index": 0
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:initiative",
+              "srd_5_2_1:combat:turn-economy"
+            ],
+            "house_rule_id": null,
+            "ruling_id": null,
+            "visibility": "public",
+            "event_id": "<uuid>",
+            "idempotency_key": "start-1",
+            "reducer_version": 15,
+            "state_version_before": 1,
+            "state_version_after": 2,
+            "created_at": "<time>"
+          }
+        ],
+        "visible_state_changes": [
+          {
+            "event_type": "CombatStarted",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero",
+              "sentinel"
+            ],
+            "payload": {
+              "round": 1,
+              "initiative": [
+                {
+                  "actor_id": "hero",
+                  "total": 20,
+                  "modifier": 2,
+                  "roll": 18,
+                  "dice": [
+                    18
+                  ],
+                  "roll_id": "<uuid>"
+                },
+                {
+                  "actor_id": "sentinel"
+                }
+              ],
+              "active_index": 0,
+              "party_ids": [
+                "hero"
+              ],
+              "enemy_ids": [
+                "sentinel"
+              ],
+              "combat_instance_id": "combat-instance:6608ab4f8aeafabc53b27f0e8f3c303b53265da3cc66aabfb3f230cb613bcdc4"
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:initiative"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "TurnStarted",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero"
+            ],
+            "payload": {
+              "round": 1,
+              "active_index": 0
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:initiative",
+              "srd_5_2_1:combat:turn-economy"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          }
+        ],
+        "authoritative_state": "<sha256:acb90475b4771579425fd53bfa080bd59113c5155c1027d971eb84369919d14d:21020>",
+        "verification": {
+          "valid": true,
+          "violations": [],
+          "narration": "Бой начинается; порядок действий определён. Начинается ход Астер.",
+          "response_plan": {
+            "version": "narrator-response-plan/v2",
+            "mode": "world_narration",
+            "speech_act": "report_result",
+            "must_answer": "Сначала передать исход текущего шага по видимым событиям и разрешённым реакциям.",
+            "include_scene_detail": true,
+            "include_memory": true,
+            "max_questions": 0,
+            "soft_sentence_limit": 3,
+            "stop_after": "report_result",
+            "delivery": "cached"
+          },
+          "origin": {
+            "source": "template",
+            "reason": "cached_response",
+            "elapsed_ms": 0
+          }
+        },
+        "ruling": null,
+        "explanation_url": "/api/campaigns/CMD-1/turns/turn-e679f7ba34067d483018138d38f09903/explanation",
+        "idempotent_replay": true,
+        "npc_turns": [],
+        "narration_message_id": "combat-1fe50df9512b2606b1ce",
+        "narration_speaker": "system",
+        "narration_author": "Система боя",
+        "creative_trigger": null,
+        "creative_provider": null,
+        "room_version": 3
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "attack-1",
+        "message": "Рублю стража!",
+        "player_note": "За отряд!",
+        "command": {
+          "command_type": "MakeAttack",
+          "actor_id": "hero",
+          "target_id": "sentinel"
+        }
+      },
+      "status": 200,
+      "body_norm": "<sha256:c5697e544dc77e8be7e1d6f96be35d83246af2bdf952cdaf15ea4a2208b35382:26840>"
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "attack-1",
+        "command": {
+          "command_type": "MakeAttack",
+          "actor_id": "hero",
+          "target_id": "sentinel"
+        }
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Idempotency key attack-1 was already used with a different request",
+        "code": "IDEMPOTENCY_CONFLICT"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "attack-1",
+        "command": {
+          "command_type": "MakeAttack",
+          "actor_id": "hero",
+          "target_id": "ghost"
+        }
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Этот ключ идемпотентности уже использован для другой атаки",
+        "code": "IDEMPOTENCY_CONFLICT"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "attack-1",
+        "command": {
+          "command_type": "EndTurn",
+          "actor_id": "hero"
+        }
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Idempotency key attack-1 was already used with a different request",
+        "code": "IDEMPOTENCY_CONFLICT"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "end-1",
+        "command": {
+          "command_type": "EndTurn",
+          "actor_id": "hero"
+        }
+      },
+      "status": 200,
+      "body_norm": "<sha256:edb29c4ac5d088e8507a2a059783e06f1406398f4172d77925049a2494198b94:28217>"
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-1/commands",
+      "headers": {
+        "x-idempotency-key": "attack-2"
+      },
+      "body": {
+        "command": {
+          "command_type": "MakeAttack",
+          "actor_id": "hero",
+          "target_id": "sentinel"
+        }
+      },
+      "status": 200,
+      "body_norm": "<sha256:f2f9e94bbe553c0acad1ba3d4a1a5eb3999e73031a09345ee69a2c47470311f7:28582>"
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-2/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "react-1",
+        "message": "Передать преимущество союзнику",
+        "command": {
+          "command_type": "UseCombatAction",
+          "actor_id": "hero",
+          "action_id": "cast:silvery-barbs",
+          "target_id": "enemy",
+          "beneficiary_id": "ally"
+        }
+      },
+      "status": 200,
+      "body_norm": {
+        "narration": "<combat-line>",
+        "effects": {
+          "roll": {
+            "roll_id": "<uuid>",
+            "actor_id": "enemy",
+            "total": 10,
+            "label": "Проверка"
+          },
+          "reveal": [],
+          "spawn": [],
+          "objective": null,
+          "grantItems": []
+        },
+        "provider": "deterministic-mechanics",
+        "model": "orchestrated",
+        "turn_id": "turn-ded6ccc9fa8bfbcfef8f89a8f1a867a0",
+        "engine_mode": "enforce",
+        "state_version": 12,
+        "mechanics": "<sha256:36a9493a668e4e56b0fcc10493c4197e310a47ee62111d1984c0123642064cb3:6422>",
+        "visible_state_changes": [
+          {
+            "event_type": "ResourceSpent",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero"
+            ],
+            "payload": {
+              "resource": "spell_slots_1",
+              "amount": 1,
+              "before": 4,
+              "after": 3,
+              "max": 4
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:resources:spending"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "AttackRerolled",
+            "actor_id": "hero",
+            "target_ids": [
+              "enemy"
+            ],
+            "payload": {
+              "spell_id": "silvery-barbs",
+              "original_kept": 18,
+              "rerolled_kept": 6,
+              "kept": 6,
+              "modifier": 4,
+              "total": 10,
+              "hit": false
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:combat:reaction",
+              "dnd_5e_2014:combat:attack-roll"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "ReactionDamageReduced",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero"
+            ],
+            "payload": {
+              "action_id": "cast:silvery-barbs",
+              "name": "Искусная острота",
+              "prevented_amount": 3,
+              "hp_before": 27,
+              "hp_after": 30,
+              "temporary_hp_before": 0,
+              "temporary_hp_after": 0
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:combat:reaction",
+              "dnd_5e_2014:combat:damage"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "ConditionRemoved",
+            "actor_id": "hero",
+            "target_ids": [
+              "ally"
+            ],
+            "payload": {
+              "condition": "silvery-fortune",
+              "reason": "replaced-by-silvery-barbs"
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:conditions:common"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "ConditionAdded",
+            "actor_id": "hero",
+            "target_ids": [
+              "ally"
+            ],
+            "payload": {
+              "condition": "silvery-fortune",
+              "duration": "rounds:10",
+              "source_actor": "hero",
+              "effect_id": "silvery-barbs:react-1:1"
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:conditions:common"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "CombatActionUsed",
+            "actor_id": "hero",
+            "target_ids": [
+              "enemy"
+            ],
+            "payload": {
+              "action_id": "cast:silvery-barbs",
+              "name": "Искусная острота",
+              "category": "spell",
+              "action_type": "reaction",
+              "reaction_window_id": "reaction-http-silvery",
+              "spell_id": "silvery-barbs"
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "ReactionWindowClosed",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero"
+            ],
+            "payload": {
+              "id": "reaction-http-silvery",
+              "accepted": true,
+              "action_id": "cast:silvery-barbs"
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:combat:reaction"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          }
+        ],
+        "authoritative_state": "<sha256:62d883be2ac31c05ee150327bccbe93a2763d8e1937d043b1eb0dfe085e80b11:260044>",
+        "verification": {
+          "valid": false,
+          "violations": [
+            {
+              "code": "UNCONFIRMED_SOCIAL_ACTION",
+              "message": "Narrator объявил разговор или реплику NPC без подтверждённого события",
+              "match": null
+            }
+          ],
+          "narration": "Снято состояние: silvery-fortune. Добавлено состояние: silvery-fortune. Ведьма использует реакцию «Искусная острота». Ведьма подтверждает реакцию. reaction-http. Ровный шум ветра снаружи."
+        },
+        "ruling": null,
+        "explanation_url": "/api/campaigns/CMD-2/turns/turn-ded6ccc9fa8bfbcfef8f89a8f1a867a0/explanation",
+        "idempotent_replay": false,
+        "npc_turns": [
+          {
+            "actor_id": "enemy",
+            "round": 1,
+            "active_index": 0,
+            "kind": "enemy-turn",
+            "commands": [
+              "MoveActor",
+              "MakeAttack",
+              "EndTurn"
+            ],
+            "creative_decision": null,
+            "tactic": "сокращает дистанцию",
+            "target_id": "hero",
+            "idempotency_key": "npc:CMD-2:r1:i0:enemy:turn-a0-m0-s0",
+            "state_version": 12
+          }
+        ],
+        "narration_message_id": "combat-59c11a0cb1329666e3f3",
+        "narration_speaker": "system",
+        "narration_author": "Система боя",
+        "creative_trigger": null,
+        "creative_provider": null,
+        "room_version": 2
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-2/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "react-1",
+        "message": "Передать преимущество союзнику",
+        "command": {
+          "command_type": "UseCombatAction",
+          "actor_id": "hero",
+          "action_id": "cast:silvery-barbs",
+          "target_id": "enemy",
+          "beneficiary_id": "ally"
+        }
+      },
+      "status": 200,
+      "body_norm": {
+        "narration": "<combat-line>",
+        "effects": {
+          "roll": null,
+          "reveal": [],
+          "spawn": [],
+          "objective": null,
+          "grantItems": []
+        },
+        "provider": "deterministic-idempotent-replay",
+        "model": "orchestrated",
+        "turn_id": "turn-ded6ccc9fa8bfbcfef8f89a8f1a867a0",
+        "engine_mode": "enforce",
+        "state_version": 12,
+        "mechanics": "<sha256:36a9493a668e4e56b0fcc10493c4197e310a47ee62111d1984c0123642064cb3:6422>",
+        "visible_state_changes": [
+          {
+            "event_type": "ResourceSpent",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero"
+            ],
+            "payload": {
+              "resource": "spell_slots_1",
+              "amount": 1,
+              "before": 4,
+              "after": 3,
+              "max": 4
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:resources:spending"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "AttackRerolled",
+            "actor_id": "hero",
+            "target_ids": [
+              "enemy"
+            ],
+            "payload": {
+              "spell_id": "silvery-barbs",
+              "original_kept": 18,
+              "rerolled_kept": 6,
+              "kept": 6,
+              "modifier": 4,
+              "total": 10,
+              "hit": false
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:combat:reaction",
+              "dnd_5e_2014:combat:attack-roll"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "ReactionDamageReduced",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero"
+            ],
+            "payload": {
+              "action_id": "cast:silvery-barbs",
+              "name": "Искусная острота",
+              "prevented_amount": 3,
+              "hp_before": 27,
+              "hp_after": 30,
+              "temporary_hp_before": 0,
+              "temporary_hp_after": 0
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:combat:reaction",
+              "dnd_5e_2014:combat:damage"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "ConditionRemoved",
+            "actor_id": "hero",
+            "target_ids": [
+              "ally"
+            ],
+            "payload": {
+              "condition": "silvery-fortune",
+              "reason": "replaced-by-silvery-barbs"
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:conditions:common"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "ConditionAdded",
+            "actor_id": "hero",
+            "target_ids": [
+              "ally"
+            ],
+            "payload": {
+              "condition": "silvery-fortune",
+              "duration": "rounds:10",
+              "source_actor": "hero",
+              "effect_id": "silvery-barbs:react-1:1"
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:conditions:common"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "CombatActionUsed",
+            "actor_id": "hero",
+            "target_ids": [
+              "enemy"
+            ],
+            "payload": {
+              "action_id": "cast:silvery-barbs",
+              "name": "Искусная острота",
+              "category": "spell",
+              "action_type": "reaction",
+              "reaction_window_id": "reaction-http-silvery",
+              "spell_id": "silvery-barbs"
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          },
+          {
+            "event_type": "ReactionWindowClosed",
+            "actor_id": "hero",
+            "target_ids": [
+              "hero"
+            ],
+            "payload": {
+              "id": "reaction-http-silvery",
+              "accepted": true,
+              "action_id": "cast:silvery-barbs"
+            },
+            "source_rule_ids": [
+              "dnd_5e_2014:combat:turn-economy",
+              "dnd_5e_2014:combat:reaction"
+            ],
+            "ruling_id": null,
+            "visibility": "public"
+          }
+        ],
+        "authoritative_state": "<sha256:62d883be2ac31c05ee150327bccbe93a2763d8e1937d043b1eb0dfe085e80b11:260044>",
+        "verification": {
+          "valid": false,
+          "violations": [
+            {
+              "code": "UNCONFIRMED_SOCIAL_ACTION",
+              "message": "Narrator объявил разговор или реплику NPC без подтверждённого события",
+              "match": null
+            }
+          ],
+          "narration": "Снято состояние: silvery-fortune. Добавлено состояние: silvery-fortune. Ведьма использует реакцию «Искусная острота». Ведьма подтверждает реакцию. reaction-http. Ровный шум ветра снаружи.",
+          "response_plan": {
+            "version": "narrator-response-plan/v2",
+            "mode": "world_narration",
+            "speech_act": "report_result",
+            "must_answer": "Сначала передать исход текущего шага по видимым событиям и разрешённым реакциям.",
+            "include_scene_detail": true,
+            "include_memory": true,
+            "max_questions": 0,
+            "soft_sentence_limit": 3,
+            "stop_after": "report_result",
+            "delivery": "sentence_buffered"
+          },
+          "origin": {
+            "source": "template",
+            "reason": "replay_fallback",
+            "elapsed_ms": 0
+          }
+        },
+        "ruling": null,
+        "explanation_url": "/api/campaigns/CMD-2/turns/turn-ded6ccc9fa8bfbcfef8f89a8f1a867a0/explanation",
+        "idempotent_replay": true,
+        "npc_turns": [],
+        "narration_message_id": "combat-59c11a0cb1329666e3f3",
+        "narration_speaker": "system",
+        "narration_author": "Система боя",
+        "creative_trigger": null,
+        "creative_provider": null,
+        "room_version": 3
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-3/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "parley-1",
+        "manual_roll": true,
+        "command": {
+          "command_type": "ProposeParley",
+          "actor_id": "hero",
+          "skill": "persuasion"
+        }
+      },
+      "status": 200,
+      "body_norm": {
+        "narration": "Требуется проверка: Харизма (Убеждение), СЛ 8. Бросьте d20, чтобы узнать, услышат ли вас.",
+        "effects": {
+          "roll": null,
+          "reveal": [],
+          "spawn": [],
+          "objective": null,
+          "grantItems": []
+        },
+        "provider": "RulesEngine",
+        "model": "deterministic",
+        "turn_id": "turn-a8715c64036098d6ca742542de9c16b7",
+        "engine_mode": "enforce",
+        "state_version": 0,
+        "mechanics": [],
+        "visible_state_changes": [],
+        "authoritative_state": "<sha256:d166650dcc2f1062d850b9539b471af399f4912576b46d35cfaa2dbcefc51924:18925>",
+        "check": {
+          "check_id": "<uuid>",
+          "campaign_id": "CMD-3",
+          "actor_id": "hero",
+          "label": "Харизма (Убеждение)",
+          "modifier": 8,
+          "difficulty": 8,
+          "ability": "cha",
+          "advantage": false,
+          "disadvantage": false,
+          "visibility": "public",
+          "expires_at": "<time>",
+          "skill": "persuasion",
+          "sides": 20
+        },
+        "turn_consumed": false,
+        "room_version": 1
+      }
+    },
+    {
+      "as": "player",
+      "method": "ROLL",
+      "path": "CMD-3",
+      "headers": {},
+      "body": {
+        "from": 30
+      },
+      "status": 200,
+      "body_norm": {
+        "roll_id": "<uuid>",
+        "value": 15,
+        "modifier": 8,
+        "total": 23,
+        "difficulty": 8,
+        "label": "Харизма (Убеждение)",
+        "success": true,
+        "ability": "cha"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-3/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "parley-2",
+        "roll": {
+          "roll_id": "<roll:31>"
+        },
+        "command": {
+          "command_type": "ProposeParley",
+          "actor_id": "hero",
+          "skill": "persuasion"
+        }
+      },
+      "status": 200,
+      "body_norm": "<sha256:3a117899805ccab45039eee3bf863cc57c0fc332b985c9c174a8e842584f6672:27247>"
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-3/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "parley-2",
+        "roll": {
+          "roll_id": "<roll:31>"
+        },
+        "command": {
+          "command_type": "ProposeParley",
+          "actor_id": "hero",
+          "skill": "persuasion"
+        }
+      },
+      "status": 200,
+      "body_norm": "<sha256:8515f59851b490eb8b1893efcf070924b0b493ac99a4d8fda67693412a1e3e7a:27542>"
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/CMD-3/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "parley-3",
+        "roll": {
+          "roll_id": "<roll:31>"
+        },
+        "command": {
+          "command_type": "ProposeParley",
+          "actor_id": "hero",
+          "skill": "persuasion"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Бросок уже использован",
+        "code": "ROLL_ALREADY_USED"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/rooms/CMD-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 6,
+        "state": "<sha256:e2fe2a203d213315107971a1edc03dc974ded5a3b5e7a0dd82932b676d9d8417:24337>",
+        "updatedAt": "<time>"
+      }
+    }
+  ]
+}

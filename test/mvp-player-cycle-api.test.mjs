@@ -1,19 +1,16 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { pathToFileURL } from 'node:url'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 import { actorPosition, findActor, shortestTacticalPath } from '../server/rules-engine.mjs'
 import { footprintCellsFor, footprintDistanceFeet } from '../server/actor-footprint.mjs'
 import { publicSceneFor } from '../server/viewer-projection.mjs'
 
 const MVP_REQUEST_TIMEOUT_MS = 30_000
-const MVP_DICE_PRELOAD = pathToFileURL(join(process.cwd(), 'test', 'fixtures', 'mvp-deterministic-dice.mjs')).href
+// Кости сценария — данные `skazanie.test-dice/1`, их одинаково исполняют
+// JS-сервер и Rust-перенос (test/kit/hooks-format.mjs).
+const MVP_DICE = 'test/fixtures/mvp-player-cycle.dice.json'
 let mvpTrace = null
 
 function mvpStage(stage) {
@@ -152,42 +149,28 @@ test('MVP diagnostics сохраняет вложенный транспортн
   assert.match(bounded, /"truncated":true/u)
 })
 
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['--import', MVP_DICE_PRELOAD, 'server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'mvp-player-cycle-setup-token',
-      COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+/** Причина выхода процесса сервера — в диагностику сценария. */
+function traceServerExit(server) {
   if (mvpTrace) mvpTrace.childExit = null
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  child.once('exit', (code, signal) => {
+  server.child?.once('exit', (code, signal) => {
     if (mvpTrace) mvpTrace.childExit = { code, signal }
   })
-  return child
 }
 
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
+async function startMvpServer(t) {
+  const server = await startTestServer(t, {
+    setupToken: 'mvp-player-cycle-setup-token',
+    storagePrefix: 'skazanie-mvp-player-cycle-',
+    dice: MVP_DICE,
+  })
+  traceServerExit(server)
+  return server
 }
 
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null || child.signalCode != null) throw new Error(`Test server exited: code=${child.exitCode} signal=${child.signalCode}\n${redactedMvpTail(logs())}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`, { headers: { Connection: 'close' } })
-      await response.arrayBuffer()
-      if (response.ok) return
-    }
-    catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Test server did not become healthy: code=${child.exitCode} signal=${child.signalCode}\n${redactedMvpTail(logs())}`)
+/** Новый процесс на том же хранилище: сессии и журнал переживают перезапуск. */
+async function restartMvpServer(server) {
+  await server.restart()
+  traceServerExit(server)
 }
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
@@ -393,32 +376,24 @@ const MVP_TIMEOUT_MS = SHARED_RUNNER ? 1_200_000 : 600_000
 
 async function runMvpScenario(t) {
   mvpStage('startup')
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-mvp-player-cycle-'))
-  let logs = ''
-  if (mvpTrace) mvpTrace.logs = () => logs
-  let child = null
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
+  const server = await startMvpServer(t)
+  if (mvpTrace) mvpTrace.logs = server.output
 
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
-
-  const admin = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
+  const admin = await request(server.baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'Setup only', email: 'setup@mvp.test', password: 'secure-setup-password', setupToken: 'mvp-player-cycle-setup-token',
   } })
   assert.equal(admin.status, 201, admin.text)
 
-  const owner = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
+  const owner = await request(server.baseUrl, '/api/auth/register', { method: 'POST', body: {
     name: 'Owner', email: 'owner@mvp.test', password: 'secure-owner-password',
   } })
-  const guest = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
+  const guest = await request(server.baseUrl, '/api/auth/register', { method: 'POST', body: {
     name: 'Guest', email: 'guest@mvp.test', password: 'secure-guest-password',
   } })
-  const guestThree = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
+  const guestThree = await request(server.baseUrl, '/api/auth/register', { method: 'POST', body: {
     name: 'Guest Three', email: 'guest-three@mvp.test', password: 'secure-guest-three-password',
   } })
-  const guestFour = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
+  const guestFour = await request(server.baseUrl, '/api/auth/register', { method: 'POST', body: {
     name: 'Guest Four', email: 'guest-four@mvp.test', password: 'secure-guest-four-password',
   } })
   assert.equal(owner.status, 201, owner.text)
@@ -430,7 +405,7 @@ async function runMvpScenario(t) {
   const guestThreeCookie = cookie(guestThree)
   const guestFourCookie = cookie(guestFour)
 
-  const created = await request(baseUrl, '/api/campaigns', { method: 'POST', cookie: ownerCookie, body: {
+  const created = await request(server.baseUrl, '/api/campaigns', { method: 'POST', cookie: ownerCookie, body: {
     code: 'PLAYER-MVP', name: 'Игроки и автономный режиссёр',
     bootstrap: { partyName: 'Четверо', world: { preset: 'Классическое фэнтези' }, players: [0, 1, 2, 3].map(hero) },
   } })
@@ -440,17 +415,17 @@ async function runMvpScenario(t) {
   assert.equal(created.body.state.worldMemory.quests.length >= 1, true)
   assert.equal(created.body.state.social.npcs.length >= 1, true)
 
-  const unauthorizedRoom = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
+  const unauthorizedRoom = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
   assert.equal(unauthorizedRoom.status, 403, unauthorizedRoom.text)
-  const bareJoin = await request(baseUrl, '/api/campaigns/PLAYER-MVP/join', { method: 'POST', cookie: guestCookie, body: {} })
+  const bareJoin = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/join', { method: 'POST', cookie: guestCookie, body: {} })
   assert.equal(bareJoin.status, 400, bareJoin.text)
 
   const joinHero = async (heroId, cookieValue) => {
-    const issued = await request(baseUrl, '/api/campaigns/PLAYER-MVP/invites', {
+    const issued = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/invites', {
       method: 'POST', cookie: ownerCookie, body: { hero_ids: [heroId] },
     })
     assert.equal(issued.status, 201, issued.text)
-    const joined = await request(baseUrl, '/api/campaigns/PLAYER-MVP/join', {
+    const joined = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/join', {
       method: 'POST', cookie: cookieValue, body: { invite_token: issued.body.token },
     })
     assert.equal(joined.status, 200, joined.text)
@@ -460,14 +435,14 @@ async function runMvpScenario(t) {
   const { issued: invite } = await joinHero('mvp-hero-2', guestCookie)
   await joinHero('mvp-hero-3', guestThreeCookie)
   await joinHero('mvp-hero-4', guestFourCookie)
-  const joinedAgain = await request(baseUrl, '/api/campaigns/PLAYER-MVP/join', {
+  const joinedAgain = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/join', {
     method: 'POST', cookie: guestCookie, body: { invite_token: invite.body.token },
   })
   assert.equal(joinedAgain.status, 200, joinedAgain.text)
   assert.equal(joinedAgain.body.duplicate, true)
 
-  const ownerRoom = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: ownerCookie })
-  const guestRoom = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
+  const ownerRoom = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: ownerCookie })
+  const guestRoom = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
   assert.equal(ownerRoom.status, 200, ownerRoom.text)
   assert.equal(guestRoom.status, 200, guestRoom.text)
   assert.equal(ownerRoom.body.state.state_version, guestRoom.body.state.state_version)
@@ -480,7 +455,7 @@ async function runMvpScenario(t) {
   ])
   for (let index = 1; index <= 4; index += 1) {
     const actorId = `mvp-hero-${index}`
-    const imported = await playerCommand(baseUrl, heroCookies.get(actorId), `initial-import-${index}`, {
+    const imported = await playerCommand(server.baseUrl, heroCookies.get(actorId), `initial-import-${index}`, {
       command_type: 'ImportCharacter',
       actor_id: actorId,
       document: characterDocument(`Герой ${index}`),
@@ -489,7 +464,7 @@ async function runMvpScenario(t) {
     assert.equal(imported.body.authoritative_state.players.find((player) => player.id === actorId).characterSetupRequired, false)
   }
 
-  const retiredRoomWrite = await request(baseUrl, '/api/rooms/PLAYER-MVP', {
+  const retiredRoomWrite = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', {
     method: 'PUT', cookie: ownerCookie,
     body: { state: ownerRoom.body.state, baseVersion: ownerRoom.body.version },
   })
@@ -497,7 +472,7 @@ async function runMvpScenario(t) {
   assert.equal(retiredRoomWrite.body.code, 'ROOM_MUTATION_RETIRED')
 
   const characterKey = 'character-build-1'
-  const characterChoice = await playerCommand(baseUrl, ownerCookie, characterKey, {
+  const characterChoice = await playerCommand(server.baseUrl, ownerCookie, characterKey, {
     command_type: 'SetCharacterChoices', actor_id: 'mvp-hero-1',
     subclass: '', class_skill_proficiencies: ['athletics', 'perception'],
     selected_feature_ids: [],
@@ -507,24 +482,24 @@ async function runMvpScenario(t) {
   assert.deepEqual(builtHero.classSkillProficiencies, ['athletics', 'perception'])
   assert.deepEqual(builtHero.selectedFeatureIds, [])
 
-  const characterReplayMismatch = await playerCommand(baseUrl, ownerCookie, characterKey, {
+  const characterReplayMismatch = await playerCommand(server.baseUrl, ownerCookie, characterKey, {
     command_type: 'SetCharacterChoices', actor_id: 'mvp-hero-1',
     subclass: '', class_skill_proficiencies: ['nature', 'survival'],
     selected_feature_ids: [],
   })
   assert.equal(characterReplayMismatch.status, 409, characterReplayMismatch.text)
 
-  const forgedItemOwner = await playerCommand(baseUrl, guestCookie, 'item-owner-forgery', {
+  const forgedItemOwner = await playerCommand(server.baseUrl, guestCookie, 'item-owner-forgery', {
     command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-kit2024-1', equipped: false,
   })
   assert.equal(forgedItemOwner.status, 403, forgedItemOwner.text)
 
-  const unequippedItem = await playerCommand(baseUrl, ownerCookie, 'item-unequip-1', {
+  const unequippedItem = await playerCommand(server.baseUrl, ownerCookie, 'item-unequip-1', {
     command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-kit2024-1', equipped: false,
   })
   assert.equal(unequippedItem.status, 200, unequippedItem.text)
   assert.equal(unequippedItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-kit2024-1').equipped, false)
-  const equippedItem = await playerCommand(baseUrl, ownerCookie, 'item-equip-1', {
+  const equippedItem = await playerCommand(server.baseUrl, ownerCookie, 'item-equip-1', {
     command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-kit2024-1', equipped: true,
   })
   assert.equal(equippedItem.status, 200, equippedItem.text)
@@ -532,7 +507,16 @@ async function runMvpScenario(t) {
 
   mvpStage('character import and choices')
   const importDocument = characterDocument('Герой 1', 225)
-  const importedCharacter = await playerCommand(baseUrl, ownerCookie, 'character-import-1', {
+  // Готового героя игрок своим документом не переписывает: иначе он сам
+  // назначал бы себе класс, опыт и уровень. Лист целиком заменяет ведущий.
+  const playerReimport = await playerCommand(server.baseUrl, ownerCookie, 'character-import-player', {
+    command_type: 'ImportCharacter', actor_id: 'mvp-hero-1', document: importDocument,
+  })
+  assert.equal(playerReimport.status, 400, playerReimport.text)
+  assert.equal(playerReimport.body.code, 'CHARACTER_ALREADY_CREATED')
+  const adminLogin = await request(server.baseUrl, '/api/auth/login', { method: 'POST', body: { email: 'setup@mvp.test', password: 'secure-setup-password' } })
+  const adminCookie = cookie(adminLogin)
+  const importedCharacter = await playerCommand(server.baseUrl, adminCookie, 'character-import-1', {
     command_type: 'ImportCharacter', actor_id: 'mvp-hero-1', document: importDocument,
   })
   assert.equal(importedCharacter.status, 200, importedCharacter.text)
@@ -541,14 +525,14 @@ async function runMvpScenario(t) {
   assert.equal(importedHero.experience, 225)
   assert.equal(importedHero.proficiency, 2)
   assert.equal(importedHero.inventory.find((item) => item.id === 'mvp-hero-1-starter-kit2024-1').equipped, true)
-  const forgedImport = await playerCommand(baseUrl, ownerCookie, 'character-import-forged', {
+  const forgedImport = await playerCommand(server.baseUrl, adminCookie, 'character-import-forged', {
     command_type: 'ImportCharacter', actor_id: 'mvp-hero-1',
     document: { ...importDocument, character: { ...importDocument.character, hp: 999, gold: 999 } },
   })
   assert.equal(forgedImport.status, 400, forgedImport.text)
   assert.equal(forgedImport.body.code, 'IMPORT_UNKNOWN_FIELD')
 
-  const forgedIntent = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/intents', {
+  const forgedIntent = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/intents', {
     method: 'POST', cookie: ownerCookie, key: 'forged-player-intent',
     body: { type: 'request_encounter', theme: 'beasts', difficulty: 'deadly' },
   })
@@ -560,14 +544,14 @@ async function runMvpScenario(t) {
   for (let turn = 1; turn <= 4; turn += 1) {
     const key = `player-director-${turn}`
     const playerAction = turn === 4 ? 'Ищем бой с угрозой у дороги' : 'Продолжить приключение'
-    const advanced = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
+    const advanced = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
       method: 'POST', cookie: ownerCookie, key, body: { idempotency_key: key, player_action: playerAction },
     })
     assert.equal(advanced.status, 200, advanced.text)
     assert.equal(advanced.body.admin_commands, 0)
     intentTypes.push(advanced.body.intent.type)
     if (turn === 1) {
-      const duplicate = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
+      const duplicate = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
         method: 'POST', cookie: ownerCookie, key, body: { idempotency_key: key, player_action: 'Повтор сети' },
       })
       assert.equal(duplicate.status, 200, duplicate.text)
@@ -584,7 +568,7 @@ async function runMvpScenario(t) {
       const activeId = String(actionState.activePlayerId)
       const activeCookie = heroCookies.get(activeId)
       const action = playerActions[actionIndex]
-      const narrated = await request(baseUrl, '/api/narrate', {
+      const narrated = await request(server.baseUrl, '/api/narrate', {
         method: 'POST', cookie: activeCookie,
         body: { action, campaignId: 'PLAYER-MVP', idempotency_key: `player-check-${turn}-${actionIndex + 1}` },
       })
@@ -595,13 +579,8 @@ async function runMvpScenario(t) {
       if (turn === 2 && actionIndex === 0) {
         const dialogueVersion = actionState.state_version
         const dialogueCount = actionState.social.conversations.length
-        await stopServer(child)
-        child = null
-        port = await freePort()
-        baseUrl = `http://127.0.0.1:${port}`
-        child = startServer(port, storage, (chunk) => { logs += chunk })
-        await waitForHealth(baseUrl, child, () => logs)
-        const restoredDialogue = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: activeCookie })
+        await restartMvpServer(server)
+        const restoredDialogue = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: activeCookie })
         assert.equal(restoredDialogue.status, 200, restoredDialogue.text)
         assert.equal(restoredDialogue.body.state.state_version, dialogueVersion)
         assert.equal(restoredDialogue.body.state.social.conversations.length, dialogueCount)
@@ -615,7 +594,7 @@ async function runMvpScenario(t) {
   assert.ok(intentTypes.includes('request_encounter'), `explicit combat request should produce encounter: ${intentTypes.join(',')}`)
 
   mvpStage('combat setup and restart')
-  const combatRoom = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
+  const combatRoom = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
   assert.equal(combatRoom.status, 200, combatRoom.text)
   assert.equal(combatRoom.body.state.players.length, 4)
   assert.ok(combatRoom.body.state.enemies.length >= 3, `expected at least three enemies, received ${combatRoom.body.state.enemies.length}`)
@@ -623,18 +602,13 @@ async function runMvpScenario(t) {
   assert.ok(combatRoom.body.state.mechanics.combat.initiative.length >= 7)
 
   const stableCombat = structuredClone(combatRoom.body.state.mechanics.combat)
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
-  const restored = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
+  await restartMvpServer(server)
+  const restored = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
   assert.equal(restored.status, 200, restored.text)
   assert.deepEqual(restored.body.state.mechanics.combat, stableCombat)
   assert.equal(restored.body.state.enemies.length, combatRoom.body.state.enemies.length)
   assert.equal(restored.body.state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-kit2024-1').equipped, true)
-  const repeatedRead = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
+  const repeatedRead = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
   assert.equal(repeatedRead.body.version, restored.body.version, 'GET must not mutate the room projection')
   assert.deepEqual(repeatedRead.body.state.mechanics.combat, restored.body.state.mechanics.combat)
 
@@ -644,7 +618,7 @@ async function runMvpScenario(t) {
   let midCombatRestarted = false
   const restoredActorId = String(battleState.mechanics.combat.initiative[battleState.mechanics.combat.active_index]?.actor_id ?? '')
   if (!(battleState.players ?? []).some((heroEntry) => heroEntry.id === restoredActorId)) {
-    const ticked = await request(baseUrl, '/api/campaigns/PLAYER-MVP/system-tick', { method: 'POST', cookie: guestCookie })
+    const ticked = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/system-tick', { method: 'POST', cookie: guestCookie })
     assert.equal(ticked.status, 200, ticked.text)
     battleState = ticked.body.state
   }
@@ -655,7 +629,7 @@ async function runMvpScenario(t) {
     const combat = battleState.mechanics.combat
     if (combat.reaction_window) {
       const reactionActorId = String(combat.reaction_window.actor_id ?? '')
-      const declined = await playerCommand(baseUrl, cookieFor(reactionActorId), `player-reaction-${++commandIndex}`, {
+      const declined = await playerCommand(server.baseUrl, cookieFor(reactionActorId), `player-reaction-${++commandIndex}`, {
         command_type: 'UseCombatAction', actor_id: reactionActorId, action_id: 'decline-reaction',
       })
       assert.equal(declined.status, 200, declined.text)
@@ -673,7 +647,7 @@ async function runMvpScenario(t) {
       const conditions = battleState.mechanics.conditions?.[actorId] ?? []
       const prone = conditions.some((entry) => String(entry?.id ?? entry) === 'prone')
       if (prone) {
-        const stoodUp = await playerCommand(baseUrl, actorCookie, `player-stand-up-${++commandIndex}`, {
+        const stoodUp = await playerCommand(server.baseUrl, actorCookie, `player-stand-up-${++commandIndex}`, {
           command_type: 'UseCombatAction', actor_id: actorId, action_id: 'stand-up',
         })
         assert.equal(stoodUp.status, 200, stoodUp.text)
@@ -683,7 +657,7 @@ async function runMvpScenario(t) {
       const raging = conditions.some((entry) => String(entry?.id ?? entry) === 'raging')
       const bonusReady = combat.action_economy?.[actorId]?.bonus_action !== false
       if (!raging && bonusReady) {
-        const rage = await playerCommand(baseUrl, actorCookie, `player-rage-${++commandIndex}`, {
+        const rage = await playerCommand(server.baseUrl, actorCookie, `player-rage-${++commandIndex}`, {
           command_type: 'UseCombatAction', actor_id: actorId, action_id: 'rage',
         })
         if (rage.status === 200) {
@@ -700,7 +674,7 @@ async function runMvpScenario(t) {
         const availableSteps = Math.max(0, Math.floor((Number(current.speed) || 30) / 5) - Math.floor(spent / 5))
         if (path?.length && availableSteps > 0) {
           const to = path[Math.min(path.length, availableSteps) - 1]
-          const moved = await playerCommand(baseUrl, actorCookie, `player-move-${++commandIndex}`, {
+          const moved = await playerCommand(server.baseUrl, actorCookie, `player-move-${++commandIndex}`, {
             command_type: 'MoveActor', actor_id: actorId, to,
           })
           if (moved.status === 200) {
@@ -717,7 +691,7 @@ async function runMvpScenario(t) {
               ['INVALID_DESTINATION', 'SPEED_EXCEEDED', 'PATH_BLOCKED'].includes(moved.body.code),
               `неожиданный отказ на перемещение: ${moved.text}`,
             )
-            const afterRefusal = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: actorCookie })
+            const afterRefusal = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: actorCookie })
             assert.equal(afterRefusal.status, 200, afterRefusal.text)
             assert.deepEqual(
               actorPosition(afterRefusal.body.state, actorId),
@@ -735,7 +709,7 @@ async function runMvpScenario(t) {
           .filter((candidate) => candidate.distance === 5)
           .sort((left, right) => left.distance - right.distance)
         for (const candidate of candidates) {
-          const attempted = await playerCommand(baseUrl, actorCookie, `player-attack-${++commandIndex}`, {
+          const attempted = await playerCommand(server.baseUrl, actorCookie, `player-attack-${++commandIndex}`, {
             command_type: 'MakeAttack', actor_id: actorId, target_id: candidate.enemy.id,
             item_id: `${actorId}-starter-kit2024-1`,
           })
@@ -755,13 +729,8 @@ async function runMvpScenario(t) {
           const committedCombat = structuredClone(battleState.mechanics.combat)
           const committedEnemies = structuredClone(battleState.enemies)
           const committedHp = battleState.players.map((entry) => [entry.id, entry.hp])
-          await stopServer(child)
-          child = null
-          port = await freePort()
-          baseUrl = `http://127.0.0.1:${port}`
-          child = startServer(port, storage, (chunk) => { logs += chunk })
-          await waitForHealth(baseUrl, child, () => logs)
-          const midCombat = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: actorCookie })
+          await restartMvpServer(server)
+          const midCombat = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: actorCookie })
           assert.equal(midCombat.status, 200, midCombat.text)
           assert.equal(midCombat.body.state.state_version, committedVersion)
           assert.deepEqual(midCombat.body.state.mechanics.combat, committedCombat)
@@ -775,7 +744,7 @@ async function runMvpScenario(t) {
 
     const actorFate = battleState.mechanics.death?.heroes?.[actorId]
     if (battleState.mechanics.combat.active && actorFate?.status === 'dead') {
-      const resurrected = await playerCommand(baseUrl, actorCookie, `player-resurrect-${++commandIndex}`, {
+      const resurrected = await playerCommand(server.baseUrl, actorCookie, `player-resurrect-${++commandIndex}`, {
         command_type: 'ResolveHeroDeath', actor_id: actorId, resolution: 'resurrect',
       })
       assert.equal(resurrected.status, 200, resurrected.text)
@@ -784,11 +753,11 @@ async function runMvpScenario(t) {
       continue
     }
     if (battleState.mechanics.combat.active) {
-      const endedTurn = await playerCommand(baseUrl, actorCookie, `player-end-turn-${++commandIndex}`, {
+      const endedTurn = await playerCommand(server.baseUrl, actorCookie, `player-end-turn-${++commandIndex}`, {
         command_type: 'EndTurn', actor_id: actorId,
       })
       if (endedTurn.status === 400 && endedTurn.body?.code === 'HERO_DEAD_UNRESOLVED') {
-        const resurrected = await playerCommand(baseUrl, actorCookie, `player-resurrect-${++commandIndex}`, {
+        const resurrected = await playerCommand(server.baseUrl, actorCookie, `player-resurrect-${++commandIndex}`, {
           command_type: 'ResolveHeroDeath', actor_id: actorId, resolution: 'resurrect',
         })
         assert.equal(resurrected.status, 200, resurrected.text)
@@ -807,7 +776,7 @@ async function runMvpScenario(t) {
   assert.equal(livingEnemies(battleState).length, 0, 'the party must win the mandatory encounter')
   for (const hero of battleState.players ?? []) {
     if (battleState.mechanics.death?.heroes?.[hero.id]?.status !== 'dead') continue
-    const resurrected = await playerCommand(baseUrl, cookieFor(hero.id), `player-post-combat-resurrect-${++commandIndex}`, {
+    const resurrected = await playerCommand(server.baseUrl, cookieFor(hero.id), `player-post-combat-resurrect-${++commandIndex}`, {
       command_type: 'ResolveHeroDeath', actor_id: hero.id, resolution: 'resurrect',
     })
     assert.equal(resurrected.status, 200, resurrected.text)
@@ -845,7 +814,7 @@ async function runMvpScenario(t) {
   // бой может накопить целую минуту; отдых и переход добавляются к ней.
   const worldSecondsBeforeDowntime = Number(battleState.mechanics.world_time?.elapsed_minutes ?? 0) * 60
     + Number(battleState.mechanics.world_time?.second_remainder ?? 0)
-  const continued = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
+  const continued = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
     method: 'POST', cookie: ownerCookie, key: 'player-after-combat',
     body: { idempotency_key: 'player-after-combat', player_action: 'Забрать добычу, восстановиться и продолжить путь' },
   })
@@ -855,7 +824,7 @@ async function runMvpScenario(t) {
   let transitionKey = 'player-after-combat'
   for (let retry = 1; retry <= 3 && transition.body.intent.type !== 'end_scene'; retry += 1) {
     transitionKey = `player-after-combat-transition-${retry}`
-    transition = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
+    transition = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
       method: 'POST', cookie: ownerCookie, key: transitionKey,
       body: { idempotency_key: transitionKey, player_action: 'Перейти дальше после разрешённого боя' },
     })
@@ -865,14 +834,14 @@ async function runMvpScenario(t) {
   assert.equal(transition.body.state.agentInteraction?.status, 'open')
   const transitionId = transition.body.state.agentInteraction.id
   for (const [heroId, heroCookie] of heroCookies.entries()) {
-    const vote = await request(baseUrl, `/api/campaigns/PLAYER-MVP/party-decisions/${encodeURIComponent(transitionId)}/votes`, {
+    const vote = await request(server.baseUrl, `/api/campaigns/PLAYER-MVP/party-decisions/${encodeURIComponent(transitionId)}/votes`, {
       method: 'POST', cookie: heroCookie, key: `player-transition-vote-${heroId}`,
       body: { actor_id: heroId, option_id: 'continue', idempotency_key: `player-transition-vote-${heroId}` },
     })
     assert.equal(vote.status, 200, vote.text)
     if (vote.body.state.agentInteraction?.status === 'resolved') break
   }
-  const continuedAfterVote = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
+  const continuedAfterVote = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
     method: 'POST', cookie: ownerCookie, key: transitionKey,
     body: { idempotency_key: transitionKey, player_action: 'Продолжить подтверждённый переход' },
   })
@@ -898,7 +867,7 @@ async function runMvpScenario(t) {
 
   const levelCandidate = continuedState.players.find((entry) => entry.id === 'mvp-hero-1')
   assert.ok(levelCandidate.experience >= 300, `expected enough XP for level 2, received ${levelCandidate.experience}`)
-  const leveled = await playerCommand(baseUrl, ownerCookie, 'character-level-up-1', {
+  const leveled = await playerCommand(server.baseUrl, ownerCookie, 'character-level-up-1', {
     command_type: 'LevelUp', actor_id: 'mvp-hero-1', expected_level: 1,
   })
   assert.equal(leveled.status, 200, leveled.text)
@@ -914,7 +883,7 @@ async function runMvpScenario(t) {
     const key = `player-peaceful-scene-${step}`
     // После исследования отряд сам выбирает уход: число тактов не завершает квест.
     const playerAction = step >= 3 ? 'Перейти дальше после исследования' : 'Продолжить расследование без нового боя'
-    let advanced = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
+    let advanced = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
       method: 'POST', cookie: ownerCookie, key, body: { idempotency_key: key, player_action: playerAction },
     })
     assert.equal(advanced.status, 200, advanced.text)
@@ -922,14 +891,14 @@ async function runMvpScenario(t) {
     if (advanced.body.state.agentInteraction?.status === 'open') {
       const interactionId = advanced.body.state.agentInteraction.id
       for (const [heroId, heroCookie] of heroCookies.entries()) {
-        const vote = await request(baseUrl, `/api/campaigns/PLAYER-MVP/party-decisions/${encodeURIComponent(interactionId)}/votes`, {
+        const vote = await request(server.baseUrl, `/api/campaigns/PLAYER-MVP/party-decisions/${encodeURIComponent(interactionId)}/votes`, {
           method: 'POST', cookie: heroCookie, key: `player-peaceful-vote-${step}-${heroId}`,
           body: { actor_id: heroId, option_id: 'continue', idempotency_key: `player-peaceful-vote-${step}-${heroId}` },
         })
         assert.equal(vote.status, 200, vote.text)
         if (vote.body.state.agentInteraction?.status === 'resolved') break
       }
-      advanced = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
+      advanced = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
         method: 'POST', cookie: ownerCookie, key, body: { idempotency_key: key, player_action: 'Продолжить подтверждённое расследование' },
       })
       assert.equal(advanced.status, 200, advanced.text)
@@ -938,13 +907,13 @@ async function runMvpScenario(t) {
   }
   assert.equal(peacefulState.adventure.chapter, 3)
   assert.equal(peacefulIntents.includes('request_encounter'), false, 'second encounter must remain avoidable')
-  const finalGuestRoom = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
+  const finalGuestRoom = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
   assert.equal(finalGuestRoom.status, 200, finalGuestRoom.text)
   assert.equal(finalGuestRoom.body.state.adventure.chapter, 3)
   assert.equal(finalGuestRoom.body.state.state_version, peacefulState.state_version)
 
   mvpStage('lifecycle completion')
-  const completed = await request(baseUrl, '/api/campaigns/PLAYER-MVP/lifecycle', {
+  const completed = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/lifecycle', {
     method: 'POST', cookie: ownerCookie, key: 'complete-player-mvp',
     body: { action: 'complete', idempotency_key: 'complete-player-mvp' },
   })
@@ -956,18 +925,18 @@ async function runMvpScenario(t) {
   )
   assert.ok(sessionSummary, 'campaign completion must persist a session summary')
   assert.ok(sessionSummary.source_event_ids.some((eventId) => eventId.startsWith('campaign-lifecycle:')))
-  const readOnlyCommand = await playerCommand(baseUrl, ownerCookie, 'after-completion', {
+  const readOnlyCommand = await playerCommand(server.baseUrl, ownerCookie, 'after-completion', {
     command_type: 'EndTurn', actor_id: 'mvp-hero-1',
   })
   assert.equal(readOnlyCommand.status, 400, readOnlyCommand.text)
   assert.equal(readOnlyCommand.body.code, 'CAMPAIGN_READ_ONLY')
-  const archived = await request(baseUrl, '/api/campaigns/PLAYER-MVP/lifecycle', {
+  const archived = await request(server.baseUrl, '/api/campaigns/PLAYER-MVP/lifecycle', {
     method: 'POST', cookie: ownerCookie, key: 'archive-player-mvp',
     body: { action: 'archive', idempotency_key: 'archive-player-mvp' },
   })
   assert.equal(archived.status, 200, archived.text)
   assert.equal(archived.body.lifecycle.status, 'archived')
-  assert.equal((await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })).status, 200)
+  assert.equal((await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })).status, 200)
 }
 
 test('обычные игроки проходят автономную кампанию, полный бой, награды и три сцены', { timeout: MVP_TIMEOUT_MS }, async (t) => {

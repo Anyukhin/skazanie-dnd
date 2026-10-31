@@ -328,8 +328,16 @@ export function createCampaignInvite({
  *   `unavailableHeroIds` — места, где герой уже создан: многоместное
  *   приглашение их пропускает, явное приглашение на одного героя — нет
  */
-export function redeemCampaignInvite({ campaignId, token, userId, unavailableHeroIds = [] }) {
+export function redeemCampaignInvite({ campaignId, token, userId, unavailableHeroIds = [], partyHeroIds = null }) {
   const normalized = normalizeCampaignId(campaignId)
+  // Герой приглашения сверяется с отрядом **до** записи членства: отказ не
+  // должен оставлять за игроком место в кампании.
+  const party = Array.isArray(partyHeroIds) ? new Set(partyHeroIds.map(String)) : null
+  const assertInParty = (heroIds) => {
+    if (party && heroIds.some((heroId) => !party.has(String(heroId)))) {
+      throw Object.assign(new Error('Приглашение ссылается на героя, которого нет в кампании'), { code: 'INVITE_HERO_NOT_IN_PARTY' })
+    }
+  }
   return withAuthLock(() => {
     const db = readAuth()
     const invite = db.invites.find((item) => item.campaignId === normalized && item.tokenHash === tokenHash(String(token || '')))
@@ -353,6 +361,7 @@ export function redeemCampaignInvite({ campaignId, token, userId, unavailableHer
       if (!heroId) {
         throw Object.assign(new Error('В кампании не осталось свободных героев'), { code: 'CAMPAIGN_FULL' })
       }
+      assertInParty([heroId])
       const membership = {
         campaignId: normalized,
         userId,
@@ -375,6 +384,7 @@ export function redeemCampaignInvite({ campaignId, token, userId, unavailableHer
       .filter((item) => item.campaignId === normalized && item.status !== 'revoked')
       .flatMap((item) => item.heroIds ?? []))
     if (invite.heroIds.some((heroId) => assignedElsewhere.has(heroId))) throw new Error('Герой из приглашения уже назначен другому игроку')
+    assertInParty(normalizeHeroIds(invite.heroIds))
     const membership = {
       campaignId: normalized,
       userId,

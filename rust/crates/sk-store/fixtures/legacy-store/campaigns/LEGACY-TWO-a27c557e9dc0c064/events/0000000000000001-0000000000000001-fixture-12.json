@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "commit_id": "fixture-12",
+  "campaign_id": "LEGACY-TWO",
+  "command_id": "fixture-10",
+  "idempotency_key": "legacy",
+  "request_hash": "ae6299baf589d1d308f12e967f8b8f728386a23775c7106953603bd6fd817974",
+  "legacy_state_hash": "d15ffa5efa4e37e4705d2f45da55bf3df8061974c00414f99dfa9dd9cdbfb916",
+  "state_version_before": 0,
+  "state_version_after": 1,
+  "created_at": "2026-10-13T12:00:00.000Z",
+  "reducer_version": 15,
+  "events": [
+    {
+      "event_type": "LegacyStateImported",
+      "payload": {
+        "state": {
+          "hp": 17,
+          "state_version": 0
+        },
+        "source": "legacy_room_snapshot",
+        "legacy_state_hash": "d15ffa5efa4e37e4705d2f45da55bf3df8061974c00414f99dfa9dd9cdbfb916"
+      },
+      "event_id": "fixture-11",
+      "campaign_id": "LEGACY-TWO",
+      "command_id": "fixture-10",
+      "idempotency_key": "legacy",
+      "reducer_version": 15,
+      "actor_id": null,
+      "target_ids": [],
+      "source_rule_ids": [],
+      "ruling_id": null,
+      "state_version_before": 0,
+      "state_version_after": 1,
+      "created_at": "2026-10-13T12:00:00.000Z"
+    }
+  ],
+  "projection_outbox": {
+    "schema_version": 1,
+    "target": "compatibility-room",
+    "state_version_after": 1
+  }
+}

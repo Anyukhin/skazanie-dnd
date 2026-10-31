@@ -187,7 +187,7 @@ function weight(entry) {
 }
 
 function catalogPurchaseEntry(catalogId, entry) {
-  const override = PHB_CATALOG_OVERRIDES[catalogId] ?? {}
+  const override = ownEntry(PHB_CATALOG_OVERRIDES, catalogId) ?? {}
   const price = override.price_cp ?? priceCp(entry)
   const itemWeight = override.weight ?? weight(entry)
   if (!catalogId || !entry || isMagicItem(entry) || price == null || itemWeight == null) return null
@@ -267,7 +267,7 @@ function buildPurchaseCatalog() {
     const known = catalogItem(entry.catalog_id)
     if (known?.armor && known.armor.category !== 'shield') entries.push({ id: `barding:${entry.id}`, catalog_id: `phb_2014:barding:${entry.id}`, name: `Доспех животного: ${entry.name}`, type: 'other', price_cp: entry.price_cp * 4, weight: entry.weight * 2, mechanics_status: 'partial' })
   }
-  entries.sort((left, right) => left.id.localeCompare(right.id))
+  entries.sort((left, right) => left.id.localeCompare(right.id, 'en'))
   for (const entry of entries) {
     if (!entry.name || !Number.isSafeInteger(entry.price_cp) || entry.price_cp <= 0 || (!entry.owned_asset && !Number.isFinite(entry.weight))) {
       throw new TypeError(`Некорректный предмет в каталоге покупки: ${entry.id}`)
@@ -338,7 +338,7 @@ function materializePurchase(entry, quantity, wealthRollId, index) {
   const known = entry.catalog_id?.startsWith('srd_5_2_1:') ? catalogItem(entry.catalog_id) : null
   if (known && !isMagicItem(known)) {
     const materialized = materializeCatalogItem(entry.catalog_id, { id, quantity, equipped: false })
-    const override = PHB_CATALOG_OVERRIDES[entry.catalog_id]
+    const override = ownEntry(PHB_CATALOG_OVERRIDES, entry.catalog_id)
     return {
       ...materialized,
       price_cp: entry.price_cp,
@@ -400,4 +400,9 @@ export function resolveStartingPurchases(classId, wealthRoll, purchases = []) {
     owned_assets: ownedAssets,
     remaining_currency: remainingCurrency(wealth.total_cp - spentCp),
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

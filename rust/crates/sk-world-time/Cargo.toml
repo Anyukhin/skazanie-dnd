@@ -1,0 +1,26 @@
+[package]
+name = "sk-world-time"
+description = "Время и память мира «Сказания»: часы и погода кампании, этажи построек и подземелий, летопись поступков со слухами, каталог шаблонов мира"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sk-core.workspace = true
+sk-themes = { path = "../sk-themes" }
+sk-tactical = { path = "../sk-tactical" }
+sk-geometry = { path = "../sk-geometry" }
+sk-buildings = { path = "../sk-buildings" }
+sk-props = { path = "../sk-props" }
+sk-map-core = { path = "../sk-map-core" }
+sk-society = { path = "../sk-society" }
+sk-npc-world = { path = "../sk-npc-world" }
+sk-world-life = { path = "../sk-world-life" }
+sk-heroes = { path = "../sk-heroes" }
+
+[dev-dependencies]
+# Эталоны хранятся в gzip; версия и возможности — как у sk-props и sk-themes,
+# нового в Cargo.lock нет.
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }

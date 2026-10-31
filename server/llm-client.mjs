@@ -7,6 +7,13 @@ const DEFAULT_MAX_TOOL_CALLS = 8
 const DEFAULT_MAX_RESPONSE_BYTES = 2_000_000
 export const ROUTERAI_STREAM_MAX_EVENT_BYTES = 64 * 1024
 const DANGEROUS_JSON_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+// Больший срок Node не ставит: `setTimeout` с задержкой сверх 2^31−1 мс
+// срабатывает через 1 мс, и запрос падал по таймауту мгновенно.
+const MAX_TIMER_DELAY_MS = 2_147_483_647
+
+function timerDelay(milliseconds) {
+  return Math.min(milliseconds, MAX_TIMER_DELAY_MS)
+}
 
 export class LLMError extends Error {
   constructor(message, code = 'LLM_ERROR', details = {}) {
@@ -242,7 +249,7 @@ function normalizeWithKnownUsage(usage, normalize) {
 function makeAbortScope(timeoutMs, externalSignal) {
   const controller = new AbortController()
   let timedOut = false
-  const timeout = setTimeout(() => { timedOut = true; controller.abort(new LLMTimeoutError(timeoutMs)) }, timeoutMs)
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(new LLMTimeoutError(timeoutMs)) }, timerDelay(timeoutMs))
   const onAbort = () => controller.abort(externalSignal.reason)
   if (externalSignal?.aborted) onAbort()
   else externalSignal?.addEventListener('abort', onAbort, { once: true })
@@ -722,7 +729,7 @@ export class FallbackLLMClient extends LLMClient {
     const hasDeadline = Number.isFinite(requestedTimeout) && requestedTimeout > 0
     const deadline = hasDeadline ? Date.now() + requestedTimeout : null
     const deadlineController = hasDeadline ? new AbortController() : null
-    const timer = deadlineController ? setTimeout(() => deadlineController.abort(new LLMTimeoutError(requestedTimeout)), requestedTimeout) : null
+    const timer = deadlineController ? setTimeout(() => deadlineController.abort(new LLMTimeoutError(requestedTimeout)), timerDelay(requestedTimeout)) : null
     const externalSignal = options.signal ?? input?.signal
     const abortFromExternal = () => deadlineController.abort(externalSignal.reason ?? new LLMError('LLM-запрос отменён', 'LLM_ABORTED'))
     if (deadlineController && externalSignal) {
@@ -734,8 +741,15 @@ export class FallbackLLMClient extends LLMClient {
       const candidates = this._candidates()
       for (const [candidateIndex, client] of candidates.entries()) {
         let emitted = false
+        // Попытка, снятая по своему сроку или общему, в живой поток больше не
+        // пишет: модель, проигравшая гонку, могла прислать дельту уже после
+        // переключения на резервную, и в рассказ вклинивался чужой текст.
+        let attemptOpen = true
+        /** @type {AbortSignal | undefined} */
+        let attemptSignal
         const onDelta = typeof requestedDelta === 'function'
           ? async (delta) => {
+              if (!attemptOpen || attemptSignal?.aborted) return
               emitted = true
               await requestedDelta(delta)
             }
@@ -759,6 +773,7 @@ export class FallbackLLMClient extends LLMClient {
             : Math.max(1, Math.min(remaining, modelLimit ?? remaining,
               candidateIndex === 0 && candidates.length > 1 ? Math.floor(requestedTimeout * 0.6) : remaining))
           const attemptScope = attemptBudget == null ? null : makeAbortScope(attemptBudget, sharedSignal)
+          attemptSignal = attemptScope?.signal ?? sharedSignal
           try {
             const request = {
               ...options,
@@ -776,6 +791,7 @@ export class FallbackLLMClient extends LLMClient {
             this._markSuccess(client)
             return { ...result, fallback_attempts: attempts, fallback_used: attempts.length > 0 }
           } finally {
+            attemptOpen = false
             attemptScope?.close()
           }
         } catch (error) {
@@ -855,7 +871,7 @@ function waitFor(milliseconds, signal) {
   if (!milliseconds) return Promise.resolve()
   return new Promise((resolve, reject) => {
     const done = () => { signal?.removeEventListener('abort', abort); resolve() }
-    const timer = setTimeout(done, milliseconds)
+    const timer = setTimeout(done, timerDelay(milliseconds))
     const abort = () => { clearTimeout(timer); reject(signal.reason ?? new Error('aborted')) }
     if (signal?.aborted) abort()
     else signal?.addEventListener('abort', abort, { once: true })

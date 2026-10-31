@@ -1,0 +1,371 @@
+{
+ "descriptors": [
+  {
+   "role": "npc_morale",
+   "promptId": "npc_controller/v1",
+   "module": "npc-controller.mjs",
+   "loads": true
+  },
+  {
+   "role": "npc_social",
+   "promptId": "npc_controller/social_v8",
+   "module": "npc-social-controller.mjs",
+   "loads": true
+  },
+  {
+   "role": "narrator",
+   "promptId": "narrator/v14",
+   "module": "narrator.mjs",
+   "loads": true
+  },
+  {
+   "role": "director_story",
+   "promptId": "director/v4_story",
+   "module": "director-agent.mjs",
+   "loads": true
+  },
+  {
+   "role": "director_chaos",
+   "promptId": "director/v4_chaos",
+   "module": "director-agent.mjs",
+   "loads": true
+  },
+  {
+   "role": "action_adjudicator",
+   "promptId": "action_adjudicator/v10",
+   "module": "action-adjudicator.mjs",
+   "loads": true
+  },
+  {
+   "role": "campaign_creator",
+   "promptId": "campaign_creator/v8",
+   "module": "campaign-bootstrap.mjs",
+   "loads": true
+  },
+  {
+   "role": "scene_architect",
+   "promptId": "map_architect/v8",
+   "module": "scene-architect.mjs",
+   "loads": true
+  },
+  {
+   "role": "recap",
+   "promptId": "recap/v1",
+   "module": "campaign-recap.mjs",
+   "loads": true
+  },
+  {
+   "role": "hero_hooks",
+   "promptId": "hero_hooks/v1",
+   "module": "hero-hooks.mjs",
+   "loads": true
+  },
+  {
+   "role": "lore_keeper",
+   "promptId": "lore_keeper/v1",
+   "module": "lore-voice.mjs",
+   "loads": true
+  }
+ ],
+ "lookups": [
+  {
+   "promptId": "action_adjudicator/v10",
+   "descriptor": {
+    "role": "action_adjudicator",
+    "promptId": "action_adjudicator/v10",
+    "module": "action-adjudicator.mjs",
+    "loads": true
+   }
+  },
+  {
+   "promptId": "action_adjudicator/v2",
+   "descriptor": null
+  },
+  {
+   "promptId": "action_adjudicator/v3",
+   "descriptor": null
+  },
+  {
+   "promptId": "action_adjudicator/v4",
+   "descriptor": null
+  },
+  {
+   "promptId": "action_adjudicator/v5",
+   "descriptor": null
+  },
+  {
+   "promptId": "action_adjudicator/v6",
+   "descriptor": null
+  },
+  {
+   "promptId": "action_adjudicator/v7",
+   "descriptor": null
+  },
+  {
+   "promptId": "action_adjudicator/v8",
+   "descriptor": null
+  },
+  {
+   "promptId": "action_adjudicator/v9",
+   "descriptor": null
+  },
+  {
+   "promptId": "campaign_creator/v1",
+   "descriptor": null
+  },
+  {
+   "promptId": "campaign_creator/v2",
+   "descriptor": null
+  },
+  {
+   "promptId": "campaign_creator/v3",
+   "descriptor": null
+  },
+  {
+   "promptId": "campaign_creator/v4",
+   "descriptor": null
+  },
+  {
+   "promptId": "campaign_creator/v5",
+   "descriptor": null
+  },
+  {
+   "promptId": "campaign_creator/v6",
+   "descriptor": null
+  },
+  {
+   "promptId": "campaign_creator/v7",
+   "descriptor": null
+  },
+  {
+   "promptId": "campaign_creator/v8",
+   "descriptor": {
+    "role": "campaign_creator",
+    "promptId": "campaign_creator/v8",
+    "module": "campaign-bootstrap.mjs",
+    "loads": true
+   }
+  },
+  {
+   "promptId": "director/v1",
+   "descriptor": null
+  },
+  {
+   "promptId": "director/v2_chaos",
+   "descriptor": null
+  },
+  {
+   "promptId": "director/v2_story",
+   "descriptor": null
+  },
+  {
+   "promptId": "director/v3_chaos",
+   "descriptor": null
+  },
+  {
+   "promptId": "director/v3_story",
+   "descriptor": null
+  },
+  {
+   "promptId": "director/v4_chaos",
+   "descriptor": {
+    "role": "director_chaos",
+    "promptId": "director/v4_chaos",
+    "module": "director-agent.mjs",
+    "loads": true
+   }
+  },
+  {
+   "promptId": "director/v4_story",
+   "descriptor": {
+    "role": "director_story",
+    "promptId": "director/v4_story",
+    "module": "director-agent.mjs",
+    "loads": true
+   }
+  },
+  {
+   "promptId": "hero_hooks/v1",
+   "descriptor": {
+    "role": "hero_hooks",
+    "promptId": "hero_hooks/v1",
+    "module": "hero-hooks.mjs",
+    "loads": true
+   }
+  },
+  {
+   "promptId": "lore_keeper/v1",
+   "descriptor": {
+    "role": "lore_keeper",
+    "promptId": "lore_keeper/v1",
+    "module": "lore-voice.mjs",
+    "loads": true
+   }
+  },
+  {
+   "promptId": "map_architect/v1",
+   "descriptor": null
+  },
+  {
+   "promptId": "map_architect/v2",
+   "descriptor": null
+  },
+  {
+   "promptId": "map_architect/v3",
+   "descriptor": null
+  },
+  {
+   "promptId": "map_architect/v4",
+   "descriptor": null
+  },
+  {
+   "promptId": "map_architect/v5",
+   "descriptor": null
+  },
+  {
+   "promptId": "map_architect/v6",
+   "descriptor": null
+  },
+  {
+   "promptId": "map_architect/v7",
+   "descriptor": null
+  },
+  {
+   "promptId": "map_architect/v8",
+   "descriptor": {
+    "role": "scene_architect",
+    "promptId": "map_architect/v8",
+    "module": "scene-architect.mjs",
+    "loads": true
+   }
+  },
+  {
+   "promptId": "narrator/v1",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v10",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v11",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v12",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v13",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v14",
+   "descriptor": {
+    "role": "narrator",
+    "promptId": "narrator/v14",
+    "module": "narrator.mjs",
+    "loads": true
+   }
+  },
+  {
+   "promptId": "narrator/v2",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v3",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v4",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v6",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v7",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v8",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v9",
+   "descriptor": null
+  },
+  {
+   "promptId": "npc_controller/social_v1",
+   "descriptor": null
+  },
+  {
+   "promptId": "npc_controller/social_v2",
+   "descriptor": null
+  },
+  {
+   "promptId": "npc_controller/social_v3",
+   "descriptor": null
+  },
+  {
+   "promptId": "npc_controller/social_v4",
+   "descriptor": null
+  },
+  {
+   "promptId": "npc_controller/social_v5",
+   "descriptor": null
+  },
+  {
+   "promptId": "npc_controller/social_v6",
+   "descriptor": null
+  },
+  {
+   "promptId": "npc_controller/social_v7",
+   "descriptor": null
+  },
+  {
+   "promptId": "npc_controller/social_v8",
+   "descriptor": {
+    "role": "npc_social",
+    "promptId": "npc_controller/social_v8",
+    "module": "npc-social-controller.mjs",
+    "loads": true
+   }
+  },
+  {
+   "promptId": "npc_controller/v1",
+   "descriptor": {
+    "role": "npc_morale",
+    "promptId": "npc_controller/v1",
+    "module": "npc-controller.mjs",
+    "loads": true
+   }
+  },
+  {
+   "promptId": "recap/v1",
+   "descriptor": {
+    "role": "recap",
+    "promptId": "recap/v1",
+    "module": "campaign-recap.mjs",
+    "loads": true
+   }
+  },
+  {
+   "promptId": "director/v1",
+   "descriptor": null
+  },
+  {
+   "promptId": "",
+   "descriptor": null
+  },
+  {
+   "promptId": "narrator/v99",
+   "descriptor": null
+  },
+  {
+   "promptId": "NARRATOR/V14",
+   "descriptor": null
+  }
+ ]
+}

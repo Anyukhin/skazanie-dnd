@@ -161,6 +161,38 @@ test('deterministic narration verifier accepts only evidenced mechanics', () => 
   assert.equal(verifyNarration('За дверью ждёт красный дракон.', brief, { hiddenValues: ['красный дракон'] }).valid, false)
 })
 
+test('кириллические маркеры хитов, ресурса и броска срабатывают: граница слова по Юникоду, а не ASCII `\\b`', () => {
+  const brief = buildNarrationBrief({ viewer: { playerId: 'p1', isPartyMember: true }, events: [] })
+  const codes = (narration) => verifyNarration(narration, brief).violations.map((entry) => entry.code)
+  for (const [narration, code] of [
+    ['У гоблина осталось мало хп.', 'HP_NOT_IN_BRIEF'],
+    ['Хиты героя тают.', 'HP_NOT_IN_BRIEF'],
+    ['ОЗ стражника на исходе.', 'HP_NOT_IN_BRIEF'],
+    ['Магу не хватает ресурсов.', 'RESOURCE_NOT_IN_BRIEF'],
+    ['Она потратила ячейку заклинаний.', 'RESOURCE_SPEND_NOT_IN_BRIEF'],
+    ['Посох восстановил заряды.', 'RESOURCE_RESTORE_NOT_IN_BRIEF'],
+    ['Бросок удачен.', 'ROLL_NOT_IN_BRIEF'],
+    ['Кубики катятся по столу.', 'ROLL_NOT_IN_BRIEF'],
+    ['Выпало семь.', 'ROLL_NOT_IN_BRIEF'],
+    // Цифра вплотную — по-прежнему маркер, как было с ASCII `\b`.
+    ['Осталось 7хп.', 'HP_NOT_IN_BRIEF'],
+    ['Потрачено 5заряд.', 'RESOURCE_NOT_IN_BRIEF'],
+  ]) assert.ok(codes(narration).includes(code), `«${narration}» → ${code}: ${codes(narration)}`)
+  // Внутри другого слова маркер не срабатывает: «оз» в «озеро», «ки» в «руки».
+  assert.deepEqual(codes('Озеро блестит, руки дрожат.'), [])
+  // Обычная речь без броска: глагол «бросил» и «выпал» без числа.
+  assert.deepEqual(codes('Он бросил взгляд на дверь, выпал первый снег, меч выпал из рук.'), [])
+  assert.ok(codes('Выпала единица.').includes('ROLL_NOT_IN_BRIEF'))
+  // С подтверждённым событием те же слова законны.
+  assert.equal(verifyNarration('Герой теряет 5 хитов, его хп теперь 7. Бросок: выпало 14.', mechanicalBrief()).valid, true)
+  // Строка движка об опознании врага законно называет ОЗ: событие открывает здоровье.
+  const lore = buildNarrationBrief({
+    viewer: { playerId: 'p1', isPartyMember: true },
+    events: [{ event_type: 'EnemyKnowledgeRevealed', visibility: 'public', payload: { enemy_id: 'ogre', scope: 'party', facts: { health: 'exact', armor_class: 'exact' } } }],
+  })
+  assert.equal(verifyNarration('Огр опознан: отряд знает точные ОЗ и КД.', lore).valid, true)
+})
+
 test('NarrationBrief не позволяет объявить свободное перемещение, разговор и новые показания без событий', () => {
   const brief = buildNarrationBrief({
     known_environment: {

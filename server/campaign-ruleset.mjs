@@ -19,11 +19,14 @@ export function campaignRulesetCanChange(events = [], state = null) {
       blocking_event_type: 'ImportedCampaignState',
     }
   }
-  const blocking = (Array.isArray(events) ? events : []).find((event) => String(event?.event_type ?? '') !== RULESET_EVENT_TYPE)
+  // Пустая запись старого сохранения (`null`) событием не считается и поиск не
+  // обрывает: редакцию фиксирует первая настоящая запись после неё.
+  const blocking = (Array.isArray(events) ? events : []).find((event) => event && String(event.event_type ?? '') !== RULESET_EVENT_TYPE)
+  const blockingType = blocking ? String(blocking.event_type ?? '') : null
   return {
     allowed: !blocking,
-    reason: blocking ? `Редакция зафиксирована событием ${String(blocking.event_type)}` : null,
-    blocking_event_type: blocking ? String(blocking.event_type) : null,
+    reason: blocking ? `Редакция зафиксирована событием ${blockingType || 'без типа'}` : null,
+    blocking_event_type: blockingType,
   }
 }
 

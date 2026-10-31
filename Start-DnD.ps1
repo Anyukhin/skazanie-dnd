@@ -53,6 +53,48 @@ function Add-EnvValue([string]$Name, [string]$Value) {
   Add-Content -LiteralPath '.env' -Value ([Environment]::NewLine + "$Name=$Value") -Encoding UTF8
 }
 
+# Какой сервер поднимать — DND_SERVER в .env: rust (основной с 2026-10-31) или
+# js (откат). Без значения — js: на машине, где хранилище ещё не перенесено
+# (tools/rust-cutover.ps1), Rust-сервер открылся бы пустым миром.
+function Get-GameServer {
+  $choice = if ($env:DND_SERVER) { $env:DND_SERVER } else { Read-EnvValue 'DND_SERVER' }
+  $choice = $choice.Trim().ToLowerInvariant()
+  if ($choice -eq 'rust') {
+    return @{ Name = 'rust'; Compose = @('compose', '-f', 'compose.rust.yaml'); Service = 'skazanie-rust'; Other = @('compose') }
+  }
+  if ($choice -and $choice -ne 'js') {
+    throw "DND_SERVER=$choice в .env: допустимо rust или js."
+  }
+  return @{ Name = 'js'; Compose = @('compose'); Service = 'skazanie'; Other = @('compose', '-f', 'compose.rust.yaml') }
+}
+
+function Test-RustStorageReady {
+  # Нужен не том, а база в нём: пробный перенос оставляет пустой том.
+  $previousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'SilentlyContinue'
+    docker volume inspect skazanie-rust_storage *> $null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    docker image inspect skazanie-rust:local *> $null
+    if ($LASTEXITCODE -ne 0) { return $true }
+    docker run --rm --entrypoint test -v skazanie-rust_storage:/storage:ro skazanie-rust:local -f /storage/skazanie.sqlite *> $null
+    return $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousPreference
+  }
+}
+
+function Stop-OtherServer([string[]]$Compose) {
+  # Оба сервера слушают 8787 — второй не поднимется, пока работает первый.
+  $previousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'SilentlyContinue'
+    & docker @($Compose + @('--profile', 'public', 'stop')) *> $null
+  } finally {
+    $ErrorActionPreference = $previousPreference
+  }
+}
+
 function Convert-ToPublicUrl([string]$Value) {
   if (-not $Value) { return '' }
   $candidate = $Value.Trim().Trim('"').Trim("'")
@@ -71,7 +113,7 @@ function Get-TunnelPublicUrl {
   $previousPreference = $ErrorActionPreference
   try {
     $ErrorActionPreference = 'SilentlyContinue'
-    $logs = docker compose logs --no-color --tail 120 tunnel 2>$null | Out-String
+    $logs = & docker @($Server.Compose + @('logs', '--no-color', '--tail', '120', 'tunnel')) 2>$null | Out-String
   } finally {
     $ErrorActionPreference = $previousPreference
   }
@@ -158,20 +200,36 @@ try {
     throw 'Команда docker не найдена. Установите Docker Desktop один раз: https://www.docker.com/products/docker-desktop/'
   }
 
+  $Server = Get-GameServer
+
   [void](Wait-ForDocker)
+
+  if ($Server.Name -eq 'rust') {
+    if (-not (Test-RustStorageReady)) {
+      throw 'DND_SERVER=rust, но хранилище Rust-сервера ещё не создано. Перенесите кампании: powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1 (или DND_SERVER=js в .env).'
+    }
+    # compose.rust.yaml по умолчанию — 8788, рядом с JS; основной сервер — на 8787.
+    $env:SKAZANIE_RUST_PORT = '8787'
+  }
+
+  Stop-OtherServer $Server.Other
 
   New-Item -ItemType Directory -Path $TunnelStateDirectory -Force | Out-Null
   Set-Content -LiteralPath $TunnelStatePath -Value '' -NoNewline -Encoding UTF8
   Set-Content -LiteralPath $PublicLinkPath -Value '' -NoNewline -Encoding UTF8
 
-  Write-Step 'Собираю и запускаю сервер и публичную ссылку...'
-  Invoke-Docker @('compose', '--profile', 'public', 'up', '-d', '--build', '--remove-orphans')
+  if ($Server.Name -eq 'rust') {
+    Write-Step 'Собираю и запускаю Rust-сервер и публичную ссылку (первая сборка — до получаса)...'
+  } else {
+    Write-Step 'Собираю и запускаю сервер и публичную ссылку...'
+  }
+  Invoke-Docker @($Server.Compose + @('--profile', 'public', 'up', '-d', '--build', '--remove-orphans'))
 
   Write-Step 'Ожидаю готовность игрового сервера...'
   if (-not (Wait-ForServer)) {
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'SilentlyContinue'
-    docker compose logs --no-color --tail 80 skazanie
+    & docker @($Server.Compose + @('logs', '--no-color', '--tail', '80', $Server.Service))
     $ErrorActionPreference = $previousPreference
     throw 'Сервер был запущен, но не ответил на проверку здоровья.'
   }
@@ -187,7 +245,7 @@ try {
   # на IPv4 — замерено 2.0 с обрыва против 7 мс напрямую, и так на каждом запросе.
   $localUrl = "http://127.0.0.1:8787/?setup=$adminSetupToken"
   Write-Host ''
-  Write-Host 'Сервер полностью запущен.' -ForegroundColor Green
+  Write-Host "Сервер полностью запущен ($($Server.Name.ToUpperInvariant()))." -ForegroundColor Green
   Write-Host 'Локальный адрес: http://127.0.0.1:8787' -ForegroundColor Green
 
   if ($publicUrl) {

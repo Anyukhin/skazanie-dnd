@@ -24,10 +24,14 @@
 - **Тесты — встроенный `node:test`, файлы `test/*.test.mjs`.** Jest, Vitest и
   Playwright в проекте нет; браузерный сценарий проверяется вручную.
 - Node `>=20.19.0`, пакетный менеджер **pnpm**.
-- Хранилище — файлы в `storage/` (переопределяется `DND_STORAGE_DIR`). Базы нет.
+- **`rust/` — перенос сервера на Rust** (Cargo workspace, бинарь
+  `skazanie-server`). До переключения эталон поведения — JS; правила работы с
+  Rust — `rust/AGENTS.md`.
+- Хранилище — `storage/` (переопределяется `DND_STORAGE_DIR`): у JS — файлы,
+  у Rust — SQLite в том же каталоге. Отдельного сервера БД нет.
 - Версии в `package.json` — `^X.Y.Z`, совпадающие с `pnpm-lock.yaml`; менять
-  только вместе с локом. **Новые зависимости — только по явному запросу
-  пользователя**; предпочитать стандартную библиотеку Node.
+  только вместе с локом. Новые зависимости разрешены (решение владельца
+  2026-10-13); в Rust — фиксировать в `Cargo.lock`.
 
 ## 2. Команды
 
@@ -62,6 +66,10 @@ pnpm migrate:dry-run  # прогон миграций без записи
 pnpm backup           # зашифрованная копия storage в ./backups; нужен DND_BACKUP_KEY
                       # (без него копия не расшифровывается). Справка —
                       # node tools/storage-backup.mjs --help
+
+pnpm rust:play        # Rust-сервер для проверки рядом с игрой: :8788, tmp/rust-play/storage
+                      # (игра владельца — Rust в Docker на 8787, START_DND.cmd)
+pnpm test:contract:rust  # контракт HTTP против Rust; остальное — rust/AGENTS.md
 ```
 
 `*:rights` пишут хеши в `data/asset-rights.json` — без них `content:verify`
@@ -90,7 +98,8 @@ pnpm backup           # зашифрованная копия storage в ./backu
 архитектура, покрытие, ограничения; `tools/` — аудиты и обслуживание;
 `server/migrations/` — миграции данных; `server/rules/` (`core`, `actors`,
 `tactical-geometry`) — части движка, реэкспортируемые `rules-engine.mjs`;
-`server/routes/` — HTTP-маршруты, вынесенные из `index.mjs`. Модули
+`server/routes/` — HTTP-маршруты, вынесенные из `index.mjs`; `rust/` — тот же
+сервер на Rust (`rust/AGENTS.md`). Модули
 `server/rules/*` не импортируют `rules-engine.mjs`: граф без циклов держит
 `test/server-import-graph.test.mjs`.
 
@@ -217,6 +226,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | Все броски серверные, один бросок не применяется дважды; механическая проверка принимает только кость своей карточки | `test/dice-service.test.mjs`, `test/roll-registry.test.mjs`, `test/roll-binding.test.mjs` |
 | Клиентские поля недоверенные (путь, дальность, цель) | `test/tactical-command-guard.test.mjs` |
 | Права, членство и владелец героя проверяются сервером | `test/security.test.mjs` |
+| Готового героя игрок не переписывает импортом; новый герой создаётся только с полным набором выборов первого уровня, в 2014 — с `phbCreation` | `test/character-lifecycle-engine.test.mjs`, `test/character-creation-2014.test.mjs` |
 | Игрок видит только разрешённое, в том числе в уже открытом живом потоке после logout, истечения сессии и смены доступа; прогноз удара не выдаёт закрытую КД процентом попадания | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs`, `test/stream-live-access-api.test.mjs`, `test/combat-forecast-disclosure.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
 | NPC знает только своё, публичное и увиденное им самим; повтор своей реплики вырезается сервером; отказ ведёт к зацепке, а не в тупик | `test/npc-knowledge-leads.test.mjs` |
@@ -226,6 +236,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается; двадцать мест корпуса строятся без замечаний | `test/scene-program-layout.test.mjs`, `test/map-library.test.mjs`, `test/scene-program-corpus.test.mjs` |
 | В поселении у каждой двери дома есть дорога, на тропе ничего не стоит; отряд входит со стороны, откуда пришёл, а центр сцены стоит на площади | `test/settlement-generator.test.mjs` (`DOOR_OFF_ROAD`, `PATH_BLOCKED`), `test/scene-entry-road.test.mjs` |
 | Рассказчик не описывает то, что сцена обещала, а карта не держит | `test/narrator.test.mjs` (`ABSENT_LANDMARK_MENTIONED`) |
+| Команда факта, убеждения или слуха проходит, только если предикат есть в онтологии мира для этого вида записи и подлежащего; replay старых событий словарь не проверяет | `test/world-ontology-write.test.mjs`, `test/world-ontology.test.mjs` |
 | Перестройка карты — только ведущему, вне боя, голосования и открытой проверки; та же схема события, что у импорта, replay сходится | `test/map-import-command.test.mjs`, `test/map-import-api.test.mjs` |
 | Враг встречи появляется по эту сторону дверей и окон от отряда | `test/encounter-assembler.test.mjs` |
 | Параллельные команды не перезаписывают друг друга молча | `test/narrate-room-version-race.test.mjs`, `test/snapshot-projector-version.test.mjs` |
@@ -249,6 +260,10 @@ pnpm backup           # зашифрованная копия storage в ./backu
    через внедрённый детерминированный Dice Service.
 5. Схемы событий и контракты промптов **версионировать**. Сохранённые кампании и
    старый replay не ломать без явной миграции в `server/migrations/`.
+6. Игра владельца с 2026-10-31 идёт на Rust-сервере (`DND_SERVER=rust`,
+   `docs/rust-docker.md`): правка поведения в `server/` без такой же правки в
+   `rust/` в игру не попадает. Переносить в той же ветке или отдельной задачей
+   (`rust/AGENTS.md` §1).
 
 **Статусы механики** (карточки заклинаний и действий, см. `docs/known-limitations.md`):
 
@@ -302,8 +317,10 @@ pnpm backup           # зашифрованная копия storage в ./backu
 свобода и непрерывность кампании → художественное и визуальное качество`.
 
 **Остановиться и спросить пользователя**, если задача требует: миграции или
-удаления данных в `storage/`, изменения схемы событий без обратной совместимости,
-новой зависимости, ослабления любого инварианта из раздела 5 или отступления от
+удаления данных в `storage/` или тома `skazanie-rust_storage`, отката игры на
+JS-сервер (сыгранное на Rust назад не переносится) или повторного переноса
+настоящего `storage/`, изменения схемы событий без обратной совместимости,
+ослабления любого инварианта из раздела 5 или отступления от
 `docs/product-principles.md`.
 
 ## 10. Совместная работа

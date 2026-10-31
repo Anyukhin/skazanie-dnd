@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { isOptionalFeatureSelected } from './character-progression.mjs'
 import { CLASS_RESOURCES_2024_POLICY_ID, DND_2014_RULESET_ID } from './ruleset-config.mjs'
+import { wildShapeFormsFor } from './wild-shape.mjs'
 
 const catalogPayload = JSON.parse(readFileSync(new URL('../data/dndsu-class-actions-1-12.json', import.meta.url), 'utf8'))
 // Служебные хвосты описаний dnd.su латиницей («лимит: proficiency»,
@@ -61,6 +62,10 @@ const action = (id, name, options = {}) => {
 }
 
 const COMMON_ACTIONS = Object.freeze([
+  // Бой двумя оружиями (PHB 2014): бонусным действием после действия Атака —
+  // удар лёгким оружием второй руки; модификатор характеристики к урону — только
+  // со стилем «Сражение двумя оружиями» (или если он отрицательный).
+  action('offhand-attack', 'Атака второй рукой', { category: 'common', target: 'enemy', actionType: 'bonus_action', range: 5, requiresOffHandWeapon: true, description: 'Бонусным действием после действия Атака ударить лёгким оружием второй руки. Модификатор характеристики к урону — только со стилем «Сражение двумя оружиями».', effect: { kind: 'weapon_attack', attacks: 1, offHand: true } }),
   action('stand-up', 'Встать', { category: 'common', actionType: 'free', description: 'Потратить половину скорости текущего хода и прекратить состояние «сбит с ног».', effect: { kind: 'stand_up' } }),
   action('break-free', 'Высвободиться', { category: 'common', description: 'Действием совершить проверку Силы против Сл удерживающего эффекта и прекратить опутывание.', effect: { kind: 'break_free' } }),
   action('steady-nerves', 'Совладать с собой', { category: 'common', description: 'Действием совершить проверку Мудрости против Сл «Гневной кары» и прекратить испуг либо спасбросок против заклинания, которое позволяет вырваться действием («Неудержимая пляска Отто»).', effect: { kind: 'steady_nerves' } }),
@@ -96,16 +101,16 @@ const CLASS_ACTIONS = Object.freeze({
     action('instinctive-pounce', 'Инстинктивный бросок', { actionType: 'free', minimumLevel: 7, description: 'При входе в ярость переместиться на половину скорости.', effect: { kind: 'dash', multiplier: .5 } }),
   ]),
   bard: Object.freeze([
-    action('bardic-inspiration', 'Вдохновение барда', { target: 'ally', actionType: 'bonus_action', range: 60, resource: 'bardic_inspiration', description: 'Союзник получает кость вдохновения для проверки, атаки или спасброска.', effect: { kind: 'condition', condition: 'bardic-inspiration', duration: 'rounds:100' } }),
+    action('bardic-inspiration', 'Вдохновение барда', { target: 'ally', actionType: 'bonus_action', range: 60, resource: 'bardic_inspiration', description: 'Союзник получает кость вдохновения (к6, с 5-го уровня к8, с 10-го к10): она сама прибавляется к его проваленной атаке, проверке или спасброску — как в BG3 — и тратится.', effect: { kind: 'condition', condition: 'bardic-inspiration', duration: 'rounds:100' } }),
     action('countercharm', 'Контрочарование', { minimumLevel: 6, description: 'Вы и союзники получаете преимущество против испуга и очарования.', effect: { kind: 'condition', condition: 'countercharm', duration: 'until-next-turn' } }),
   ]),
   cleric: Object.freeze([
-    action('turn-undead', 'Изгнание нежити', { target: 'enemy', range: 30, minimumLevel: 2, resource: 'channel_divinity', description: 'Нежить совершает спасбросок Мудрости или обращается в бегство.', effect: { kind: 'save', saveAbility: 'wis', condition: 'turned', duration: 'rounds:10' } }),
+    action('turn-undead', 'Изгнание нежити', { target: 'self', range: 30, minimumLevel: 2, resource: 'channel_divinity', description: 'Вся нежить в 30 футах спасается Мудростью или на минуту изгнана: бежит прочь, не атакует и не отвечает, пока не получит урон. С 5-го уровня слабая нежить уничтожается (ПО ½, с 8-го — 1).', effect: { kind: 'save', saveAbility: 'wis', condition: 'turned', duration: 'rounds:10', areaUndead: true, radius: 30 } }),
     action('divine-spark', 'Божественная искра', { target: 'ally', range: 30, minimumLevel: 2, resource: 'channel_divinity', description: 'Направить божественную силу и восстановить хиты союзнику.', effect: { kind: 'heal', dice: '1d8', ability: 'wis' } }),
     action('divine-intervention', 'Божественное вмешательство', { minimumLevel: 10, description: 'Просить божество вмешаться; шанс успеха равен уровню жреца в процентах.', effect: { kind: 'percent_check' } }),
   ]),
   druid: Object.freeze([
-    action('wild-shape', 'Дикая форма', { minimumLevel: 2, resource: 'wild_shape', description: 'Принять звериный облик, сохраняя личность и ментальные характеристики.', effect: { kind: 'condition', condition: 'wild-shaped', duration: 'rounds:600' } }),
+    action('wild-shape', 'Дикая форма', { minimumLevel: 2, resource: 'wild_shape', description: 'Действием принять облик зверя (ПО ¼ со 2-го уровня, ½ с 4-го, 1 с 8-го): его хиты, КД, скорость и атака. Повторно — вернуться в свой облик бонусным действием. В облике нельзя колдовать.', effect: { kind: 'wild_shape' } }),
     action('wild-companion', 'Дикий спутник', { minimumLevel: 2, resource: 'wild_shape', description: 'Потратить Дикую форму, чтобы призвать временного духа-спутника.', effect: { kind: 'condition', condition: 'wild-companion', duration: 'rounds:600' } }),
   ]),
   fighter: Object.freeze([
@@ -120,13 +125,13 @@ const CLASS_ACTIONS = Object.freeze({
     action('patient-defense', 'Терпеливая оборона', { actionType: 'bonus_action', minimumLevel: 2, resource: 'ki', description: 'Потратить 1 ци и использовать Уклонение.', effect: { kind: 'condition', condition: 'dodging', duration: 'until-next-turn' } }),
     action('step-of-the-wind', 'Шаг ветра', { actionType: 'bonus_action', minimumLevel: 2, resource: 'ki', description: 'Потратить 1 ци: Рывок и Отход, дальность прыжка удваивается.', effect: { kind: 'dash', addCondition: 'disengaged' } }),
     action('quickened-healing', 'Быстрое исцеление', { actionType: 'action', minimumLevel: 4, resource: 'ki', cost: 2, description: 'Потратить 2 ци и восстановить кость боевых искусств + мастерство хитов.', effect: { kind: 'heal', dice: '1d6', addProficiency: true } }),
-    action('stunning-strike', 'Ошеломляющий удар', { target: 'enemy', range: 5, minimumLevel: 5, resource: 'ki', requiresWeapon: true, description: 'Атака; при попадании цель спасается Телосложением или оглушается.', effect: { kind: 'weapon_attack', attacks: 1, saveAbility: 'con', condition: 'stunned' } }),
+    action('stunning-strike', 'Ошеломляющий удар', { target: 'enemy', range: 5, minimumLevel: 5, resource: 'ki', requiresWeapon: true, description: 'Атака; при попадании — 1 ци, и цель спасается Телосложением против СЛ ци (8 + мастерство + Мудрость) или ошеломлена до конца вашего следующего хода. Промах ци не тратит.', effect: { kind: 'weapon_attack', attacks: 1, saveAbility: 'con', saveDcAbility: 'wis', condition: 'stunned' } }),
     action('stillness-of-mind', 'Спокойствие разума', { minimumLevel: 7, description: 'Завершить на себе один эффект испуга или очарования.', effect: { kind: 'cleanse', conditions: ['frightened', 'charmed'] } }),
   ]),
   paladin: Object.freeze([
     action('divine-sense', 'Божественное чувство', { resource: 'divine_sense', description: 'Обнаружить небожителей, исчадий и нежить в пределах 60 футов.', effect: { kind: 'condition', condition: 'divine-sense', duration: 'until-next-turn' } }),
-    action('lay-on-hands', 'Наложение рук', { target: 'ally', range: 5, resource: 'lay_on_hands', cost: 5, description: 'Передать 5 хитов из запаса целительной силы.', effect: { kind: 'heal', amount: 5 } }),
-    action('divine-smite', 'Божественная кара', { target: 'enemy', range: 5, minimumLevel: 2, resource: 'spell_slots_1', requiresWeapon: true, description: 'При попадании потратить ячейку и нанести дополнительно 2к8 излучением.', effect: { kind: 'weapon_attack', attacks: 1, extraDamage: '2d8', damageType: 'radiant' } }),
+    action('lay-on-hands', 'Наложение рук', { target: 'ally', range: 5, resource: 'lay_on_hands', cost: 5, description: 'Восстановить хиты из запаса целительной силы (5 × уровень паладина): сколько не хватает цели или сколько указано, но не больше остатка запаса.', effect: { kind: 'heal', amount: 5, fromPool: true } }),
+    action('divine-smite', 'Божественная кара', { target: 'enemy', range: 5, minimumLevel: 2, resource: 'spell_slots_1', requiresWeapon: true, description: 'Атака оружием ближнего боя; при попадании тратится ячейка: 2к8 излучением за 1-й круг и 1к8 за каждый круг выше (не больше 5к8), ещё 1к8 по нежити и исчадиям. Промах ячейку не тратит.', effect: { kind: 'weapon_attack', attacks: 1, divineSmite: true } }),
     action('extra-attack', 'Дополнительная атака', { target: 'enemy', range: 600, minimumLevel: 5, requiresWeapon: true, description: 'Дважды атаковать оружием действием Атака.', effect: { kind: 'weapon_attack', attacks: 2 } }),
   ]),
   ranger: Object.freeze([
@@ -150,7 +155,7 @@ const CLASS_ACTIONS = Object.freeze({
     action('uncanny-dodge', 'Невероятное уклонение', { actionType: 'reaction', minimumLevel: 5, description: 'Реакцией уменьшить урон видимой атаки вдвое.', effect: { kind: 'condition', condition: 'uncanny-dodge', duration: 'until-used' } }),
   ]),
   sorcerer: Object.freeze([
-    action('font-of-magic', 'Источник магии', { actionType: 'bonus_action', minimumLevel: 2, resource: 'sorcery_points', description: 'Преобразовать чародейские очки в ячейку заклинания.', effect: { kind: 'restore_resource', resource: 'spell_slots_1', amount: 1 } }),
+    action('font-of-magic', 'Источник магии', { actionType: 'bonus_action', minimumLevel: 2, resource: 'sorcery_points', cost: 2, description: 'Бонусным действием создать ячейку из чародейских очков (1-й круг — 2 очка, 2-й — 3, 3-й — 5, 4-й — 6, 5-й — 7) или перевести ячейку в очки по её кругу.', effect: { kind: 'restore_resource', resource: 'spell_slots_1', amount: 1 } }),
     action('careful-spell', 'Аккуратное заклинание', { actionType: 'free', minimumLevel: 3, resource: 'sorcery_points', description: 'Союзники в области следующего заклинания автоматически преуспевают в спасброске.', effect: { kind: 'condition', condition: 'metamagic-careful', duration: 'until-used' } }),
     action('distant-spell', 'Далёкое заклинание', { actionType: 'free', minimumLevel: 3, resource: 'sorcery_points', description: 'Удвоить дальность следующего заклинания.', effect: { kind: 'condition', condition: 'metamagic-distant', duration: 'until-used' } }),
     action('empowered-spell', 'Непреодолимое заклинание', { actionType: 'free', minimumLevel: 3, resource: 'sorcery_points', description: 'Перебросить часть костей урона следующего заклинания.', effect: { kind: 'condition', condition: 'metamagic-empowered', duration: 'until-used' } }),
@@ -250,11 +255,43 @@ export function normalizedCombatSubclassFor(actor) {
  * действий уже оставляет curated-запись; ресурсы обязаны принять то же решение,
  * иначе рядом с настоящим пулом рождается недостижимый `feature_*`.
  */
+/**
+ * Исполнимые умения подклассов под id каталога dnd.su — тем же, под которым у
+ * них рисунок; каталожная запись с тем же id из списка уходит. Разбор каталога
+ * местами неточен (Священное оружие там — «реакция со спасброском»), поэтому
+ * профиль задан здесь по PHB 2014, в духе BG3.
+ */
+const SUBCLASS_ACTIONS = Object.freeze({
+  [normalizedName('Путь берсерка')]: Object.freeze([
+    action('barbarian-put-berserka-beshenstvo', 'Бешенство', { target: 'enemy', actionType: 'bonus_action', range: 5, minimumLevel: 3, requiresWeapon: true, requiresCondition: 'raging', description: 'В ярости — бонусным действием ещё одна атака оружием ближнего боя (как в BG3; истощения после ярости нет).', effect: { kind: 'weapon_attack', attacks: 1 } }),
+  ]),
+  [normalizedName('Клятва преданности')]: Object.freeze([
+    action('paladin-klyatva-predannosti-bozhestvennyy-kanal', 'Священное оружие', { target: 'self', minimumLevel: 3, resource: 'channel_divinity', description: 'Божественный канал: на минуту оружие светится, считается магическим и прибавляет модификатор Харизмы (не меньше +1) к броскам атаки.', effect: { kind: 'condition', condition: 'sacred-weapon', duration: 'rounds:10' } }),
+  ]),
+  [normalizedName('Круг луны')]: Object.freeze([
+    action('wild-shape', 'Дикая форма', { actionType: 'bonus_action', minimumLevel: 2, resource: 'wild_shape', description: 'Боевой дикий облик: бонусным действием принять облик зверя (ПО 1 со 2-го уровня, с 6-го — уровень / 3): его хиты, КД, скорость и атака. Повторно — вернуться в свой облик. В облике нельзя колдовать.', effect: { kind: 'wild_shape' } }),
+    action('druid-krug-luny-boevoy-dikiy-oblik', 'Целебный облик', { actionType: 'bonus_action', minimumLevel: 2, description: 'В диком облике бонусным действием потратить ячейку заклинаний и восстановить 1к8 хитов за каждый её круг.', effect: { kind: 'wild_shape_heal' } }),
+  ]),
+  // Острое словцо: реакция на бросок атаки врага. Окно открывает Rules
+  // Engine (`allyAttackReactionFor`); вне окна действия нет.
+  [normalizedName('Коллегия знаний')]: Object.freeze([
+    action('bard-kollegiya-znaniy-ostroe-slovtso', 'Острое словцо', { actionType: 'reaction', target: 'self', minimumLevel: 3, resource: 'bardic_inspiration', description: 'Реакцией, когда враг в 60 футах попадает броском атаки по герою, вычесть из броска кость Вдохновения барда — удар может сорваться. Тратит одно Вдохновение.', effect: { kind: 'ally_attack_reaction', reaction: 'cutting-words' } }),
+  ]),
+  [normalizedName('Путь открытой ладони')]: Object.freeze([
+    action('monk-put-otkrytoy-ladoni-tehniki-otkrytoy-ladoni', 'Шквал открытой ладони', { target: 'enemy', actionType: 'bonus_action', range: 5, minimumLevel: 3, resource: 'ki', description: 'Шквал ударов: 1 ци, две безоружные атаки; каждое попадание — спасбросок Ловкости против СЛ ци, иначе цель сбита с ног.', effect: { kind: 'weapon_attack', attacks: 2, unarmed: true, saveAbility: 'dex', saveDcAbility: 'wis', condition: 'prone', conditionDuration: 'none' } }),
+  ]),
+})
+
 function curatedActionsFor(actor, classKey, subclass) {
+  // Умение подкласса с тем же id заменяет умение класса (Боевой дикий облик
+  // Круга луны — та же «Дикая форма», только бонусным действием).
+  const subclassActions = ownEntry(SUBCLASS_ACTIONS, normalizedName(subclass)) ?? []
+  const subclassIds = new Set(subclassActions.map((entry) => entry.id))
   const curated = classKey
     ? [
-      ...(CLASS_ACTIONS[classKey] ?? []),
+      ...(CLASS_ACTIONS[classKey] ?? []).filter((entry) => !subclassIds.has(entry.id)),
       ...(classKey === 'fighter' && normalizedName(subclass) === normalizedName('Мастер боевых искусств') ? MANEUVERS : []),
+      ...subclassActions,
     ]
     : []
   return curated.filter((entry) => isOptionalFeatureSelected(actor, entry.id))
@@ -274,6 +311,30 @@ function curatedActionNamesFor(curated) {
 const GENERATED_POOLS_OWNED_BY_CURATED = Object.freeze({
   'cleric-bozhestvennyy-kanal': 'channel_divinity',
 })
+
+/**
+ * Каталожные умения, которые Rules Engine играет пассивно: плитки у них нет.
+ * «Добыча охотника» dnd.su собралась реакцией с лечением 1к8 по противнику;
+ * в игре это «Убийца колоссов» — лишняя к8 по раненой цели раз в ход, как
+ * выбор по умолчанию в BG3 (`colossusSlayerReady` в rules-engine).
+ */
+const PASSIVE_GENERATED_ACTION_IDS = new Set(['ranger-ohotnik-dobycha-ohotnika'])
+
+/**
+ * Боевой стиль «Оборона» (PHB 2014): реакцией, со щитом, помеха на атаку
+ * врага по союзнику в 5 футах. Каталожная «Защита» dnd.su была особым
+ * эффектом без исполнителя; здесь — то же id, только при выбранном стиле.
+ */
+const PROTECTION_STYLE_ACTIONS = Object.freeze(['fighter', 'paladin'].map((classKey) => action(`${classKey}-zaschita`, 'Оборона', {
+  actionType: 'reaction', target: 'self', minimumLevel: classKey === 'fighter' ? 1 : 2,
+  description: 'Реакцией, когда враг атакует союзника в 5 футах от вас, наложить помеху на бросок. Нужен щит в руке.',
+  effect: { kind: 'ally_attack_reaction', reaction: 'protection' },
+})))
+
+/** Каталожные умения, сыгранные пассивно (без плитки действия). */
+export function passiveClassFeatureIds() {
+  return [...PASSIVE_GENERATED_ACTION_IDS]
+}
 
 function generatedPoolSuperseded(entry, curatedNames) {
   return curatedNames.has(normalizedName(entry.name)) || Object.hasOwn(GENERATED_POOLS_OWNED_BY_CURATED, entry.id)
@@ -316,9 +377,12 @@ export function combatActionsFor(actor) {
   const level = Math.max(1, Math.min(12, Number(actor?.level) || 1))
   const classKey = actorClass(actor)
   const subclass = actorSubclass(actor, classKey)
-  const curated = curatedActionsFor(actor, classKey, subclass)
+  const protectionStyle = PROTECTION_STYLE_ACTIONS.filter((entry) => entry.id === `${classKey}-zaschita` && level >= entry.minimumLevel)
+  const curated = [...curatedActionsFor(actor, classKey, subclass), ...(isOptionalFeatureSelected(actor, 'fighting-style-protection') ? protectionStyle : [])]
   const curatedNames = curatedActionNamesFor(curated)
-  const generated = classKey ? generatedActionsFor(classKey, subclass).filter((entry) => entry.actionType !== 'free' && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name))) : []
+  const curatedIds = new Set(curated.map((entry) => entry.id))
+  const generated = classKey ? generatedActionsFor(classKey, subclass).filter((entry) => entry.actionType !== 'free' && !PASSIVE_GENERATED_ACTION_IDS.has(entry.id)
+    && !PROTECTION_STYLE_ACTIONS.some((style) => style.id === entry.id) && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name)) && !curatedIds.has(entry.id)) : []
   const classActions = [...curated, ...generated]
   const ancestry = actor?.speciesBenefits?.mechanics?.dragon_ancestry
   const speciesActions = actor?.speciesBenefits?.mechanics?.breath_weapon === true && ancestry
@@ -339,12 +403,19 @@ export function combatActionsFor(actor) {
         },
       })]
     : []
+  const holdsOffHandWeapon = (Array.isArray(actor?.inventory) ? actor.inventory : []).some((item) => item?.equipped === true && item.equipped_slot === 'off_hand')
   return [...COMMON_ACTIONS, ...classActions, ...speciesActions]
     .filter((entry) => level >= entry.minimumLevel)
+    .filter((entry) => !entry.requiresOffHandWeapon || holdsOffHandWeapon)
     .map((entry) => ({
       ...clone(entry),
-      sourceUrl: entry.sourceUrl ?? CLASS_URL[classKey] ?? 'https://www.dnd.su/articles/actions-in-combat/',
+      sourceUrl: entry.sourceUrl ?? ownEntry(CLASS_URL, classKey) ?? 'https://www.dnd.su/articles/actions-in-combat/',
       exploration: explorationUseFor(entry),
+      // Звери Дикого облика, доступные друиду по кругу и уровню: панель даёт
+      // выбрать, Rules Engine сверяет `form_id` тем же списком.
+      ...(entry.effect?.kind === 'wild_shape' ? { forms: wildShapeFormsFor(actor).map((form) => ({
+        id: form.id, name: form.name, challenge_rating: form.challenge_rating, hp: form.hp, armor: form.armor,
+      })) } : {}),
     }))
 }
 
@@ -451,6 +522,8 @@ export function combatResourceMaximumsFor(actor, { classResources2024 = false } 
   if (classKey === 'paladin') {
     resources.divine_sense = Math.max(1, Number(actor?.abilities?.cha ? Math.floor((Number(actor.abilities.cha) - 10) / 2) + 1 : 1))
     resources.lay_on_hands = level * 5
+    // Божественный канал клятвы — с 3-го уровня, один на короткий отдых.
+    if (level >= 3) resources.channel_divinity = 1
   }
   if (classKey === 'ranger') resources.favored_foe = proficiency
   if (classKey === 'sorcerer' && level >= 2) resources.sorcery_points = level
@@ -490,6 +563,7 @@ export function combatResourceRecoveryFor(actor, { classResources2024 = false } 
   if (classKey === 'barbarian') recovery.rage = classResources2024 ? ONE_ON_SHORT_REST : 'long'
   if (classKey === 'bard') recovery.bardic_inspiration = level >= 5 ? 'short_or_long' : 'long'
   if (classKey === 'cleric' && level >= 2) recovery.channel_divinity = classResources2024 ? ONE_ON_SHORT_REST : 'short_or_long'
+  if (classKey === 'paladin' && level >= 3) recovery.channel_divinity = 'short_or_long'
   if (classKey === 'druid' && level >= 2) recovery.wild_shape = classResources2024 ? ONE_ON_SHORT_REST : 'short_or_long'
   if (classKey === 'fighter') {
     recovery.second_wind = classResources2024 ? ONE_ON_SHORT_REST : 'short_or_long'
@@ -516,4 +590,9 @@ export function combatResourceRecoveryFor(actor, { classResources2024 = false } 
   }
   if (actor?.speciesBenefits?.mechanics?.breath_weapon === true) recovery.species_breath_weapon = 'short_or_long'
   return recovery
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

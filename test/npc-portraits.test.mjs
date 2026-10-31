@@ -185,6 +185,37 @@ test('значимый NPC генерируется один раз и чита�
   assert.equal(afterRestart.cacheHit, true)
 })
 
+test('html вместо портрета закрывает бронь неудачей до списания, как у иллюстраций', async (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'npc-portrait-format-'))
+  t.after(() => rmSync(storage, { recursive: true, force: true }))
+  const ledger = new DurableUsageLedger({
+    storageFile: join(storage, 'engine', 'usage.json'),
+    dailyTokenLimit: 20_000,
+    now: () => Date.parse('2026-07-31T12:00:00.000Z'),
+  })
+  const service = new NpcPortraitService({
+    storageDir: storage,
+    imageModel: 'test/image-metered',
+    apiKey: 'configured',
+    usageLedger: ledger,
+    generator: async () => ({ bytes: Buffer.from('<!doctype html><title>ошибка</title>', 'utf8'), usage: { total_tokens: 12, cost: 0.014 } }),
+  })
+  const important = profile({ id: 'npc:important', tags: ['important'] })
+  assert.ok(important)
+  await assert.rejects(
+    service.prepare({ campaignId: 'CAMP', profile: important }),
+    (error) => error.message === 'Генератор портретов вернул неподдерживаемый файл' && error.code === 'IMAGE_FORMAT_REJECTED',
+  )
+  const report = ledger.report()
+  assert.equal(report.completed_requests, 0, 'пустой портрет не записан успешной генерацией')
+  assert.equal(report.failed_requests, 1)
+  assert.equal(report.committed_tokens, 0)
+  assert.equal(report.provider_cost, 0)
+  assert.equal(report.reserved_tokens, 0)
+  const [entry] = Object.values(JSON.parse(readFileSync(join(storage, 'engine', 'usage.json'), 'utf8')).requests)
+  assert.equal(entry.error_code, 'IMAGE_FORMAT_REJECTED')
+})
+
 test('usage ledger учитывает успешную и ошибочную генерацию, но не cache hit и static portrait', async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'npc-portrait-usage-'))
   t.after(() => rmSync(storage, { recursive: true, force: true }))

@@ -9,6 +9,7 @@ import {
   recordQuestKnowledge,
 } from './quest-consequences.mjs'
 import { retentionMode } from './retention-context.mjs'
+import { ontologyViolation } from './world-ontology.mjs'
 
 const ENTITY_KINDS = new Set(['location', 'npc', 'faction', 'item', 'event', 'concept'])
 const QUEST_STATUSES = new Set(['hidden', 'offered', 'active', 'completed', 'failed', 'abandoned'])
@@ -308,7 +309,7 @@ function presentNpcLead(state = {}, spokenText = '') {
         return { npc, goal, score: [...spoken].filter((stem) => topic.has(stem)).length }
       }))
     .filter((lead) => lead.score > 0)
-    .sort((left, right) => right.score - left.score || text(left.npc.id, 120).localeCompare(text(right.npc.id, 120)))
+    .sort((left, right) => right.score - left.score || text(left.npc.id, 120).localeCompare(text(right.npc.id, 120), 'en'))
   return leads[0] ?? null
 }
 
@@ -728,13 +729,17 @@ function recordedAt(value, fallback = 0) {
   return Math.max(0, integer(value, fallback))
 }
 
-function clock(value = {}) {
+function clock(input = {}) {
+  // `clock: null` у задания старого сохранения — часы по умолчанию.
+  const value = input ?? {}
   const maximum = Math.max(1, Math.min(100, integer(value.max, 4)))
   const current = Math.max(0, Math.min(maximum, integer(value.current, 0)))
   return { current, max: maximum, label: text(value.label, 160), triggered: current >= maximum }
 }
 
-function safeEntity(value = {}) {
+function safeEntity(input = {}) {
+  // `null` в коллекции старого сохранения — пустая запись, а не падение загрузки.
+  const value = input ?? {}
   const kind = ENTITY_KINDS.has(text(value.kind, 30)) ? text(value.kind, 30) : 'concept'
   return {
     id: text(value.id, 120), kind, name: text(value.name, 160), summary: text(value.summary, 1_000),
@@ -743,7 +748,8 @@ function safeEntity(value = {}) {
   }
 }
 
-function safeFact(value = {}) {
+function safeFact(input = {}) {
+  const value = input ?? {}
   return {
     id: text(value.id, 120), subject_id: text(value.subject_id, 120), predicate: text(value.predicate, 120),
     object: text(value.object, 1_000), summary: text(value.summary, 1_000),
@@ -754,7 +760,8 @@ function safeFact(value = {}) {
   }
 }
 
-function safeRelationship(value = {}) {
+function safeRelationship(input = {}) {
+  const value = input ?? {}
   return {
     id: text(value.id, 120), from_entity_id: text(value.from_entity_id, 120), relation: text(value.relation, 120),
     to_entity_id: text(value.to_entity_id, 120), summary: text(value.summary, 1_000),
@@ -766,7 +773,8 @@ function safeRelationship(value = {}) {
   }
 }
 
-function safeQuest(value = {}) {
+function safeQuest(input = {}) {
+  const value = input ?? {}
   const responsibility = normalizeQuestResponsibility(value.responsibility)
   const progressFactIds = persistedStrings(value.progress_fact_ids, 120)
   const progressSourceIds = persistedStrings(value.progress_source_event_ids, 120)
@@ -784,7 +792,8 @@ function safeQuest(value = {}) {
   }
 }
 
-function safeThread(value = {}) {
+function safeThread(input = {}) {
+  const value = input ?? {}
   return {
     id: text(value.id, 120), title: text(value.title, 180), summary: text(value.summary, 1_000),
     status: THREAD_STATUSES.has(value.status) ? value.status : 'active',
@@ -795,7 +804,8 @@ function safeThread(value = {}) {
   }
 }
 
-function safeEpistemicClaim(value = {}) {
+function safeEpistemicClaim(input = {}) {
+  const value = input ?? {}
   return {
     id: text(value.id, 120), kind: EPISTEMIC_KINDS.has(value.kind) ? value.kind : 'belief',
     holder_entity_id: text(value.holder_entity_id, 120), subject_entity_id: text(value.subject_entity_id, 120),
@@ -809,7 +819,8 @@ function safeEpistemicClaim(value = {}) {
   }
 }
 
-function safeSummary(value = {}) {
+function safeSummary(input = {}) {
+  const value = input ?? {}
   return {
     id: text(value.id, 120), kind: SUMMARY_KINDS.has(value.kind) ? value.kind : 'scene',
     title: text(value.title, 180), summary: text(value.summary, 2_000),
@@ -820,7 +831,8 @@ function safeSummary(value = {}) {
   }
 }
 
-function safeKnowledgeEntry(value = {}) {
+function safeKnowledgeEntry(input = {}) {
+  const value = input ?? {}
   const heroId = text(value.hero_id, 120)
   const factId = text(value.fact_id, 120)
   const sourceKind = ['legacy', 'world_fact_revealed', 'knowledge_revealed', 'npc'].includes(text(value.source_kind, 40))
@@ -1095,6 +1107,15 @@ function normalizeEntityInput(input) {
   return result
 }
 
+/**
+ * Запись памяти проходит, только если её предикат есть в онтологии мира
+ * (`server/world-ontology.mjs`) для этого вида записи и подлежащего.
+ */
+function assertOntology(record, predicate, subjectKind) {
+  const violation = ontologyViolation({ record, predicate, subjectKind })
+  if (violation) throw new WorldMemoryValidationError(violation.message, violation.code)
+}
+
 function normalizeFactInput(input, memory, commandId, state = {}) {
   const value = plainObject(input, 'fact')
   assertFields(value, new Set(['id', 'subject_id', 'predicate', 'object', 'summary', 'visibility', 'source_event_ids', 'supersedes_fact_id']), 'fact')
@@ -1105,8 +1126,10 @@ function normalizeFactInput(input, memory, commandId, state = {}) {
     supersedes_fact_id: value.supersedes_fact_id ? id(value.supersedes_fact_id, 'fact.supersedes_fact_id') : '', status: 'active',
     recorded_at_minutes: elapsedMinutes(state),
   }
-  if (!memory.entities.some((entity) => entity.id === result.subject_id)) throw new WorldMemoryValidationError('Сущность факта не найдена', 'WORLD_ENTITY_NOT_FOUND')
+  const subject = memory.entities.find((entity) => entity.id === result.subject_id)
+  if (!subject) throw new WorldMemoryValidationError('Сущность факта не найдена', 'WORLD_ENTITY_NOT_FOUND')
   if (!result.predicate || (!result.object && !result.summary)) throw new WorldMemoryValidationError('Факт должен содержать predicate и object/summary', 'WORLD_FACT_CONTENT_REQUIRED')
+  assertOntology('fact', result.predicate, subject.kind)
   if (memory.facts.some((fact) => fact.id === result.id)) throw new WorldMemoryValidationError('Факт с таким id уже существует; создайте новый факт с supersedes_fact_id', 'WORLD_FACT_ALREADY_EXISTS')
   if (result.supersedes_fact_id && !memory.facts.some((fact) => fact.id === result.supersedes_fact_id && fact.status === 'active')) throw new WorldMemoryValidationError('Заменяемый факт не найден', 'WORLD_FACT_NOT_FOUND')
   return result
@@ -1199,6 +1222,8 @@ function normalizeEpistemicClaimInput(input, memory, commandId, state = {}, kind
   if (!holder || holder.kind !== 'npc') throw new WorldMemoryValidationError('Убеждение или слух должен принадлежать известному NPC', 'WORLD_NPC_BELIEF_HOLDER_INVALID')
   if (result.subject_entity_id && !memory.entities.some((entity) => entity.id === result.subject_entity_id)) throw new WorldMemoryValidationError('Сущность утверждения не найдена', 'WORLD_ENTITY_NOT_FOUND')
   if (!result.claim) throw new WorldMemoryValidationError('Убеждение или слух не может быть пустым', 'WORLD_EPISTEMIC_CLAIM_REQUIRED')
+  // Предикат утверждения необязателен; названный — должен быть в словаре.
+  if (result.predicate) assertOntology('claim', result.predicate, holder.kind)
   if (memory.epistemic_claims.some((claim) => claim.id === result.id)) throw new WorldMemoryValidationError('Убеждение или слух с таким id уже существует', 'WORLD_EPISTEMIC_CLAIM_ALREADY_EXISTS')
   return result
 }
@@ -1271,6 +1296,12 @@ export function validateWorldMemoryCommand(command, state, context = {}) {
       if (!valid) throw new WorldMemoryValidationError('Продвижение квеста требует свежего доказательства этой цели', 'WORLD_QUEST_PROGRESS_PROOF_INVALID')
       result.proof_fact_ids = proofFactIds
       result.proof_source_event_ids = [...new Set(candidates.filter((fact) => proofFactIds.includes(fact.id)).flatMap((fact) => fact.source_event_ids))]
+    } else {
+      // Пустые после очистки id (`['', ' ']`) — это не доказательство. Сырые
+      // поля команды не доходят до события: иначе редьюсер записал бы чужие
+      // `proof_source_event_ids` использованными, ничего не проверив.
+      delete result.proof_fact_ids
+      delete result.proof_source_event_ids
     }
     result.visibility = quest.visibility
   }
@@ -1735,7 +1766,7 @@ export function retrieveWorldMemory(input, viewer = {}, { query = '', limit = 8,
   const strip = ({ search, anchors, hub, lexical, exact, ...record }) => clone(record)
   const records = retrievalRecords(memory)
   const unordered = () => records
-    .sort((left, right) => left.id.localeCompare(right.id))
+    .sort((left, right) => left.id.localeCompare(right.id, 'en'))
     .slice(0, maximum)
     .map((record) => strip({ ...record, score: 0 }))
   if (!queryProfile.stems.length) return unordered()
@@ -1755,7 +1786,7 @@ export function retrieveWorldMemory(input, viewer = {}, { query = '', limit = 8,
       score: record.lexical + Math.max(0, ...record.anchors.map((entityId) => activation.get(entityId) ?? 0)),
     }))
     .filter((record) => record.score > 0)
-    .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id))
+    .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id, 'en'))
     .slice(0, maximum)
     .map(strip)
 }

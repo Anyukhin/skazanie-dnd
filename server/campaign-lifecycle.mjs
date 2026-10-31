@@ -66,8 +66,10 @@ export function collectEpilogueFacts(state = {}, outcomeOrOptions = undefined) {
     }))
     .filter((quest) => quest.quest_id && quest.title)
 
+  // Лямбда, а не `filter(visibleToParty)`: номер элемента иначе становился
+  // запасной видимостью, и NPC без поля видимости выпадал из эпилога.
   const visibleNpcs = new Map((Array.isArray(state?.social?.npcs) ? state.social.npcs : [])
-    .filter(visibleToParty)
+    .filter((npc) => visibleToParty(npc))
     .map((npc) => [clean(npc?.id, 120), npc]))
   const promises = (Array.isArray(state?.social?.promises) ? state.social.promises : [])
     .filter((promise) => visibleToParty(promise)
@@ -121,7 +123,7 @@ export function collectEpilogueFacts(state = {}, outcomeOrOptions = undefined) {
       score: Math.max(-100, Math.min(100, Number.isSafeInteger(Number(rawScore)) ? Number(rawScore) : 0)),
     }))
     .filter((entry) => entry.score !== 0 && visibleFactions.has(entry.faction_id))
-    .sort((left, right) => Math.abs(right.score) - Math.abs(left.score) || left.faction_id.localeCompare(right.faction_id))
+    .sort((left, right) => Math.abs(right.score) - Math.abs(left.score) || left.faction_id.localeCompare(right.faction_id, 'en'))
     .slice(0, 6)
     .map((entry) => ({
       key: `reputation:${entry.faction_id}`,
@@ -230,6 +232,28 @@ export function assertCampaignPlayable(state) {
   return lifecycle
 }
 
+const LIFECYCLE_ACTION_BY_EVENT = {
+  CampaignActivated: 'activate',
+  CampaignPaused: 'pause',
+  CampaignResumed: 'resume',
+  CampaignCompleted: 'complete',
+  CampaignFailed: 'fail',
+  CampaignArchived: 'archive',
+}
+
+/**
+ * Действие жизненного цикла, которое записал коммит маршрута `/lifecycle`, —
+ * для сверки повтора ключа идемпотентности. Коммит чужого маршрута (у его
+ * события нет `event_id` вида `campaign-lifecycle:…`) — `null`.
+ */
+export function lifecycleActionForCommit(commit) {
+  const event = Array.isArray(commit?.events) ? commit.events[0] : null
+  if (!String(event?.event_id ?? '').startsWith('campaign-lifecycle:')) return null
+  const type = String(event?.event_type ?? '')
+  if (type === 'CampaignArcChainSet') return event?.payload?.enabled === true ? 'chain_arcs' : 'conclude_after_arc'
+  return Object.hasOwn(LIFECYCLE_ACTION_BY_EVENT, type) ? LIFECYCLE_ACTION_BY_EVENT[type] : null
+}
+
 export function lifecycleEventForAction(action, state, { actorId, reason, now = new Date().toISOString() } = {}) {
   const lifecycle = normalizeCampaignLifecycle(state?.mechanics?.campaign_lifecycle, state?.mechanics?.death?.campaign_status)
   const normalizedAction = String(action || '').toLowerCase()
@@ -270,7 +294,7 @@ export function lifecycleEventForAction(action, state, { actorId, reason, now = 
     fail: { from: ['active'], to: 'failed', event: 'CampaignFailed' },
     archive: { from: ['setup', 'paused', 'completed', 'failed'], to: 'archived', event: 'CampaignArchived' },
   }
-  const transition = transitions[normalizedAction]
+  const transition = ownEntry(transitions, normalizedAction)
   if (!transition || !transition.from.includes(lifecycle.status)) {
     const error = new Error(`Переход lifecycle "${lifecycle.status}" → "${normalizedAction}" запрещён`)
     error.code = 'INVALID_CAMPAIGN_TRANSITION'
@@ -338,7 +362,7 @@ export function buildDeterministicEpilogue(state, outcomeOrOptions = undefined) 
     honoured: 'чтит отряд',
   }
   const reputationOutcomes = facts.faction_reputations
-    .map((entry) => `${entry.faction_name} ${tierLabels[entry.tier] || 'помнит отряд'}`)
+    .map((entry) => `${entry.faction_name} ${ownEntry(tierLabels, entry.tier) || 'помнит отряд'}`)
   const visited = facts.visited_locations.map((entry) => entry.name)
 
   return [
@@ -470,7 +494,7 @@ export function buildEpilogueNarrationBrief(state = {}, outcomeOrOptions = undef
       faction_reputations: facts.faction_reputations,
       visited_locations: facts.visited_locations,
       confirmed_scene_history: (Array.isArray(state.adventure?.history) ? state.adventure.history : [])
-        .filter(visibleToParty)
+        .filter((entry) => entry != null && visibleToParty(entry))
         .slice(-12)
         .map((entry) => ({
         chapter: Math.max(1, Number(entry.chapter) || 1),
@@ -486,4 +510,9 @@ export function buildEpilogueNarrationBrief(state = {}, outcomeOrOptions = undef
       'do-not-decide-for-player-heroes',
     ],
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

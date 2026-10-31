@@ -259,8 +259,9 @@ test('паладин поднимает павшего союзника Нало
   assert.equal(plan.command.action_id, 'lay-on-hands')
   assert.equal(plan.command.target_id, 'fallen')
   const after = resolvePlan(state, plan)
-  assert.equal(after.players[1].hp, 5)
-  assert.equal(after.mechanics.resources.hero.lay_on_hands.current, 20)
+  // Наложение рук тратит из запаса столько, сколько не хватает союзнику (PHB 2014).
+  assert.equal(after.players[1].hp, 20)
+  assert.equal(after.mechanics.resources.hero.lay_on_hands.current, 5)
 })
 
 test('паладин сравнивает Божественную кару с обычным ударом по доступной цели', () => {
@@ -270,7 +271,8 @@ test('паладин сравнивает Божественную кару с �
   const plan = planHeroCombatCommand(state, 'hero')
   assert.equal(plan.command.action_id, 'divine-smite')
   assert.equal(plan.command.target_id, 'near')
-  const after = resolvePlan(state, plan, Array(30).fill(4))
+  // Ячейка кары тратится на попадании (PHB 2014): первая кость — 18 на d20.
+  const after = resolvePlan(state, plan, [18, ...Array(29).fill(4)])
   assert.equal(after.mechanics.resources.hero.spell_slots_1.current, 3)
 })
 

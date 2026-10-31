@@ -612,6 +612,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .loot-aftermath > p { margin: 9px 0 0; color: color-mix(in srgb, var(--spent) 60%, var(--acc2)); font-size: var(--fs-xs); font-style: italic; }
 .npc-dialog-captive b { color: #d2a06a; }
 .npc-dialog-captive-actions { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+/* Авторский разговор с вариантами ответа (этап 1 docs/offline-playable-plan.md). */
+.npc-dialogue-options { display: grid; gap: 8px; width: 100%; }
+.npc-dialogue-greeting { margin: 0; color: var(--text); font-style: italic; line-height: 1.45; }
+.npc-dialogue-options ol { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; max-height: 260px; overflow-y: auto; }
+.npc-dialogue-options button { display: flex; align-items: baseline; gap: 6px; width: 100%; min-height: 32px; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--text) 8%, transparent); border-radius: 5px; background: rgba(163,101,43,.08); color: var(--text); font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.npc-dialogue-options button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--acc) 17.5%, var(--acc2) 32.5%); background: rgba(163,101,43,.18); }
+.npc-dialogue-options button:disabled { opacity: .45; cursor: default; }
+.npc-dialogue-options button.asked { opacity: .62; }
+.npc-dialogue-index { color: #c4935c; font-variant-numeric: tabular-nums; }
+.npc-dialogue-check { color: #d2a06a; white-space: nowrap; }
 .npc-dialog-captive-actions button { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--text) 1.4%, var(--acc) 26.6%); border-radius: 5px; background: rgba(163,101,43,.12); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }
 .npc-dialog-captive-actions button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--acc) 17.5%, var(--acc2) 32.5%); background: rgba(163,101,43,.2); }
 .npc-dialog-captive-actions button:disabled { opacity: .38; cursor: default; }

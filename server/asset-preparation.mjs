@@ -61,7 +61,7 @@ export function itemsWithoutIllustration(state) {
       gaps.push({ id, name: text(item?.name, 120) || id, owner_id: text(player?.id, 120) })
     }
   }
-  return gaps.sort((left, right) => left.id.localeCompare(right.id))
+  return gaps.sort((left, right) => left.id.localeCompare(right.id, 'en'))
 }
 
 /**
@@ -87,7 +87,7 @@ export async function npcPortraitInventory({ service, campaignId, projectedState
       has_portrait: prepared || Boolean(cached),
     })
   }
-  return entries.sort((left, right) => left.id.localeCompare(right.id))
+  return entries.sort((left, right) => left.id.localeCompare(right.id, 'en'))
 }
 
 /**

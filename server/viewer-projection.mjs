@@ -30,6 +30,7 @@ import { publicTavernRoundFor, tavernForViewer } from './tavern-life.mjs'
 import { blessingsForViewer } from './blessings.mjs'
 import { lockpickingForViewer } from './lockpicking.mjs'
 import { scenarioCourtForViewer } from './scenario-attention.mjs'
+import { sceneDialoguesForViewer } from './campaign-dialogues.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { courierLetterForViewer, courierLettersForViewer } from './courier-letters.mjs'
 import { weatherForViewer } from './weather.mjs'
@@ -702,7 +703,7 @@ function publicLegendaryFor(enemy, state, id) {
   if (!declared || typeof declared !== 'object' || Array.isArray(declared)) return null
   if (!Array.isArray(declared.actions) || !declared.actions.length) return null
   const uses = Math.max(1, Math.min(5, integer(declared.uses, 3)))
-  const spent = (state?.mechanics?.conditions?.[id] ?? [])
+  const spent = actorConditionList(state, id)
     .map((/** @type {Loose} */ condition) => text(condition?.id ?? condition, 160))
     .filter((/** @type {string} */ condition) => condition.startsWith('legendary-action-used:'))
     .length
@@ -1533,10 +1534,12 @@ function publicAutonomyFor(autonomy) {
  * Ключи состояния, для которых у проекции есть осознанное решение: либо своя
  * публичная форма, либо явное «отдаём как есть, здесь нечего скрывать».
  *
- * Сторож существует потому, что проекция собирается спредом с последующим
- * переопределением по доменам: новый ключ верхнего уровня проходит **сырым**,
- * и никто этого не замечает. Ровно так утёк `autonomy`. Появился новый ключ —
- * тест падает и требует решения, а не молчаливой утечки.
+ * Это **белый список** комнаты игрока: ключ верхнего уровня, которого здесь
+ * нет, игроку не уходит вовсе (`campaignStateForViewer`). Раньше комната
+ * собиралась спредом «всё, кроме закрытого», и новый ключ проходил сырым —
+ * так утекли `autonomy` и `locationLevels` (этажи всех локаций с планами).
+ * Сторож в `test/autonomy-projection.test.mjs` по-прежнему требует решения
+ * для каждого ключа состояния, но молчаливой утечки больше нет.
  */
 export const PROJECTED_STATE_KEYS = Object.freeze([
   // Своя публичная форма.
@@ -1544,6 +1547,9 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // Внутренний реестр точных HP и всех location posts наружу не копируется:
   // вместо него ниже собирается bounded `scene_npcs` только текущей сцены.
   'npc_world',
+  // Должности мира: своя публичная форма (`officesForViewer`) без плана
+  // преемства; сырой реестр наружу не идёт.
+  'world_offices',
   // Летопись поступков отряда со свидетелями и сроком рождения молвы. Наружу не
   // копируется вовсе: игрок узнаёт слух в игре, из уст NPC, а не читая
   // состояние. Публичной формы у неё нет и не должно быть.
@@ -1615,6 +1621,16 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // (`scenarioCourtForViewer`, `server/scenario-attention.mjs`) и говорит
   // только одно — ждут ли этого героя кошель и вещь из оружейной.
   'scenario_court',
+  // Прогресс авторских разговоров: флаги отряда и кто какой вариант пробовал.
+  // Наружу не копируется: игрок видит его только как набор доступных ему
+  // вариантов ниже.
+  'dialogues',
+  // Разговоры сцены. Собственного ключа в состоянии нет: варианты собираются
+  // под героя-зрителя из данных диалога и прогресса
+  // (`sceneDialoguesForViewer`, `server/campaign-dialogues.mjs`). Скрытого в
+  // них нет: вариант с условием показывается, только когда условие выполнено,
+  // а ответ собеседник даёт уже после выбора.
+  'scene_dialogues',
   // Взлом отмычками. Собственного ключа в состоянии нет: карточка выводится из
   // листа героя-зрителя (`lockpickingForViewer`, `server/lockpicking.mjs`) и
   // существует только в проекции. Скрытого в ней нет ни грамма — владение
@@ -1644,6 +1660,8 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   'isNarrating', 'pendingCheck', 'agentInteraction', 'lastDiceRoll',
   'actors', 'economyLog', 'state_projector_version', 'presence', 'turn_clock', 'locationMaps',
 ])
+
+const PROJECTED_STATE_KEY_SET = new Set(PROJECTED_STATE_KEYS)
 
 /**
  * @param {LooseState | null | undefined} state
@@ -1870,6 +1888,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // Двор короля сценария: ждут ли этого героя кошель и вещь из оружейной.
     // Сам реестр внимания закрыт, карточка несёт только его собственные слоты.
     scenario_court: scenarioCourtForViewer(state, { playerId: String(actorId ?? '') }),
+    // Разговоры сцены с вариантами ответа — под героя-зрителя.
+    scene_dialogues: sceneDialoguesForViewer(state, { playerId: String(actorId ?? '') }),
     // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
     // из минут кампании и сида, тайной ведущего они не являются.
     weather: weatherForViewer(state, actorId),
@@ -1942,8 +1962,13 @@ export function campaignStateForViewer(state, user, actorId = '') {
     courier_letters: _courierLetters,
     scenario_attention: _scenarioAttention,
     scenario_knight: _scenarioKnight,
-    ...publicState
+    dialogues: _dialogues,
+    ...openState
   } = visible
+  // Белый список: ключ состояния без решения в `PROJECTED_STATE_KEYS` (например
+  // `locationLevels` — этажи всех локаций) игроку не уходит. Этажи текущей
+  // локации едут в `scene.levels` через `publicSceneFor` ниже.
+  const publicState = Object.fromEntries(Object.entries(openState).filter(([key]) => PROJECTED_STATE_KEY_SET.has(key)))
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
   const scene = publicSceneFor(state.scene, state.locationLevels?.[currentLocationId])
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
@@ -2115,6 +2140,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // Двор короля сценария: ждут ли этого героя кошель и вещь из оружейной.
     // Сам реестр внимания закрыт, карточка несёт только его собственные слоты.
     scenario_court: scenarioCourtForViewer(state, { playerId: String(actorId ?? '') }),
+    // Разговоры сцены с вариантами ответа — под героя-зрителя.
+    scene_dialogues: sceneDialoguesForViewer(state, { playerId: String(actorId ?? '') }),
     // Ход мира едет столу той же лентой, что и ведущему: карточка «Пока вас не
     // было…» показывается всем, и вторая форма для неё была бы вторым ответом
     // на один вопрос.
@@ -2766,13 +2793,35 @@ export function turnResultForViewer(result, user, actorId = '') {
   return {
     ...publicResult,
     effects,
-    mechanics: mechanicsForViewer(result.mechanics, user, actorId, result.authoritative_state),
-    ...(Array.isArray(result.rolls) ? {
-      rolls: result.rolls.filter((roll) => rollVisibleFor(roll, user)),
+    // События — проекцией каждого события; не массив — только тем, что
+    // оставила общая проекция результата, а не сырым `result.mechanics`.
+    mechanics: Array.isArray(result.mechanics)
+      ? mechanicsForViewer(result.mechanics, user, actorId, result.authoritative_state)
+      : visible.mechanics,
+    // Броски — из уже спроецированного результата: закрытые корзины внутри
+    // броска (`gm_only`, `hidden_information`) вырезает `projectVisibleState`.
+    ...(Array.isArray(visible.rolls) ? {
+      rolls: visible.rolls.filter((/** @type {Loose} */ roll) => rollVisibleFor(roll, user)),
     } : {}),
     ...(Array.isArray(visible.visible_state_changes) ? {
       visible_state_changes: mechanicsForViewer(visible.visible_state_changes, user, actorId, result.authoritative_state),
     } : {}),
     ...(result.authoritative_state ? { authoritative_state: campaignStateForViewer(result.authoritative_state, user, actorId) } : {}),
   }
+}
+
+/**
+ * Состояния актора: только собственный список словаря `mechanics.conditions`.
+ * Id вида `constructor` или `__proto__` и не-массив дают пустой список, а не
+ * метод прототипа (как `sk_core::game::conditions` в Rust).
+ *
+ * @param {any} state
+ * @param {unknown} actorId
+ * @returns {any[]}
+ */
+function actorConditionList(state, actorId) {
+  const conditions = state?.mechanics?.conditions
+  const key = String(actorId)
+  const list = conditions && typeof conditions === 'object' && Object.hasOwn(conditions, key) ? conditions[key] : undefined
+  return Array.isArray(list) ? list : []
 }

@@ -37,6 +37,11 @@ async function syncOrigin() {
 
 async function run() {
   if (!await ready()) {
+    // DND_SERVER=rust (основной сервер с 2026-10-31 — Rust в Docker): JS-сервер
+    // поверх прежнего ./storage открыл бы второй, отставший мир.
+    if (String(process.env.DND_SERVER ?? '').trim().toLowerCase() === 'rust') {
+      throw new Error('DND_SERVER=rust: сначала запустите игру START_DND.cmd (Rust-сервер в Docker) — Sites подключится к нему')
+    }
     server = spawn(process.execPath, [join(root, 'server/index.mjs')], {
       cwd: root, windowsHide: true, env: { ...process.env, AGENT_PORT: '8787', AGENT_HOST: '127.0.0.1' },
       stdio: ['ignore', 'pipe', 'pipe'],

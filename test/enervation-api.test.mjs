@@ -1,24 +1,8 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Тестовый сервер не остановился')), 5_000)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolve()
-    })
-    child.kill()
-  })
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie, body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -34,18 +18,6 @@ async function request(baseUrl, path, { method = 'GET', cookie, body } = {}) {
 
 function cookieFor(result) {
   return result.response.headers.get('set-cookie')?.split(';')[0]
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился с кодом ${child.exitCode}\n${logs()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return response.json()
-    } catch { /* listener ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не запустился\n${logs()}`)
 }
 
 function command(path, cookie, idempotencyKey, value) {
@@ -109,25 +81,10 @@ function assertStatus(result, expected, logs) {
 }
 
 test('Enervation проходит обычный HTTP command path, права и idempotency', { timeout: 45_000 }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-enervation-api-'))
   const setupToken = 'enervation-http-setup'
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  let logsText = ''
-  const logs = () => logsText
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: setupToken, GAME_ENGINE_MODE: 'enforce', COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => { logsText += String(chunk) })
-  child.stderr.on('data', (chunk) => { logsText += String(chunk) })
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
-  await waitForHealth(baseUrl, child, logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-enervation-api-', setupToken })
+  const baseUrl = server.baseUrl
+  const logs = server.output
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'Enervation admin', email: 'enervation-admin@enervation.test', password: 'enervation-admin-password', setupToken,

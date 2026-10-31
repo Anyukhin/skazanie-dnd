@@ -806,7 +806,7 @@ export const ENCOUNTER_DIFFICULTY_LABELS = Object.freeze({
 export const DEADLY_ENCOUNTER_WARNING = 'Противник выглядит смертельно опасным — силы явно неравны. Ещё не поздно отступить или сменить план.'
 
 export function encounterDifficultyLabel(difficulty) {
-  return ENCOUNTER_DIFFICULTY_LABELS[String(difficulty ?? '')] ?? ENCOUNTER_DIFFICULTY_LABELS.medium
+  return ownEntry(ENCOUNTER_DIFFICULTY_LABELS, String(difficulty ?? '')) ?? ENCOUNTER_DIFFICULTY_LABELS.medium
 }
 
 // SRD 5.2.1, printed page 202: XP Budget per Character.
@@ -979,7 +979,7 @@ function validateParty(input, cells) {
     positions.add(key)
     return { id, level: entry.level, x, y }
   })
-  party.sort((left, right) => left.id.localeCompare(right.id))
+  party.sort((left, right) => left.id.localeCompare(right.id, 'en'))
   return party
 }
 
@@ -1130,7 +1130,7 @@ function placementCellsWithin(cells, party, bounds, { throughDoors }) {
 function seededTieBreak(left, right, seed) {
   const leftKey = digest(`${seed}\u0000${left.join('|')}`)
   const rightKey = digest(`${seed}\u0000${right.join('|')}`)
-  return leftKey.localeCompare(rightKey) < 0 ? left : right
+  return leftKey.localeCompare(rightKey, 'en') < 0 ? left : right
 }
 
 function spendBudget(catalogIds, budgetXp, quantityCap, seed) {
@@ -1160,7 +1160,7 @@ function deterministicOrder(values, seed, label) {
     const rightKey = `${right.x},${right.y}`
     const leftHash = digest(`${seed}\u0000${label}\u0000${leftKey}`)
     const rightHash = digest(`${seed}\u0000${label}\u0000${rightKey}`)
-    return leftHash.localeCompare(rightHash) || leftKey.localeCompare(rightKey)
+    return leftHash.localeCompare(rightHash, 'en') || leftKey.localeCompare(rightKey, 'en')
   })
 }
 
@@ -1477,4 +1477,9 @@ export class EncounterAssembler {
 
 export function assembleEncounter(input) {
   return new EncounterAssembler().assemble(input)
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

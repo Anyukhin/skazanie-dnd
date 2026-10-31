@@ -1,0 +1,82 @@
+# Образ Rust-сервера «Сказания» (С19.3). JS-образ — Dockerfile, этот его не
+# заменяет: оба живут рядом до переключения (docs/rust-docker.md).
+#
+#   docker build -f Dockerfile.rust -t skazanie-rust:local .
+#   docker build -f Dockerfile.rust --build-arg CARGO_BUILD_JOBS=8 -t skazanie-rust:local .
+#
+# Нужен BuildKit (в Docker Desktop включён): кэш крейтов и target живёт в
+# кэш-томах сборки, поэтому повторная сборка не качает и не компилирует
+# зависимости заново.
+
+# Тулчейн — тот, на котором собирается и проверяется ветка переноса
+# (rust/rust-toolchain* в репозитории нет; локально stable 1.91.1).
+ARG RUST_VERSION=1.91.1
+
+# --- Клиент: dist/ так же, как в Dockerfile JS-сервера ---------------------
+FROM node:22-alpine AS client
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm build
+
+# --- Сервер: release-бинарь без test-hooks ---------------------------------
+FROM rust:${RUST_VERSION}-slim-bookworm AS server
+# Сборка идёт в /app/rust, как в репозитории: крейты встраивают data/, prompts/,
+# public/ и server/ путями `../../../../…`, а пути времени выполнения без
+# DND_DATA_DIR считаются от CARGO_MANIFEST_DIR на три уровня вверх — то есть
+# от /app, где эти каталоги и лежат в итоговом образе.
+WORKDIR /app
+# Параллельность rustc: на машине сборки работают и другие задачи.
+ARG CARGO_BUILD_JOBS=3
+ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} \
+    CARGO_TERM_COLOR=never
+COPY rust ./rust
+COPY data ./data
+COPY prompts ./prompts
+COPY public ./public
+COPY server ./server
+WORKDIR /app/rust
+# target в кэш-томе, поэтому бинарь копируется наружу в том же RUN.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/rust/target \
+    cargo build --release --locked -p sk-server --bin skazanie-server \
+    && mkdir -p /out \
+    && cp target/release/skazanie-server /out/skazanie-server
+
+# --- Итоговый образ --------------------------------------------------------
+FROM debian:bookworm-slim AS runtime
+WORKDIR /app
+# Корневые сертификаты для HTTPS к RouterAI (rustls читает системное
+# хранилище). Берём из образа сборки — без apt и лишних пакетов.
+COPY --from=server /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=server /out/skazanie-server /app/skazanie-server
+COPY --from=client /app/dist /app/dist
+COPY data /app/data
+COPY prompts /app/prompts
+COPY deployment/rust/entrypoint.sh /app/entrypoint.sh
+# Сервер читает ассеты из public/ (атлас реквизита, манифест окружения), а vite
+# уже скопировал public/ в dist/ — ссылка вместо второй копии, как в JS-образе.
+# CR вычищаются из entrypoint: на Windows git может выдать его с CRLF.
+RUN ln -s dist /app/public \
+    && sed -i 's/\r$//' /app/entrypoint.sh \
+    && chmod 0755 /app/entrypoint.sh /app/skazanie-server \
+    && groupadd --system --gid 10001 skazanie \
+    && useradd --system --uid 10001 --gid skazanie --home-dir /app --no-create-home --shell /usr/sbin/nologin skazanie \
+    && mkdir -p /app/storage \
+    && chown skazanie:skazanie /app/storage
+ENV AGENT_HOST=0.0.0.0 \
+    AGENT_PORT=8787 \
+    DND_DATA_DIR=/app \
+    DND_STORAGE_DIR=/app/storage
+VOLUME ["/app/storage"]
+USER skazanie:skazanie
+EXPOSE 8787
+# Только статус: тело /api/health большое (каталоги клиента). curl и wget в
+# slim-образе нет — HEAD по /dev/tcp средствами bash.
+HEALTHCHECK --interval=15s --timeout=10s --start-period=20s --retries=5 \
+    CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/${AGENT_PORT:-8787} && printf 'HEAD /api/health HTTP/1.0\\r\\nHost: 127.0.0.1\\r\\n\\r\\n' >&3 && IFS= read -r status <&3 && [[ $status == *' 200 '* ]]"]
+# Без CMD: аргументы `docker run … <подкоманда>` уходят бинарю
+# (например import-legacy из С19.2). Сам сервер стартует без аргументов.
+ENTRYPOINT ["/app/entrypoint.sh"]

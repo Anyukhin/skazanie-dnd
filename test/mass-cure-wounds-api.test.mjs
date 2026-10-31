@@ -1,53 +1,17 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const CAMPAIGN = 'MASS-CURE-HTTP'
 const SETUP_TOKEN = 'mass-cure-http-admin'
 
 async function harness(t) {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-mass-cure-api-'))
-  let child = null
-  let baseUrl = ''
-  let logs = ''
-  const stop = async () => {
-    if (!child || child.exitCode != null || child.signalCode != null) return
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Тестовый сервер не завершился')), 5_000)
-      child.once('exit', () => { clearTimeout(timeout); resolve() })
-      child.kill()
-    })
-  }
-  t.after(async () => {
-    await stop()
-    rmSync(storage, { recursive: true, force: true })
-  })
-  const start = async () => {
-    const port = await freePort()
-    baseUrl = `http://127.0.0.1:${port}`
-    child = spawn(process.execPath, ['server/index.mjs'], {
-      cwd: process.cwd(),
-      env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-        ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: SETUP_TOKEN, COOKIE_SECURE: 'false', NODE_ENV: 'test', GAME_ENGINE_MODE: 'enforce' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    child.stdout.on('data', (chunk) => { logs = (logs + chunk).slice(-4_000) })
-    child.stderr.on('data', (chunk) => { logs = (logs + chunk).slice(-4_000) })
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      if (child.exitCode != null || child.signalCode != null) throw new Error(`Сервер завершился: ${logs}`)
-      try { if ((await fetch(`${baseUrl}/api/health`)).ok) return } catch { /* listener ещё запускается */ }
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-    throw new Error(`Сервер не запустился: ${logs}`)
-  }
+  const server = await startTestServer(t, { setupToken: SETUP_TOKEN, storagePrefix: 'skazanie-mass-cure-api-' })
+  // Адрес — server.baseUrl при каждом запросе: после restart() порт новый.
   const request = async (path, { cookie = '', method = 'GET', body } = {}) => {
-    const response = await fetch(`${baseUrl}${path}`, {
+    const response = await fetch(`${server.baseUrl}${path}`, {
       method, signal: AbortSignal.timeout(30_000),
       headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -57,8 +21,7 @@ async function harness(t) {
   const command = (cookie, idempotencyKey, commandBody) => request(`/api/campaigns/${CAMPAIGN}/commands`, {
     method: 'POST', cookie, body: { idempotency_key: idempotencyKey, command: commandBody },
   })
-  await start()
-  return { request, command, restart: async () => { await stop(); child = null; await start() } }
+  return { request, command, restart: () => server.restart() }
 }
 
 function expectStatus(result, status = 200) {
@@ -69,7 +32,7 @@ function expectStatus(result, status = 200) {
 function clericDocument(name) {
   const baseScores = { str: 10, dex: 12, con: 13, int: 8, wis: 15, cha: 14 }
   return { schema: 'skazanie.character', schema_version: 1, character: {
-    character: name, characterClass: 'cleric', species: 'Человек', background: 'Прислужник', backgroundId: 'acolyte',
+    character: name, characterClass: 'cleric', subclass: 'Домен жизни', species: 'Человек', background: 'Прислужник', backgroundId: 'acolyte', phbCreation: { schema_version: 1, classChoices: { subclass: 'Домен жизни' } },
     level: 1, experience: 0,
     abilities: Object.fromEntries(Object.entries(baseScores).map(([id, value]) => [id, value + 1])),
     abilityGeneration: { policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2,
@@ -78,7 +41,7 @@ function clericDocument(name) {
     speciesChoices: { 'extra-language': ['dwarvish'] }, backgroundChoices: { tools: [], languages: ['elvish', 'draconic'] },
     starterEquipmentChoices: { armor: ['scale-mail'], weapon: ['mace'], 'ranged-or-simple': ['javelin'], pack: ['priests-pack'] },
     baseSpeed: 30, hitPointIncreases: [], classSkillProficiencies: ['insight', 'religion'],
-    selectedFeatureIds: [], knownSpellIds: [], preparedSpellIds: ['healing-word'],
+    selectedFeatureIds: [], knownSpellIds: ['light', 'mending', 'guidance'], preparedSpellIds: ['healing-word'],
   } }
 }
 

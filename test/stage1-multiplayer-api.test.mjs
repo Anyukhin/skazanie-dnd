@@ -1,53 +1,8 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
-import { GAME_STATE_PROJECTOR_VERSION, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
+import { appendJournal, readJournal, startTestServer } from './kit/index.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      DND_AI_MODEL: 'z-ai/glm-5.3-flash',
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'stage1-setup',
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -162,22 +117,21 @@ function characterDocument(character) {
 }
 
 test('этап 1: два игрока получают SSE presence, коммитят без lost update, а projection восстанавливается после restart', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-stage1-'))
-  let logs = ''
-  let child = null
   const ownerStreamAbort = new AbortController()
   const guestStreamAbort = new AbortController()
-  t.after(async () => {
+  // Потоки закрываются раньше остановки сервера, как и прежде: этот t.after
+  // зарегистрирован до остановки, которую регистрирует startTestServer.
+  t.after(() => {
     ownerStreamAbort.abort()
     guestStreamAbort.abort()
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
   })
-
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, {
+    storagePrefix: 'skazanie-stage1-',
+    setupToken: 'stage1-setup',
+    env: { DND_AI_MODEL: 'z-ai/glm-5.3-flash' },
+  })
+  // Каждый start() берёт новый порт: адрес обновляется после перезапуска.
+  let baseUrl = server.baseUrl
 
   const owner = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
@@ -295,18 +249,12 @@ test('этап 1: два игрока получают SSE presence, комми�
   const guestOffline = await nextRoomEvent(ownerStream, (event) => !event.state.presence.online_hero_ids.includes('hero-2'))
   assert.deepEqual(guestOffline.state.presence.online_hero_ids, ['hero-1'])
   ownerStreamAbort.abort()
-  await stopServer(child)
-  child = null
+  await server.stop()
 
-  const eventStore = new FileEventStore({
-    rootDir: join(storage, 'engine'),
-    reducer: applyGameEvent,
-    normalizeState: normalizeCampaignState,
-    snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
-  })
-  const beforeCrash = await eventStore.load('STAGE1')
-  await eventStore.commit({
-    campaign_id: 'STAGE1',
+  // Событие записано мимо сервера, проекция комнаты о нём не знает: так
+  // выглядит авария между commit и записью проекции.
+  const beforeCrash = await readJournal(server, 'STAGE1')
+  await appendJournal(server, 'STAGE1', {
     expected_state_version: beforeCrash.state_version,
     idempotency_key: 'stage1-crash-between-event-and-projection',
     events: [{
@@ -316,17 +264,15 @@ test('этап 1: два игрока получают SSE presence, комми�
       payload: { total_xp: 40, recipients: ['hero-1', 'hero-2', 'hero-3', 'hero-4'] },
     }],
   })
-  assert.ok(await eventStore.pendingProjection('STAGE1'))
+  assert.ok((await readJournal(server, 'STAGE1')).pending_projection)
 
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.start()
+  baseUrl = server.baseUrl
   const recovered = await request(baseUrl, '/api/rooms/STAGE1', { cookie: ownerCookie })
   assert.equal(recovered.status, 200, recovered.text)
   assert.deepEqual(recovered.body.state.players.map((player) => player.experience), [10, 10, 10, 10])
   const recoveredSettings = await request(baseUrl, '/api/campaigns/STAGE1/settings', { cookie: ownerCookie })
   assert.equal(recoveredSettings.status, 200, recoveredSettings.text)
   assert.deepEqual(recoveredSettings.body.settings, { model: selectedModel, narratorStyle: 'formal', improvMode: 'story', reasoningLevel: 'auto' })
-  assert.equal(await eventStore.pendingProjection('STAGE1'), null)
+  assert.equal((await readJournal(server, 'STAGE1')).pending_projection, null)
 })

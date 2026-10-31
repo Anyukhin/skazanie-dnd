@@ -1,46 +1,14 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { addPlayer, createClient, readRoom, startTestServer, writeRoom } from './kit/index.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 // Сверка проекции (`reconcileCampaignProjection`) читает журнал, истекает
 // голосования и может перезаписать комнату. Чужой аккаунт не должен её
 // запускать: окончательный отказ — до сверки, с тем же 403, что и раньше.
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'reconcile-access-setup',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 160; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* сервер ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не запустился\n${logs()}`)
-}
+//
+// Членство — штатным приглашением, дрейф комнаты — `writeRoom` набора, а
+// «сверка не запускалась» — `readRoom`: записанная комната не изменилась.
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -81,36 +49,20 @@ function campaignState(code) {
   }
 }
 
-/** Членство пишется прямо в хранилище авторизации: сервер перечитывает его на каждом запросе. */
-function addMembership(storage, campaignId, userId, heroIds) {
-  const file = join(storage, 'auth.json')
-  const auth = JSON.parse(readFileSync(file, 'utf8'))
-  auth.memberships = [...(auth.memberships ?? []), { campaignId, userId, role: 'player', heroIds, status: 'active', joinedAt: Date.now() }]
-  const temporary = `${file}.${process.pid}.tmp`
-  writeFileSync(temporary, JSON.stringify(auth, null, 2), 'utf8')
-  renameSync(temporary, file)
-}
-
 /** Канонический дрейф комнаты при той же версии: сверка обязана его исправить. */
-function driftRoom(storage, code) {
-  const file = join(storage, 'rooms', `${code}.json`)
-  const room = JSON.parse(readFileSync(file, 'utf8'))
-  room.state.enemies = room.state.enemies.map((enemy) => (enemy.id === 'goblin' ? { ...enemy, hp: 1 } : enemy))
-  writeFileSync(file, JSON.stringify(room, null, 2), 'utf8')
-  return readFileSync(file, 'utf8')
+async function driftRoom(server, code) {
+  const room = await readRoom(server, code)
+  const drifted = await writeRoom(server, code, {
+    ...room.state,
+    enemies: room.state.enemies.map((enemy) => (enemy.id === 'goblin' ? { ...enemy, hp: 1 } : enemy)),
+  })
+  assert.equal(drifted.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 1, 'дрейф записан')
+  return drifted
 }
 
 test('чужой аккаунт получает прежний 403 и не запускает сверку проекции', { timeout: runnerTimeout(90_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-reconcile-access-'))
-  let logs = ''
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  const child = startServer(port, storage, (chunk) => { logs += chunk })
-  t.after(async () => {
-    if (child.exitCode == null) await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-    rmSync(storage, { recursive: true, force: true })
-  })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { setupToken: 'reconcile-access-setup', storagePrefix: 'skazanie-reconcile-access-' })
+  const baseUrl = server.baseUrl
 
   const admin = await login(baseUrl, '/api/auth/setup-admin', {
     name: 'Ведущий', email: 'reconcile-admin@test.local', password: 'reconcile-admin-password', setupToken: 'reconcile-access-setup',
@@ -119,12 +71,16 @@ test('чужой аккаунт получает прежний 403 и не за
     const created = await request(baseUrl, '/api/campaigns', { method: 'POST', cookie: admin.cookie, body: { code, name: 'Reconcile access', state: campaignState(code) } })
     assert.equal(created.status, 201, created.text)
   }
-  const member = await login(baseUrl, '/api/auth/register', { name: 'Участник', email: 'reconcile-member@test.local', password: 'reconcile-player-password' })
+  // Участник — по приглашению ведущего на героя «hero»: запись о членстве есть
+  // только у RECACC, у RECLEG их нет вовсе.
+  const member = await addPlayer(server, createClient(server, { cookie: admin.cookie }), 'RECACC', {
+    heroIds: ['hero'], name: 'Участник', email: 'reconcile-member@test.local', password: 'reconcile-player-password',
+  })
+  assert.deepEqual(member.heroIds, ['hero'])
+  const memberCookie = member.client.cookie
   const outsider = await login(baseUrl, '/api/auth/register', { name: 'Чужой', email: 'reconcile-outsider@test.local', password: 'reconcile-player-password' })
-  addMembership(storage, 'RECACC', member.userId, ['hero'])
 
-  const roomFile = join(storage, 'rooms', 'RECACC.json')
-  const drifted = driftRoom(storage, 'RECACC')
+  const drifted = await driftRoom(server, 'RECACC')
 
   const denied = await request(baseUrl, '/api/rooms/RECACC', { cookie: outsider.cookie })
   assert.equal(denied.status, 403, denied.text)
@@ -134,18 +90,20 @@ test('чужой аккаунт получает прежний 403 и не за
   assert.deepEqual(deniedStream.body, { error: 'Нет доступа к этой кампании' })
   const deniedDialogue = await request(baseUrl, '/api/campaigns/RECACC/dialogue', { cookie: outsider.cookie })
   assert.equal(deniedDialogue.status, 403, deniedDialogue.text)
-  assert.equal(readFileSync(roomFile, 'utf8'), drifted, 'запрос чужого аккаунта не дошёл до сверки и не переписал комнату')
+  assert.deepEqual(await readRoom(server, 'RECACC'), drifted, 'запрос чужого аккаунта не дошёл до сверки и не переписал комнату')
 
-  const allowed = await request(baseUrl, '/api/rooms/RECACC', { cookie: member.cookie })
+  const allowed = await request(baseUrl, '/api/rooms/RECACC', { cookie: memberCookie })
   assert.equal(allowed.status, 200, allowed.text)
-  const repaired = JSON.parse(readFileSync(roomFile, 'utf8'))
+  const repaired = await readRoom(server, 'RECACC')
   assert.equal(repaired.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 8, 'участник по-прежнему запускает сверку, и она чинит комнату')
 
   // Кампания без записей о членстве: доступ решают герои комнаты, которые
   // сверка может восстановить, — отказ приходит после сверки, как раньше.
-  const legacyDrifted = driftRoom(storage, 'RECLEG')
+  const legacyDrifted = await driftRoom(server, 'RECLEG')
   const legacyDenied = await request(baseUrl, '/api/rooms/RECLEG', { cookie: outsider.cookie })
   assert.equal(legacyDenied.status, 403, legacyDenied.text)
   assert.deepEqual(legacyDenied.body, { error: 'Нет доступа к этой комнате' })
-  assert.notEqual(readFileSync(join(storage, 'rooms', 'RECLEG.json'), 'utf8'), legacyDrifted, 'в наследственной кампании отказ по-прежнему после сверки')
+  const legacyAfter = await readRoom(server, 'RECLEG')
+  assert.notDeepEqual(legacyAfter, legacyDrifted, 'в наследственной кампании отказ по-прежнему после сверки')
+  assert.equal(legacyAfter.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 8, 'сверка до отказа починила комнату')
 })

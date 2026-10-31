@@ -1,10 +1,6 @@
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
@@ -18,53 +14,6 @@ import {
 } from '../server/tactical-map.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
-
-function startServer({ port, storage, setupToken, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: setupToken,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Test server did not stop')), 5_000)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolve()
-    })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, log) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) {
-      throw new Error(`Test server exited with ${child.exitCode}\n${log()}`)
-    }
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return response.json()
-    } catch { /* the listener is still starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Test server did not become healthy\n${log()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie, body } = {}) {
   const headers = { ...(body === undefined ? {} : JSON_HEADERS), ...(cookie ? { Cookie: cookie } : {}) }
@@ -162,21 +111,14 @@ async function command(baseUrl, cookie, idempotencyKey, value) {
 }
 
 test('player combat API is server-authoritative, bounded, and durable across restart', { timeout: runnerTimeout(30_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-authoritative-combat-'))
   const setupToken = 'authoritative-combat-setup-token'
-  let logs = ''
-  let child = null
-  const log = () => logs
-  const appendLog = (chunk) => { logs += chunk }
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({ port, storage, setupToken, appendLog })
-  const health = await waitForHealth(baseUrl, child, log)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-authoritative-combat-', setupToken })
+  const log = server.output
+  // Адрес меняется после restart(): переменная обновляется ниже.
+  let baseUrl = server.baseUrl
+  const healthResponse = await fetch(`${baseUrl}/api/health`)
+  assert.equal(healthResponse.status, 200)
+  const health = await healthResponse.json()
   assert.equal(health.configured, false)
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
@@ -574,12 +516,8 @@ test('player combat API is server-authoritative, bounded, and durable across res
 
   // Restart the actual process against the same storage. Auth, compatibility room projection,
   // event state, and an idempotent replay must all converge on the exact same combat facts.
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({ port, storage, setupToken, appendLog })
-  await waitForHealth(baseUrl, child, log)
+  await server.restart()
+  baseUrl = server.baseUrl
 
   const meAfterRestart = await request(baseUrl, '/api/auth/me', { cookie: playerCookie })
   assertStatus(meAfterRestart, 200, log)
@@ -604,15 +542,10 @@ test('player combat API is server-authoritative, bounded, and durable across res
 })
 
 test('CastSpell игрока сохраняет список целей, вариант и ячейку через HTTP и идемпотентный повтор', { timeout: runnerTimeout(30_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-spell-targets-api-'))
   const setupToken = 'spell-targets-fixture-token'
-  let logs = ''
-  const log = () => logs
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  const child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
-  await waitForHealth(baseUrl, child, log)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-spell-targets-api-', setupToken })
+  const log = server.output
+  const baseUrl = server.baseUrl
   const setup = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'Мастер стенда', email: 'admin@spell-targets.test', password: 'spell-targets-admin-password', setupToken,
   } })
@@ -700,15 +633,11 @@ test('CastSpell игрока сохраняет список целей, вар�
 })
 
 for (const withResistance of [false, true]) test(`площадной урон${withResistance ? ' с Resistance после броска' : ''}: restart, права и однократность реакции`, { timeout: runnerTimeout(45_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-elemental-reaction-api-'))
   const setupToken = 'elemental-reaction-api-setup'
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  let logs = ''
-  const log = () => logs
-  let child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
-  await waitForHealth(baseUrl, child, log)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-elemental-reaction-api-', setupToken })
+  const log = server.output
+  // Адрес меняется после restart(): переменная обновляется ниже.
+  let baseUrl = server.baseUrl
   const admin = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'Мастер', email: 'admin@elemental-api.test', password: 'elemental-admin-password', setupToken,
   } })
@@ -795,9 +724,8 @@ for (const withResistance of [false, true]) test(`площадной урон${w
   const reaction = { command_type: 'UseCombatAction', actor_id: 'target', action_id: 'cast:absorb-elements' }
   const forbidden = await command(baseUrl, cookies.caster, 'foreign-elemental-reaction', reaction)
   assertStatus(forbidden, 403, log)
-  await stopServer(child)
-  child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
-  await waitForHealth(baseUrl, child, log)
+  await server.restart()
+  baseUrl = server.baseUrl
   const restored = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: cookies.target })
   assert.deepEqual(restored.body.state.mechanics.combat.reaction_window, window, 'после restart сохранены то же окно и тот же ожидаемый урон')
   const resolved = await command(baseUrl, cookies.target, 'take-elemental-reaction', reaction)

@@ -590,7 +590,7 @@ function buildUpperLevel({ baseMap, locationId, index, fromLevel, seed, label, a
     })
     placeProps(map, {
       seed: `${seed}:props`,
-      maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
+      maxProps: ownEntry(SIZE_CLASSES, map.sizeClass).maxProps,
       // Каждая комната этажа — по своему шаблону: спальня, кабинет и
       // площадка у лестницы. Этаж без перегородок — одна спальня, как прежде.
       zones: map.zones
@@ -809,7 +809,7 @@ function buildCellarLevel({ baseMap, locationId, index, fromLevel, seed, label, 
   })
   placeProps(map, {
     seed: `${seed}:props`,
-    maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
+    maxProps: ownEntry(SIZE_CLASSES, map.sizeClass).maxProps,
     zones: [{
       zoneId: 'cellar',
       theme: 'interior',
@@ -908,7 +908,7 @@ function buildCaveLevel({ baseMap, locationId, index, fromLevel, seed, label, ar
     })
     placeProps(map, {
       seed: `${attemptSeed}:props`,
-      maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
+      maxProps: ownEntry(SIZE_CLASSES, map.sizeClass).maxProps,
       zones: map.zones.map((zone) => ({
         zoneId: zone.id,
         theme: definition.id,
@@ -987,4 +987,9 @@ export function generateLevelMap({
   const shared = { baseMap, locationId, index, fromLevel, seed, label, arrival, hint, sourceProp }
   if (isCaveTheme(theme) || isCaveTheme(baseMap.theme)) return buildCaveLevel(shared)
   return index > fromLevel ? buildUpperLevel(shared) : buildCellarLevel(shared)
+}
+
+/** Значение таблицы только по собственному ключу: класс размера `constructor` — незнакомый. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

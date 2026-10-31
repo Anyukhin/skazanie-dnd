@@ -156,3 +156,23 @@ test('многоместная ссылка не отдаёт гостю мес�
   const single = store.createCampaignInvite({ campaignId: 'SEAT-B', createdBy: admin.id, heroIds: ['hero-ready'], multiUse: true })
   assert.deepEqual(store.redeemCampaignInvite({ campaignId: 'SEAT-B', token: single.token, userId: other.id, unavailableHeroIds: ['hero-ready'] }).membership.heroIds, ['hero-ready'])
 })
+
+test('вход по ссылке на героя вне отряда отказывает до записи членства', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-invite-party-'))
+  process.env.DND_STORAGE_DIR = root
+  const store = await import(`../server/store.mjs?invite-party=${Date.now()}`)
+  const owner = await store.registerUser({ name: 'Owner', email: 'owner@invite-party.test', password: 'secure-owner-password' })
+  const guest = await store.registerUser({ name: 'Guest', email: 'guest@invite-party.test', password: 'secure-guest-password' })
+  store.upsertCampaignMembership({ campaignId: 'PARTY-A', userId: owner.id, role: 'owner', heroIds: ['hero-1'] })
+  for (const multiUse of [false, true]) {
+    const issued = store.createCampaignInvite({ campaignId: 'PARTY-A', createdBy: owner.id, heroIds: ['hero-gone'], multiUse })
+    assert.throws(
+      () => store.redeemCampaignInvite({ campaignId: 'PARTY-A', token: issued.token, userId: guest.id, partyHeroIds: ['hero-1', 'hero-2'] }),
+      (error) => error?.code === 'INVITE_HERO_NOT_IN_PARTY' && error.message === 'Приглашение ссылается на героя, которого нет в кампании',
+    )
+    assert.equal(store.campaignMembershipFor(guest.id, 'PARTY-A'), null, 'членство не записано')
+  }
+  // Ссылка на героя отряда по-прежнему работает, и отказ её не израсходовал.
+  const valid = store.createCampaignInvite({ campaignId: 'PARTY-A', createdBy: owner.id, heroIds: ['hero-2'] })
+  assert.deepEqual(store.redeemCampaignInvite({ campaignId: 'PARTY-A', token: valid.token, userId: guest.id, partyHeroIds: ['hero-1', 'hero-2'] }).membership.heroIds, ['hero-2'])
+})

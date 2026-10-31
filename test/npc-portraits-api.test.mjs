@@ -1,12 +1,10 @@
-import { freePort } from './free-port.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { createServer as createHttpServer } from 'node:http'
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
+import { startTestServer } from './kit/http.mjs'
+import { startFakeProvider } from './kit/llm.mjs'
 import {
   NPC_PORTRAIT_GENERATION_LIMIT,
   NPC_PORTRAIT_ROLE_ASSETS,
@@ -14,52 +12,18 @@ import {
 
 const WEBP = Buffer.from('524946460400000057454250', 'hex')
 
-function startServer({ port, storage, providerBaseUrl, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: 'portrait-api-test-key',
-      ROUTERAI_BASE_URL: providerBaseUrl,
-      DND_IMAGE_MODEL: 'test/portrait-image-v1',
-      // Этот сторож проверяет именно ленивую генерацию, поэтому рантайм-флаг
-      // здесь включён явно. Поведение при выключенном — в `asset-preparation`.
-      DND_RUNTIME_IMAGE_GENERATION: 'on',
-      DND_AI_MODEL: 'test/text-model',
-      DND_AI_FALLBACK_MODELS: '',
-      ADMIN_SETUP_TOKEN: 'portrait-api-setup',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Test server did not stop')), 5_000)
-    child.once('exit', () => { clearTimeout(timer); resolve() })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, log) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Test server exited with ${child.exitCode}\n${log()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return response
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
+/** @param {string} providerBaseUrl */
+function serverEnv(providerBaseUrl) {
+  return {
+    ROUTERAI_API_KEY: 'portrait-api-test-key',
+    ROUTERAI_BASE_URL: providerBaseUrl,
+    DND_IMAGE_MODEL: 'test/portrait-image-v1',
+    // Этот сторож проверяет именно ленивую генерацию, поэтому рантайм-флаг
+    // здесь включён явно. Поведение при выключенном — в `asset-preparation`.
+    DND_RUNTIME_IMAGE_GENERATION: 'on',
+    DND_AI_MODEL: 'test/text-model',
+    DND_AI_FALLBACK_MODELS: '',
   }
-  throw new Error(`Test server did not become healthy\n${log()}`)
 }
 
 async function request(baseUrl, path, { method = 'GET', cookie, body, headers, redirect = 'follow' } = {}) {
@@ -107,42 +71,29 @@ function npc(id, overrides = {}) {
 }
 
 test('NPC portrait API enforces auth/visibility, caches generation and rate-limits only cache misses', { timeout: runnerTimeout(40_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-npc-portrait-api-'))
-  let logs = ''
-  let child = null
   const imageRequests = []
-  const provider = createHttpServer(async (req, res) => {
+  const provider = await startFakeProvider(t, (req) => {
     if (req.url !== '/api/v1/images' || req.method !== 'POST') {
-      res.writeHead(503, { 'Content-Type': 'application/json' })
-      return res.end('{"error":"text model disabled in portrait test"}')
+      return { status: 503, body: '{"error":"text model disabled in portrait test"}' }
     }
-    let raw = ''
-    for await (const chunk of req) raw += String(chunk)
     imageRequests.push({
       authorization: String(req.headers.authorization || ''),
-      body: JSON.parse(raw),
+      body: JSON.parse(req.text),
     })
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    return res.end(JSON.stringify({
+    return {
       data: [{ b64_json: WEBP.toString('base64') }],
       usage: { input_tokens: 4, output_tokens: 8, total_tokens: 12 },
       cost: 0.025,
-    }))
+    }
   })
-  await new Promise((resolve, reject) => { provider.once('error', reject); provider.listen(0, '127.0.0.1', resolve) })
-  const providerAddress = provider.address()
-  const providerPort = typeof providerAddress === 'object' && providerAddress ? providerAddress.port : 0
-  const providerBaseUrl = `http://127.0.0.1:${providerPort}/api/v1`
-  t.after(async () => {
-    await stopServer(child)
-    await new Promise((resolve) => provider.close(() => resolve()))
-    rmSync(storage, { recursive: true, force: true })
+  const server = await startTestServer(t, {
+    setupToken: 'portrait-api-setup',
+    storagePrefix: 'skazanie-npc-portrait-api-',
+    env: serverEnv(provider.baseUrl),
   })
-
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({ port, storage, providerBaseUrl, appendLog: (chunk) => { logs += chunk } })
-  await waitForHealth(baseUrl, child, () => logs)
+  const storage = server.storageDir
+  const logs = server.output
+  let baseUrl = server.baseUrl
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -153,7 +104,7 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
       setupToken: 'portrait-api-setup',
     },
   })
-  assert.equal(setup.status, 201, logs)
+  assert.equal(setup.status, 201, logs())
   const adminCookie = cookie(setup)
   const player = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
@@ -163,7 +114,7 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
       password: 'very-secure-player-password',
     },
   })
-  assert.equal(player.status, 201, logs)
+  assert.equal(player.status, 201, logs())
   const playerCookie = cookie(player)
   const outsider = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
@@ -173,7 +124,7 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
       password: 'very-secure-outsider-password',
     },
   })
-  assert.equal(outsider.status, 201, logs)
+  assert.equal(outsider.status, 201, logs())
   const outsiderCookie = cookie(outsider)
 
   const rateNpcs = Array.from({ length: NPC_PORTRAIT_GENERATION_LIMIT }, (_, index) => npc(`npc:rate-${index}`))
@@ -236,7 +187,7 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
     cookie: adminCookie,
     body: { code: 'PORTRAIT-CACHE', name: initialState.campaign, state: initialState },
   })
-  assert.equal(created.status, 201, `${await created.text()}\n${logs}`)
+  assert.equal(created.status, 201, `${await created.text()}\n${logs()}`)
   const usersResponse = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
   const users = await json(usersResponse)
   const playerUser = users.users.find((candidate) => candidate.email === 'player@portrait.test')
@@ -245,7 +196,7 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
     cookie: adminCookie,
     body: { heroIds: ['hero'] },
   })
-  assert.equal(assigned.status, 200, `${await assigned.text()}\n${logs}`)
+  assert.equal(assigned.status, 200, `${await assigned.text()}\n${logs()}`)
 
   const importantPath = '/api/campaigns/PORTRAIT-CACHE/npcs/npc%3Aimportant/portrait'
   const anonymous = await request(baseUrl, importantPath, { redirect: 'manual' })
@@ -278,7 +229,7 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
   assert.equal(usageBeforeGeneration.usage.provider_cost, 0)
 
   const generated = await request(baseUrl, importantPath, { cookie: playerCookie, redirect: 'manual' })
-  assert.equal(generated.status, 200, logs)
+  assert.equal(generated.status, 200, logs())
   assert.equal(generated.headers.get('content-type'), 'image/webp')
   assert.equal(generated.headers.get('x-npc-portrait-source'), 'generated')
   assert.equal(generated.headers.get('x-npc-portrait-cache'), 'miss')
@@ -328,7 +279,7 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
       `/api/campaigns/PORTRAIT-CACHE/npcs/${encodeURIComponent(`npc:rate-${index}`)}/portrait`,
       { cookie: playerCookie, redirect: 'manual' },
     )
-    assert.equal(response.status, 200, `rate-${index}\n${logs}`)
+    assert.equal(response.status, 200, `rate-${index}\n${logs()}`)
   }
   const limited = await request(
     baseUrl,
@@ -339,15 +290,10 @@ test('NPC portrait API enforces auth/visibility, caches generation and rate-limi
   assert.equal((await json(limited)).code, 'NPC_PORTRAIT_RATE_LIMITED')
   assert.equal(imageRequests.length, NPC_PORTRAIT_GENERATION_LIMIT)
 
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  logs = ''
-  child = startServer({ port, storage, providerBaseUrl, appendLog: (chunk) => { logs += chunk } })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.restart()
+  baseUrl = server.baseUrl
   const afterRestart = await request(baseUrl, importantPath, { cookie: playerCookie, redirect: 'manual' })
-  assert.equal(afterRestart.status, 200, logs)
+  assert.equal(afterRestart.status, 200, logs())
   assert.equal(afterRestart.headers.get('x-npc-portrait-cache'), 'hit')
   assert.equal(imageRequests.length, NPC_PORTRAIT_GENERATION_LIMIT)
 })

@@ -1,60 +1,11 @@
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
-
-function startServer({ port, storage, setupToken, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: setupToken,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Test server did not stop')), 5_000)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolve()
-    })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, log) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Test server exited with ${child.exitCode}\n${log()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return response.json()
-    } catch { /* listener is still starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Test server did not become healthy\n${log()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie, body } = {}) {
   const headers = { ...(body === undefined ? {} : JSON_HEADERS), ...(cookie ? { Cookie: cookie } : {}) }
@@ -180,18 +131,11 @@ function stateInventory(result) {
 }
 
 test('HTTP компоненты: расходуемые и нерасходуемые требования переживают restart/idempotency', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-spell-components-api-'))
   const setupToken = 'spell-components-api-setup'
-  let logs = ''
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  let child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
-  const log = () => logs
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-  await waitForHealth(baseUrl, child, log)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-spell-components-api-', setupToken })
+  // Каждый restart() берёт новый порт: адрес обновляется после перезапуска.
+  let baseUrl = server.baseUrl
+  const log = () => server.output()
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'Компонентный мастер', email: 'admin@spell-components-api.test', password: 'spell-components-admin-password', setupToken,
@@ -292,12 +236,8 @@ test('HTTP компоненты: расходуемые и нерасходуе�
   assert.equal(duplicate.body.authoritative_state.state_version, orb.body.authoritative_state.state_version)
   assert.equal(stateInventory(duplicate).find((item) => item.id === 'diamond-50gp')?.quantity, 1)
 
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
-  await waitForHealth(baseUrl, child, log)
+  await server.restart()
+  baseUrl = server.baseUrl
   const afterRestart = await command(baseUrl, 'COMPONENTS-DIAMOND', playerCookie, 'diamond-orb', {
     command_type: 'CastSpell', actor_id: 'hero', spell_id: 'chromatic-orb', target_id: 'enemy', spell_option: 'fire',
   })
@@ -309,7 +249,11 @@ test('HTTP компоненты: расходуемые и нерасходуе�
   const restorationRoom = await request(baseUrl, '/api/rooms/COMPONENTS-RESTORATION', { cookie: playerCookie })
   assertStatus(restorationRoom, 200, log)
   const restorationSpell = restorationRoom.body.state.players.find((candidate) => candidate.id === 'hero').combatSpells.find((spell) => spell.id === 'greater-restoration')
-  assert.equal(restorationSpell.componentAvailability.code, 'SPELL_MATERIAL_HAND_REQUIRED')
+  // Новые кампании создаются с «Заклинаниями как в BG3» (решение владельца
+  // 2026-10-13): булава и щит в руках материальному компоненту не мешают.
+  // Свободную руку по редакции стерегут модульные тесты компонентов.
+  assert.ok(restorationRoom.body.state.enabled_house_rules.includes('house:bg3-spell-hands'))
+  assert.equal(restorationSpell.componentAvailability.available, true)
   const stowCommand = { command_type: 'EquipItem', actor_id: 'hero', item_id: 'cleric-mace', equipped: false }
   const stowed = await command(baseUrl, 'COMPONENTS-RESTORATION', playerCookie, 'stow-mace', stowCommand)
   assertStatus(stowed, 200, log)
@@ -343,12 +287,8 @@ test('HTTP компоненты: расходуемые и нерасходуе�
   assert.equal(restorationDuplicate.body.authoritative_state.state_version, restoration.body.authoritative_state.state_version)
   assert.equal(stateInventory(restorationDuplicate).find((item) => item.id === 'diamond-dust-100gp')?.quantity, 1)
 
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
-  await waitForHealth(baseUrl, child, log)
+  await server.restart()
+  baseUrl = server.baseUrl
   const restorationAfterRestart = await command(baseUrl, 'COMPONENTS-RESTORATION', playerCookie, 'greater-restoration', {
     command_type: 'CastSpell', actor_id: 'hero', spell_id: 'greater-restoration', target_id: 'ally', spell_option: 'petrified',
   })

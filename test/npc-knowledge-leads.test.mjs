@@ -363,3 +363,56 @@ test('просьба напомнить — повтор и есть ответ'
   assert.equal(llm.calls.length, 1)
   assert.match(result.reply, /три коротких удара/u)
 })
+
+test('без модели NPC не зачитывает находку отряда как свой ответ, хранитель — свою правду может', async () => {
+  // Прогон Асстохана без модели 2026-10-12: пленный огр на «что вы видели в
+  // последние дни?» зачитывал улику, которую отряд нашёл при нём.
+  const state = greyPier()
+  assert.equal(npcKnownFactIds(state, state.social.npcs[1]).has('fact:found-mark'), true, 'рыбачка видела находку')
+  const seen = await offline().respond({
+    state, playerId: 'wizard', npcId: 'npc:helga', message: 'Что вы видели на борту баркаса?', turnId: 'helga-seen-offline',
+  })
+  assert.doesNotMatch(seen.reply, /выжжен|тремя глазами/u, seen.reply)
+
+  // Отряд докопался до тайны Борса сам: находка заменила его тайну — это его
+  // собственная правда, её он может подтвердить.
+  const solved = greyPier()
+  solved.worldMemory.facts = solved.worldMemory.facts.map((fact) => fact.id === 'fact:secret:owner' ? { ...fact, status: 'superseded' } : fact)
+  solved.worldMemory.facts.push({ id: 'fact:found-owner', subject_id: 'loc:tavern', predicate: 'discovery', object: 'clue', summary: OWNER_CLUE, visibility: 'party', status: 'active', supersedes_fact_id: 'fact:secret:owner', source_event_ids: ['event:search-owner'], recorded_at_minutes: 55 })
+  assert.equal(npcKnownFactIds(solved, solved.social.npcs[0]).has('fact:found-owner'), true)
+  const told = await offline().respond({
+    state: solved, playerId: 'wizard', npcId: 'npc:bors', message: 'Чей баркас «Чайка» и кто правил им той ночью?', turnId: 'bors-owner-offline',
+  })
+  assert.match(told.reply, /без огней|чужак/u, told.reply)
+})
+
+test('чужая личная беседа со знатоком не ставит `asked_before`: бриф не выдаёт её', async () => {
+  const { conversationLeads } = await import('../server/npc-social-controller.mjs')
+  const state = greyPier()
+  // Гарет говорил с Борсом наедине — Тарвин этого не видел.
+  state.social.conversations.push({ id: 'conversation:bors-private', npc_id: 'npc:bors', hero_id: 'fighter', visibility: 'specific_player', player_message: 'Чей это баркас «Чайка»?', npc_reply: 'Не знаю.', stance: 'neutral' })
+  const helga = state.social.npcs.find((npc) => npc.id === 'npc:helga')
+  const message = 'Кто правил «Чайкой» той ночью?'
+  const bors = (playerId) => conversationLeads(state, helga, message, undefined, playerId).find((lead) => lead.name === 'Борс')
+  assert.ok(bors('wizard'), 'Борс остаётся в зацепках')
+  assert.equal(bors('wizard').asked_before, undefined, 'чужая личная беседа не видна Тарвину')
+  assert.equal(bors('fighter').asked_before, true, 'свою беседу Гарет помнит')
+  const llm = scriptedLlm([replyWith('Не моё это дело.')])
+  await new NpcSocialController({ llmClient: llm }).respond({ state, playerId: 'wizard', npcId: 'npc:helga', message, turnId: 'helga-private' })
+  const brief = untrustedPayload(llm.calls[0].input.messages[1].content, 'npc_social_brief')
+  assert.equal(brief.leads.find((lead) => lead.name === 'Борс')?.asked_before, undefined)
+})
+
+test('«кто-нибудь» и «что-нибудь» не становятся темой зацепки', async () => {
+  const { conversationLeads } = await import('../server/npc-social-controller.mjs')
+  const state = greyPier()
+  state.scene.objective = ''
+  state.scene.location = 'Нигде'
+  state.worldMemory.facts.push({
+    id: 'fact:secret:nibud', subject_id: 'loc:pier', predicate: 'gm_secret',
+    object: JSON.stringify({ topic: 'нибудь', holder: 'Марен' }), summary: 'Служебная тема.', visibility: 'gm_only', status: 'active', source_event_ids: [], recorded_at_minutes: 0,
+  })
+  const helga = state.social.npcs.find((npc) => npc.id === 'npc:helga')
+  const leads = conversationLeads(state, helga, 'Знает кто-нибудь что-нибудь?', undefined, 'wizard')
+  assert.equal(leads.some((lead) => lead.name === 'Марен'), false, JSON.stringify(leads))
+})

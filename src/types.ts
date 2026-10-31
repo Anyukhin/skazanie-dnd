@@ -741,6 +741,8 @@ export type InventoryItem = {
   quantity: number
   weight: number
   equipped: boolean
+  /** Оружие во второй руке (бой двумя оружиями). */
+  equipped_slot?: 'off_hand'
   activated?: boolean
   requires_attunement?: boolean
   attuned_to?: string | null
@@ -763,6 +765,8 @@ export type InventoryItem = {
   capabilities?: {
     equippable: boolean
     equip_slot: string | null
+    /** Лёгкое оружие ближнего боя — его можно взять во вторую руку. */
+    off_hand?: boolean
     /** Ручной предмет, доступный для Equip/Unequip в бою этой волны. */
     combat_equip?: boolean
     usable: boolean
@@ -1325,6 +1329,8 @@ export type CombatAction = {
   /** Что действие значит вне боя; объявляет сервер (`explorationUseFor`).
    *  Без поля — старый снимок: действие только для боя. */
   exploration?: 'opens-combat' | 'allowed' | 'combat-only'
+  /** Звери Дикого облика, доступные друиду (`wildShapeFormsFor`). */
+  forms?: Array<{ id: string; name: string; challenge_rating: number; hp: number; armor: number }>
 }
 
 export type Enemy = {
@@ -1760,6 +1766,25 @@ export type ActorFootprint = {
   size: 1 | 2 | 3 | 4
 }
 
+/**
+ * Вариант авторского разговора (`server/campaign-dialogues.mjs`) для героя-
+ * зрителя. Ответ собеседник даёт только после выбора — в варианте его нет.
+ */
+export type SceneDialogueOption = {
+  id: string
+  label: string
+  check?: { skill: string; dc: number }
+  /** Вопрос уже задавали — серый пункт, как в BG3. */
+  asked: boolean
+  /** Вариант закрывает разговор. */
+  ends: boolean
+}
+
+export type SceneDialogue = {
+  greeting: string
+  options: SceneDialogueOption[]
+}
+
 export type GameState = {
   sessionCode: string
   campaign: string
@@ -1884,6 +1909,11 @@ export type GameState = {
    * запертости сундуков в ней нет и не будет.
    */
   lockpicking?: LockpickingProjection | null
+  /**
+   * Разговоры сцены с вариантами ответа: собеседник → приветствие и варианты
+   * для героя-зрителя. Собирает сервер; вне боя и только для авторской кампании.
+   */
+  scene_dialogues?: Record<string, SceneDialogue>
   /**
    * Ходы мира за спиной отряда. Ветка одинакова у игрока и у ведущего: «Пока
    * вас не было…» — монтаж для всего стола.
@@ -2840,6 +2870,8 @@ export type GameMechanics = Record<string, unknown> & {
     recovery_minutes_remaining?: number
   }>
   concentration?: Record<string, { effect_id?: string; source_rule_ids?: string[] }>
+  /** Чужой облик существа (Дикий облик, Превращение): чей и какой. */
+  shapes?: Record<string, { form?: { id?: string; name?: string; wild_shape?: boolean } }>
   /** Временные хиты по участникам; у неопознанного врага ключа нет. */
   temporary_hp?: Record<string, number>
   conditions?: Record<string, Array<{ id: string; duration?: string | null; source_actor?: string | null; source_item_id?: string | null; spellcasting_ability?: string | null; magical_weapon?: boolean; effect_id?: string | null; repeat_save_timing?: 'turn-end' | null; repeat_save_on_damage?: boolean; damage_save_advantage?: boolean; break_on_damage_from_source_allies?: boolean; save_ability?: string | null; save_dc?: number | null; spell_id?: string | null; spell_option?: string | null; last_used_turn?: string | null; bonus_enabled?: boolean }>>
@@ -3203,6 +3235,10 @@ export type CharacterCreationCatalog = {
     label: string
     source_url: string
     subclass_level: number
+    /** Кость хитов класса; на 1 уровне хиты — её максимум плюс модификатор Телосложения. */
+    hit_die?: number
+    /** Спасброски, которыми класс владеет с 1 уровня. */
+    saving_throws?: Array<keyof CharacterAbilityScores>
     subclasses: Array<{ id: string; name: string; sourceUrl?: string }>
     class_skills: {
       choice_count: number

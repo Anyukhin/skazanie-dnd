@@ -937,6 +937,15 @@ function humanMissingInformation(values, state, intent = {}) {
   }
   if (missing.includes('npc_id') || missing.includes('available_npc')) {
     const names = availableNpcNames(state, intent.actor_id)
+    const absent = intent.absent_npc
+    if (absent?.name) {
+      const why = absent.reason === 'combat' ? `${absent.name} сейчас не ответит: идёт схватка.`
+        : absent.reason === 'elsewhere' && absent.location ? `${absent.name} — не здесь, а в другом месте: ${absent.location}.`
+          : `${absent.name} сейчас не ответит.`
+      if (absent.reason === 'combat') return why
+      const others = names.filter((name) => name !== absent.name)
+      return others.length ? `${why} Здесь можно поговорить: ${others.join(', ')}.` : `${why} Рядом никого, кто бы ответил.`
+    }
     return names.length
       ? `Кому это — ${names.join(', ')}?`
       : 'Рядом никого, кто бы ответил: люди — там, где жильё и дорога.'
@@ -1369,6 +1378,18 @@ function freeActionCopyNote({ freeAction, message, events }) {
  * задумку и уже записанные события, поэтому не может закрыть дверь, нанести
  * урон или объявить навык, которого нет в commit.
  */
+/**
+ * Цель — это сама фраза игрока, и фраза — реплика, а не короткое действие:
+ * без модели судья берёт её как есть. «Не вышло: подпираю дверь верёвкой»
+ * говорит, что сорвалось; «Вышло: Обращаюсь к …: ты …!» — только эхо.
+ */
+function goalEchoesPlayer(goal, message) {
+  const plain = (value) => String(value ?? '').toLocaleLowerCase('ru').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  const own = plain(goal)
+  if (!own || !plain(message).startsWith(own.slice(0, 60))) return false
+  return /[:«»"!?]/u.test(String(message ?? '')) || own.split(' ').length > 8
+}
+
 function deterministicFreeActionNarration({ freeAction, message, events, state, unconfirmedPassage = false, roleplaySpeech = false }) {
   // Слова своему отряду — это и есть сцена: «узнаю правду» в реплике не
   // просьба о сведениях, и «стоит расспросить здешних» звучало глухотой
@@ -1447,6 +1468,11 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
               ? 'Дверь не поддаётся.'
             : failed && rawGoal.startsWith(`${freeActionHeroName(events, state)} `)
               ? freeActionGoalIsPassage(rawGoal) ? 'Дверь не поддаётся.' : `${freeActionHeroName(events, state)} пробует, но не выходит.`
+              // Цели от судьи нет — без модели «цель» и есть сырая фраза
+              // игрока, и ответ звучал её эхом: «Вышло: Обращаюсь к …: ты …»
+              // (прогон Асстохана без модели 2026-10-12). Итог — от лица героя.
+              : goalEchoesPlayer(rawGoal, message)
+                ? failed ? `${freeActionHeroName(events, state)} пробует, но не выходит.` : `${freeActionHeroName(events, state)} добивается своего.`
               : `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
         : (failed ? 'Не вышло.' : 'Вышло.')]
   const effects = freeActionEffectText(events, state)
@@ -3249,6 +3275,20 @@ export class GameOrchestrator {
       if (unavailable) {
         intent.requires_clarification = true
         intent.missing_information = ['available_npc']
+        // Названного собеседника нет в сцене — ответ говорит об этом прямо, а
+        // не переспрашивает «кому это?» про тех, кого игрок не называл (прогон
+        // Асстохана 2026-10-13: «Спрашиваю короля Ареса…» в лагере стражи).
+        // Только того, кого игрок знает: имя скрытого NPC ответ не раскрывает.
+        const knownToViewer = npcSocialForViewer(authoritativeState.social, { state: authoritativeState, playerId, isPartyMember: true }).npcs
+          .some((npc) => String(npc?.id ?? '') === String(profile?.id ?? ''))
+        if (profile?.name && !speaksUnderTruce && knownToViewer) {
+          intent.absent_npc = {
+            name: String(profile.name),
+            reason: authoritativeState.mechanics?.combat?.active ? 'combat'
+              : sceneLocation && npcLocation && sceneLocation !== npcLocation ? 'elsewhere' : 'unavailable',
+            location: profile.location ? String(profile.location) : null,
+          }
+        }
       }
     }
 
@@ -3267,16 +3307,18 @@ export class GameOrchestrator {
         visible_state_changes: [],
         authoritative_state: authoritativeState,
         turn_consumed: false,
-        action_kind: 'clarification',
+        // Названный собеседник не здесь — это ответ, а не вопрос: переспросить
+        // нечего, и повтор той же фразы не должен ходить по кругу уточнений.
+        action_kind: intent.absent_npc ? 'answer' : 'clarification',
         request_kind: 'action',
-        clarification: this.clarificationRegistry.create({
+        ...(intent.absent_npc ? {} : { clarification: this.clarificationRegistry.create({
           campaignId,
           actorId: playerId,
           stateVersion: authoritativeState.state_version,
           action: message,
           question: narration,
           intent,
-        }),
+        }) }),
         ...(pendingClarification ? { resolved_action: message } : {}),
       }
       this.saveTrace({ turnId, campaignId, mode, intent, retrievalQueries, retrievedRules, plan, stateBefore: authoritativeState.state_version, stateAfter: authoritativeState.state_version, verification: { valid: true }, latency: this.now() - started })
@@ -3607,6 +3649,13 @@ export class GameOrchestrator {
    * прежним.
    */
   async commitCheckDiscovery({ campaignId, idempotencyKey, committed, message, rulesContext, checkCommand }) {
+    // Повтор хода: проверка уже брошена, а её улика или сдвиг времени записаны
+    // под своим ключом. Ответ повтора несёт ту же версию, что и первый, — иначе
+    // повтор отставал на коммит находки (прогон Асстохана 2026-10-12, сид 2).
+    if (!checkCommand && committed?.duplicate) {
+      const prior = await this.eventStore.getByIdempotencyKey?.(campaignId, `${idempotencyKey}:discovery`) ?? null
+      return prior ? { ...committed, state: prior.state, state_version: prior.state_version, events: [...(committed.events ?? []), ...(prior.events ?? [])] } : committed
+    }
     if (!checkCommand || committed?.state?.mechanics?.combat?.active === true) return committed
     const checkEvent = (committed.events ?? []).find((event) => event.event_type === 'AbilityCheckResolved')
     if (!checkEvent) return committed

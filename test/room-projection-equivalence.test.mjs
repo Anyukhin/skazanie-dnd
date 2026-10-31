@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { canonicalProjection, compareProjection, projectionHash } from '../server/projection-integrity.mjs'
 
 /**
@@ -29,41 +25,6 @@ import { canonicalProjection, compareProjection, projectionHash } from '../serve
  * они дают молчаливое устаревание, если страховка `reconcileCampaignProjection`
  * когда-нибудь перестанет срабатывать.
  */
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'projection-equivalence-setup',
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try { if ((await fetch(`${baseUrl}/api/health`)).ok) return } catch { /* поднимается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -133,26 +94,23 @@ function initialState() {
 }
 
 test('комната после каждого события совпадает с полной проекцией авторитетного состояния', { timeout: 120_000 }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-projection-equivalence-'))
-  let logs = ''
-  let child = null
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
-
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, {
+    storagePrefix: 'skazanie-projection-equivalence-',
+    setupToken: 'projection-equivalence-setup',
+  })
+  // Сервер не перезапускается: адрес постоянен до конца теста.
+  const { baseUrl } = server
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'GM', email: 'gm@projection.test', password: 'secure-admin-password', setupToken: 'projection-equivalence-setup',
   } })
-  assert.equal(admin.status, 201, `${admin.text}\n${logs}`)
+  assert.equal(admin.status, 201, `${admin.text}\n${server.output()}`)
   const adminCookie = cookie(admin)
 
   const owner = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
     name: 'Owner', email: 'owner@projection.test', password: 'secure-owner-password',
   } })
-  assert.equal(owner.status, 201, `${owner.text}\n${logs}`)
+  assert.equal(owner.status, 201, `${owner.text}\n${server.output()}`)
   const ownerCookie = cookie(owner)
 
   const users = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
@@ -160,12 +118,12 @@ test('комната после каждого события совпадает
   const ownership = await request(baseUrl, `/api/admin/users/${ownerUser.id}`, {
     method: 'PATCH', cookie: adminCookie, body: { heroIds: ['fighter', 'wizard'] },
   })
-  assert.equal(ownership.status, 200, `${ownership.text}\n${logs}`)
+  assert.equal(ownership.status, 200, `${ownership.text}\n${server.output()}`)
 
   const created = await request(baseUrl, '/api/campaigns', {
     method: 'POST', cookie: adminCookie, body: { code: CODE, name: 'Эквивалентность проекции', state: initialState() },
   })
-  assert.equal(created.status, 201, `${created.text}\n${logs}`)
+  assert.equal(created.status, 201, `${created.text}\n${server.output()}`)
 
   /**
    * Прогоняет одну команду и проверяет инвариант на её результате.
@@ -180,7 +138,7 @@ test('комната после каждого события совпадает
       method: 'POST', cookie: ownerCookie, key,
       body: { idempotency_key: key, command, message: label },
     })
-    assert.equal(result.status, 200, `${label}: ${result.text}\n${logs}`)
+    assert.equal(result.status, 200, `${label}: ${result.text}\n${server.output()}`)
     const authoritative = result.body.authoritative_state
     assert.ok(authoritative, `${label}: сервер не вернул авторитетное состояние`)
     if (expectedEvent) {

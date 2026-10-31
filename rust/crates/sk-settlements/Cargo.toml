@@ -1,0 +1,21 @@
+[package]
+name = "sk-settlements"
+description = "Генераторы сцен «Сказания» по плану: раскладка графа зон в помещения и камеры склепа, поселение с домами, дорогами и площадью"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sk-core.workspace = true
+sk-geometry = { path = "../sk-geometry" }
+sk-tactical = { path = "../sk-tactical" }
+sk-map-core = { path = "../sk-map-core" }
+sk-scene-base = { path = "../sk-scene-base" }
+sk-props = { path = "../sk-props" }
+
+[dev-dependencies]
+# Корпус конвейера сцены (`fixtures/scene-program-layout-corpus.json.gz`) хранится
+# в gzip; версия и возможности — как у sk-props, нового в Cargo.lock нет.
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }

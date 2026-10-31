@@ -49,7 +49,7 @@ function buildMemory(initialState = campaign()) {
     {
       command_type: 'RecordWorldFact',
       fact: {
-        id: 'fact:fox-route', subject_id: 'npc:ashen-fox', predicate: 'uses_route',
+        id: 'fact:fox-route', subject_id: 'npc:ashen-fox', predicate: 'lore',
         object: 'The courier uses the old aqueduct.', summary: 'Ashen Fox uses the old aqueduct.', visibility: 'gm_only',
       },
     },
@@ -122,6 +122,23 @@ test('подтверждения прогресса версионированы
   assert.equal(Object.hasOwn(publicQuest, 'progress_fact_ids'), false)
   assert.equal(Object.hasOwn(publicQuest, 'progress_source_event_ids'), false)
   assert.deepEqual(quest.progress_fact_ids, ['clue'], 'проекция не меняет источник')
+})
+
+// Находка переноса (docs/rust-port-js-findings.md): пустые id доказательства
+// пропускали проверку, а сырые поля команды доходили до события.
+test('пустые id доказательства не превращаются в подтверждение прогресса', () => {
+  const prepared = runWorldMemoryCommands(campaign(), [
+    { command_type: 'UpsertQuest', quest: { id: 'supplies', title: 'Найти припасы', clock: { current: 0, max: 3 } } },
+  ]).state
+  const progressed = runWorldMemoryCommands(prepared, [{
+    command_type: 'AdvanceQuestClock', quest_id: 'supplies', amount: 1, proof_fact_ids: ['', ' '], proof_source_event_ids: ['someone-else-check'],
+  }])
+  const payload = progressed.events[0].payload
+  assert.equal(Object.hasOwn(payload, 'schema_version'), false, 'событие — как у шага без доказательства')
+  assert.equal(Object.hasOwn(payload, 'proof_fact_ids'), false)
+  const quest = progressed.state.worldMemory.quests.find((entry) => entry.id === 'supplies')
+  assert.equal(quest.clock.current, 1)
+  assert.equal(Object.hasOwn(quest, 'progress_source_event_ids'), false, 'чужой источник не помечен использованным')
 })
 
 test('старый QuestClockAdvanced не получает новый смысл подтверждения при replay', () => {
@@ -281,7 +298,7 @@ test('canonical relationships, threads, epistemic claims and summaries replay wi
     { command_type: 'UpsertWorldEntity', entity: { id: 'faction:wardens', kind: 'faction', name: 'Road Wardens', visibility: 'party' } },
     { command_type: 'UpsertWorldEntity', entity: { id: 'location:ford', kind: 'location', name: 'Ash Ford', aliases: ['old trail'], visibility: 'party' } },
     { command_type: 'RecordWorldFact', fact: {
-      id: 'fact:ford-closed', subject_id: 'location:ford', predicate: 'is_closed', object: 'The old trail is flooded.',
+      id: 'fact:ford-closed', subject_id: 'location:ford', predicate: 'lore', object: 'The old trail is flooded.',
       summary: 'Ash Ford is closed after the flood.', visibility: 'party', source_event_ids: ['event:flood'],
     } },
     { command_type: 'RecordWorldRelationship', relationship: {
@@ -295,11 +312,11 @@ test('canonical relationships, threads, epistemic claims and summaries replay wi
     } },
     { command_type: 'AdvanceNarrativeThreadClock', thread_id: 'thread:warden-oath', amount: 1 },
     { command_type: 'RecordNpcBelief', claim: {
-      id: 'belief:vela-river', holder_entity_id: 'npc:vela', subject_entity_id: 'location:ford', predicate: 'caused_flood',
+      id: 'belief:vela-river', holder_entity_id: 'npc:vela', subject_entity_id: 'location:ford',
       claim: 'Vela believes the Wardens opened the sluice gate.', summary: 'Vela suspects the Wardens.', visibility: 'gm_only', source_event_ids: ['event:vela-told'],
     } },
     { command_type: 'RecordRumor', claim: {
-      id: 'rumor:vela-smugglers', holder_entity_id: 'npc:vela', subject_entity_id: 'location:ford', predicate: 'smugglers_arrived',
+      id: 'rumor:vela-smugglers', holder_entity_id: 'npc:vela', subject_entity_id: 'location:ford',
       claim: 'Travellers say smugglers use the old trail.', summary: 'A rumour ties smugglers to Ash Ford.', visibility: 'party', source_event_ids: ['event:travellers'],
     } },
     { command_type: 'ResolveEpistemicClaim', claim_id: 'rumor:vela-smugglers', truth_status: 'refuted', source_event_ids: ['event:search'] },
@@ -330,7 +347,7 @@ test('epistemic and summary validation require provenance, while viewer retrieva
   const seeded = runWorldMemoryCommands(initial, [
     { command_type: 'UpsertWorldEntity', entity: { id: 'npc:vela', kind: 'npc', name: 'Vela', visibility: 'party' } },
     { command_type: 'UpsertWorldEntity', entity: { id: 'location:ford', kind: 'location', name: 'Ash Ford', aliases: ['old trail'], visibility: 'party' } },
-    { command_type: 'RecordWorldFact', fact: { id: 'fact:ford-route', subject_id: 'location:ford', predicate: 'blocks_route', object: 'The old trail is flooded.', summary: 'The old trail cannot be used.', visibility: 'party', source_event_ids: ['event:flood'] } },
+    { command_type: 'RecordWorldFact', fact: { id: 'fact:ford-route', subject_id: 'location:ford', predicate: 'lore', object: 'The old trail is flooded.', summary: 'The old trail cannot be used.', visibility: 'party', source_event_ids: ['event:flood'] } },
     { command_type: 'RecordRumor', claim: { id: 'rumor:party', holder_entity_id: 'npc:vela', claim: 'Smugglers crossed the ford.', summary: 'A visible rumour.', visibility: 'party', source_event_ids: ['event:talk'] } },
     { command_type: 'RecordNpcBelief', claim: { id: 'belief:hidden', holder_entity_id: 'npc:vela', claim: 'Vela thinks the party is being watched.', summary: 'A hidden belief.', visibility: 'gm_only', source_event_ids: ['event:thought'] } },
   ])
@@ -372,7 +389,7 @@ test('superseding a fact preserves history but retires the old assertion', () =>
   const result = resolveCommand({
     command_type: 'RecordWorldFact',
     fact: {
-      id: 'fact:fox-route-new', subject_id: 'npc:ashen-fox', predicate: 'uses_route',
+      id: 'fact:fox-route-new', subject_id: 'npc:ashen-fox', predicate: 'lore',
       object: 'The aqueduct is compromised.', supersedes_fact_id: 'fact:fox-route', visibility: 'gm_only',
     },
   }, first, { diceService: dice(), context: { isDirector: true } })

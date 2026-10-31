@@ -6,6 +6,7 @@ import {
   ensureNpcSocialState,
   npcProfileAtWorldTime,
   npcRelationshipEventDrafts,
+  npcRelationshipScore,
   promiseDueOffsetMinutes,
 } from './npc-social.mjs'
 import { worldLocationById } from './world-map.mjs'
@@ -237,7 +238,9 @@ const RETURN_REASONS = new Set(['dead', 'gone'])
  */
 const TONES = new Set(['warm', 'friendly', 'plain', 'cold', 'silent'])
 
-function safeLetter(value = {}) {
+function safeLetter(input = {}) {
+  // `null` в почте старого сохранения — пустая запись: её отсеет проверка id.
+  const value = input ?? {}
   const id = text(value.id, 140)
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,139}$/u.test(id)) return null
   const heroId = text(value.hero_id, 120)
@@ -385,7 +388,7 @@ function worldLeagueTable(map, fromId) {
     let currentCost = Infinity
     for (const [id, cost] of table) {
       if (visited.has(id)) continue
-      if (cost < currentCost || (cost === currentCost && id.localeCompare(current) < 0)) {
+      if (cost < currentCost || (cost === currentCost && id.localeCompare(current, 'en') < 0)) {
         current = id
         currentCost = cost
       }
@@ -497,7 +500,7 @@ function locationIdByName(map, name) {
   const expected = key(name)
   if (!expected) return ''
   return (Array.isArray(map?.locations) ? map.locations : [])
-    .find((location) => key(location.name) === expected)?.id ?? ''
+    .find((location) => key(location?.name) === expected)?.id ?? ''
 }
 
 export const courierFeeFor = (leagues) => COURIER_LETTER_BASE_FEE_CP
@@ -531,9 +534,10 @@ function addresseeScore(state, { kind, id }, heroId, context = courierLetterCont
     const reputations = state?.autonomy?.reputations && typeof state.autonomy.reputations === 'object'
       ? state.autonomy.reputations
       : {}
-    return integer(reputations[text(id, 120)], 0)
+    const key = text(id, 120)
+    return integer(Object.hasOwn(reputations, key) ? reputations[key] : undefined, 0)
   }
-  return integer(context.social().relationships[text(id, 120)]?.[text(heroId, 120)], 0)
+  return integer(npcRelationshipScore(context.social(), text(id, 120), text(heroId, 120)), 0)
 }
 
 /**
@@ -622,7 +626,7 @@ export function courierLetterAddressees(state = {}) {
   }
   return rows.sort((left, right) => left.leagues - right.leagues
     || left.name.localeCompare(right.name, 'ru')
-    || left.id.localeCompare(right.id))
+    || left.id.localeCompare(right.id, 'en'))
 }
 
 /** Письма одного героя, свежие в конце. */
@@ -712,7 +716,8 @@ const REPLY_TEMPLATES = Object.freeze({
  * @returns {string}
  */
 export function courierLetterReplyBase(letter = {}, tone = 'plain') {
-  const variants = REPLY_TEMPLATES[tone]
+  // Только собственный тон таблицы: `constructor` и прочие ключи прототипа — не тон.
+  const variants = Object.hasOwn(REPLY_TEMPLATES, tone) ? REPLY_TEMPLATES[tone] : null
   if (!variants) return ''
   const addressee = text(letter.addressee_name, 180) || 'адресат'
   const hero = text(letter.hero_name, 120) || 'отряд'
@@ -1183,7 +1188,7 @@ export function courierLetterForViewer(letter = {}, { isAdmin = false } = {}) {
 export function courierLettersForViewer(state = {}, { isAdmin = false, limit = 20 } = {}) {
   const letters = normalizeCourierLetterState(state?.courier_letters).letters
     .slice()
-    .sort((left, right) => right.sent_at_minutes - left.sent_at_minutes || left.id.localeCompare(right.id))
+    .sort((left, right) => right.sent_at_minutes - left.sent_at_minutes || left.id.localeCompare(right.id, 'en'))
     .slice(0, Math.max(1, Math.min(MAX_LETTERS, integer(limit, 20))))
     .map((letter) => courierLetterForViewer(letter, { isAdmin }))
     .filter(Boolean)
@@ -1213,6 +1218,8 @@ export function courierLetterChronicleEntry(event = {}) {
   const hero = text(letter?.hero_name ?? payload.hero_name, 120)
   const letterId = text(letter?.id ?? payload.letter_id, 140)
   if (!letterId) return null
+  // Отправка без разборчивого письма (мусор старого журнала) карточки не даёт.
+  if (type === COURIER_LETTER_EVENT_TYPES.sent && !letter) return null
   const card = type === COURIER_LETTER_EVENT_TYPES.sent
     ? {
         kind: 'sent',

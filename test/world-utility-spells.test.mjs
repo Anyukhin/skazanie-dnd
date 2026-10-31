@@ -241,6 +241,20 @@ test('Свет снимает ночную помеху Восприятию —
   assert.equal(perceptionCheck(later, 'caster').events[0].payload.weather_disadvantage, 'ночь')
 })
 
+// Находка переноса (docs/rust-port-js-findings.md): носитель «Света» без
+// позиции давал `null <= радиус` и освещал всю карту.
+test('Свет носителя без позиции не освещает остальных', () => {
+  const dark = outdoorsAtNight()
+  const lit = replayEvents(dark, cast(dark, { command_type: 'CastSpell', actor_id: 'caster', spell_id: 'light', target_id: 'caster', target_ids: ['caster'] }).events)
+  const lost = structuredClone(lit)
+  delete lost.players[0].x
+  delete lost.players[0].y
+  if (lost.mechanics.positions) delete lost.mechanics.positions.caster
+  assert.equal(perceptionCheck(lost, 'caster').events[0].payload.weather_disadvantage, undefined, 'сам носитель по-прежнему в свету')
+  assert.equal(perceptionCheck(lost, 'ally').events[0].payload.weather_disadvantage, 'ночь', 'сосед без известного расстояния — в темноте')
+  assert.equal(perceptionCheck(lost, 'far-foe').events[0].payload.weather_disadvantage, 'ночь')
+})
+
 // ---------------------------------------------------------------------------
 // Подмога: предел хитов до продолжительного отдыха
 
@@ -466,7 +480,6 @@ test('карточка без исполнимой механики отказы
     ['fly', 'wizard', 7, /высотного перемещения/u],
     ['levitate', 'wizard', 7, /высотного перемещения/u],
     ['feather-fall', 'wizard', 7, /ни высоты, ни падения/u],
-    ['revivify', 'cleric', 9, /момент смерти/u],
     ['detect-magic', 'cleric', 9, /уже опознанными/u],
   ]
   for (const [spellId, characterClass, level, reason] of cases) {

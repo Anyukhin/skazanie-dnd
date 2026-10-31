@@ -306,7 +306,7 @@ function socialAliasesFor(actor) {
     .map((value) => String(value ?? '').trim())
     .filter((value) => value && !value.includes(':'))
   const translated = [...new Set([role, ...tags].flatMap((value) => (
-    ROLE_ALIASES[value.toLocaleLowerCase('ru')] ?? []
+    ownEntry(ROLE_ALIASES, value.toLocaleLowerCase('ru')) ?? []
   )))]
   return [...new Set([
     ...namesFor(actor),
@@ -635,7 +635,7 @@ export function namedKnownSpell(text, state, playerId) {
     const words = (name.toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}{3,}/gu) ?? []).map((word) => word.slice(0, 5))
     return { id, name, words }
   }).filter((entry) => entry.words.length && entry.words.every((stem) => stems.has(stem)))
-    .sort((left, right) => right.words.length - left.words.length || left.id.localeCompare(right.id))
+    .sort((left, right) => right.words.length - left.words.length || left.id.localeCompare(right.id, 'en'))
   return matches[0] ? { id: matches[0].id, name: matches[0].name } : null
 }
 
@@ -649,4 +649,9 @@ export function buildRuleQueries(intent, state) {
   if (/плыв|вод|тон\w*|удуш|swim|drown|suffocat/iu.test(intent?.raw_message ?? '')) queries.push('swimming rough water suffocation hazard exhaustion')
   if (state?.mechanics?.combat?.active) queries.push('combat turn action bonus action reaction')
   return [...new Set(queries.map(normalizedText).filter(Boolean))]
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

@@ -133,7 +133,7 @@ function text(value, maximum) {
 function preparedNpcPortraitUrl(profile) {
   const id = text(profile?.id, 120)
   const assets = /** @type {Record<string, string>} */ (NPC_PORTRAIT_CHARACTER_ASSETS)
-  return assets[id] ?? ''
+  return ownEntry(assets, id) ?? ''
 }
 
 /**
@@ -441,6 +441,12 @@ export class NpcPortraitService {
     let generated
     try {
       generated = await this.generator({ prompt, model: this.imageModel })
+      // Формат и размер — до списания, как у иллюстраций мест: html вместо
+      // картинки работой не считается, и бронь закрывается неудачей, а не
+      // успешной генерацией пустого портрета.
+      if (!Buffer.isBuffer(generated?.bytes) || !isWebp(generated.bytes) || generated.bytes.length > NPC_PORTRAIT_MAX_BYTES) {
+        throw Object.assign(new Error('Генератор портретов вернул неподдерживаемый файл'), { code: 'IMAGE_FORMAT_REJECTED' })
+      }
     } catch (error) {
       if (reservation) {
         const errorCode = error && typeof error === 'object' && 'code' in error
@@ -453,9 +459,6 @@ export class NpcPortraitService {
       throw error
     }
     if (reservation) this.usageLedger?.settle(reservation.request_id, generated.usage ?? {})
-    if (!Buffer.isBuffer(generated?.bytes) || !isWebp(generated.bytes) || generated.bytes.length > NPC_PORTRAIT_MAX_BYTES) {
-      throw new Error('Генератор портретов вернул неподдерживаемый файл')
-    }
     await mkdir(location.directory, { recursive: true })
     const temporary = join(location.directory, `.${randomUUID()}.tmp`)
     try {
@@ -474,4 +477,17 @@ export class NpcPortraitService {
       model: this.imageModel,
     }
   }
+}
+
+/**
+ * Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`,
+ * `toString`…) записями не считаются.
+ *
+ * @template T
+ * @param {Readonly<Record<string, T>>} table
+ * @param {unknown} key
+ * @returns {T | undefined}
+ */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

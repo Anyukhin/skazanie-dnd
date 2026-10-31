@@ -84,9 +84,10 @@ type TacticalCommand =
   | { command_type: 'ProposeParley'; actor_id: string; skill: 'persuasion' | 'intimidation' }
   | { command_type: 'SettleParley'; actor_id: string; outcome: ParleyOutcome }
   | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
-  | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
+  | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean; equip_slot?: 'off_hand' }
   | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string; charges_to_spend?: number; to?: { x: number; y: number }; use_mode?: 'spill'; weapon_id?: string }
   | { command_type: 'TransferItem'; actor_id: string; item_id: string; recipient_id: string; quantity: number }
+  | { command_type: 'ChooseDialogueOption'; actor_id: string; npc_id: string; option_id: string }
   | { command_type: 'AttuneItem'; actor_id: string; item_id: string; attuned: boolean }
   | { command_type: 'ActivateItem'; actor_id: string; item_id: string; activated: boolean }
   | { command_type: 'SetSpellBonusPreference'; actor_id: string; spell_id: 'bless'; enabled: boolean }
@@ -1913,7 +1914,7 @@ export function useGameSession(options: {
     return executeTacticalCommand({ command_type: 'UseLevelTransition', actor_id: actorId, prop_id: propId }, 'Перейти на другой этаж')
   }, [executeTacticalCommand])
 
-  const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push' }) => {
+  const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push', fontMode?: 'create' | 'convert', formId?: string }) => {
     return executeTacticalCommand({
       command_type: 'UseCombatAction', actor_id: actorId, action_id: actionId,
       ...(targetId ? { target_id: targetId } : {}),
@@ -1921,6 +1922,8 @@ export function useGameSession(options: {
       ...(beneficiaryId ? { beneficiary_id: beneficiaryId } : {}),
       ...(slotLevel ? { slot_level: slotLevel } : {}),
       ...(options?.shoveMode ? { shove_mode: options.shoveMode } : {}),
+      ...(options?.fontMode ? { font_mode: options.fontMode } : {}),
+      ...(options?.formId ? { form_id: options.formId } : {}),
     }, 'Использовать выбранное боевое действие', {}, { playerNote: note })
   }, [executeTacticalCommand])
 
@@ -1938,8 +1941,8 @@ export function useGameSession(options: {
     }, resolution === 'resurrect' ? 'Воскресить погибшего героя' : 'Заменить погибшего героя новым')
   }, [executeTacticalCommand])
 
-  const equipItem = useCallback((playerId: string, itemId: string, equipped: boolean) => {
-    return executeTacticalCommand({ command_type: 'EquipItem', actor_id: playerId, item_id: itemId, equipped }, equipped ? 'Экипировать предмет' : 'Снять предмет')
+  const equipItem = useCallback((playerId: string, itemId: string, equipped: boolean, slot?: 'off_hand') => {
+    return executeTacticalCommand({ command_type: 'EquipItem', actor_id: playerId, item_id: itemId, equipped, ...(slot ? { equip_slot: slot } : {}) }, slot ? 'Взять во вторую руку' : equipped ? 'Экипировать предмет' : 'Снять предмет')
   }, [executeTacticalCommand])
 
   const useItem = useCallback((playerId: string, itemId: string, options: ItemUseOptions = {}) => {
@@ -1957,6 +1960,12 @@ export function useGameSession(options: {
 
   const transferItem = useCallback((playerId: string, itemId: string, recipientId: string, quantity = 1) => {
     return executeTacticalCommand({ command_type: 'TransferItem', actor_id: playerId, item_id: itemId, recipient_id: recipientId, quantity }, 'Передать предмет союзнику')
+  }, [executeTacticalCommand])
+
+  // Вариант авторского разговора: ответ, СЛ и раскрытие решает сервер по
+  // данным диалога; клиент отправляет только героя, собеседника и вариант.
+  const chooseDialogueOption = useCallback((playerId: string, npcId: string, optionId: string) => {
+    return executeTacticalCommand({ command_type: 'ChooseDialogueOption', actor_id: playerId, npc_id: npcId, option_id: optionId }, 'Ответ в разговоре')
   }, [executeTacticalCommand])
 
   const attuneItem = useCallback((playerId: string, itemId: string, attuned: boolean) => {
@@ -2407,6 +2416,7 @@ export function useGameSession(options: {
     equipItem,
     useItem,
     transferItem,
+    chooseDialogueOption,
     attuneItem,
     activateItem,
     importCharacter,

@@ -122,7 +122,7 @@ function capitalized(value) {
 function propHintOrder(left, right) {
   return left.priority - right.priority
     || (left.distance ?? Number.POSITIVE_INFINITY) - (right.distance ?? Number.POSITIVE_INFINITY)
-    || left.id.localeCompare(right.id)
+    || left.id.localeCompare(right.id, 'en')
 }
 
 /**
@@ -211,7 +211,7 @@ function lootHints(room) {
     .flatMap((container) => {
       const name = text(container?.name, 60)
       if (!name) return []
-      const phrase = LOOT_HINT_PHRASES[String(container?.kind ?? '')] ?? 'обыскать добычу'
+      const phrase = ownEntry(LOOT_HINT_PHRASES, String(container?.kind ?? '')) ?? 'обыскать добычу'
       // Имя контейнера уже начинается с вида («Тело: Разбойник»), поэтому в
       // строку идёт только то, что после двоеточия, — иначе вид повторится.
       const subject = name.includes(': ') ? name.slice(name.indexOf(': ') + 2) : ''
@@ -285,7 +285,7 @@ function theftHints(room, actorId) {
     .map((npc) => ({ npc, feet: feetBetween(cell, npc) }))
     .filter((entry) => entry.feet == null || entry.feet <= THEFT_HINT_REACH_FEET)
     .sort((left, right) => (left.feet ?? Number.POSITIVE_INFINITY) - (right.feet ?? Number.POSITIVE_INFINITY)
-      || String(left.npc?.id ?? '').localeCompare(String(right.npc?.id ?? '')))[0]
+      || String(left.npc?.id ?? '').localeCompare(String(right.npc?.id ?? ''), 'en'))[0]
   const name = text(nearest?.npc?.name, 60)
   if (!name) return []
   return [{
@@ -559,7 +559,9 @@ function beastHints(room, actorId) {
  */
 function beastReachRow(entry, actorId) {
   const rows = entry?.reach_by_hero
-  const row = rows && typeof rows === 'object' ? rows[String(actorId ?? '')] : null
+  // Только собственная строка: герой с id `__proto__` не находит прототип и не
+  // считается дотянувшимся.
+  const row = rows && typeof rows === 'object' ? ownEntry(rows, String(actorId ?? '')) : null
   return row && typeof row === 'object' ? row : { out_of_reach: true }
 }
 
@@ -670,7 +672,7 @@ export function suggestedActionsFor(room, actorId = '') {
   if (room?.mechanics?.combat?.active === true) return []
   const seen = new Set()
   const ordered = (hints) => hints
-    .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
+    .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id, 'en'))
     .filter((hint) => {
       if (!hint.text || seen.has(hint.text)) return false
       seen.add(hint.text)
@@ -705,7 +707,12 @@ export function suggestedActionsFor(room, actorId = '') {
     ...fenceHints(room, actorId),
   ]).slice(0, budget)
   return [...props, ...reserved]
-    .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
+    .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id, 'en'))
     .slice(0, MAX_ACTION_HINTS)
     .map((hint) => ({ id: hint.id, text: hint.text }))
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

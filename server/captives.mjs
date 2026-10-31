@@ -175,7 +175,9 @@ export function captivePersona(state, enemy = {}) {
 // Состояние
 // ---------------------------------------------------------------------------
 
-function safeCaptive(value = {}) {
+function safeCaptive(input = {}) {
+  // `null` в реестре старого сохранения — пустая запись: её отсеет проверка id.
+  const value = input ?? {}
   const id = text(value.id, 120)
   const npcId = text(value.npc_id, 120)
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u.test(id) || !npcId) return null
@@ -251,7 +253,13 @@ export function captiveIdFor(state, actorId) {
 // ---------------------------------------------------------------------------
 
 function conditionIds(state, actorId) {
-  return new Set((state?.mechanics?.conditions?.[String(actorId)] ?? [])
+  // Только собственный список актора: не массив или ключ прототипа — пусто.
+  const conditions = state?.mechanics?.conditions
+  const key = String(actorId)
+  const list = conditions && typeof conditions === 'object' && !Array.isArray(conditions) && Object.hasOwn(conditions, key)
+    ? conditions[key]
+    : []
+  return new Set((Array.isArray(list) ? list : [])
     .map((condition) => String(condition?.id ?? condition)))
 }
 
@@ -287,7 +295,7 @@ export function capturableEnemies(state = {}) {
     .filter((enemy) => enemy?.id && !known.has(String(enemy.id)) && !conditionIds(state, enemy.id).has('fled'))
     .map((enemy) => ({ enemy, origin: captiveOriginFor(state, enemy) }))
     .filter((entry) => entry.origin)
-    .sort((left, right) => String(left.enemy.id).localeCompare(String(right.enemy.id)))
+    .sort((left, right) => String(left.enemy.id).localeCompare(String(right.enemy.id), 'en'))
 }
 
 const CAPTIVE_LEAD_TEMPLATES = Object.freeze([
@@ -319,7 +327,7 @@ const LEAD_DIRECTIONS = Object.freeze(['к северу', 'к югу', 'к во�
  * которую можно проверить и отыграть.
  */
 export function captiveKnowledgeDrafts(state = {}, captive = {}) {
-  const facts = (state?.worldMemory?.facts ?? [])
+  const facts = (Array.isArray(state?.worldMemory?.facts) ? state.worldMemory.facts : [])
     .filter((fact) => fact?.status === 'active' && fact?.visibility === 'gm_only')
   const placeKey = comparable(captive.location_name || captive.location_id)
   const existing = facts
@@ -359,7 +367,11 @@ export function captiveKnowledgeDrafts(state = {}, captive = {}) {
 }
 
 function captivePost(state, enemy) {
-  const position = state?.mechanics?.positions?.[String(enemy.id)] ?? { x: enemy.x, y: enemy.y }
+  const positions = state?.mechanics?.positions
+  const id = String(enemy.id)
+  // Позиция — собственный ключ словаря: id `constructor` не находит функцию.
+  const own = positions && typeof positions === 'object' && Object.hasOwn(positions, id) ? positions[id] : undefined
+  const position = own ?? { x: enemy.x, y: enemy.y }
   const candidate = { x: integer(position?.x, Number.NaN), y: integer(position?.y, Number.NaN) }
   if (!Number.isSafeInteger(candidate.x) || !Number.isSafeInteger(candidate.y)) return null
   return isValidNpcPost(state, candidate, { exceptNpcId: String(enemy.id) }) ? candidate : null
@@ -375,20 +387,20 @@ export function planCaptureDrafts(state = {}) {
   const minutes = campaignElapsedMinutes(state)
   const locationId = sceneLocationId(state)
   const locationName = text(state?.scene?.location ?? state?.scene?.title, 180)
-  const existingNpcIds = new Set((state?.social?.npcs ?? []).map((npc) => String(npc?.id ?? '')))
+  const existingNpcIds = new Set((Array.isArray(state?.social?.npcs) ? state.social.npcs : []).map((npc) => String(npc?.id ?? '')))
   // Профиль собеседника переговоров — заглушка: недоступен и без адреса, потому
   // что предводитель уцелевших житель поля боя, а не локации (`parley.mjs`).
   // Пленный — житель: он идёт с отрядом, стоит на посту сцены и виден на доске.
   // Поэтому сдавшийся по уговору получает полноценный профиль пленного, а не
   // остаётся с заглушкой, из-за которой его не было бы ни в сцене, ни на карте.
-  const parleyStubNpcIds = new Set((state?.social?.npcs ?? [])
+  const parleyStubNpcIds = new Set((Array.isArray(state?.social?.npcs) ? state.social.npcs : [])
     .filter((npc) => npc?.available === false && (Array.isArray(npc?.tags) ? npc.tags : []).includes('parley-leader'))
     .map((npc) => String(npc?.id ?? '')))
-  const existingEntityIds = new Set((state?.worldMemory?.entities ?? []).map((entity) => String(entity?.id ?? '')))
+  const existingEntityIds = new Set((Array.isArray(state?.worldMemory?.entities) ? state.worldMemory.entities : []).map((entity) => String(entity?.id ?? '')))
   for (const { enemy, origin } of capturableEnemies(state)) {
     const npcId = String(enemy.id)
     const persona = captivePersona(state, enemy)
-    const known = (state?.social?.npcs ?? []).find((npc) => String(npc?.id ?? '') === npcId) ?? null
+    const known = (Array.isArray(state?.social?.npcs) ? state.social.npcs : []).find((npc) => String(npc?.id ?? '') === npcId) ?? null
     const bandId = captiveBandId(enemy.stat_block_id, enemy.name)
     const captive = safeCaptive({
       id: captiveIdFor(state, npcId),
@@ -493,7 +505,7 @@ export function planCaptiveRelocationDrafts(state = {}) {
   const locationName = text(state?.scene?.location ?? state?.scene?.title, 180)
   const drafts = []
   for (const captive of heldCaptives(state)) {
-    const npc = (state?.social?.npcs ?? []).find((entry) => String(entry?.id ?? '') === captive.npc_id)
+    const npc = (Array.isArray(state?.social?.npcs) ? state.social.npcs : []).find((entry) => String(entry?.id ?? '') === captive.npc_id)
     if (!npc || comparable(npc.location) === comparable(locationName || locationId)) continue
     drafts.push({
       event_type: 'NpcSocialProfileUpserted',

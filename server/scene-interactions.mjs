@@ -278,7 +278,7 @@ export function sceneInteractionMetadata({ mapSeed = '', props = [] } = {}) {
       kind: sceneInteractionCatalogEntry(prop?.assetId).kind,
       score: hashNumber(`${clean(mapSeed)}:poi:${clean(prop.id)}:${clean(prop.assetId)}`),
     }))
-    .sort((left, right) => left.score - right.score || clean(left.prop.id).localeCompare(clean(right.prop.id)))
+    .sort((left, right) => left.score - right.score || clean(left.prop.id).localeCompare(clean(right.prop.id), 'en'))
   const candidates = supported.filter((candidate) => POINT_OF_INTEREST_KINDS.includes(candidate.kind))
   const desired = candidates.length
     ? Math.min(candidates.length, 2 + (hashNumber(`${clean(mapSeed)}:poi-count`) % 3))
@@ -473,7 +473,7 @@ export function nearestSceneObjectCommand({ props = [], actorPosition, text } = 
     // пытается их открыть» про шлюзы не должно открывать сундук через площадь.
     // Святыня исключение: «помолиться» адресовано ей, где бы она ни стояла.
     .filter((entry) => operation.aliases.length || operation.intent === 'pray' || entry.distance <= 1)
-    .sort((left, right) => left.distance - right.distance || clean(left.prop.id).localeCompare(clean(right.prop.id)))
+    .sort((left, right) => left.distance - right.distance || clean(left.prop.id).localeCompare(clean(right.prop.id), 'en'))
   const selected = candidates[0]?.prop
   return selected ? {
     command_type: 'OperateSceneObject',

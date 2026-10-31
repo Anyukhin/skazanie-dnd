@@ -23,9 +23,11 @@
  *   node eval/astohan-playthrough.mjs                 # без модели, 3–15 мин до развязки
  *   node eval/astohan-playthrough.mjs --seed 7        # повторяемые кости
  *   node eval/astohan-playthrough.mjs --party fighter,cleric   # быстрый прогон вдвоём
+ *   node eval/astohan-playthrough.mjs --tactics bot            # прежняя простая тактика бота
  *   node eval/astohan-playthrough.mjs --live          # с моделью из .env, бюджет и темп
  *   node eval/astohan-playthrough.mjs --live --judge  # плюс оценка текста моделью-судьёй
  *   node eval/astohan-playthrough.mjs --minutes 20 --out tmp/astohan-playtest/run1
+ *   SKAZANIE_RUST_SERVER_BIN=… node eval/astohan-playthrough.mjs --impl rust --seed 7   # бинарь переноса
  *
  * Итог — `<out>/report.md` (оценка и находки), `<out>/transcript.md`
  * (хроника: реплика → ответ), `<out>/narration-sample.md` (выборка текста
@@ -46,9 +48,11 @@ import { combatSpellsFor, spellSelectionRulesFor } from '../server/combat-spells
 import { movementForActor, movementStepCostFor, normalizeCampaignState, previewApproachAttack } from '../server/rules-engine.mjs'
 import { occupiedPositions, shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
 import { footprintCellsFor } from '../server/actor-footprint.mjs'
+import { planHeroCombatCommand } from '../server/party-tactics.mjs'
 import { isDirectorPartyDecision } from '../src/director-continuation.mjs'
 import { findNarratorCliches } from '../server/narrator-craft-quality.mjs'
 import { measureNarratorCraft } from './narrator-craft-metrics.mjs'
+import { freePort, rustCutoverAudit, spawnRustStand, standImpl } from './stand-server.mjs'
 import { judgeContext, narrationConsistency, sceneContinuity, sceneMapConsistency } from './consistency-checks.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -66,11 +70,23 @@ const KEEP = flag('keep') || VISIT.length > 0
 // Судья тратит вызовы модели, поэтому включается только явно.
 const JUDGE = flag('judge')
 const PARTY = option('party', 'fighter,cleric,wizard,rogue').split(',').map((entry) => entry.trim()).filter(Boolean)
+// Тактика героев в бою: `server` — серверная автотактика (`planHeroCombatCommand`,
+// та же, что у автономных героев и стенда боёв 7-го уровня: ячейки всех
+// кругов, умения классов, реакции), `bot` — прежняя простая лестница бота
+// (заговоры, один огненный шар). Прогон 2026-10-13: на простой тактике бой
+// отряда 7-го уровня шёл по 14 раундов, и кампания не успевала до финала.
+const TACTICS = option('tactics', 'server')
 const SEED = option('seed', null)
+// Реализация сервера: `js` (по умолчанию) или бинарь Rust-переноса (`eval/stand-server.mjs`).
+const IMPL = standImpl(argv)
+if (IMPL === 'rust' && (LIVE || JUDGE)) {
+  console.error('--impl rust: только без модели (--live и --judge — для JS-сервера)')
+  process.exit(2)
+}
 const MINUTES = Number(option('minutes', LIVE ? 25 : 20))
-const PORT = Number(option('port', 8900 + Math.floor(Math.random() * 90)))
+const PORT = Number(option('port', IMPL === 'rust' ? await freePort() : 8900 + Math.floor(Math.random() * 90)))
 const STAMP = new Date().toISOString().replace(/[:.]/gu, '-').slice(0, 19)
-const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP}${LIVE ? '-live' : ''}`)))
+const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP}${LIVE ? '-live' : ''}${IMPL === 'rust' ? '-rust' : ''}`)))
 const CODE = 'ASTOHAN-RUN'
 const TEMPLATE_ID = 'astohan-plains'
 const RULESET_ID = 'dnd_5e_2014'
@@ -110,9 +126,16 @@ const stats = {
   lootTaken: 0, rests: 0, levelUps: 0, restarts: 0, scenes: [], chapters: 0,
   // Реальные фразы игроков: сколько сказано и сколько из них упёрлось в тупик, по видам.
   corpus: { said: 0, deadEnds: 0, byKind: {} },
+  // Разговор (docs/offline-playable-plan.md, этап 0): реплик собеседников и
+  // отписок среди них — реплика есть, а сведений нет. Без модели это главное
+  // место, где игра упирается в отсутствие диалога.
+  npcReplies: 0, npcBrushOffs: 0, npcBrushOffSamples: [],
+  // Авторский разговор вариантами (этап 1): выборы, отказы, раскрытые тайны
+  // и сюжетные команды из окна собеседника — как в BG3.
+  dialogue: { chosen: 0, refused: 0, reveals: 0, actions: 0, npcs: {}, refusals: [] },
   trade: { bought: 0, sold: 0, refused: 0 }, potionsUsed: 0,
   parley: { attempts: 0, truces: 0, outcomes: [] },
-  spells: {}, sneakAttacks: 0,
+  spells: {}, features: {}, sneakAttacks: 0,
   // Сколько ответов сверено с картой и механикой и какие расхождения нашлись.
   consistencyChecked: 0, consistency: {},
 }
@@ -157,7 +180,9 @@ function startServer() {
   // Без --live ключ обнуляется явно: dotenv не перекрывает уже заданные
   // переменные, и пустая строка выигрывает у ключа из .env.
   if (!LIVE) env.ROUTERAI_API_KEY = ''
-  child = spawn(process.execPath, [...preload, 'server/index.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  child = IMPL === 'rust'
+    ? spawnRustStand({ port: PORT, storage, setupToken, env: { DND_COMBAT_TURN_TIMEOUT_MS: env.DND_COMBAT_TURN_TIMEOUT_MS, ...(SEED == null ? {} : { PLAYTEST_DICE_SEED: String(SEED) }) } })
+    : spawn(process.execPath, [...preload, 'server/index.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] })
   child.stdout.on('data', (chunk) => { logs += chunk })
   child.stderr.on('data', (chunk) => { logs += chunk })
 }
@@ -298,6 +323,7 @@ async function command(actorId, commandValue, label = commandValue.command_type,
   })
   stats.playerCommands += 1
   if (turnLog && result.status === 200 && /MakeAttack|CastSpell|MakeAreaAttack/u.test(commandValue.command_type)) combatActs[actorId] = (combatActs[actorId] ?? 0) + 1
+  if (turnLog && result.status === 200 && commandValue.command_type === 'UseCombatAction' && !/decline|dash|dodge|disengage|stand-up/u.test(String(commandValue.action_id))) combatActs[actorId] = (combatActs[actorId] ?? 0) + 1
   turnLog?.push(`${label}${result.status === 200 ? ' ✓' : ` ✗${result.body?.code ? ` ${result.body.code}` : ''}`}`)
   if (result.status !== 200) {
     stats.commandRefused += 1
@@ -526,6 +552,13 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
     final = answer
     const text = String(answer.narration ?? '')
     if (text) { note(`> ${short(text, 1400)}`); narrations.push({ kind: 'reply', action, label, text }) }
+    if (text && answer.provider === 'NpcSocialController') {
+      stats.npcReplies += 1
+      if (NPC_BRUSH_OFF.test(text)) {
+        stats.npcBrushOffs += 1
+        if (stats.npcBrushOffSamples.length < 3) stats.npcBrushOffSamples.push(`«${short(action, 70)}» → «${short(text, 110)}»`)
+      }
+    }
     if (answer.check && !answer.mechanics?.some((event) => event.event_type === 'AbilityCheckResolved')) {
       stats.checks += 1
       const check = answer.check
@@ -594,6 +627,12 @@ async function sayFollowUp(body, account, steps) {
   if (result.body.narration) { note(`> ${short(result.body.narration, 1400)}`); narrations.push({ kind: 'roll', action: body.action, label: 'после броска', text: String(result.body.narration) }) }
   return result.body
 }
+
+/**
+ * Отписка собеседника: запасные реплики без сведений
+ * (`fallbackDisclosure` в `server/npc-social-controller.mjs`).
+ */
+const NPC_BRUSH_OFF = /(?:Больше мне сказать нечего|Может, что-то и знаю\. Но просто так такое не рассказывают|Ладно\. Говори, я слушаю|Нет\. Меня это не убеждает|отвечает уклончиво, и за словами угадывается|по лицу ничего не прочесть|Обещать пока нечего)/u
 
 const answersSeen = new Map()
 function classifyOutcome(action, answer, expect, rolledCheck = null) {
@@ -779,7 +818,8 @@ async function playCombat(label) {
     }
     if (combat.reaction_window) {
       const actorId = String(combat.reaction_window.actor_id)
-      if (heroIds().includes(actorId)) await command(actorId, { command_type: 'UseCombatAction', action_id: 'decline-reaction' }, 'Пропустить реакцию')
+      if (heroIds().includes(actorId) && TACTICS === 'server') await serverTacticsReaction(actorId)
+      else if (heroIds().includes(actorId)) await command(actorId, { command_type: 'UseCombatAction', action_id: 'decline-reaction' }, 'Пропустить реакцию')
       else await request(`/api/campaigns/${CODE}/system-tick`, { method: 'POST', account: accounts.owner })
       continue
     }
@@ -842,6 +882,7 @@ async function heroTurnActions(state, actorId) {
     const at = state.mechanics.positions?.[actorId] ?? me
     const foes = (state.enemies ?? []).filter(isUp).map((enemy) => ({ enemy, at: state.mechanics.positions?.[enemy.id] ?? enemy })).sort((a, b) => distance(at, a.at) - distance(at, b.at))
     if (await tryParley(state, actorId, foes)) { /* действие ушло на переговоры */ }
+    else if (TACTICS === 'server') await serverTacticsTurn(actorId)
     else if (me.characterClass === 'cleric') await clericTurn(state, actorId, at, foes)
     else if (me.characterClass === 'wizard') await wizardTurn(state, actorId, at, foes)
     else if (me.characterClass === 'rogue') await rogueTurn(state, actorId, at, foes)
@@ -856,6 +897,47 @@ async function heroTurnActions(state, actorId) {
   const ended = await command(actorId, { command_type: 'EndTurn' }, 'Завершить ход')
   if (ended.status !== 200 && ended.body?.code === 'HERO_DEAD_UNRESOLVED') await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
   else if (ended.status !== 200) finding('major', 'end-turn-refused', `EndTurn ${actorId}: ${ended.body?.code} — ${short(ended.body?.error, 200)}`)
+}
+
+/**
+ * Ход героя серверной автотактикой: она видит то же, что игрок (проекция его
+ * аккаунта), и шаг за шагом выбирает команду, а бот отправляет её обычным
+ * HTTP-путём игрока. Отказ одной и той же команды дважды не повторяется.
+ */
+async function serverTacticsTurn(actorId) {
+  const refused = new Set()
+  for (let step = 0; step < 14; step += 1) {
+    const view = await room(accountFor(actorId))
+    const combat = view.mechanics?.combat
+    if (!combat?.active || combat.reaction_window) return
+    if (String(combat.initiative?.[combat.active_index]?.actor_id ?? '') !== actorId) return
+    const plan = planHeroCombatCommand(view, actorId)
+    const next = plan.command
+    if (!next || next.command_type === 'EndTurn') return
+    const signature = JSON.stringify(next)
+    if (refused.has(signature)) return
+    const { actor_id: _actor, server_authoritative: _authority, ...body } = next
+    const sent = await command(actorId, body, short(plan.reason, 90), { expectFailure: true })
+    if (next.command_type === 'CastSpell') countSpell(String(next.spell_id), sent)
+    if (sent.status === 200 && next.sneak_attack === true) stats.sneakAttacks += 1
+    if (sent.status === 200 && next.command_type === 'UseItem') stats.potionsUsed += 1
+    if (sent.status === 200 && next.command_type === 'UseCombatAction') stats.features[String(next.action_id)] = (stats.features[String(next.action_id)] ?? 0) + 1
+    if (sent.status !== 200) {
+      refused.add(signature)
+      if (!EXPECTED_REFUSALS.test(String(sent.body?.code))) finding('major', 'tactic-refused', `${next.command_type}:${next.action_id ?? next.spell_id ?? ''} ${heroOf(view, actorId)?.character ?? actorId}: ${sent.body?.code} — ${short(sent.body?.error, 200)}`)
+    }
+  }
+}
+
+/** Ответ героя на окно реакции — той же автотактикой (Щит, уклонение, словцо…). */
+async function serverTacticsReaction(actorId) {
+  const view = await room(accountFor(actorId))
+  const plan = planHeroCombatCommand(view, actorId)
+  const next = plan.command?.command_type === 'UseCombatAction' ? plan.command : { command_type: 'UseCombatAction', action_id: 'decline-reaction' }
+  const { actor_id: _actor, server_authoritative: _authority, ...body } = next
+  const sent = await command(actorId, body, short(plan.reason, 90), { expectFailure: true })
+  if (sent.status === 200 && next.action_id !== 'decline-reaction') stats.features[`reaction:${next.action_id}`] = (stats.features[`reaction:${next.action_id}`] ?? 0) + 1
+  if (sent.status !== 200) await command(actorId, { command_type: 'UseCombatAction', action_id: 'decline-reaction' }, 'Пропустить реакцию', { expectFailure: true })
 }
 
 const EXPECTED_REFUSALS = /TARGET_OUT_OF_RANGE|TRAJECTORY|COVER|VISIBLE|SPEED|PATH|DIFFICULT|OCCUPIED|DESTINATION|NO_ACTION|ACTION_USED|ACTION_SPENT|ALREADY|INSUFFICIENT|SLOT|BONUS_ACTION|ONE_SPELL|CONCENTRATION|LINE_OF_SIGHT|REACTION_PENDING/u
@@ -1349,6 +1431,20 @@ function runCutoverAudit() {
   return { status: audit.status, output: short(output, 2000) }
 }
 
+// Хранилище Rust — SQLite, `tools/audit-cutover.mjs` его не читает: та же
+// сверка снимков с replay подкомандой бинаря плюс перекрёстный replay журнала
+// Rust JS-редьюсером (`eval/stand-server.mjs`).
+async function runRustCutoverAudit() {
+  const audit = await rustCutoverAudit(storage, CODE)
+  if (audit.status !== 0) finding('critical', 'replay-audit', `аудит журнала Rust упал: ${short(audit.output, 400)}`)
+  else if (!audit.report.replay_matched) finding('critical', 'replay-audit', `журнал Rust: загрузка со снимками и replay расходятся (${audit.report.hashes.loaded.slice(0, 12)} ≠ ${audit.report.hashes.replayed.slice(0, 12)})`)
+  if (audit.status === 0 && !audit.report.cross_replay_matched) {
+    const where = audit.report.cross_replay_error ? `JS-редьюсер отказал на версии ${audit.report.cross_replay_error.at_version}: ${audit.report.cross_replay_error.message}` : `первое расхождение ${JSON.stringify(audit.report.first_difference)}`
+    finding('critical', 'cross-replay', `журнал Rust, переигранный JS-редьюсером, даёт другое состояние: ${short(where, 500)}`)
+  }
+  return { status: audit.status, output: short(audit.output, 2000) }
+}
+
 // ---------------------------------------------------------------------------
 // Сценарий
 
@@ -1417,16 +1513,77 @@ async function tradeAtMerchant() {
   else { stats.trade.refused += 1; finding('major', 'sell-refused', `SellItem ${sale.item_id}: ${sold.body?.code} — ${short(sold.body?.error, 200)}`) }
 }
 
+/**
+ * Пройти авторские разговоры сцены, как игрок BG3: у каждого собеседника с
+ * вариантами — незаданные вопросы по порядку, проверку бросает тот герой,
+ * чья очередь, сюжетные варианты (кошель, оружейная, судьба осведомителя,
+ * договор) — когда окно их предлагает. Прощание не выбирается: окно и так
+ * закрывается, когда вопросов не осталось.
+ */
+async function talkThroughDialogues(reason = '', { limit = 24 } = {}) {
+  const tried = new Set()
+  for (let step = 0; step < limit; step += 1) {
+    const state = await room()
+    if (state.mechanics.combat?.active || state.law?.encounter) return
+    let choice = null
+    for (const heroId of heroIds()) {
+      const view = (await room(accountFor(heroId))).scene_dialogues ?? {}
+      for (const [npcId, dialogue] of Object.entries(view)) {
+        const option = (dialogue.options ?? []).find((entry) => !entry.asked && !entry.ends && !tried.has(`${heroId}:${npcId}:${entry.id}`))
+        if (option) { choice = { heroId, npcId, option }; break }
+      }
+      if (choice) break
+    }
+    if (!choice) return
+    const { heroId, npcId, option } = choice
+    tried.add(`${heroId}:${npcId}:${option.id}`)
+    const npcName = (state.social?.npcs ?? []).find((npc) => npc.id === npcId)?.name ?? npcId
+    const label = `${npcName}: ${option.check ? `[${option.check.skill} СЛ ${option.check.dc}] ` : ''}${option.label}`
+    note(`\n**${heroOf(state, heroId)?.character ?? heroId} · разговор:** ${label}`)
+    const result = await command(heroId, { command_type: 'ChooseDialogueOption', npc_id: npcId, option_id: option.id }, `разговор: ${short(option.label, 60)}`, { expectFailure: true })
+    if (result.status !== 200) {
+      stats.dialogue.refused += 1
+      if (stats.dialogue.refusals.length < 5) stats.dialogue.refusals.push(`${npcName} «${short(option.label, 50)}» → ${result.body?.code ?? result.status}`)
+      note(`> ⚠ отказ ${result.status} ${result.body?.code ?? ''}: ${short(result.body?.error, 200)}`)
+      // Отказ законной команде из окна — находка: окно не должно предлагать
+      // того, что сервер не примет (кроме «подойдите ближе» у головы рыцаря).
+      if (!['TARGET_OUT_OF_RANGE', 'DIALOGUE_NPC_ABSENT'].includes(result.body?.code)) {
+        finding('major', 'dialogue-refused', `${npcName}: «${short(option.label, 70)}» → ${result.status} ${result.body?.code ?? ''}: ${short(result.body?.error, 160)}`)
+      }
+      continue
+    }
+    const mechanics = result.body?.mechanics ?? []
+    const chosen = mechanics.find((event) => event.event_type === 'DialogueOptionChosen')?.payload
+    stats.dialogue.chosen += 1
+    stats.dialogue.npcs[npcName] = (stats.dialogue.npcs[npcName] ?? 0) + 1
+    if (mechanics.some((event) => event.event_type === 'KnowledgeRevealed')) stats.dialogue.reveals += 1
+    if (mechanics.some((event) => /^Scenario|ItemGranted/u.test(String(event.event_type)))) stats.dialogue.actions += 1
+    const reply = String(chosen?.reply ?? result.body?.narration ?? '')
+    if (chosen?.check) note(`> 🎲 ${chosen.check.skill}: ${chosen.check.total} против СЛ ${chosen.check.dc} → ${chosen.check.success ? 'успех' : 'провал'}`)
+    if (reply) { note(`> ${short(reply, 1200)}`); narrations.push({ kind: 'dialogue', action: option.label, label: npcName, text: reply }) }
+    if (reason) await settleInteraction(`dialogue:${reason}`)
+  }
+}
+
 async function exploreScene(state, round) {
   const scene = sceneSnapshot(state)
   const owner = accounts.owner.heroId
   const guest = accounts.guest.heroId
-  const presentNpc = (state.social?.npcs ?? []).find((npc) => scene.npcs.includes(npc.name))
+  // Собеседник с авторским разговором говорит вариантами (talkThroughDialogues);
+  // свободная реплика — тем, у кого окна нет, как у живого стола в BG3.
+  const dialogueNpcs = new Set(Object.keys(state.scene_dialogues ?? {}))
+  const presentNpc = (state.social?.npcs ?? []).find((npc) => scene.npcs.includes(npc.name) && !dialogueNpcs.has(String(npc.id)))
   const lines = [
     [guest, `Внимательно осматриваю ${scene.location}: ищу следы того, что здесь произошло, и всё, что связано с драконом Саргатом.`, 'осмотр'],
     [owner, 'Иду по следам, которые мы нашли, и пытаюсь понять, куда они ведут.', 'следы'],
     ...(presentNpc ? [[guest, `Обращаюсь к ${presentNpc.name}: что вы видели в последние дни и кто ещё может знать о налётах дракона?`, 'разговор']] : []),
   ]
+  // Каэлан приходит в замок только в полночь: отряд ждёт его, как и живой стол.
+  if (round === 0 && state.scene?.location_id === 'astohan-forgotten-cliffs' && !(state.scene_dialogues ?? {})['astohan-kaelan']) {
+    await say(owner, 'Ждём до полуночи', { label: 'ждём рыцаря', expect: 'any' })
+    await settleInteraction('knight-wait')
+  }
+  if (round === 0) await talkThroughDialogues('explore')
   for (const [actorId, text, label] of lines.slice(0, round === 0 ? 3 : 1)) {
     if ((await room()).mechanics.combat?.active) return
     await say(actorId, text, { label })
@@ -1441,7 +1598,7 @@ async function openingScene() {
   await trackScene(state)
   const owner = accounts.owner.heroId
   const guest = accounts.guest.heroId
-  await say(owner, 'Ваше величество, какое поручение вы даёте нам и что известно о Саргате?', { label: 'к королю' })
+  await talkThroughDialogues('opening')
   const accepted = await request(`/api/campaigns/${CODE}/quests/accept`, { method: 'POST', account: accounts.owner, key: `bot-quest-${randomUUID()}`, body: { actor_id: owner, quest_id: 'quest:astohan-crown-report', idempotency_key: `bot-quest-${randomUUID()}` } })
   if (accepted.status !== 200) finding('major', 'quest-accept', `принять «Вернуть донесение короне»: ${accepted.status} ${accepted.body?.code ?? ''} — ${short(accepted.body?.error, 200)}`)
   await settleInteraction('quest')
@@ -1450,9 +1607,7 @@ async function openingScene() {
   note(`- 📜 задание «${quest?.title ?? '?'}»: ${quest?.status ?? 'нет в журнале'}`)
   if (quest && quest.status !== 'active') finding('major', 'quest-not-active', `после голосования задание в статусе ${quest.status}`)
   await say(guest, 'Изучаю донесение о сожжённой Пепельной заставе: кто открыл ворота и откуда начинаются следы когтей?', { label: 'донесение' })
-  await say(owner, 'Присматриваюсь к Орену Фалю: правду ли он говорит о человеке в порту, который расспрашивал о последней охоте на Вулканиса?', { label: 'проницательность' })
-  await say(guest, 'Расспрашиваю Миру Венн об исчезнувшем сборщике налогов у Митглайда.', { label: 'Мира Венн' })
-  await say(owner, 'Наблюдаю за королём Аресом, когда маршал произносит имя Вулканиса.', { label: 'Арес и Вулканис' })
+
   await say(guest, 'Что мы уже знаем о Пепельной заставе?', { label: 'вопрос', requestKind: 'question', expect: 'any' })
   await tradeAtMerchant()
   await sayRealPhrase(2)
@@ -1676,12 +1831,39 @@ function grade(final, usage, audit, quality, judge) {
     { id: 8, name: 'Бюджет', score: !LIVE ? null : usage?.per_evening_rub == null ? 5 : usage.per_evening_rub <= 50 ? 10 : usage.per_evening_rub <= 75 ? 6 : 3, detail: LIVE ? `вызовов модели ${usage?.requests ?? '?'}, токенов ${usage?.tokens ?? '?'}, ≈${usage?.cost_rub ?? '?'} ₽ (${usage?.cost_source ?? '?'}); ≈${usage?.per_action_rub ?? '?'} ₽ на реплику, вечер в ${EVENING_ACTIONS} реплик ≈${usage?.per_evening_rub ?? '?'} ₽ (цель ≤ 50 ₽)` : 'без модели не меряется' },
     { id: 'Т', name: 'Текст рассказчика', score: narrationScore(quality, judge), detail: `${quality.samples} ответов, в среднем ${quality.average_chars} знаков; повторы ${quality.repeated_share_pct} %, пересечение 3-грамм ${quality.ngram_overlap_pct} %, штампов ${quality.cliches}, служебных кодов ${quality.raw_identifiers}, коротких ${quality.short_share_pct} %${judge?.average != null ? `; судья ${judge.model}: ${judge.average}/5` : ''}` },
     { id: 'С', name: 'Согласованность', score: consistencyScore(judge), detail: consistencyDetail(judge) },
+    { id: 'Р', name: 'Разговор', score: npcTalkScore(), detail: npcTalkDetail() },
     { id: 9, name: 'Устойчивость', score: Math.max(1, 10 - 4 * findings.filter((entry) => /restart|replay|idempotency|transport|http-5xx/u.test(entry.kind)).length), detail: `перезапусков ${stats.restarts}, 5xx ${stats.http5xx}, audit-cutover ${audit.status === 0 ? 'чистый' : `код ${audit.status}`}` },
   ]
   const scored = criteria.filter((entry) => entry.score != null)
   const average = scored.reduce((sum, entry) => sum + entry.score, 0) / scored.length
   const overall = Math.max(1, Math.round((average - blockers * 1.5 - critical * 1) * 10) / 10)
   return { criteria, overall, blockers, critical, major, status, p50, p95 }
+}
+
+/** Доля отписок среди реплик собеседников: ≤ 5 % — разговор даёт сведения. */
+function npcTalkScore() {
+  const replies = stats.npcReplies + stats.dialogue.chosen
+  if (!replies) return null
+  const share = stats.npcBrushOffs / replies
+  return share <= 0.05 ? 10 : share <= 0.15 ? 6 : share <= 0.3 ? 3 : 1
+}
+
+function dialogueDetail() {
+  const d = stats.dialogue
+  if (!d.chosen && !d.refused) return 'вариантов разговора бот не выбирал'
+  const npcs = Object.entries(d.npcs).map(([name, count]) => `${name} ${count}`).join(', ')
+  return `выборов ${d.chosen} (${npcs}), раскрыто тайн ${d.reveals}, сюжетных команд ${d.actions}, отказов ${d.refused}${d.refusals.length ? `: ${d.refusals.join('; ')}` : ''}`
+}
+
+function npcTalkDetail() {
+  if (!stats.npcReplies) return `реплик собеседников свободным текстом не было; варианты: ${dialogueDetail()}`
+  return `${npcTalkDetailFree()}; варианты: ${dialogueDetail()}`
+}
+
+function npcTalkDetailFree() {
+  if (!stats.npcReplies) return 'реплик собеседников не было'
+  const share = Math.round(100 * stats.npcBrushOffs / stats.npcReplies)
+  return `реплик собеседников ${stats.npcReplies}, отписок ${stats.npcBrushOffs} (${share} %)${stats.npcBrushOffSamples.length ? `; например ${stats.npcBrushOffSamples.join('; ')}` : ''}`
 }
 
 /** Реплик отряда (свободных и шагов Режиссёра) за трёхчасовой вечер — для пересчёта цены. */
@@ -1733,7 +1915,7 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
   const findingLines = [...grouped.values()].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.count - a.count)
     .map((entry) => `- **${entry.severity}** \`${entry.kind}\` ×${entry.count}\n${entry.examples.map((line) => `  - ${line}`).join('\n')}`)
   const md = [
-    `# Прогон «Асстоханские равнины» — ${STAMP}`,
+    `# Прогон «Асстоханские равнины» — ${STAMP}${IMPL === 'rust' ? ' · сервер Rust' : ''}`,
     '',
     `Режим: **${LIVE ? 'с моделью' : 'без модели'}**${SEED != null ? `, сид костей ${SEED}` : ''} · длительность ${minutes} мин · исход кампании **${scorecard.status}** · итоговая оценка **${scorecard.overall}/10**`,
     `Блокеров ${scorecard.blockers}, критичных ${scorecard.critical}, серьёзных ${scorecard.major}, мелких ${findings.length - scorecard.blockers - scorecard.critical - scorecard.major}.`,
@@ -1768,7 +1950,7 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
     '',
     '## Механики отряда',
     '',
-    `Отряд: ${PARTY.join(', ')}. Заклинания: ${Object.entries(stats.spells).map(([id, count]) => `${id} ×${count}`).join(', ') || '—'}; скрытых атак ${stats.sneakAttacks}; зелий выпито ${stats.potionsUsed}. Торговля: куплено ${stats.trade.bought}, продано ${stats.trade.sold}, отказов ${stats.trade.refused}. Переговоры: попыток ${stats.parley.attempts}, перемирий ${stats.parley.truces}, исходы ${stats.parley.outcomes.join(', ') || '—'}.`,
+    `Отряд: ${PARTY.join(', ')}, тактика ${TACTICS}. Заклинания: ${Object.entries(stats.spells).map(([id, count]) => `${id} ×${count}`).join(', ') || '—'}; умения: ${Object.entries(stats.features).map(([id, count]) => `${id} ×${count}`).join(', ') || '—'}; скрытых атак ${stats.sneakAttacks}; зелий выпито ${stats.potionsUsed}. Торговля: куплено ${stats.trade.bought}, продано ${stats.trade.sold}, отказов ${stats.trade.refused}. Переговоры: попыток ${stats.parley.attempts}, перемирий ${stats.parley.truces}, исходы ${stats.parley.outcomes.join(', ') || '—'}.`,
     '',
     '## Путь отряда',
     '',
@@ -1805,7 +1987,7 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
     }),
   ].join('\n') + '\n')
   writeFileSync(join(OUT, 'transcript.md'), `# Хроника прогона ${STAMP}\n${transcript.join('\n')}\n`)
-  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, narration: { quality, judge }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
+  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, impl: IMPL, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, narration: { quality, judge }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
   const serverErrors = logs.split('\n').filter((line) => /error|ошибк|exception|unhandled/iu.test(line) && !/ROUTERAI|api[_-]?key/iu.test(line)).slice(0, 60)
   writeFileSync(join(OUT, 'server-errors.log'), serverErrors.join('\n'))
 }
@@ -1888,7 +2070,7 @@ try {
   finding('blocker', 'run-aborted', short(error?.stack ?? error, 600))
 }
 await stopServer()
-const audit = runCutoverAudit()
+const audit = IMPL === 'rust' ? await runRustCutoverAudit() : runCutoverAudit()
 let usage = null
 if (LIVE) {
   startServer()

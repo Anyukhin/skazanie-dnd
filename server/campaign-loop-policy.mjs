@@ -174,7 +174,7 @@ function currentPhase(state = {}) {
   const arc = campaignArcPosition(state)
   if (arc) return arc.phase
   const stored = clean(state.autonomy?.pacing?.phase, 30)
-  if (PHASE_INTENT_TYPES[stored]) return stored
+  if (tableValue(PHASE_INTENT_TYPES, stored, null)) return stored
   const tension = clamp(state.autonomy?.pacing?.tension, 0, 100)
   return PHASE_BY_TENSION.find(([threshold]) => tension >= threshold)?.[1] ?? 'breather'
 }
@@ -491,7 +491,7 @@ export function pacingForDirectorIntent(state = {}, intent = {}) {
   const previous = state.autonomy?.pacing ?? {}
   const arc = campaignArcPosition(state)
   const before = clamp(previous.tension, 0, 100)
-  const delta = PACING_DELTAS[intent.type] ?? 0
+  const delta = tableValue(PACING_DELTAS, intent.type, 0)
   const after = clamp(before + delta, 0, 100)
   const phase = arc && campaignScenario(state)
     ? arc.phase
@@ -875,7 +875,7 @@ export function planServerTravel(state = {}, {
     : newPlace
       ? { ...legacyTextTravelFacts(state, from, to, entropy), source: 'new_place', band: 'near' }
       : legacyTextTravelFacts(state, from, to, entropy)
-  const durationMinutes = newPlace ? NEW_PLACE_TRAVEL_MINUTES : TRAVEL_BASE_MINUTES[facts.band] + (facts.wilderness ? 30 : 0)
+  const durationMinutes = newPlace ? NEW_PLACE_TRAVEL_MINUTES : tableValue(TRAVEL_BASE_MINUTES, facts.band, undefined) + (facts.wilderness ? 30 : 0)
   const pacingTension = clamp(state.autonomy?.pacing?.tension, 0, 100)
   const activeQuestPressure = (state.worldMemory?.quests ?? []).some((quest) => (
     quest.status === 'active' && Number(quest.clock?.current) >= Math.max(1, Number(quest.clock?.max) - 2)

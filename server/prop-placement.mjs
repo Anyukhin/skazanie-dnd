@@ -355,7 +355,7 @@ const SEAT_GAP = 0.05
  * @returns {Array<[string, number]>}
  */
 function seatSpecFor(assetId) {
-  const fromCompanions = (COMPANIONS[assetId] ?? []).filter(([id]) => SEATS.has(id))
+  const fromCompanions = (ownEntry(COMPANIONS, assetId) ?? []).filter(([id]) => SEATS.has(id))
   if (fromCompanions.length) return fromCompanions
   if (assetId === 'table_royal') return [['chair', 6]]
   return SEATING_SURFACES.has(assetId) ? [['chair', 1]] : []
@@ -416,7 +416,7 @@ const CORE_CENTERPIECES = Object.freeze({
  */
 function coreCenterpiece(map, zoneId, purpose, cells, { allowed, caps, blocked }) {
   const zone = map.zones.find((entry) => entry.id === zoneId)
-  const choices = CORE_CENTERPIECES[purpose] ?? []
+  const choices = ownEntry(CORE_CENTERPIECES, purpose) ?? []
   if (zone?.kind !== 'interior' || cells.length < CORE_FILL_MIN_CELLS || !choices.length) return null
   const key = (/** @type {{x: number, y: number}} */ cell) => `${cell.x},${cell.y}`
   const own = new Set(cells.map(key))
@@ -522,7 +522,7 @@ function arrangeSeats(map, surface, spec, blocked) {
   // У стойки сидят только спереди: сторона, где мест больше и за спиной меньше стен.
   const behind = (/** @type {typeof slots} */ list) => list.reduce((sum, slot) => sum + wallSidesAt(map, slot.x, slot.y).length, 0)
   let order = [...bySide.keys()].sort((a, b) => sideLength(b) - sideLength(a)
-    || (bySide.get(b)?.length ?? 0) - (bySide.get(a)?.length ?? 0) || behind(bySide.get(a) ?? []) - behind(bySide.get(b) ?? []) || a.localeCompare(b))
+    || (bySide.get(b)?.length ?? 0) - (bySide.get(a)?.length ?? 0) || behind(bySide.get(a) ?? []) - behind(bySide.get(b) ?? []) || a.localeCompare(b, 'en'))
   if (order.length > 1 && bySide.has(opposite[order[0]])) order = [order[0], opposite[order[0]], ...order.slice(1).filter((side) => side !== opposite[order[0]])]
   if (surface.assetId === 'bar_counter') order = order.slice(0, 1)
   /** @type {ReturnType<typeof arrangeSeats>} */
@@ -833,7 +833,7 @@ function scoreCellForAsset(map, asset, cell, placed, context = {}, random = () =
   // Шаблон помещения: предмет набора тянется к своему центру — наковальня и
   // бочка к горну, курильница и подушки к алтарю, колода к плите. Без
   // центра поблизости предмет стоит где угодно, но с заметным штрафом.
-  const anchors = SET_ANCHORS[asset.id]
+  const anchors = ownEntry(SET_ANCHORS, asset.id)
   if (anchors) {
     const nearest = nearestPlaced(localPlaced, cell, (id) => anchors.includes(id))
     if (nearest != null) score += nearest <= 1 ? 14 : nearest === 2 ? 8 : nearest <= 4 ? 2 : -nearest
@@ -895,7 +895,7 @@ function scoreCellForAsset(map, asset, cell, placed, context = {}, random = () =
   // не встают ближе своего радиуса к другой такой же природе. Случайная
   // россыпь давала комья и пустоши, а сетка кандидатов — ряды; диск даёт
   // ровную, но не регулярную рассадку, как в настоящем подлеске.
-  const radius = SCATTER_RADIUS[asset.id]
+  const radius = ownEntry(SCATTER_RADIUS, asset.id)
   if (radius && map.zones.some((zone) => zone.id === context.zoneId && zone.kind === 'exterior')) {
     for (const record of localPlaced) {
       const other = SCATTER_RADIUS[record.assetId]
@@ -1030,7 +1030,8 @@ function semanticProfileFor(plan) {
   if (fromPurpose) return { purpose: explicit, ...fromPurpose }
   for (const rawTag of Array.isArray(plan?.tags) ? plan.tags : []) {
     const purpose = (/** @type {Record<string, string>} */ (TAG_PURPOSES))[String(rawTag ?? '').trim().toLocaleLowerCase('en').replace(/[-\s]+/gu, '_')]
-    if (purpose && SEMANTIC_PROFILES[purpose]) return { purpose, ...SEMANTIC_PROFILES[purpose] }
+    const profile = purpose ? ownEntry(SEMANTIC_PROFILES, purpose) : undefined
+    if (profile) return { purpose, ...profile }
   }
   return null
 }
@@ -1568,7 +1569,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         requiredCounts.set(asset.id, (requiredCounts.get(asset.id) ?? 0) + 1)
       }
       if (withCompanions) {
-        for (const [companionId, count] of COMPANIONS[asset.id] ?? []) {
+        for (const [companionId, count] of ownEntry(COMPANIONS, asset.id) ?? []) {
           // Сиденья приходят гарнитуром вместе с поверхностью (`arrangeSeats`).
           if (SEATS.has(companionId)) continue
           for (let index = 0; index < count && wanted.length < budget; index += 1) {
@@ -1590,7 +1591,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
     // Companions заполняют только оставшийся budget и никогда не занимают
     // слоты обязательных предметов.
     for (const asset of requiredAssets) {
-      for (const [companionId, count] of COMPANIONS[asset.id] ?? []) {
+      for (const [companionId, count] of ownEntry(COMPANIONS, asset.id) ?? []) {
         // Сиденья обязательного стола не зависят от бюджета: в ужатом зале
         // таверны бюджет съедали стойка, очаг и три стола, и стульев не
         // оставалось ни одного (обзор 2026-10-10).
@@ -1652,7 +1653,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         // разбирали стены зала, и в каждом третьем трактире полке не
         // оставалось места (обзор генератора 2026-10-10).
         const rank = (/** @type {import('./asset-registry.mjs').AssetEntry} */ asset) => {
-          const companions = (COMPANIONS[asset.id]?.length ?? 0) > 0
+          const companions = (ownEntry(COMPANIONS, asset.id)?.length ?? 0) > 0
           if (companions && asset.anchor === 'wall') return 0
           if (asset.id === 'bar_shelf') return 1
           return companions ? 2 : 3
@@ -1923,7 +1924,7 @@ export function placeRequiredProps(map, wanted, { seed }) {
     const sized = map.zones.filter((zone) => zone.id !== 'path')
       .map((zone) => ({ zone, size: zoneCells(map, zone.id).length })).filter((entry) => entry.size >= 4)
     const fitting = sized.filter(({ zone }) => (indoor ? zone.kind === 'interior' : zone.kind !== 'interior'))
-    const order = (fitting.length ? fitting : sized).sort((left, right) => right.size - left.size || left.zone.id.localeCompare(right.zone.id))
+    const order = (fitting.length ? fitting : sized).sort((left, right) => right.size - left.size || left.zone.id.localeCompare(right.zone.id, 'en'))
     for (let attempt = 0; missing > 0 && attempt < missing + order.length * 2; attempt += 1) {
       const { zone } = order[attempt % order.length] ?? {}
       if (!zone) break
@@ -2101,7 +2102,7 @@ export function attachPropSupports(map) {
     const candidates = surfaces.filter((surface) => surface.zone === zone
       && Math.max(Math.abs(surface.x - prop.x), Math.abs(surface.y - prop.y)) <= 4
       && (used.get(surface.prop.id) ?? 0) < Math.min(SURFACE_SLOTS.length, Math.max(2, surface.prop.footprint.length * 2)))
-    candidates.sort((a, b) => Math.hypot(a.x - prop.x, a.y - prop.y) - Math.hypot(b.x - prop.x, b.y - prop.y) || a.prop.id.localeCompare(b.prop.id))
+    candidates.sort((a, b) => Math.hypot(a.x - prop.x, a.y - prop.y) - Math.hypot(b.x - prop.x, b.y - prop.y) || a.prop.id.localeCompare(b.prop.id, 'en'))
     const surface = candidates[0]
     if (!surface) {
       // Новая мелкая утварь не должна тихо падать на пол: без опоры её
@@ -2137,4 +2138,17 @@ function zoneCells(map, zoneId) {
     }
   }
   return cells
+}
+
+/**
+ * Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`,
+ * `toString`…) записями не считаются.
+ *
+ * @template T
+ * @param {Readonly<Record<string, T>>} table
+ * @param {unknown} key
+ * @returns {T | undefined}
+ */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

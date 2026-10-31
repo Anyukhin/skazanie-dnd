@@ -247,6 +247,8 @@ const DECK_HINTS: Record<CombatDeck, string> = {
    (`resolveOpeningStrike`, server/rules-engine.mjs); как именно — решает
    домашнее правило кампании `house:bg3-opening-strike`. */
 const BG3_OPENING_STRIKE_HOUSE_RULE_ID = 'house:bg3-opening-strike'
+/** Цена ячейки в чародейских очках, как у сервера (`fontOfMagicActionFor`). */
+const FONT_OF_MAGIC_SLOT_COST: Record<number, number> = { 1: 2, 2: 3, 3: 5, 4: 6, 5: 7 }
 const explorationStrikeHint = (freeStrike: boolean) => freeStrike
   ? 'вне боя: удар пройдёт сразу, как в BG3, затем бросается инициатива — ваш ход в первом раунде останется целым'
   : 'вне боя: удар начнёт бой — сначала инициатива, и если первым ходит противник, удар придётся повторить в свой ход'
@@ -308,7 +310,13 @@ function purseText(currency: { platinum?: number; gold?: number; silver?: number
   return parts.length ? parts.join(' ') : '0 зм'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onSetReactionMode, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, chronicleStatus, freeRoll, children }: {
+/** Подписи навыков у вариантов разговора с проверкой — как в листе героя. */
+const DIALOGUE_SKILL_LABELS: Record<string, string> = {
+  persuasion: 'Убеждение', deception: 'Обман', intimidation: 'Запугивание', insight: 'Проницательность',
+  history: 'История', religion: 'Религия', arcana: 'Магия', performance: 'Выступление', medicine: 'Медицина',
+}
+
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onSetReactionMode, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onDialogueOption, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, chronicleStatus, freeRoll, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -329,7 +337,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onAttack: (actorId: string, enemyId: string, itemId?: string, choice?: WeaponAttackChoice) => Promise<CommandOutcome>
   onAreaAttack: (actorId: string, itemId: string, x: number, y: number, note?: string) => Promise<CommandOutcome>
   onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { targetIds: string[] } | { x: number; y: number } | { x: number; y: number; targetIds: string[] }) & { itemId?: string; spellOption?: string; slotLevel?: number; castingResource?: string; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
-  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push' }) => Promise<CommandOutcome>
+  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push', fontMode?: 'create' | 'convert', formId?: string }) => Promise<CommandOutcome>
   onSetSpellBonusPreference?: (actorId: string, enabled: boolean) => Promise<CommandOutcome>
   onSetReactionMode?: (actorId: string, reactionId: string, mode: ReactionMode, reactionName?: string) => Promise<CommandOutcome>
   onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
@@ -358,6 +366,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onSendLetter: (addresseeKind: LetterAddresseeKind, addresseeId: string, body: string) => Promise<CommandOutcome>
   onReceiveNpcBlessing: (npcId: string) => Promise<CommandOutcome>
   onTransferItem: (itemId: string, npcId: string, quantity: number) => Promise<CommandOutcome>
+  onDialogueOption: (npcId: string, optionId: string) => Promise<CommandOutcome>
   onStartRest: (kind: 'short' | 'long') => Promise<CommandOutcome>
   onSpendHitPointDie: () => Promise<CommandOutcome>
   onCompleteRest: () => Promise<CommandOutcome>
@@ -1519,7 +1528,34 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     ? selectedSpellAction !== 'long_cast' && (selectedSpellAction === 'bonus_action' ? bonusReady : selectedSpellAction === 'reaction' ? reactionReady : actionReady)
     : Boolean(selectedSpell && (castableOutOfCombat(selectedSpell) || explorationStrikeAvailable)))
   const selectedActionPool = selectedCombatAction?.resource ? activeResources[selectedCombatAction.resource] : undefined
-  const selectedActionResourceReady = !selectedCombatAction?.resource || Number(selectedActionPool?.current ?? 0) >= Number(selectedCombatAction.cost ?? 1)
+  // Кара и Источник магии берут ячейку любого круга, а не только первого.
+  const smiteSlotLevels = [1, 2, 3, 4, 5].filter((level) => Number(activeResources[`spell_slots_${level}`]?.current ?? 0) > 0)
+  /* Источник магии: какую ячейку создать из очков или какую перевести в очки —
+     выбор игрока, как в BG3. Порядок тот же, что у сервера без выбора:
+     сначала младшая недостающая ячейка, затем младшая свободная — в очки. */
+  const fontSelected = combatMode === 'action' && selectedCombatAction?.id === 'font-of-magic'
+  const fontPoints = activeResources.sorcery_points
+  const fontSlotPools = [1, 2, 3, 4, 5].map((level) => ({ level, pool: activeResources[`spell_slots_${level}`] })).filter((entry) => Number(entry.pool?.max ?? 0) > 0)
+  const fontOptions = [
+    ...fontSlotPools.filter((entry) => Number(entry.pool?.current ?? 0) < Number(entry.pool?.max ?? 0) && Number(fontPoints?.current ?? 0) >= FONT_OF_MAGIC_SLOT_COST[entry.level])
+      .map((entry) => ({ key: `create-${entry.level}`, mode: 'create' as const, level: entry.level, label: `+${entry.level}`, title: `Создать ячейку ${entry.level}-го круга за ${FONT_OF_MAGIC_SLOT_COST[entry.level]} чародейских очка` })),
+    ...(Number(fontPoints?.current ?? 0) < Number(fontPoints?.max ?? 0) ? fontSlotPools.filter((entry) => Number(entry.pool?.current ?? 0) > 0)
+      .map((entry) => ({ key: `convert-${entry.level}`, mode: 'convert' as const, level: entry.level, label: `${entry.level}→✦`, title: `Перевести ячейку ${entry.level}-го круга в ${entry.level} ${entry.level === 1 ? 'чародейское очко' : 'чародейских очка'}` })) : []),
+  ]
+  const [fontChoice, setFontChoice] = useState<string | null>(null)
+  const fontOption = fontOptions.find((option) => option.key === fontChoice) ?? fontOptions[0]
+  /* Дикий облик: зверя выбирает игрок, как в BG3. По умолчанию — тот же,
+     что взял бы сервер без выбора: выше опасность, затем больше хитов. Уже в
+     облике повторное нажатие — возврат, выбирать некого. */
+  const wildShaped = Boolean(selected && state.mechanics?.shapes?.[selected]?.form?.wild_shape)
+  const wildShapeForms = combatMode === 'action' && selectedCombatAction?.id === 'wild-shape' && !wildShaped
+    ? [...(selectedCombatAction.forms ?? [])].sort((left, right) => right.challenge_rating - left.challenge_rating || right.hp - left.hp || left.id.localeCompare(right.id))
+    : []
+  const [wildShapeChoice, setWildShapeChoice] = useState<string | null>(null)
+  const wildShapeForm = wildShapeForms.find((form) => form.id === wildShapeChoice) ?? wildShapeForms[0]
+  const selectedActionResourceReady = selectedCombatAction?.id === 'divine-smite' ? smiteSlotLevels.length > 0
+    : selectedCombatAction?.id === 'font-of-magic' ? fontOptions.length > 0
+      : !selectedCombatAction?.resource || Number(selectedActionPool?.current ?? 0) >= Number(selectedCombatAction.cost ?? 1)
   const selectedActionSupport = mechanicsSupportPresentation(selectedCombatAction?.mechanicsSupport, selectedCombatAction?.supportNote)
   const selectedActionEconomyReady = Boolean(selectedCombatAction && actionUsableNow(selectedCombatAction) && !selectedActionSupport.blocked && selectedActionResourceReady && (selectedCombatAction.actionType === 'free' || (selectedCombatAction.actionType === 'bonus_action' ? bonusReady : selectedCombatAction.actionType === 'reaction' ? reactionReady : actionReady)))
   const selectedCommandReady = combatMode === 'magic' ? spellEconomyReady : combatMode === 'action' ? selectedActionEconomyReady : weaponAttackReady
@@ -1541,7 +1577,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const outcome = selfCastSpell
       ? await onCastSpell(selected, selfCastSpell.id, { targetId: selected, ...selectedSpellItemOption, ...selectedSpellSlotOption, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(note ? { note } : {}) })
       : selfUseAction
-        ? await onUseCombatAction(selected, selfUseAction.id, undefined, selfUseAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note)
+        ? await onUseCombatAction(selected, selfUseAction.id, undefined, selfUseAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note,
+          selfUseAction.id === 'font-of-magic' ? fontOption?.level : undefined,
+          selfUseAction.id === 'font-of-magic' && fontOption ? { fontMode: fontOption.mode }
+            : selfUseAction.id === 'wild-shape' && wildShapeForm ? { formId: wildShapeForm.id } : undefined)
         : null
     if (outcome?.ok) setCombatMode('weapon')
     return outcome
@@ -1685,6 +1724,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   }, [selectedItem?.id, selectedWeaponCatalogCombat?.abilities?.join('|'), weaponModeKey, attackMode, activeShillelaghAbility])
   useEffect(() => { if (!knockoutEligible) setKnockOut(false) }, [knockoutEligible])
   const shoveSelected = combatMode === 'action' && selectedCombatAction?.id === 'shove'
+  /* Божественная кара: круг ячейки выбирает игрок, как в BG3. Без выбора сервер
+     берёт младшую свободную ячейку. */
+  const smiteSelected = combatMode === 'action' && selectedCombatAction?.id === 'divine-smite'
+  const [smiteSlot, setSmiteSlot] = useState<number | null>(null)
+  const smiteSlotLevel = smiteSlot && smiteSlotLevels.includes(smiteSlot) ? smiteSlot : smiteSlotLevels[0]
   useEffect(() => { if (!shoveSelected) setShovePush(false) }, [shoveSelected])
   useEffect(() => { if (!sneakAttackEligible || sneakAttackSpent) setSneakAttack(false) }, [sneakAttackEligible, sneakAttackSpent])
   useEffect(() => {
@@ -1809,7 +1853,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     if (mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote).blocked) return
     if (!selected || tacticalBusy) return
     const pool = action.resource ? activeResources[action.resource] : undefined
-    const resourceReady = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1)
+    // Кара берёт ячейку любого круга, а не только первого; Источник магии
+    // годится и без очков, если есть ячейка перевести в очки.
+    const resourceReady = action.id === 'divine-smite' ? smiteSlotLevels.length > 0 : action.id === 'font-of-magic' ? fontOptions.length > 0 : !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1)
     const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : action.actionType === 'reaction' ? reactionReady : actionReady)
     if (!resourceReady || !economyReady || !actionUsableNow(action)) return
     setSelectedCombatActionId(action.id)
@@ -1912,7 +1958,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     } else if (pendingCommand.kind === 'spell-targets' && selectedSpell) {
       outcome = await onCastSpell(selected, selectedSpell.id, { targetIds: pendingCommand.targetIds, ...selectedSpellItemOption, ...selectedSpellSlotOption, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(knockOut && knockoutEligible ? { knockOut: true } : {}), ...(note ? { note } : {}) })
     } else if (pendingCommand.kind === 'action-target' && selectedCombatAction) {
-      outcome = await onUseCombatAction(selected, selectedCombatAction.id, pendingCommand.targetId, selectedCombatAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note, undefined,
+      outcome = await onUseCombatAction(selected, selectedCombatAction.id, pendingCommand.targetId, selectedCombatAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note,
+        selectedCombatAction.id === 'divine-smite' ? smiteSlotLevel : undefined,
         selectedCombatAction.id === 'shove' && shovePush ? { shoveMode: 'push' } : undefined)
     }
     if (outcome?.ok) {
@@ -2101,6 +2148,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const addressed = `Обращаюсь к ${dossierSceneNpc.name}${dossierSceneNpc.role ? ` (${dossierSceneNpc.role})` : ''}: ${text}`
     const outcome = await onNpcAction(addressed, dossierSceneNpc.id)
     if (outcome.ok) setNpcDialogueText('')
+  }
+
+  // Авторский разговор: варианты собирает сервер под героя-зрителя, ответ
+  // собеседника приходит в летопись. Вариант-прощание закрывает окно.
+  const dossierDialogue = dossierSceneNpc ? state.scene_dialogues?.[dossierSceneNpc.id] ?? null : null
+  const chooseNpcDialogueOption = async (optionId: string, ends: boolean) => {
+    if (!dossierSceneNpc || !dossierCanTalk) return
+    const outcome = await onDialogueOption(dossierSceneNpc.id, optionId)
+    if (outcome.ok && ends) setNpcDossier(null)
   }
 
   const submitNpcGift = async (event: React.FormEvent) => {
@@ -3164,7 +3220,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       </button>,
     })
   })
-  if (activeDeck === 'common' || activeDeck === 'class' || activeDeck === 'all') combatActions.filter((action) => (activeDeck === 'all' ? action.category === 'common' || action.category === 'class' : action.category === activeDeck) && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, cost: action.actionType === 'bonus_action' ? 'bonus_action' : action.actionType === 'free' ? 'free' : action.actionType === 'reaction' ? 'reaction' : 'action', section: action.actionType === 'bonus_action' || action.actionType === 'free' ? 'bonus' : 'action', node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked || !actionUsableNow(action)} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}${combatActive ? '' : actionExplorationHint(action, explorationStrikeAvailable, freeOpeningStrike)}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
+  if (activeDeck === 'common' || activeDeck === 'class' || activeDeck === 'all') combatActions.filter((action) => (activeDeck === 'all' ? action.category === 'common' || action.category === 'class' : action.category === activeDeck) && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = action.id === 'divine-smite' ? smiteSlotLevels.length > 0 : action.id === 'font-of-magic' ? fontOptions.length > 0 : !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, cost: action.actionType === 'bonus_action' ? 'bonus_action' : action.actionType === 'free' ? 'free' : action.actionType === 'reaction' ? 'reaction' : 'action', section: action.actionType === 'bonus_action' || action.actionType === 'free' ? 'bonus' : 'action', node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked || !actionUsableNow(action)} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}${combatActive ? '' : actionExplorationHint(action, explorationStrikeAvailable, freeOpeningStrike)}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
   /* Переговоры — плиткой среди действий, как в макете боя: цена — действие,
      отклик решает мораль противника. */
   if (combatActive && !truce && (activeDeck === 'all' || activeDeck === 'common')) deckTiles.push({ id: 'propose-parley', cost: 'action', section: 'action', node: <button className="action-tile parley-hotbar" disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck) || !actionReady} onClick={() => { void onProposeParley('persuasion') }}
@@ -3612,6 +3668,25 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   {tacticalError && <p className="npc-gift-error">{tacticalError}</p>}
                 </form>
               : <>
+                  {dossierDialogue && <div className="npc-dialogue-options">
+                    {/* Над вариантами — последние слова собеседника, как в BG3; до первого вопроса — приветствие. */}
+                    <p className="npc-dialogue-greeting">{dossierConversations[0]?.npc_reply || dossierDialogue.greeting}</p>
+                    <ol>
+                      {dossierDialogue.options.map((option, index) => <li key={option.id}>
+                        <button
+                          type="button"
+                          className={option.asked ? 'asked' : undefined}
+                          disabled={!dossierCanTalk || tacticalBusy}
+                          onClick={() => void chooseNpcDialogueOption(option.id, option.ends)}
+                        >
+                          <span className="npc-dialogue-index">{index + 1}.</span>
+                          {option.check && <span className="npc-dialogue-check">[{DIALOGUE_SKILL_LABELS[option.check.skill] ?? option.check.skill} · СЛ {option.check.dc}]</span>}
+                          <span>{option.label}</span>
+                        </button>
+                      </li>)}
+                    </ol>
+                    {tacticalError && <p className="npc-gift-error">{tacticalError}</p>}
+                  </div>}
                   <form onSubmit={submitNpcDialogue}>
                     <input
                       ref={npcDialogueInputRef}
@@ -4536,13 +4611,26 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           </div>}
           {/* Переключатели, как «Не убивать» макета: флаг `knock_out` уходит с
               ближайшей атакой ближнего боя, сервер сам решает, сработал ли он. */}
-          {combatActive && (knockoutEligible || shoveSelected) && <div className="hud-toggles" role="group" aria-label="Переключатели">
+          {combatActive && (knockoutEligible || shoveSelected || smiteSelected && smiteSlotLevels.length > 1) && <div className="hud-toggles" role="group" aria-label="Переключатели">
             <span className="hud-side-title">Переключатели</span>
             <div className="hud-reaction-grid">
               {knockoutEligible && <button type="button" className={`hud-reaction hud-toggle-button knockout-turn-toggle${knockOut ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} aria-label={`Не убивать — ${knockOut ? 'включено' : 'выключено'}`} onClick={() => setKnockOut((current) => !current)} title="Не убивать: удар, сводящий ОЗ к нулю, оставит цель с 1 ОЗ без сознания. Только ближний бой"><CombatIcon id="nonlethal" kind="action" size={34} compact /></button>}
               {/* Исход толчка выбирается до броска: правило даёт «сбить с ног»
                   или «оттолкнуть на 5 фт». Стену и занятую клетку проверяет сервер. */}
+              {smiteSelected && smiteSlotLevels.length > 1 && smiteSlotLevels.map((level) => <button key={`smite-${level}`} type="button" className={`hud-reaction hud-toggle-button smite-slot-toggle${smiteSlotLevel === level ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={smiteSlotLevel === level} aria-label={`Кара ячейкой ${level}-го круга: ${Math.min(5, level + 1)}к8 излучением`} onClick={() => setSmiteSlot(level)} title={`Кара ячейкой ${level}-го круга: ${Math.min(5, level + 1)}к8 излучением, по нежити и исчадиям — на 1к8 больше. Ячейка тратится только при попадании.`}><b>{level}</b></button>)}
               {shoveSelected && <button type="button" className={`hud-reaction hud-toggle-button shove-push-toggle${shovePush ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={shovePush} aria-label={`Толчок отталкивает — ${shovePush ? 'включено' : 'выключено, сбивает с ног'}`} onClick={() => setShovePush((current) => !current)} title="Оттолкнуть: при успехе толчка цель отлетает на 5 футов от вас вместо того, чтобы упасть. Стена или другое существо её остановят"><CombatIcon id="shove" kind="action" size={34} compact /></button>}
+            </div>
+          </div>}
+          {wildShapeForms.length > 1 && <div className="hud-toggles" role="group" aria-label="Облик зверя">
+            <span className="hud-side-title">Облик зверя</span>
+            <div className="hud-reaction-grid">
+              {wildShapeForms.map((form) => <button key={form.id} type="button" className={`hud-reaction hud-toggle-button wild-shape-toggle${wildShapeForm?.id === form.id ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={wildShapeForm?.id === form.id} aria-label={`${form.name}: ${form.hp} хитов, КД ${form.armor}`} onClick={() => setWildShapeChoice(form.id)} title={`${form.name}: ${form.hp} хитов, КД ${form.armor}, опасность ${form.challenge_rating}`}><b>{form.name}</b></button>)}
+            </div>
+          </div>}
+          {fontSelected && fontOptions.length > 1 && <div className="hud-toggles" role="group" aria-label="Источник магии">
+            <span className="hud-side-title">Источник магии</span>
+            <div className="hud-reaction-grid">
+              {fontOptions.map((option) => <button key={option.key} type="button" className={`hud-reaction hud-toggle-button font-of-magic-toggle${fontOption?.key === option.key ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={fontOption?.key === option.key} aria-label={option.title} onClick={() => setFontChoice(option.key)} title={option.title}><b>{option.label}</b></button>)}
             </div>
           </div>}
           {/* Часы хода — под реакциями, как в макете: тот же серверный срок, что

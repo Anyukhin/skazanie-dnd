@@ -1,0 +1,445 @@
+{
+ "blinded": {
+  "attackDisadvantage": true,
+  "grantsAttackAdvantage": true
+ },
+ "frightened": {
+  "attackDisadvantage": true,
+  "checkDisadvantage": true
+ },
+ "turned": {
+  "forbidsReactions": true
+ },
+ "hasted": {
+  "armorClassBonus": 2,
+  "speedMultiplier": 2,
+  "extraActions": 1
+ },
+ "slowed": {
+  "armorClassBonus": -2,
+  "speedMultiplier": 0.5,
+  "forbidsReactions": true,
+  "saveBonusAbilities": {
+   "dex": -2
+  },
+  "singleAttackPerTurn": true
+ },
+ "beacon-of-hope": {
+  "saveAdvantageAbilities": [
+   "wis"
+  ]
+ },
+ "shielded": {
+  "armorClassBonus": 5
+ },
+ "shield-of-faith": {
+  "armorClassBonus": 2
+ },
+ "speed-reduced-10": {
+  "speedBonusFeet": -10
+ },
+ "caltrops-speed-zero": {
+  "speedZero": true
+ },
+ "rime-encased": {
+  "speedZero": true
+ },
+ "protected-from-poison": {
+  "resistsDamageTypes": [
+   "poison"
+  ]
+ },
+ "protected-from-energy:acid": {
+  "resistsDamageTypes": [
+   "acid"
+  ]
+ },
+ "protected-from-energy:cold": {
+  "resistsDamageTypes": [
+   "cold"
+  ]
+ },
+ "protected-from-energy:fire": {
+  "resistsDamageTypes": [
+   "fire"
+  ]
+ },
+ "lomar-ward": {
+  "resistsDamageTypes": [
+   "fire"
+  ]
+ },
+ "fragile-scale": {
+  "suppressesDamageImmunities": [
+   "fire"
+  ]
+ },
+ "protected-from-energy:lightning": {
+  "resistsDamageTypes": [
+   "lightning"
+  ]
+ },
+ "protected-from-energy:thunder": {
+  "resistsDamageTypes": [
+   "thunder"
+  ]
+ },
+ "barkskin": {
+  "armorClassFloor": 16
+ },
+ "intellect-fortress": {
+  "resistsDamageTypes": [
+   "psychic"
+  ],
+  "saveAdvantageAbilities": [
+   "int",
+   "wis",
+   "cha"
+  ]
+ },
+ "magic-weapon": {
+  "attackBonus": 1,
+  "weaponDamageBonus": 1
+ },
+ "elemental-weapon": {
+  "attackBonus": 1,
+  "weaponDamageDice": "1d4"
+ },
+ "elemental-weapon-2": {
+  "attackBonus": 2,
+  "weaponDamageDice": "2d4"
+ },
+ "elemental-weapon-3": {
+  "attackBonus": 3,
+  "weaponDamageDice": "3d4"
+ },
+ "minor-blessing": {
+  "attackBonus": 1
+ },
+ "crusader-s-mantle": {
+  "weaponDamageDice": "1d4"
+ },
+ "holy-weapon": {
+  "weaponDamageDice": "2d8"
+ },
+ "enfeebled": {
+  "halvesWeaponDamageForAbility": "str"
+ },
+ "fire-shield-warm": {
+  "resistsDamageTypes": [
+   "cold"
+  ],
+  "retaliates": {
+   "damage": "2d8",
+   "damageType": "fire"
+  }
+ },
+ "fire-shield-chill": {
+  "resistsDamageTypes": [
+   "fire"
+  ],
+  "retaliates": {
+   "damage": "2d8",
+   "damageType": "cold"
+  }
+ },
+ "enlarged": {
+  "weaponDamageDice": "1d4",
+  "checkAdvantageAbilities": [
+   "str"
+  ],
+  "saveAdvantageAbilities": [
+   "str"
+  ]
+ },
+ "reduced": {
+  "weaponDamagePenaltyDice": "1d4",
+  "checkDisadvantageAbilities": [
+   "str"
+  ],
+  "saveDisadvantageAbilities": [
+   "str"
+  ]
+ },
+ "dancing": {
+  "speedZero": true,
+  "attackDisadvantage": true,
+  "grantsAttackAdvantage": true,
+  "saveDisadvantageAbilities": [
+   "dex"
+  ]
+ },
+ "tensers-transformation": {
+  "attackAdvantage": true,
+  "weaponDamageDice": "2d12"
+ },
+ "guardian-great-tree": {
+  "weaponDamageDice": "1d6",
+  "saveAdvantageAbilities": [
+   "str",
+   "con"
+  ]
+ },
+ "guardian-primal-beast": {
+  "weaponDamageDice": "1d6",
+  "speedBonusFeet": 10
+ },
+ "spirit-shroud": {
+  "weaponDamageDice": "1d8",
+  "weaponDamageDiceWithinFeet": 10
+ },
+ "spirit-shroud-2": {
+  "weaponDamageDice": "2d8",
+  "weaponDamageDiceWithinFeet": 10
+ },
+ "spirit-shroud-3": {
+  "weaponDamageDice": "3d8",
+  "weaponDamageDiceWithinFeet": 10
+ },
+ "shadow-of-moil": {
+  "grantsAttackDisadvantage": true,
+  "resistsDamageTypes": [
+   "radiant"
+  ],
+  "retaliates": {
+   "damage": "2d8",
+   "damageType": "necrotic",
+   "meleeOnly": false,
+   "withinFeet": 10
+  }
+ },
+ "chill-touch-undead": {
+  "attackDisadvantageAgainstSource": true
+ },
+ "kinetic-jaunt": {
+  "speedBonusFeet": 10
+ },
+ "ashardalon-s-stride": {
+  "speedBonusFeet": 10
+ },
+ "ashardalon-s-stride-20": {
+  "speedBonusFeet": 20
+ },
+ "ashardalon-s-stride-25": {
+  "speedBonusFeet": 25
+ },
+ "ashardalon-s-stride-30": {
+  "speedBonusFeet": 30
+ },
+ "ashardalon-s-stride-35": {
+  "speedBonusFeet": 35
+ },
+ "freedom-of-movement": {
+  "immuneToSpeedZero": true,
+  "ignoresDifficultTerrain": true
+ },
+ "aura-of-purity": {
+  "resistsDamageTypes": [
+   "poison"
+  ],
+  "saveAdvantageAgainstConditions": [
+   "blinded",
+   "charmed",
+   "deafened",
+   "frightened",
+   "paralyzed",
+   "poisoned",
+   "stunned"
+  ]
+ },
+ "banished": {
+  "incapacitated": true,
+  "speedZero": true
+ },
+ "enhanced-str": {
+  "checkAdvantageAbilities": [
+   "str"
+  ]
+ },
+ "enhanced-dex": {
+  "checkAdvantageAbilities": [
+   "dex"
+  ]
+ },
+ "enhanced-con": {
+  "checkAdvantageAbilities": [
+   "con"
+  ]
+ },
+ "enhanced-int": {
+  "checkAdvantageAbilities": [
+   "int"
+  ]
+ },
+ "enhanced-wis": {
+  "checkAdvantageAbilities": [
+   "wis"
+  ]
+ },
+ "enhanced-cha": {
+  "checkAdvantageAbilities": [
+   "cha"
+  ]
+ },
+ "resilient-sphere": {
+  "speedZero": true,
+  "incapacitated": true,
+  "immuneToAllDamage": true
+ },
+ "magical-darkness": {
+  "attackDisadvantage": true,
+  "grantsAttackDisadvantage": true
+ },
+ "investiture-of-flame": {
+  "immuneToDamageTypes": [
+   "fire"
+  ],
+  "resistsDamageTypes": [
+   "cold"
+  ]
+ },
+ "investiture-of-ice": {
+  "immuneToDamageTypes": [
+   "cold"
+  ],
+  "resistsDamageTypes": [
+   "fire"
+  ]
+ },
+ "investiture-of-wind": {
+  "grantsRangedWeaponAttackDisadvantage": true
+ },
+ "exhaustion:1": {
+  "checkDisadvantage": true
+ },
+ "exhaustion:2": {
+  "checkDisadvantage": true,
+  "speedMultiplier": 0.5
+ },
+ "exhaustion:3": {
+  "checkDisadvantage": true,
+  "speedMultiplier": 0.5,
+  "attackDisadvantage": true,
+  "saveDisadvantageAbilities": [
+   "str",
+   "dex",
+   "con",
+   "int",
+   "wis",
+   "cha"
+  ]
+ },
+ "exhaustion:4": {
+  "checkDisadvantage": true,
+  "speedMultiplier": 0.5,
+  "attackDisadvantage": true,
+  "saveDisadvantageAbilities": [
+   "str",
+   "dex",
+   "con",
+   "int",
+   "wis",
+   "cha"
+  ]
+ },
+ "exhaustion:5": {
+  "checkDisadvantage": true,
+  "speedZero": true,
+  "attackDisadvantage": true,
+  "saveDisadvantageAbilities": [
+   "str",
+   "dex",
+   "con",
+   "int",
+   "wis",
+   "cha"
+  ]
+ },
+ "exhaustion:6": {
+  "checkDisadvantage": true,
+  "speedZero": true,
+  "attackDisadvantage": true,
+  "saveDisadvantageAbilities": [
+   "str",
+   "dex",
+   "con",
+   "int",
+   "wis",
+   "cha"
+  ]
+ },
+ "grappled": {
+  "speedZero": true
+ },
+ "incapacitated": {
+  "incapacitated": true
+ },
+ "invisible": {
+  "attackAdvantage": true,
+  "grantsAttackDisadvantage": true
+ },
+ "blurred": {
+  "grantsAttackDisadvantage": true
+ },
+ "paralyzed": {
+  "incapacitated": true,
+  "speedZero": true,
+  "grantsAttackAdvantage": true,
+  "autoCriticalInReach": true,
+  "autoFailedSaves": [
+   "str",
+   "dex"
+  ]
+ },
+ "petrified": {
+  "incapacitated": true,
+  "speedZero": true,
+  "grantsAttackAdvantage": true,
+  "autoFailedSaves": [
+   "str",
+   "dex"
+  ],
+  "resistsAllDamage": true
+ },
+ "poisoned": {
+  "attackDisadvantage": true,
+  "checkDisadvantage": true
+ },
+ "prone": {
+  "attackDisadvantage": true
+ },
+ "restrained": {
+  "speedZero": true,
+  "attackDisadvantage": true,
+  "grantsAttackAdvantage": true,
+  "saveDisadvantageAbilities": [
+   "dex"
+  ]
+ },
+ "speed-zero": {
+  "speedZero": true
+ },
+ "stunned": {
+  "incapacitated": true,
+  "speedZero": true,
+  "grantsAttackAdvantage": true,
+  "autoFailedSaves": [
+   "str",
+   "dex"
+  ]
+ },
+ "surprised": {
+  "incapacitated": true,
+  "speedZero": true
+ },
+ "unconscious": {
+  "incapacitated": true,
+  "speedZero": true,
+  "grantsAttackAdvantage": true,
+  "autoCriticalInReach": true,
+  "autoFailedSaves": [
+   "str",
+   "dex"
+  ]
+ }
+}

@@ -32,13 +32,13 @@ test('ruleset selection is an additive replayable event before gameplay', () => 
     ruleset_id: 'dnd_5e_2014',
     ruleset_version: '2014.1.0',
     enabled_rule_packs: ['dnd_5e_2014'],
-    enabled_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1', 'house:bg3-opening-strike'],
+    enabled_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1', 'house:bg3-opening-strike', 'house:bg3-spell-hands'],
   })
   const after = applyGameEvent(before, event)
   assert.equal(after.ruleset_id, 'dnd_5e_2014')
   assert.equal(after.ruleset_version, '2014.1.0')
   assert.deepEqual(after.enabled_rule_packs, ['dnd_5e_2014'])
-  assert.deepEqual(after.enabled_house_rules, ['skazanie:2014-preview-legacy-catalogs-v1', 'house:bg3-opening-strike'])
+  assert.deepEqual(after.enabled_house_rules, ['skazanie:2014-preview-legacy-catalogs-v1', 'house:bg3-opening-strike', 'house:bg3-spell-hands'])
   assert.deepEqual(replayEvents(before, [event]), after)
 })
 

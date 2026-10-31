@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { isClassSpellAvailable } from './character-creation-feats.mjs'
+import { normalizedSelectedFeatureIds } from './character-progression.mjs'
 
 const payload = JSON.parse(readFileSync(new URL('../data/dndsu-spells-0-6.json', import.meta.url), 'utf8'))
 const overridePayload = JSON.parse(readFileSync(new URL('../data/dndsu-spell-mechanics-overrides.json', import.meta.url), 'utf8'))
@@ -347,6 +348,7 @@ export function combatSpellsFor(actor, options = {}) {
     const domainSpellIds = domainSpellIdsFor(actor)
     const rules = spellSelectionRulesFor(actor)
     const { known, prepared } = boundedSelection(actor, profile, level, rules)
+    const invocations = new Set(profile.key === 'warlock' ? normalizedSelectedFeatureIds(actor) : [])
     return SPELLS
       .filter((spell) => (isClassSpellAvailable(spell, profile.key, actor) || domainSpellIds.has(spell.id)) && (spell.level === 0 || spell.level <= maximum))
       .map((spell) => {
@@ -358,6 +360,8 @@ export function combatSpellsFor(actor, options = {}) {
       const slotProfile = { ...spell, slotResource }
       return {
         ...rulesetSpellTemplate(spell, rulesetId),
+        // «Мистическое копьё» колдуна: Мистический заряд бьёт на 300 футов.
+        ...(spell.id === 'eldritch-blast' && invocations.has('eldritch-spear') ? { range: 300 } : {}),
         slotResource,
         slotLevel: fixedSpellSlotLevelFor(actor, slotProfile) ?? spell.level,
         spellcastingAbility: profile.ability,

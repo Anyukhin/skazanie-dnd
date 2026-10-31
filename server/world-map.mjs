@@ -386,7 +386,9 @@ function locationById(locations, locationId) {
 }
 
 export function worldLocationById(map, locationId) {
-  return locationById(Array.isArray(map?.locations) ? map.locations : [], locationId)
+  // Карта старого сохранения может держать `null` среди мест: это не место.
+  const locations = (Array.isArray(map?.locations) ? map.locations : []).filter((location) => location && typeof location === 'object')
+  return locationById(locations, locationId)
 }
 
 function endpointId(value, locations, names) {
@@ -428,6 +430,9 @@ export function createCampaignWorldMap({
   startingLocationId = '',
   addMissingStartingLocation = true,
 } = {}) {
+  // Старое сохранение: `null` вместо концепта или карты — как пропущенное поле.
+  concept ??= {}
+  source ??= {}
   const safeSeed = text(seed, 120) || hash(`${campaignName}:${startingLocation}`).slice(0, 24)
   const regionFallback = fallbackRegions(safeSeed, concept)
   const regions = normalizeRegions(source.regions, regionFallback)
@@ -504,6 +509,11 @@ export function reconcileWorldMap(rawMap, {
   transition = '',
   scene = {},
 } = {}) {
+  // Старое сохранение: `null` вместо концепта или сцены и не-список мест хроники —
+  // пустые значения, как у пропущенного поля, а не TypeError.
+  concept ??= {}
+  scene ??= {}
+  if (!Array.isArray(knownLocations)) knownLocations = []
   const map = createCampaignWorldMap({
     seed: rawMap?.seed || seed,
     campaignName,

@@ -167,7 +167,7 @@ function hasClearActorToPoint(state, actorId, from, to) {
 }
 
 function conditionIds(state, id) {
-  return new Set((state.mechanics?.conditions?.[String(id)] ?? []).map((condition) => String(condition?.id ?? condition)))
+  return new Set(actorConditionList(state, id).map((condition) => String(condition?.id ?? condition)))
 }
 
 function isCombatCapable(state, actor) {
@@ -332,7 +332,7 @@ function rangedThreats(state, enemy) {
     .map((hero) => ({ hero, at: actorPosition(state, actorId(hero)) }))
     .sort((left, right) => distanceFeetBetweenActors(state, actorId(left.hero), actorId(enemy), left.at, from)
       - distanceFeetBetweenActors(state, actorId(right.hero), actorId(enemy), right.at, from)
-      || actorId(left.hero).localeCompare(actorId(right.hero)))
+      || actorId(left.hero).localeCompare(actorId(right.hero), 'en'))
     .slice(0, MAX_COVER_THREATS)
     .map((entry) => entry.hero)
 }
@@ -578,7 +578,7 @@ function bloodiedRetreatFor(state, enemy) {
     .slice()
     .sort((left, right) => distanceFeetBetweenActors(state, actorId(enemy), left.id, from, left.at)
       - distanceFeetBetweenActors(state, actorId(enemy), right.id, from, right.at)
-      || left.id.localeCompare(right.id))[0]
+      || left.id.localeCompare(right.id, 'en'))[0]
   const ranked = rankedPositions(state, enemy, budgetFeet, nearestHero?.at ?? from, positionScore, positionScore(from), 'far')
   return firstAffordable(state, enemy, ranked, budgetFeet)?.destination ?? null
 }
@@ -656,10 +656,19 @@ function targetCandidates(state, enemy) {
   const profiles = actionProfiles(state, enemy)
   const candidates = []
   const hostileToAll = enemy?.hostile_to_all === true
+  const stopBlocked = stopBlockedFor(state, actorId(enemy))
+  const large = footprintSizeFor(enemy) > 1
   for (const target of attackableTargetsFor(state, enemy)) {
     const targetAt = actorPosition(state, actorId(target))
-    const path = shortestTacticalPath(state, actorId(enemy), targetAt, { allowOccupiedDestination: true })
-      ?? footprintStrikePath(state, enemy, target, profiles)
+    let path = shortestTacticalPath(state, actorId(enemy), targetAt, { allowOccupiedDestination: true })
+    // Путь крупного тела в клетку цели мог идти сквозь лежащих героев так, что
+    // ни на одной его клетке ход не кончается: подход тогда стоит на месте.
+    // Совомед у края карты рядом с двумя упавшими простоял так 30 раундов
+    // (прогон Асстохана 2026-10-13) — тогда ищется клетка удара рядом с целью.
+    if (path && large && path.length > 1 && path.slice(0, -1).every((step) => stopBlocked(step))) {
+      path = footprintStrikePath(state, enemy, target, profiles) ?? path
+    }
+    path ??= footprintStrikePath(state, enemy, target, profiles)
     const pathDistance = path ? path.length : gridDistance({ state, id: actorId(enemy) }, { state, id: actorId(target) })
     const support = adjacentEnemyAlly(state, enemy, target)
     for (const profile of profiles) {
@@ -716,8 +725,8 @@ function targetCandidates(state, enemy) {
   return candidates.sort((left, right) => right.score - left.score
     || Number(right.inRange) - Number(left.inRange)
     || left.distance - right.distance
-    || actorId(left.actor).localeCompare(actorId(right.actor))
-    || String(left.profile.id ?? '').localeCompare(String(right.profile.id ?? '')))
+    || actorId(left.actor).localeCompare(actorId(right.actor), 'en')
+    || String(left.profile.id ?? '').localeCompare(String(right.profile.id ?? ''), 'en'))
 }
 
 /**
@@ -755,6 +764,44 @@ function stopBlockedFor(state, actorIdValue) {
   const occupied = occupiedPositions(state, String(actorIdValue))
   const actor = findActor(state, String(actorIdValue))
   return (position) => footprintCellsFor(actor, position).some((cell) => occupied.has(positionKey(cell)))
+}
+
+/** Куда бежать изгнанному: клетка в пределах хода, дальше всего от изгнавшего. */
+function fleeDestination(state, enemy, sourceId) {
+  const from = actorPosition(state, actorId(enemy))
+  const sourceAt = actorPosition(state, sourceId)
+  if (!from || !sourceAt) return null
+  const budgetFeet = remainingMovementFeet(state, enemy)
+  const maximumSteps = Math.max(0, Math.floor(budgetFeet / CELL_FEET))
+  if (!maximumSteps) return null
+  const { stepCost } = movementStepCostFor(state, actorId(enemy))
+  const stopBlocked = stopBlockedFor(state, actorId(enemy))
+  const here = distanceFeetBetweenActors(state, actorId(enemy), sourceId, from, sourceAt)
+  let best = null
+  for (const cell of state.scene?.cells ?? []) {
+    if (!cell.revealed || !['floor', 'door'].includes(cell.type)) continue
+    const destination = { x: Number(cell.x), y: Number(cell.y) }
+    if (stopBlocked(destination)) continue
+    const distance = distanceFeetBetweenActors(state, actorId(enemy), sourceId, destination, sourceAt)
+    if (distance <= here || (best && distance < best.distance)) continue
+    const path = shortestTacticalPath(state, actorId(enemy), destination)
+    if (!path?.length || path.length > maximumSteps) continue
+    if (path.reduce((total, step) => total + stepCost(step), 0) > budgetFeet) continue
+    if (!best || distance > best.distance || distance === best.distance && (destination.x < best.destination.x
+      || destination.x === best.destination.x && destination.y < best.destination.y)) best = { distance, destination: path.at(-1) }
+  }
+  return best?.destination ?? null
+}
+
+function turnedUndeadPlan(state, enemy, sourceId) {
+  const id = String(actorId(enemy))
+  const commands = []
+  const destination = fleeDestination(state, enemy, sourceId)
+  if (destination) commands.push({ command_type: 'MoveActor', actor_id: id, to: destination })
+  const dodge = { command_type: 'UseCombatAction', actor_id: id, action_id: 'dodge' }
+  if (!destination && npcCommandValid(state, dodge)) commands.push(dodge)
+  commands.push({ command_type: 'EndTurn', actor_id: id })
+  return commands
 }
 
 function retreatDestination(state, enemy, target, profile) {
@@ -795,7 +842,7 @@ function multiattackActionCounts(multiattack) {
   return new Map(Object.entries(multiattack.action_counts)
     .map(([id, count]) => [String(id), Math.max(0, Math.min(8, Number(count) || 0))])
     .filter(([id, count]) => id && count > 0)
-    .sort(([left], [right]) => left.localeCompare(right)))
+    .sort(([left], [right]) => left.localeCompare(right, 'en')))
 }
 
 function multiattackActionIds(enemy, selectedProfile, usedActionIds = []) {
@@ -917,7 +964,7 @@ function thrownFlaskCommandFor(state, enemy, usable, economy, from) {
     .filter((hero) => hero.at)
     .map((hero) => ({ ...hero, feet: distanceFeetBetweenActors(state, actorId(enemy), hero.id, from, hero.at) }))
     .filter((hero) => hero.feet >= CELL_FEET && hero.feet <= rangeFeet && hasClearActorTrajectory(state, actorId(enemy), hero.id, from, hero.at))
-    .sort((left, right) => left.feet - right.feet || left.id.localeCompare(right.id))[0]
+    .sort((left, right) => left.feet - right.feet || left.id.localeCompare(right.id, 'en'))[0]
   return target ? { ...equipmentItemCommand(enemy, flask), target_id: target.id } : null
 }
 
@@ -1029,7 +1076,7 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
     .filter((ally) => actorId(ally) !== id)
     .map((ally) => ({ id: actorId(ally), at: actorPosition(state, actorId(ally)), hp: Math.max(0, Number(ally.hp) || 0), maximum: Math.max(1, Number(ally.maxHp) || 1) }))
     .filter((ally) => ally.at && ally.hp > 0 && ally.hp * 100 <= ally.maximum * NPC_SPELL_HEAL_HP_PERCENT)
-    .sort((left, right) => left.hp / left.maximum - right.hp / right.maximum || left.id.localeCompare(right.id))[0]
+    .sort((left, right) => left.hp / left.maximum - right.hp / right.maximum || left.id.localeCompare(right.id, 'en'))[0]
   const healing = wounded
     ? spells.find((spell) => spell.kind === 'healing' && spell.target === 'ally' && inRange(spell, wounded.at, wounded.id))
     : null
@@ -1088,14 +1135,14 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
         || option.score > best.score
         || option.score === best.score && (option.caught > best.caught
           || option.caught === best.caught && (option.center.priority < best.center.priority
-            || option.center.priority === best.center.priority && option.center.tie.localeCompare(best.center.tie) < 0))) {
+            || option.center.priority === best.center.priority && option.center.tie.localeCompare(best.center.tie, 'en') < 0))) {
         best = option
       }
     }
     if (best) areaOptions.push(best)
   }
   areaOptions.sort((left, right) => right.score - left.score || right.caught - left.caught
-    || right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id))
+    || right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id, 'en'))
   const validatedAreas = []
   for (const option of areaOptions) {
     const command = validateSpellPlan(option.spell, option.extra)
@@ -1107,7 +1154,7 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
     })
   }
   validatedAreas.sort((left, right) => right.score - left.score || right.caught - left.caught
-    || right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id))
+    || right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id, 'en'))
   if (validatedAreas[0]) return validatedAreas[0].command
 
   const damaging = []
@@ -1119,7 +1166,7 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
     if (targets.length !== 1 || actorId(targets[0]) !== targetId) continue
     damaging.push({ spell, command, score: spellDamageEstimate(enemy, spell, Number(command.slot_level ?? spell.level)) })
   }
-  damaging.sort((left, right) => right.score - left.score || left.spell.id.localeCompare(right.spell.id))
+  damaging.sort((left, right) => right.score - left.score || left.spell.id.localeCompare(right.spell.id, 'en'))
   return damaging[0]?.command ?? null
 }
 
@@ -1206,6 +1253,10 @@ function publicTacticFor(state, enemy, candidate, commands = []) {
 
 function monsterAreaPlanFor(state, enemy, candidate) {
   const id = actorId(enemy)
+  // Дыхание и другие области занимают действие целиком. Если ход уже начат
+  // мультиатакой (её прервало окно реакции героя), продолжаются её удары —
+  // стенд боёв 7-го уровня 2026-10-13 ловил здесь ACTION_SPENT.
+  if (state?.mechanics?.combat?.action_economy?.[id]?.action === false) return null
   const areaActions = (Array.isArray(enemy.special_actions) ? enemy.special_actions : []).filter(action => action.kind === 'save_area')
   const origins = livingParty(state).map(target => actorPosition(state, actorId(target))).filter(Boolean)
   const attackValue = candidate ? averageDamage(candidate.profile.damage_expression, candidate.profile.damage_amount) * multiattackCount(enemy) * .6 : 0
@@ -1245,11 +1296,15 @@ export function planNpcTurn(rawState, enemyId) {
   // initiative, but the Rules Engine refuses every command except ending the
   // turn — so the scheduler must not propose one.
   if (incapacitatingConditionFor(state, enemyId)) return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
+  // Изгнанная нежить бежит от изгнавшего как можно дальше и уклоняется,
+  // а не атакует (PHB 2014, «Изгнание нежити»).
+  const turned = actorConditionList(state, enemyId).find((condition) => String(condition?.id ?? condition) === 'turned')
+  if (turned) return turnedUndeadPlan(state, enemy, String(turned.source_actor ?? ''))
   // «Сбит с ног» без срока (редакция 2014) сам не проходит: существо встаёт,
   // тратя половину скорости. Остаток хода планировщик соберёт следующим
   // проходом, уже от состояния с потраченным движением.
   const standUp = { command_type: 'UseCombatAction', actor_id: String(enemyId), action_id: 'stand-up' }
-  if ((state.mechanics?.conditions?.[String(enemyId)] ?? []).some((condition) => String(condition?.id ?? condition) === 'prone')) {
+  if (actorConditionList(state, enemyId).some((condition) => String(condition?.id ?? condition) === 'prone')) {
     // Та же цена, что берёт Rules Engine: половина текущей скорости. Если её не
     // хватает, существо действует лёжа, а не упирается в отказ движка.
     const speed = effectiveSpeedFeet(state, enemy, enemyId)
@@ -1259,7 +1314,7 @@ export function planNpcTurn(rawState, enemyId) {
   // Пляшущее существо («Неудержимая пляска Отто») тратит действие на попытку
   // совладать с собой: бить с помехой, стоя на месте, ему всё равно хуже.
   const regainControl = { command_type: 'UseCombatAction', actor_id: String(enemyId), action_id: 'steady-nerves' }
-  if ((state.mechanics?.conditions?.[String(enemyId)] ?? []).some((condition) => condition?.action_save_ability)
+  if (actorConditionList(state, enemyId).some((condition) => condition?.action_save_ability)
     && npcCommandValid(state, regainControl)) return [regainControl, { command_type: 'EndTurn', actor_id: String(enemyId) }]
   const currentEconomy = state.mechanics?.combat?.action_economy?.[String(enemyId)] ?? {}
   const usedBeforePlan = Math.max(0, Number(currentEconomy.attacks_used) || 0)
@@ -1675,7 +1730,7 @@ export async function runNpcTurnScheduler({
       .filter((enemy) => isBossActor(enemy))
       .map((enemy) => ({ id: actorId(enemy), command: planLegendaryAction(state, actorId(enemy)) }))
       .filter((entry) => entry.command)
-      .sort((left, right) => left.id.localeCompare(right.id))[0]
+      .sort((left, right) => left.id.localeCompare(right.id, 'en'))[0]
       : null
     if (legendaryBoss) {
       const key = schedulerKey(campaignId, state, legendaryBoss.id, `legendary-${keyPart(legendaryBoss.command.legendary_action_id)}`)
@@ -1776,4 +1831,16 @@ export async function runNpcTurnScheduler({
     loaded = await eventStore.load(campaignId)
   }
   throw new RulesValidationError(`NPC scheduler exceeded ${maxTurns} turns`, 'NPC_TURN_LIMIT')
+}
+
+/**
+ * Состояния актора: только собственный список словаря `mechanics.conditions`.
+ * Id вида `constructor` или `__proto__` и не-массив дают пустой список, а не
+ * метод прототипа (как `sk_core::game::conditions` в Rust).
+ */
+function actorConditionList(state, actorId) {
+  const conditions = state?.mechanics?.conditions
+  const key = String(actorId)
+  const list = conditions && typeof conditions === 'object' && Object.hasOwn(conditions, key) ? conditions[key] : undefined
+  return Array.isArray(list) ? list : []
 }

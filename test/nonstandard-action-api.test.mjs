@@ -1,57 +1,12 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const SESSION = 'NONSTANDARD-ACTION-API'
 const SETUP_TOKEN = 'nonstandard-action-api-setup'
 const ACTION = 'Балансирую на узкой опоре'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: SETUP_TOKEN,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => {
-    const timer = setTimeout(resolve, 5_000)
-    child.once('exit', () => { clearTimeout(timer); resolve() })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* сервер ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не запустился\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -137,18 +92,11 @@ async function narrate(baseUrl, ownerCookie, key, extra = {}) {
 }
 
 test('нестандартный физический трюк проходит HTTP check → roll → injury commit и replay', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-nonstandard-action-api-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { setupToken: SETUP_TOKEN, storagePrefix: 'skazanie-nonstandard-action-api-' })
+  // Вывод сервера накапливается по всем запускам; `${logs}` читает его в момент сообщения.
+  const logs = { toString: () => server.output() }
+  // После restart() порт новый — адрес перечитывается ниже.
+  let baseUrl = server.baseUrl
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -270,12 +218,8 @@ test('нестандартный физический трюк проходит 
   assert.equal(repeated.body.authoritative_state.players.find((hero) => hero.id === 'hero-one').hp, afterHero.hp)
   assert.equal((repeated.body.mechanics ?? []).filter((event) => event.event_type === 'DamageApplied').length, 1)
 
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.restart()
+  baseUrl = server.baseUrl
   const reopened = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: ownerCookie })
   assert.equal(reopened.status, 200, `${reopened.text}\n${logs}`)
   assert.equal(reopened.body.state.players.find((hero) => hero.id === 'hero-one').hp, afterHero.hp)

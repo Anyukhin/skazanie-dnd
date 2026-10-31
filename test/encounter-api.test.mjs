@@ -1,58 +1,9 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
-
-function startServer({ port, storage, setupToken, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: setupToken,
-      GAME_ENGINE_MODE: 'shadow',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Test server did not stop')), 5_000)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolve()
-    })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, log) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Test server exited with ${child.exitCode}\n${log()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return response.json()
-    } catch { /* server is still starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Test server did not become healthy\n${log()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie, body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -112,21 +63,11 @@ async function assemble(baseUrl, session, body) {
 }
 
 test('encounter assembly HTTP endpoint is privileged, strict, idempotent and restart-durable', { timeout: runnerTimeout(30_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-encounter-api-'))
   const setupToken = 'encounter-api-setup-token'
-  let logs = ''
-  let child = null
-  const log = () => logs
-  const appendLog = (chunk) => { logs += chunk }
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({ port, storage, setupToken, appendLog })
-  await waitForHealth(baseUrl, child, log)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-encounter-api-', setupToken })
+  const log = server.output
+  // restart() берёт новый порт: адрес перечитывается из server.baseUrl.
+  let baseUrl = server.baseUrl
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -245,12 +186,8 @@ test('encounter assembly HTTP endpoint is privileged, strict, idempotent and res
   }
 
   const durableBeforeRestart = durableEncounterProjection(assembled.body.authoritative_state)
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({ port, storage, setupToken, appendLog })
-  await waitForHealth(baseUrl, child, log)
+  await server.restart()
+  baseUrl = server.baseUrl
 
   const roomAfterRestart = await request(baseUrl, '/api/rooms/ENCOUNTER-API', { cookie: adminCookie })
   assertStatus(roomAfterRestart, 200, log)

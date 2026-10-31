@@ -1,0 +1,195 @@
+# Контрактные HTTP-тесты против бинаря Rust-сервера (rust/SERVER-PLAN.md, обозначение «К»).
+#
+# Каждая строка — путь к одному файлу test/*.test.mjs от корня репозитория.
+# Пустые строки и строки с «#» пропускаются; комментарий в конце строки — тоже после «#».
+#
+# Вносить файл, когда:
+#   1. он запускает сервер только через test/kit (startTestServer), без своего spawn
+#      и без preload/args — кости и сбои передаются данными (dice, faults);
+#   2. журнал он читает и портит только через readJournal / corruptCampaign /
+#      appendJournal, а не файлами storage/engine;
+#   3. маршруты, которые он трогает, уже перенесены в sk-server (задача С*), и
+#      `pnpm test:contract:rust` с этим файлом зелёный.
+#
+# Тот же список гоняется и против JS-эталона: `pnpm test:contract:js` обязан
+# оставаться зелёным. Убирать файл из списка ради зелёного Rust нельзя —
+# расхождение чинится в Rust или фиксируется решением ведущего.
+
+# С2 (2026-10-23): в Rust пока только вход, сессии и health — зелёные файлы целиком.
+test/test-network-isolation.test.mjs  # запуск бинаря только набором и с изолированным окружением
+test/storage-backup-cli.test.mjs      # отметка писателя storage у живого сервера (sk_infra::backup_service), остальное — CLI без сервера
+
+# С4 (2026-10-23): служебные маршруты и справочники.
+test/ruleset-activation-guard.test.mjs  # отказ старта с DND_DEFAULT_RULESET_ID=dnd_5e_2014
+test/speech-input-api.test.mjs          # speech status и transcribe: права, WAV, 503/502, окно попыток
+
+# С6 (2026-10-23): кампании, членство, рекап. creator-seat-api, ruleset-selection-api,
+# table-of-five-api и api-integration проходят шаги С6, но дальше идут в /commands,
+# /settings, /presence/typing и /narrate — вне списка до их задач.
+test/world-template-api.test.mjs  # GET шаблонов и POST /api/campaigns с авторским миром, серверные поля шаблона
+test/heroes-api.test.mjs          # GET /api/heroes: права, герои всех кампаний без повторов, порядок в русской локали
+
+# С7 (2026-10-23): настройки ИИ, редакция, домашние правила. campaign-reasoning-settings,
+# campaign-improv-mode и house-rule-default-api проходят все шаги /settings (с рестартом и
+# правилами по умолчанию при старте), но проверяют летопись и state_version через
+# GET /api/rooms (С10); ruleset-selection-api дальше идёт в /lifecycle (С8) — вне списка до них.
+# С10 (2026-10-23): комната, общий кубик, выдача кости. narrate-room-version-race (PUT 410
+# уже проходит), viewer-projection-api и roll-binding упираются в /api/narrate — вне списка до С18.
+test/free-dice-api.test.mjs           # общий кубик: права, закрытый набор граней, проекция комнаты и SSE второму игроку
+test/recovery-required-api.test.mjs   # испорченная кампания: GET /api/rooms отказывает, сервер и соседняя кампания живы
+# С7+С10 (2026-10-23): с GET /api/rooms тесты настроек проходят целиком против Rust.
+test/campaign-reasoning-settings.test.mjs   # уровень рассуждений: права, сохранение, перезапуск
+test/campaign-improv-mode.test.mjs          # режим импровизации: строка летописи без события
+test/house-rule-default-api.test.mjs        # домашние правила по умолчанию при старте
+
+# С8 (2026-10-23): откат ведущего и жизненный цикл кампании.
+test/campaign-controls-api.test.mjs    # /controls и /lifecycle: права владельца, ключ, event_id, повтор и конфликт, сводка финала, replay после restart
+test/ruleset-selection-api.test.mjs    # редакция до первого игрового события; пауза через /lifecycle закрывает смену (С7 + С8)
+
+# С11 (2026-10-23): решения отряда и задания. quest-abandonment-api проходит quests и votes,
+# но дальше идёт в /api/narrate (С18.5) — вне списка до неё.
+test/party-decision-roll-api.test.mjs  #общий бросок: серверная кость, права, повтор по ключу, закрытое решение, replay
+
+# С18.5 (2026-10-23): POST /api/narrate, переходы сцены Режиссёра, соло-выход, живой поток рассказа.
+# Остальные файлы группы (api-integration, command-retry-intent-api, director-shop-api, law-api,
+# merchant-api, npc-world-consequences-api, parley-api, persistent-campaign-api, table-of-five-api,
+# tavern-api, world-data-flow-api, mvp-player-cycle-api) упираются в /commands (С18.1), dialogue-api —
+# в /autonomy/advance (С18.4); narrate-retry-recovery и tactical-command-recovery — клиентские, без сервера.
+test/narration-stream-api.test.mjs       # SSE рассказа: изоляция, replay при переподключении, канонический финал
+test/narrate-room-version-race.test.mjs  # room_version ответа перечитывается после хода; PUT комнаты — 410
+test/party-interaction-api.test.mjs      # карточка голосования Режиссёра, голос вне своего хода
+test/solo-party-exit-api.test.mjs        # соло-стол уходит без карточки, ID карты до Архитектора, отказ от задания
+test/quest-abandonment-api.test.mjs      # отказ от задания голосованием и переход сцены, replay/restart
+test/viewer-projection-api.test.mjs      # ответ хода и комната не раскрывают закрытую память мира
+test/roll-binding.test.mjs               # проверку исполняет только кость своей карточки
+test/roll-reservation-api.test.mjs       # резерв броска: несостоявшийся commit возвращает кость
+test/nonstandard-action-api.test.mjs     # свободный трюк: check → roll → commit и replay после restart
+test/action-sequence-roll-api.test.mjs   # план из шагов: бросок первого шага по HTTP
+
+# С13 (2026-10-23): импорт и перестройка карт.
+test/map-import-api.test.mjs  # тело не объект и граница 500; предпросмотр, применение, перестройка, повтор и конфликт ключа, права, обход через /commands (404 до С18 — тоже отказ)
+
+# С18.1 (2026-10-23): POST /api/campaigns/:id/commands. Остальные файлы группы /commands
+# упираются в чужие маршруты (/api/narrate, encounters/assemble, autonomy, merchants,
+# explanation), в координатор автохода боя (turn_clock, С17), в preload/args или в чтение
+# файлов журнала JS — таблица в отчёте С18.1. soak-crash-recovery-api — в разделе С19.4
+# (сверка хранилища через auditStorage набора).
+test/authored-map-movement.test.mjs        # перемещение по нарисованной карте через /commands
+test/chain-lightning-api.test.mjs          # «Цепная молния»: цели, ячейка, повтор
+test/character-creation-api.test.mjs       # импорт листа и выбор при создании героя
+test/combat-lab-api.test.mjs               # боевой стенд администратора поверх кампании
+test/creator-seat-api.test.mjs             # место создателя: свой герой, чужой — 403
+test/critical-moment-journal-api.test.mjs  # строка боя до реплики рассказчика, повтор ключа отдаёт записанную
+test/enervation-api.test.mjs               # «Истощение»: концентрация и повтор
+test/exploration-opening-strike-api.test.mjs  # удар из исследования открывает бой
+test/item-effects-api.test.mjs             # эффекты предметов, права, повтор
+test/loading-attacks-http-review.test.mjs  # перезарядка: недоверенные поля клиента
+test/loot-containers-api.test.mjs          # обыск: атомарность, гонка, свежий список и запись «кто успел»
+test/make-attack-idempotency.test.mjs      # повтор атаки после ухода цели, призыв по истории
+test/npc-combat-entry-api.test.mjs         # вход в бой с NPC — отдельной командой
+test/npc-item-transfer-api.test.mjs        # передача вещи NPC
+test/protection-from-energy-http.test.mjs  # «Защита от энергии»: цель и повтор
+test/restore-rehearsal-api.test.mjs        # бэкап и восстановление storage с командами; аудит восстановленного — auditStorage (С19.4)
+test/room-projection-equivalence.test.mjs  # комната после команд совпадает с журналом
+test/scene-interactions.test.mjs           # предметы сцены через /commands (и модульные проверки)
+test/spell-components-api.test.mjs         # компоненты заклинаний
+test/spell-reaction-http.test.mjs          # реакция «Искусная острота» с получателем
+test/spell-source-activation-api.test.mjs  # заклинание из предмета
+test/stage1-multiplayer-api.test.mjs       # два игрока: команды и живой поток
+test/stream-viewer-isolation-api.test.mjs  # поток не выдаёт чужое после команды
+test/summon-expiry-api.test.mjs            # истечение призыва
+test/thrown-flask-http.test.mjs            # бросок флакона: эффект, права, повтор, replay
+test/wand-of-magic-missiles-api.test.mjs   # жезл «Волшебных стрел»: заряды и повтор
+# Ведущий (2026-10-23): после С18.1 + С18.5 целиком зелёные против Rust. С19.4 (2026-10-25)
+# проверено: command-retry-intent-api правит настоящую трассу хода (раскладка turn-traces у
+# Rust та же, FileTraceStore), persistent-campaign-api видит в ответах сервера задание,
+# дописанное appendJournal мимо него (статус offered), — пустых проверок нет.
+test/command-retry-intent-api.test.mjs
+test/director-shop-api.test.mjs
+test/law-api.test.mjs
+test/parley-api.test.mjs
+test/tavern-api.test.mjs
+test/persistent-campaign-api.test.mjs
+test/npc-world-consequences-api.test.mjs
+test/world-data-flow-api.test.mjs
+test/table-of-five-api.test.mjs
+
+# С15 (2026-10-23): диалог героя и объяснение хода. dialogue-api проходит все шаги
+# /dialogue, но подтест перехода идёт в /autonomy/advance (С18.4) — вне списка до неё;
+# authoritative-combat-api упирается в turn_clock (С17) раньше своего /explanation.
+test/turn-explanation-api.test.mjs  # разбор хода: id и latest, проекция команды врага, права, кампании нет
+test/api-integration.test.mjs       # совместимый API: команда, /why и turns/:id/explanation
+
+# С14 (2026-10-23): торговцы — управление, сборка и витрина. merchant-api проходит
+# lifecycle, сборку и GET витрины, но торгует через POST merchants/:id/commands (С18.2) — вне списка до неё.
+# С18.2 (2026-10-24): торговля игрока перенесена — merchant-api зелёный против Rust до шага
+# POST /system-tick (строка 430 теста, С17); в список — после С17.
+test/merchant-lifecycle-api.test.mjs  # lifecycle-команды ведущего: права, ключ, повтор и конфликт, устаревшая версия, сборка магазина, restart, лимит 60
+
+# С17 (2026-10-24): системный такт, мировые часы, зацепки героев, координатор хода боя.
+# mvp-player-cycle-api зовёт system-tick, но идёт через /autonomy/advance (С18.4) — вне списка до неё.
+test/authoritative-combat-api.test.mjs   # turn_clock комнаты от координатора хода боя, бой через /commands, restart
+test/captives-api.test.mjs               # голод пленного: серверные часы без system-tick, сутки одним коммитом
+test/world-rumor-clock-api.test.mjs      # часы молвы идут сами: слух и репутация после создания кампании
+test/hero-hooks-api.test.mjs             # зацепки героя на хуке проекции: одно плетение, переживает restart
+test/reaction-preferences-api.test.mjs   # режим реакции своего героя, повтор и restart (DND_COMBAT_TURN_TIMEOUT_MS)
+test/merchant-api.test.mjs               # торговля игрока и POST /system-tick с часами лавки (С14 + С18.2 + С17)
+# С18.3 (2026-10-24): сборка встречи POST encounters/assemble. shillelagh-api проходит
+# сборку, но запускает сервер с preload (кости) — вне списка до перевода на dice;
+# director-player-entry-api упирается в /autonomy (С18.4).
+test/encounter-api.test.mjs           # права, белый список полей, устаревшая версия, ходы врагов до героя, проекция игроку, restart, повтор и конфликт ключа
+test/longstrider-api.test.mjs         # «Скороход»: развитие, сборка встречи, бой и движение через /commands, restart
+test/destructive-wave-api.test.mjs    # «Разрушительная волна»: жрец бури 9-го уровня, сборка встречи и удар по площади
+# #190 (2026-10-25): импорт нового героя 2014 — только с phbCreation и полными выборами.
+test/mass-cure-wounds-api.test.mjs    # «Множественное лечение ран»: импорт двух владельцев, NPC, права, idempotency, restart
+
+# С18.4 (2026-10-24): автономия кампании — autonomy/intents и autonomy/advance, стадия
+# encounter-completion координатора последствий. director-player-entry-api проходит все шаги
+# автономии (включая resume после restart), но дальше идёт в encounters/assemble (С18.3) — вне списка до неё.
+test/dialogue-api.test.mjs              # обсуждение и вопрос вне своего хода; переход по голосованию через /autonomy/advance
+test/hit-dice-api.test.mjs              # кости хитов через /commands; повтор /autonomy/advance показывает чужие кости хитов только проекцией зрителя
+test/mvp-player-cycle-api.test.mjs      # обычные игроки: шаги Режиссёра, полный бой, награды стадией завершения, три сцены
+# Ведущий (2026-10-24): после С18.3 + С18.4 целиком зелёный против Rust.
+test/director-player-entry-api.test.mjs
+
+# С5 (2026-10-24): боевой стенд администратора /api/admin/combat-lab/* — прогон боя
+# (runCombatScenario) в Rust; combat-lab-api уже в списке (С18.1, бой поверх кампании).
+test/combat-lab-observer-api.test.mjs  # права, справочники, оценка и генерация, асинхронный прогон, кадры, отмена, отчёт
+# С12 (2026-10-24): ассеты и картинки — портрет NPC, иллюстрация места, подготовка ассетов,
+# /generated/items и generate-image; поставщик — startFakeProvider на 127.0.0.1.
+test/item-images-api.test.mjs           # картинка предмета через учёт расхода: completed/failed, 429 LLM_QUOTA_EXCEEDED до провайдера
+test/npc-portraits-api.test.mjs         # права и видимость, 302 заглушки, кеш с ETag и 304, лимит генераций, restart
+test/location-illustrations-api.test.mjs # подготовка при выключенном флаге, рантайм только из кеша, перегенерация меняет ETag
+
+# С19.2 (2026-10-25): перенос JS-хранилища подкомандой import-legacy — JS-сервер
+# играет на временном storage, Rust на перенесённой базе отвечает так же; в режиме js пропускается.
+test/legacy-import-rust.test.mjs  # rooms/campaigns/settings/heroes/me как у JS, replay журнала = JS, битый хвост и seed — пропуск, отказ старта
+# С19.4 (2026-10-25): последние HTTP-тесты вне списка — через кит, зелёные в обоих режимах.
+test/test-kit.test.mjs                 # сам набор: кости и сбои данными, журнал читается и портится подкомандой бинаря
+test/campaign-dialogues-api.test.mjs   # диалог с Аресом: ответ в летописи, повтор, чужой герой, подделка ответа
+test/stream-live-access-api.test.mjs   # живой поток закрывается после logout, истечения сессии и снятия доступа
+test/stream-backpressure-api.test.mjs  # медленный читатель: комнаты схлопнуты до последней
+test/combat-critical-turn-api.test.mjs # крит врага без модели: конец хода на строке боя (кости данными)
+test/combat-journal-order-api.test.mjs # порядок хроники при атаке по возможности, restart, повтор (кости данными)
+test/shillelagh-api.test.mjs           # «Дубинка» друида через API, restart (кости данными)
+test/sneak-attack-http.test.mjs        # Скрытая атака: права, ключ, журнал через readJournal, restart
+# Дрейф комнаты мимо сервера и сверка хранилища — test/kit/rooms.mjs (readRoom, writeRoom,
+# auditStorage; подкоманды skazanie-server room и audit). В Rust комната — проекция журнала
+# плюс накладка, но накладка может держать канонические поля, и сверка их находит так же.
+test/projection-postcommit-error-api.test.mjs  # сбой подтверждения проекции: 500 и повтор; дрейф при той же версии чинится, hash подтверждён
+test/reconcile-access-perf-api.test.mjs        # чужой аккаунт — 403 до сверки (комната не тронута), участник сверку запускает
+test/soak-crash-recovery-api.test.mjs          # SIGKILL посреди команд: replay, подтверждённые команды целы, аудит без блокеров
+test/legendary-action-http.test.mjs            # UseLegendaryAction не принимается по HTTP ни от кого (прежде — поиск по тексту server/index.mjs)
+# Сверка версий (2026-10-25): первая сцена — карта, обстановка, позиции — против эталонного
+# JS-процесса. Стенд горячего пути расходился 310 против 271 события из-за неперенесённого #184;
+# зелёный против Rust после слияния rs/port-main.
+test/first-scene-map-parity-api.test.mjs # 12 мест: поселение, дом с двором, граф храма и склепа, лес, пещера, авторские миры
+# Исправления HTTP-маршрутов (2026-10-26, docs/rust-port-js-findings.md): чужой ключ /lifecycle — 409,
+# левая рука в EquipItem, версия торговца null, кость комнаты строчными, гонка создания кампании,
+# домашние правила «всё или ничего» с 409 на чужое значение ключа.
+test/http-route-fixes-api.test.mjs     # lifecycle/settings: конфликт ключа; /commands и dice; два POST /api/campaigns
+# Стенды на Rust (2026-10-26): журнал подкомандой бинаря не рвёт кириллицу на границе кусков stdout
+test/kit-journal-utf8.test.mjs # readJournal большого журнала: без U+FFFD (перекрёстный replay стенда Асстохана)
+test/request-body-utf8-api.test.mjs # тело из двух кусков с разрывом посреди буквы — кириллица цела
+# Старые сохранения (2026-10-26): null в реестрах, сырой law, NPC и обещания — комната открывается.
+test/old-save-load-api.test.mjs  # LegacyStateImported с мусором: GET /api/rooms 200, нормализация реестров, restart и replay

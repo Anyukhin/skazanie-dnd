@@ -169,9 +169,16 @@ function nearestHazardAt(state, actorId) {
       if (!cell?.revealed || !hazardId) continue
       candidates.push({ hazard_id: hazardId, source: { kind: 'cell', x, y, cells: [{ x, y }], hazard_id: String(rawHazard) }, distance: distanceToCell({ x, y }) })
     }
+    // Разборщик карты отбрасывает `visibility` и `revealed` предмета, поэтому
+    // закрытость читается из сырой записи `scene.map.props` по id: скрытый
+    // ведущим костёр не должен считаться доступной опасностью.
+    const rawProps = new Map((Array.isArray(state?.scene?.map?.props) ? state.scene.map.props : [])
+      .filter((raw) => raw && typeof raw === 'object')
+      .map((raw) => [String(raw.id ?? ''), raw]))
     for (const prop of map.props ?? []) {
-      const propVisibility = String(prop?.visibility ?? prop?.interaction?.visibility ?? '').toLowerCase()
-      if (['gm_only', 'npc_private'].includes(propVisibility) || prop?.revealed === false) continue
+      const raw = rawProps.get(String(prop?.id ?? '')) ?? prop
+      const propVisibility = String(raw?.visibility ?? raw?.interaction?.visibility ?? '').toLowerCase()
+      if (['gm_only', 'npc_private'].includes(propVisibility) || raw?.revealed === false) continue
       const tags = sceneHazardTagsFor(prop?.assetId)
       const stateId = String(state?.mechanics?.scene_interactions?.[String(prop?.id ?? '')]?.state ?? prop?.state ?? '').toLowerCase()
       const cells = hazardPropCells(prop)
@@ -193,7 +200,7 @@ function nearestHazardAt(state, actorId) {
     const hazardId = canonicalEnvironmentHazardId(hazard?.id ?? hazard?.hazard_id ?? hazard?.type)
     if (hazardId) candidates.push({ hazard_id: hazardId, source: { kind: 'active-hazard', id: String(hazard?.id ?? hazardId) }, distance: 0 })
   }
-  return candidates.sort((left, right) => left.distance - right.distance || left.hazard_id.localeCompare(right.hazard_id))
+  return candidates.sort((left, right) => left.distance - right.distance || left.hazard_id.localeCompare(right.hazard_id, 'en'))
 }
 
 function hazardCandidateReachable(state, actorId, candidate) {
@@ -336,19 +343,19 @@ const APPROACH_PATTERNS = Object.freeze([
   { test: /(?:протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*|войд\p{L}*|вхож\p{L}*|проник\p{L}*)[^.!?]{0,100}внутр\p{L}*/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'plausible', risk: 'minor', obstacle: 'проход' },
   { test: /(?<![\p{L}\p{M}])(?:сальто|кувырк\p{L}*|кувырок|кульбит\p{L}*|фляк\p{L}*|рондат\p{L}*|балансир\p{L}*|пируэт\p{L}*|акробатическ\p{L}*\s+(?:трюк|переворот))(?![\p{L}\p{M}])/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'minor', obstacle: 'равновесие и точность движения' },
   { test: /(?:отвле[кч]|переключ\p{L}*\s+внимани|шум\p{L}*\s+приманк)/iu, ability: 'cha', skill: 'performance', plausibility: 'plausible', risk: 'minor', obstacle: 'внимание собеседника' },
-  { test: /(подпира|баррикад|завал|подпер|держ\w+\s+двер)/iu, ability: 'str', skill: 'athletics', plausibility: 'plausible', risk: 'minor', obstacle: 'дверь' },
+  { test: /(подпира|баррикад|завал|подпер|держ\p{L}+\s+двер)/iu, ability: 'str', skill: 'athletics', plausibility: 'plausible', risk: 'minor', obstacle: 'дверь' },
   { test: /(взлам|выбива|выломать|ломаю)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'преграда' },
   { test: /(опрокид|сбива|толка|рывк|поднож|жаровн|спотык|оступить)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'противник' },
-  { test: /(поджиг|зажиг|подпал|факел\w*\s+к)/iu, ability: 'dex', skill: 'sleight-of-hand', plausibility: 'plausible', risk: 'serious', obstacle: 'огонь' },
+  { test: /(поджиг|зажиг|подпал|факел\p{L}*\s+к)/iu, ability: 'dex', skill: 'sleight-of-hand', plausibility: 'plausible', risk: 'serious', obstacle: 'огонь' },
   // «Скрыва» — с начала слова: «раскрывает тетрадь» и «вскрывает замок» не
   // прятки; «тихо» — только с движением: «тихо говорит Борину» — реплика.
   // Без модели вопрос хозяйке «раскрывает тетрадь… «Скажите…»» получал
   // Скрытность (замер 19, 2026-10-11).
   { test: /(?:крад|незамет|бесшумн|прячусь|затаи|пригиба\p{L}*\s+(?:за|у|в)\s|укрыва\p{L}*\s+(?:за|у|в)\s|залега\p{L}*|(?<![\p{L}\p{M}])скрыва|(?<![\p{L}\p{M}])тих\p{L}*\s+(?:\p{L}+\s+)?(?:пробир|проскаль|проход|прокрад|ступа|двига|обход|ид[уеёт]))/iu, ability: 'dex', skill: 'stealth', plausibility: 'plausible', risk: 'minor', obstacle: 'наблюдатели' },
   { test: /(запуг|угрож|пригрож)/iu, ability: 'cha', skill: 'intimidation', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
-  { test: /(убежда|уговар|догова|прош\w+\s+помощ)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
+  { test: /(убежда|уговар|догова|прош\p{L}+\s+помощ)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
   { test: /(обман|вру|соврать|притвор)/iu, ability: 'cha', skill: 'deception', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
-  { test: /(крич|зову|окликa|подзыва)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'окружающие' },
+  { test: /(крич|зову|оклика|подзыва)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'окружающие' },
   // Поиск тайника руками: «простукивает бочки — нет ли тайника». Без модели
   // такая заявка уходила в «Чего Борин хочет добиться…», и вопрос попадал в
   // летопись голосом рассказчика (замер 10, 2026-10-10).
@@ -767,7 +774,7 @@ export function contextualResolutionFor(state = {}, actorId = '', reading = {}, 
     index += 1
     factors.push('environmental_pressure')
   }
-  if (/(незаперт|прост\w+\s+задач|без\s+спешк|много\s+времен)/iu.test(text)) {
+  if (/(незаперт|прост\p{L}+\s+задач|без\s+спешк|много\s+времен)/iu.test(text)) {
     index -= 1
     factors.push('favorable_conditions')
   }
@@ -1114,7 +1121,7 @@ export function freeActionApproachPlan(state = {}, actorId = '', text = '') {
       .map((prop) => ({ prop, cells: hazardPropCells(prop).filter((cell) => cellAt(map, cell.x, cell.y)?.revealed === true) }))
       .filter((entry) => entry.cells.length)
       .map((entry) => ({ ...entry, distance: Math.min(...entry.cells.map((cell) => Math.max(Math.abs(cell.x - from.x), Math.abs(cell.y - from.y)))) }))
-      .sort((left, right) => left.distance - right.distance || clean(left.prop.id).localeCompare(clean(right.prop.id)))
+      .sort((left, right) => left.distance - right.distance || clean(left.prop.id).localeCompare(clean(right.prop.id), 'en'))
     for (const entry of props.slice(0, 3)) {
       const plan = ready('prop', request.phrase, entry.cells, approachCellsAround(map, entry.cells, occupied))
       if (plan.status !== 'unresolved') return plan
@@ -1357,7 +1364,7 @@ function nearestLootContainer(state, hero, containers) {
   const pool = within.length ? within : measured
   const distance = (entry) => entry.distance_feet ?? Number.POSITIVE_INFINITY
   const [first, second] = [...pool].sort((left, right) => distance(left) - distance(right)
-    || left.container.id.localeCompare(right.container.id))
+    || left.container.id.localeCompare(right.container.id, 'en'))
   if (!first) return null
   return second && distance(second) === distance(first) ? null : first
 }
@@ -1479,7 +1486,7 @@ function resolveLootContainerSearch(state, hero, text, reading) {
   // «что именно обыскивает» (замер 28, дважды подряд): вне боя оркестратор
   // сам подводит героя к телу.
   if (!chosen) {
-    const first = [...pool].sort((left, right) => left.id.localeCompare(right.id))[0]
+    const first = [...pool].sort((left, right) => left.id.localeCompare(right.id, 'en'))[0]
     if (!first) {
       return {
         status: 'clarification',
@@ -1903,7 +1910,7 @@ function closedDoorEntry(state, actorId, map, outside) {
     if (path.some((step) => cellAt(map, step.x, step.y)?.revealed !== true)) continue
     options.push({ door_id: String(door.id), approach: out.position, inside: inside.position, steps: path.length })
   }
-  options.sort((left, right) => left.steps - right.steps || left.door_id.localeCompare(right.door_id))
+  options.sort((left, right) => left.steps - right.steps || left.door_id.localeCompare(right.door_id, 'en'))
   const best = options[0]
   if (!best) return null
   return { status: 'ready', door_id: best.door_id, open_door: true, approach: best.approach, ...(best.steps === 0 ? { at_door: true } : {}), destination: { to: best.inside, path: [best.inside] } }
@@ -1984,7 +1991,7 @@ export function freeActionPassagePlan(state = {}, actorId = '', text = '') {
   if (!origin || !outside.has(positionKey(from))) return { status: 'already_inside' }
   const candidates = []
   for (const door of [...(map.doors ?? [])].sort((left, right) => (
-    left.y - right.y || left.x - right.x || String(left.id).localeCompare(String(right.id))
+    left.y - right.y || left.x - right.x || String(left.id).localeCompare(String(right.id), 'en')
   ))) {
     const first = { x: Number(door.x), y: Number(door.y) }
     const second = door.dir === 'e' ? { x: first.x + 1, y: first.y } : { x: first.x, y: first.y + 1 }
@@ -2001,7 +2008,7 @@ export function freeActionPassagePlan(state = {}, actorId = '', text = '') {
     candidates.push({ door_id: String(door.id), to: entry.position, path })
   }
   candidates.sort((left, right) => left.path.length - right.path.length
-    || left.to.y - right.to.y || left.to.x - right.to.x || left.door_id.localeCompare(right.door_id))
+    || left.to.y - right.to.y || left.to.x - right.to.x || left.door_id.localeCompare(right.door_id, 'en'))
   if (!candidates.length) {
     // Открытого прохода нет, но есть закрытая (не запертая) дверь внутрь:
     // живой ведущий не отвечает «откройте дверь на карте» — герой подходит,

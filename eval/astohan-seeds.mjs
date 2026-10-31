@@ -6,6 +6,7 @@
  *
  *   node eval/astohan-seeds.mjs                       # сиды 1–5, по два сразу, 25 мин на сид
  *   node eval/astohan-seeds.mjs --seeds 1,4,9 --parallel 1 --minutes 20 --keep
+ *   SKAZANIE_RUST_SERVER_BIN=… node eval/astohan-seeds.mjs --impl rust --parallel 1   # бинарь переноса
  *
  * Итог — `<out>/summary.md` (таблица сидов и находки по видам) и
  * `<out>/summary.json`; отчёты каждого сида лежат в `<out>/seed-<N>/`.
@@ -16,6 +17,8 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { standImpl } from './stand-server.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const argv = process.argv.slice(2)
@@ -35,18 +38,21 @@ function parseSeeds(value) {
   return [...new Set(seeds)]
 }
 
+const IMPL = standImpl(argv)
 const SEEDS = parseSeeds(option('seeds', '1-5'))
 const PARALLEL = Math.max(1, Number(option('parallel', 2)) || 1)
 const MINUTES = option('minutes', '25')
 const STAMP = new Date().toISOString().replace(/[:.]/gu, '-').slice(0, 19)
-const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP}-seeds`)))
+const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP}-seeds${IMPL === 'rust' ? '-rust' : ''}`)))
 const BASE_PORT = 8800 + Math.floor(Math.random() * 40) * 2
 
 function runSeed(seed, index) {
   const out = join(OUT, `seed-${seed}`)
-  const args = ['eval/astohan-playthrough.mjs', '--seed', String(seed), '--port', String(BASE_PORT + index), '--out', out]
+  // Rust-стенд берёт свободный порт сам (`eval/stand-server.mjs`).
+  const args = ['eval/astohan-playthrough.mjs', '--seed', String(seed), ...(IMPL === 'js' ? ['--port', String(BASE_PORT + index)] : []), '--out', out]
   if (MINUTES) args.push('--minutes', MINUTES)
   if (argv.includes('--keep')) args.push('--keep')
+  if (IMPL !== 'js') args.push('--impl', IMPL)
   return new Promise((resolveRun) => {
     const startedAt = Date.now()
     const child = spawn(process.execPath, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -139,7 +145,7 @@ function summarize(results) {
 
 function writeSummary(results, summary) {
   const lines = [
-    `# Асстохан по сидам — ${STAMP}`,
+    `# Асстохан по сидам — ${STAMP}${IMPL === 'rust' ? ' · сервер Rust' : ''}`,
     '',
     `Сиды ${SEEDS.join(', ')} · параллельно ${PARALLEL}${MINUTES ? ` · бюджет ${MINUTES} мин на сид` : ''} · до конца дошли **${summary.finished} из ${results.length}** (победой ${summary.completed}) · оценка средняя **${summary.mean ?? '—'}**, худшая ${summary.min ?? '—'}`,
     '',
@@ -165,7 +171,7 @@ function writeSummary(results, summary) {
     for (const result of crashed) lines.push(`### Сид ${result.seed}`, '', '```', result.tail.trim(), '```', '')
   }
   writeFileSync(join(OUT, 'summary.md'), `${lines.join('\n')}\n`)
-  writeFileSync(join(OUT, 'summary.json'), JSON.stringify({ stamp: STAMP, seeds: SEEDS, parallel: PARALLEL, minutes: MINUTES, ...summary }, null, 2))
+  writeFileSync(join(OUT, 'summary.json'), JSON.stringify({ stamp: STAMP, impl: IMPL, seeds: SEEDS, parallel: PARALLEL, minutes: MINUTES, ...summary }, null, 2))
 }
 
 mkdirSync(OUT, { recursive: true })

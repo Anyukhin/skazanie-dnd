@@ -1,0 +1,16 @@
+[package]
+name = "sk-combat-content"
+description = "Боевое содержание «Сказания»: карточки заклинаний и действий героя, бестиарий 2014, дикий облик, опасности обстановки, производные поля героя, аудиты заклинаний"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sk-core.workspace = true
+sk-dice.workspace = true
+sk-ruleset = { path = "../sk-ruleset" }
+sk-geometry = { path = "../sk-geometry" }
+sk-narration-base = { path = "../sk-narration-base" }
+sk-combat-base = { path = "../sk-combat-base" }

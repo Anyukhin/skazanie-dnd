@@ -83,7 +83,7 @@ function scheduleDaysOverlap(left, right) {
 
 function safeSchedule(value) {
   const candidates = (Array.isArray(value) ? value : []).map(safeScheduleEntry).filter(Boolean)
-    .sort((left, right) => left.start_minute - right.start_minute || left.end_minute - right.end_minute || left.id.localeCompare(right.id))
+    .sort((left, right) => left.start_minute - right.start_minute || left.end_minute - right.end_minute || left.id.localeCompare(right.id, 'en'))
   const accepted = []
   const ids = new Set()
   for (const entry of candidates) {
@@ -150,7 +150,8 @@ export function promiseDueOffsetMinutes(value) {
   if (!hint) return null
   if (/\b(?:tomorrow|next day)\b|\u0437\u0430\u0432\u0442\u0440\u0430/iu.test(hint)) return 1_440
   if (/\btonight\b|\u0441\u0435\u0433\u043e\u0434\u043d\u044f(?:\s+\u0432\u0435\u0447\u0435\u0440\u043e\u043c)?/iu.test(hint)) return 720
-  if (/\bsoon\b|\u0441\u043a\u043e\u0440\u043e/iu.test(hint)) return 240
+  // \u00ab\u0441\u043a\u043e\u0440\u043e\u00bb \u2014 \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u044b\u043c \u0441\u043b\u043e\u0432\u043e\u043c: \u00ab\u043d\u0435\u0441\u043a\u043e\u0440\u043e\u00bb \u0441\u0440\u043e\u043a\u0430 \u043d\u0435 \u0437\u0430\u0434\u0430\u0451\u0442.
+  if (/\bsoon\b|(?<![\p{L}\p{N}])\u0441\u043a\u043e\u0440\u043e/iu.test(hint)) return 240
   const match = hint.match(/(?:\u0447\u0435\u0440\u0435\u0437|in)?\s*(\d{1,3})\s*(\u043c\u0438\u043d\u0443\u0442(?:\u0443|\u044b)?|\u043c\u0438\u043d|\u0447\u0430\u0441(?:\u0430|\u043e\u0432)?|\u0434\u043d(?:\u044f|\u0435\u0439)|minute(?:s)?|min|hour(?:s)?|hr|day(?:s)?)/iu)
   if (!match) return null
   const amount = Math.max(1, Math.min(90, integer(match[1], 1)))
@@ -310,7 +311,10 @@ function safeNpcDossier(value, options = {}) {
   return legacyRetention(options) ? normalized.slice(-NPC_DOSSIER_LEGACY_LIMIT) : normalized
 }
 
-function safeProfile(value = {}, options = {}) {
+function safeProfile(input = {}, options = {}) {
+  // `null` в списке старого сохранения — пустая запись: её отсеет проверка id
+  // и имени, а кампания загрузится.
+  const value = input ?? {}
   return {
     id: clean(value.id, 120),
     name: clean(value.name, 160),
@@ -334,7 +338,8 @@ function safeProfile(value = {}, options = {}) {
   }
 }
 
-function safePromise(value = {}) {
+function safePromise(input = {}) {
+  const value = input ?? {}
   const deadline = value.deadline_minutes != null && Number.isSafeInteger(Number(value.deadline_minutes)) ? Math.max(0, Number(value.deadline_minutes)) : null
   const resolved = value.resolved_at_minutes != null && Number.isSafeInteger(Number(value.resolved_at_minutes)) ? Math.max(0, Number(value.resolved_at_minutes)) : null
   return {
@@ -372,7 +377,8 @@ function safeSocialCheck(value) {
   }
 }
 
-function safeConversation(value = {}, options = {}) {
+function safeConversation(input = {}, options = {}) {
+  const value = input ?? {}
   const idLimit = legacyRetention(options) ? 20 : Number.MAX_SAFE_INTEGER
   return {
     id: clean(value.id, 120),
@@ -454,14 +460,16 @@ function profileFromMerchant(merchant = {}) {
 
 /** Adds safe profiles for persistent merchants and canonical NPC entities. */
 export function ensureNpcSocialState(input, state = {}, options = {}) {
-  const social = normalizeNpcSocialState(input, options)
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+  const world = state ?? {}
+  const social = normalizeNpcSocialState(source, options)
   const profiles = new Map(social.npcs.map((npc) => [npc.id, npc]))
-  for (const merchant of state.merchants ?? []) {
-    const profile = profileFromMerchant(merchant)
+  for (const merchant of Array.isArray(world.merchants) ? world.merchants : []) {
+    const profile = profileFromMerchant(merchant ?? {})
     if (!profile.id || !profile.name) continue
     profiles.set(profile.id, { ...profile, ...(profiles.get(profile.id) ?? {}), location: clean(merchant.location, 180), available: merchant.available !== false })
   }
-  for (const entity of state.worldMemory?.entities ?? []) {
+  for (const entity of Array.isArray(world.worldMemory?.entities) ? world.worldMemory.entities : []) {
     if (entity?.kind !== 'npc' || !entity.id || !entity.name || profiles.has(String(entity.id))) continue
     profiles.set(String(entity.id), safeProfile({
       id: entity.id, name: entity.name, public_summary: entity.summary,
@@ -471,7 +479,10 @@ export function ensureNpcSocialState(input, state = {}, options = {}) {
       tags: entity.tags,
     }))
   }
-  return normalizeNpcSocialState({ ...social, npcs: [...profiles.values()] }, options)
+  // Разговоры, обещания и отношения сверяются с полным списком NPC, а не с
+  // одними профилями входа: иначе память о торговце или NPC памяти мира, у
+  // которого ещё нет своего профиля, терялась бы при первой нормализации.
+  return normalizeNpcSocialState({ ...source, npcs: [...profiles.values()] }, options)
 }
 
 function elapsedMinutesFor(value = {}) {
@@ -959,6 +970,16 @@ export function validateNpcSocialCommand(command, state, context = {}) {
   }
 }
 
+/**
+ * Счёт отношения NPC к герою из нормализованного состояния. Ключи — только
+ * собственные: герой или NPC с id `constructor` не находит методов прототипа.
+ */
+export function npcRelationshipScore(social, npcId, heroId) {
+  const relationships = social?.relationships
+  const heroes = relationships && typeof relationships === 'object' && Object.hasOwn(relationships, String(npcId)) ? relationships[String(npcId)] : null
+  return heroes && typeof heroes === 'object' && Object.hasOwn(heroes, String(heroId)) ? heroes[String(heroId)] ?? 0 : 0
+}
+
 function promiseConsequence(promise, status) {
   if (status === 'cancelled') return 0
   if (status === 'fulfilled') return promise.direction === 'party_to_npc' ? 8 : 4
@@ -968,7 +989,7 @@ function promiseConsequence(promise, status) {
 
 function relationshipEvents(state, npcId, heroId, delta, reason, promiseId = '', scoreOverride = null) {
   const social = ensureNpcSocialState(state.social, state)
-  const before = scoreOverride == null ? social.relationships[npcId]?.[heroId] ?? 0 : scoreOverride
+  const before = scoreOverride == null ? npcRelationshipScore(social, npcId, heroId) : scoreOverride
   const boundedDelta = Math.max(-25, Math.min(25, integer(delta, 0)))
   if (!boundedDelta) return { events: [], after: before }
   const after = Math.max(-100, Math.min(100, before + boundedDelta))
@@ -1060,7 +1081,7 @@ export function npcPromiseDeadlineEvents(state = {}, elapsedMinutes = 0) {
       resolution_reason: 'deadline', consequence_delta: delta,
     }, target_ids: [promise.hero_id], visibility: promise.visibility })
     const key = `${promise.npc_id}\0${promise.hero_id}`
-    const before = scores.has(key) ? scores.get(key) : social.relationships[promise.npc_id]?.[promise.hero_id] ?? 0
+    const before = scores.has(key) ? scores.get(key) : npcRelationshipScore(social, promise.npc_id, promise.hero_id)
     const result = relationshipEvents(state, promise.npc_id, promise.hero_id, delta, 'promise-deadline', promise.id, before)
     events.push(...result.events)
     scores.set(key, result.after)
@@ -1097,8 +1118,15 @@ export function applyNpcSocialEvent(input, event, state = {}, options = {}) {
   if (event.event_type === 'NpcRelationshipAdjusted') {
     const npcId = clean(payload.npc_id, 120)
     const heroId = clean(payload.hero_id, 120)
-    const before = social.relationships[npcId]?.[heroId] ?? 0
-    social.relationships[npcId] = { ...(social.relationships[npcId] ?? {}), [heroId]: Math.max(-100, Math.min(100, before + Math.max(-25, Math.min(25, integer(payload.delta, 0))))) }
+    // Отношение есть только у известного NPC и названного героя — ровно то,
+    // что оставит следующая нормализация; ступень меняется вместе со счётом.
+    if (npcId && heroId && social.npcs.some((npc) => npc.id === npcId)) {
+      const heroes = Object.hasOwn(social.relationships, npcId) ? social.relationships[npcId] : {}
+      const before = Object.hasOwn(heroes, heroId) ? heroes[heroId] : 0
+      const after = Math.max(-100, Math.min(100, before + Math.max(-25, Math.min(25, integer(payload.delta, 0)))))
+      social.relationships[npcId] = { ...heroes, [heroId]: after }
+      social.relationship_tiers[npcId] = { ...(Object.hasOwn(social.relationship_tiers, npcId) ? social.relationship_tiers[npcId] : {}), [heroId]: relationshipTier(after) }
+    }
   }
   if (event.event_type === 'NpcPromiseRecorded') {
     const promise = safePromise(payload.promise)
@@ -1134,7 +1162,7 @@ export function npcSocialForViewer(input, viewer = {}) {
   const visibleNpcIds = new Set(npcs.map((npc) => npc.id))
   const conversations = social.conversations.filter((entry) => visibleNpcIds.has(entry.npc_id) && (entry.visibility === 'party' || entry.hero_id === playerId))
   const promises = social.promises.filter((entry) => visibleNpcIds.has(entry.npc_id) && (entry.visibility === 'party' || entry.hero_id === playerId))
-  const relationships = Object.fromEntries([...visibleNpcIds].map((npcId) => [npcId, { [playerId]: social.relationships[npcId]?.[playerId] ?? 0 }]))
+  const relationships = Object.fromEntries([...visibleNpcIds].map((npcId) => [npcId, { [playerId]: npcRelationshipScore(social, npcId, playerId) }]))
   const relationship_tiers = Object.fromEntries([...visibleNpcIds].map((npcId) => [npcId, { [playerId]: relationshipTier(relationships[npcId][playerId]) }]))
   return { schema_version: 4, npcs: clone(npcs), relationships, relationship_tiers, conversations: clone(conversations), promises: clone(promises) }
 }

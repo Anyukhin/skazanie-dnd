@@ -6,11 +6,6 @@
 // резервные модели остаются на своих профилях, и что права, валидация и
 // перезапуск работают так же, как у остальных настроек ИИ.
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { createServer as createNetServer } from 'node:net'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
 import {
@@ -27,6 +22,7 @@ import {
   reasoningLevelAllowedFor,
   reasoningProfileFor,
 } from '../server/model-style-profiles.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 function recordingClient(model, sent) {
@@ -138,44 +134,6 @@ test('карточки моделей описаны для игрока и зн
   assert.equal(reasoningLevelAllowedFor('vendor/unknown-model', 'high'), false)
 })
 
-async function freePort() {
-  const probe = createNetServer()
-  await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(0, '127.0.0.1', resolve) })
-  const address = probe.address()
-  await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()))
-  return address.port
-}
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'reasoning-setup', GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false', NODE_ENV: 'test',
-      DND_AI_MODEL: 'z-ai/glm-5.3-flash', DND_AI_FALLBACK_MODELS: 'google/gemini-2.5-flash-lite',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try { if ((await fetch(`${baseUrl}/api/health`)).ok) return } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
-
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
@@ -189,14 +147,13 @@ async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}
 const sessionCookie = (result) => result.response.headers.get('set-cookie')?.split(';')[0]
 
 test('лидер выбирает модель и рассуждения; игрок — нет; выбор переживает перезапуск', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-reasoning-'))
-  let logs = ''
-  let child = null
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, {
+    storagePrefix: 'skazanie-reasoning-',
+    setupToken: 'reasoning-setup',
+    env: { DND_AI_MODEL: 'z-ai/glm-5.3-flash', DND_AI_FALLBACK_MODELS: 'google/gemini-2.5-flash-lite' },
+  })
+  // Адрес меняется после restart(): переменная обновляется ниже.
+  let baseUrl = server.baseUrl
 
   const owner = await request(baseUrl, '/api/auth/register', { method: 'POST', body: { name: 'Leader', email: 'leader@reasoning.test', password: 'secure-leader-password' } })
   const guest = await request(baseUrl, '/api/auth/register', { method: 'POST', body: { name: 'Guest', email: 'guest@reasoning.test', password: 'secure-guest-password' } })
@@ -250,12 +207,8 @@ test('лидер выбирает модель и рассуждения; игр
   ])
 
   await request(baseUrl, '/api/campaigns/THINK/settings', { method: 'PATCH', cookie: ownerCookie, body: { model: 'openai/gpt-6-luna', reasoningLevel: 'thoughtful' } })
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.restart()
+  baseUrl = server.baseUrl
   const recovered = await request(baseUrl, '/api/campaigns/THINK/settings', { cookie: ownerCookie })
   assert.deepEqual([recovered.body.settings.model, recovered.body.settings.reasoningLevel], ['openai/gpt-6-luna', 'thoughtful'])
 })

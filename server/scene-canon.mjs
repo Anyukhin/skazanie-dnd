@@ -105,7 +105,7 @@ function mapSurfaceFacts(rawMap) {
   if (!revealed) return { materials: [], water: false }
   const materials = [...counts.entries()]
     .filter(([, count]) => count / revealed >= 0.1)
-    .sort((left, right) => right[1] - left[1] || String(left[0]).localeCompare(String(right[0])))
+    .sort((left, right) => right[1] - left[1] || String(left[0]).localeCompare(String(right[0]), 'en'))
     .slice(0, 3)
     .map(([material]) => MATERIAL_LABELS[material] ?? '')
     .filter(Boolean)
@@ -220,7 +220,7 @@ export function sceneCanonFor(state = {}, viewer = {}) {
     location: {
       name,
       kind,
-      kind_label: LOCATION_KIND_LABELS[kind] ?? '',
+      kind_label: ownEntry(LOCATION_KIND_LABELS, kind) ?? '',
       region: text(region?.name, 120),
       biome: text(region?.biome, 40),
     },
@@ -387,7 +387,7 @@ export function requestedOpeningCanon({ openingSituation = '', premise = '' } = 
  * @param {{ phase?: string, weather?: string }|null} [request]
  */
 export function campaignStartCanon(seed = '', request = null) {
-  const clockMinute = OPENING_PHASE_CLOCK[/** @type {keyof typeof OPENING_PHASE_CLOCK} */ (String(request?.phase ?? ''))] ?? OPENING_PHASE_CLOCK.morning
+  const clockMinute = ownEntry(OPENING_PHASE_CLOCK, String(request?.phase ?? '')) ?? OPENING_PHASE_CLOCK.morning
   const elapsed = clockMinute - CAMPAIGN_START_MINUTE_OF_DAY
   const phase = timeOfDayOf(elapsed)
   const day = campaignDayOf(elapsed)
@@ -692,4 +692,9 @@ export function sceneCanonContradictions(narration, canon, { events = [] } = {})
     }
   }
   return found
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

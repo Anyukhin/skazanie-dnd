@@ -51,7 +51,7 @@ export function registerDeterministicNarrator(narrator) {
     throw new TypeError(`Рассказчик ${narrator.id} уже зарегистрирован`)
   }
   NARRATORS.push(narrator)
-  NARRATORS.sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
+  NARRATORS.sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id, 'en'))
   return narrator
 }
 

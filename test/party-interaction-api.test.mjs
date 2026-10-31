@@ -1,66 +1,20 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { spawn } from 'node:child_process'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-
-function captureServerOutput(child) {
-  const limit = 64 * 1024
-  let output = ''
-  const append = (chunk) => {
-    output = (output + String(chunk)).slice(-limit)
-  }
-  child.stdout.on('data', append)
-  child.stderr.on('data', append)
-  return () => output
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => {
-    child.once('exit', resolve)
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, serverOutput) {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился\n${serverOutput()}`)
-    try {
-      const response = await fetch(baseUrl + '/api/health')
-      if (response.ok) return
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не запустился\n${serverOutput()}`)
-}
 
 function cookie(response) {
   return response.headers.get('set-cookie')?.split(';')[0]
 }
 
 test('агент открывает общее голосование, а неактивный игрок может проголосовать без расхода хода', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const port = await freePort()
-  const baseUrl = 'http://127.0.0.1:' + port
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-party-'))
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    // Ключ пуст намеренно: сторож проверяет детерминированные пути (голосование
-    // Режиссёра и fallback Архитектора сцен), а не модель. С непустым ключом
-    // сервер честно стучался в routerai.ru, и тест ждал таймаут соединения на
-    // каждой модели каскада — прогон плавал от секунд до минуты.
-    env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage, ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'party-setup-token', COOKIE_SECURE: 'false' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  const serverOutput = captureServerOutput(child)
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
-  })
-  await waitForHealth(baseUrl, child, serverOutput)
+  // Ключ пуст намеренно (кит ставит пустой ROUTERAI_API_KEY): сторож проверяет
+  // детерминированные пути (голосование Режиссёра и fallback Архитектора сцен),
+  // а не модель. С непустым ключом сервер честно стучался в routerai.ru, и тест
+  // ждал таймаут соединения на каждой модели каскада — прогон плавал от секунд
+  // до минуты.
+  const server = await startTestServer(t, { setupToken: 'party-setup-token', storagePrefix: 'skazanie-party-' })
+  const baseUrl = server.baseUrl
 
   const setup = await fetch(baseUrl + '/api/auth/setup-admin', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

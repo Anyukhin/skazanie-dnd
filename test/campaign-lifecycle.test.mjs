@@ -386,3 +386,24 @@ test('victory and defeat epilogues share the same visible fact ledger without le
     assert.doesNotMatch(output, /promise:personal|promise:hidden-npc|fact:mask-fate|fact:personal|faction:cabal/u)
   }
 })
+
+// Находка переноса (docs/rust-port-js-findings.md): `filter(visibleToParty)`
+// передавал номер элемента запасной видимостью — записи без поля видимости
+// (обычные для старых сохранений) выпадали из эпилога.
+test('NPC и история сцен без поля видимости видны в эпилоге как отрядные', () => {
+  const state = {
+    social: {
+      npcs: [{ id: 'npc-ada', name: 'Ада' }, { id: 'npc-bo', name: 'Бо' }],
+      promises: [
+        { id: 'promise-1', npc_id: 'npc-ada', status: 'fulfilled', text: 'Принести меч', visibility: 'party' },
+        { id: 'promise-2', npc_id: 'npc-bo', status: 'broken', text: 'Вернуть долг', visibility: 'party' },
+      ],
+    },
+    // Пустая запись истории не роняет бриф и в него не попадает.
+    adventure: { history: [{ chapter: 1, location: 'Мельница' }, null, { chapter: 2, location: 'Брод' }] },
+  }
+  const facts = collectEpilogueFacts(state)
+  assert.deepEqual(facts.promises.map((promise) => promise.npc_name), ['Ада', 'Бо'])
+  const brief = buildEpilogueNarrationBrief(state)
+  assert.deepEqual(brief.known_environment.confirmed_scene_history.map((entry) => entry.location), ['Мельница', 'Брод'])
+})

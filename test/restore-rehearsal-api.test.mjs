@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,8 +10,7 @@ import {
   restoreStorageBackup,
   verifyStorageBackup,
 } from '../server/backup-service.mjs'
-import { freePort } from './free-port.mjs'
-import { auditLegacyCutover } from '../server/cutover-audit.mjs'
+import { auditStorage, startTestServer } from './kit/index.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
@@ -33,38 +31,6 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
  */
 
 const SECRET = 'rehearsal-secret-key-not-a-production-value'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'rehearsal-setup', GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stop(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -89,22 +55,22 @@ const hero = (id, name) => ({
 })
 
 test('из архива поднимается та же играбельная кампания, а не только те же файлы', { timeout: runnerTimeout(180_000) }, async (t) => {
-  const live = mkdtempSync(join(tmpdir(), 'skazanie-rehearsal-live-'))
   const vault = mkdtempSync(join(tmpdir(), 'skazanie-rehearsal-vault-'))
-  const restored = join(mkdtempSync(join(tmpdir(), 'skazanie-rehearsal-restored-')), 'storage')
+  const restoredRoot = mkdtempSync(join(tmpdir(), 'skazanie-rehearsal-restored-'))
+  const restored = join(restoredRoot, 'storage')
   const backupFile = join(vault, 'rehearsal.skzbackup')
-  let logs = ''
-  let child = null
+  /** @type {Awaited<ReturnType<typeof startTestServer>> | null} */
+  let restoredServer = null
   t.after(async () => {
-    await stop(child)
-    for (const directory of [live, vault, restored]) rmSync(directory, { recursive: true, force: true })
+    // Чужое хранилище набор не удаляет: сначала сервер, затем каталоги.
+    await restoredServer?.stop()
+    for (const directory of [vault, restoredRoot]) rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
   })
 
   // 1. Живая кампания с несколькими подтверждёнными командами.
-  const livePort = await freePort()
-  const liveUrl = `http://127.0.0.1:${livePort}`
-  child = startServer(livePort, live, (chunk) => { logs += chunk })
-  await waitForHealth(liveUrl, child, () => logs)
+  const liveServer = await startTestServer(t, { setupToken: 'rehearsal-setup', storagePrefix: 'skazanie-rehearsal-live-' })
+  const live = liveServer.storageDir
+  const liveUrl = liveServer.baseUrl
 
   const owner = await request(liveUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -132,8 +98,7 @@ test('из архива поднимается та же играбельная 
   assert.ok(liveVersion > 0)
 
   // 2. Сервер остановлен: архив снимается с покоящегося хранилища.
-  await stop(child)
-  child = null
+  await liveServer.stop()
 
   const created = createStorageBackup({ sourceDir: live, backupFile, secret: SECRET })
   assert.ok(created.file_count > 0)
@@ -153,10 +118,8 @@ test('из архива поднимается та же играбельная 
   // 3. Восстановление в чистый каталог и подъём **нового** сервера на нём.
   restoreStorageBackup({ backupFile, targetDir: restored, secret: SECRET })
 
-  const restoredPort = await freePort()
-  const restoredUrl = `http://127.0.0.1:${restoredPort}`
-  child = startServer(restoredPort, restored, (chunk) => { logs += chunk })
-  await waitForHealth(restoredUrl, child, () => logs)
+  restoredServer = await startTestServer(t, { setupToken: 'rehearsal-setup', storageDir: restored })
+  const restoredUrl = restoredServer.baseUrl
 
   // Вход тем же аккаунтом: учётные записи тоже часть хранилища.
   const login = await request(restoredUrl, '/api/auth/login', {
@@ -178,6 +141,8 @@ test('из архива поднимается та же играбельная 
   assert.equal(continued.status, 200, continued.text)
 
   // 5. Целостность восстановленного хранилища — без блокеров.
-  const report = await auditLegacyCutover({ storageRoot: restored })
+  await restoredServer.stop()
+  const report = await auditStorage(restoredServer)
+  assert.ok(report.campaigns.some((entry) => entry.campaign_id === 'VAULT'), `аудит не увидел восстановленную кампанию: ${JSON.stringify(report)}`)
   assert.deepEqual(report.blockers, [], `восстановленное хранилище не прошло аудит: ${JSON.stringify(report.blockers)}`)
 })

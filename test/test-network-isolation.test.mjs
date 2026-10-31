@@ -25,13 +25,20 @@
 // берёт env только из `isolatedServerEnv`, а та закрывает сеть по построению
 // (пустой ключ, ключ только с локальным адресом, ничего из окружения). Это
 // правило проверяется здесь же исполнением, а не чтением исходника.
+//
+// То же правило — для бинаря Rust-переноса (контрактный режим набора,
+// `SKAZANIE_SERVER_IMPL=rust`). Его запускает только `spawnRust` набора, тоже
+// через `isolatedServerEnv`; любой другой запуск бинаря или чтение
+// `SKAZANIE_RUST_SERVER_BIN` в обход набора — нарушение. Окружение, которое
+// получает бинарь, проверяется исполнением: вместо бинаря подставляется node.
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
-import { isolatedServerEnv } from './kit/http.mjs'
+import { isolatedServerEnv, runRustTool, rustServerBinary, startTestServer } from './kit/http.mjs'
 
 const testDir = fileURLToPath(new URL('.', import.meta.url))
 const selfPath = fileURLToPath(import.meta.url)
@@ -40,6 +47,12 @@ const selfPath = fileURLToPath(import.meta.url)
 // раньше выводили запуск из-под проверки: шаблон требовал `['server/index.mjs']`
 // единственным элементом массива.
 const SERVER_LAUNCH = /spawn\(\s*process\.execPath\s*,\s*\[[^\]]*'server\/index\.mjs'[^\]]*\]/gu
+
+// Запуск бинаря Rust-сервера: команда — путь из `rustServerBinary()` набора.
+const RUST_LAUNCH = /\b(?:spawn|spawnSync|execFile|execFileSync|fork)\(\s*rustServerBinary\(\)/gu
+
+// Путь к бинарю читается только набором: так бинарь не запустить мимо `spawnRust`.
+const RUST_BINARY_READ = /(?:\.|\[\s*['"`])SKAZANIE_RUST_SERVER_BIN\b/u
 
 // Признанная точка запуска: env целиком строит `isolatedServerEnv` набора.
 const KIT_ENV = /^env:\s*isolatedServerEnv\(/u
@@ -127,12 +140,19 @@ function launchOffence(region, fileSource, name = '') {
  * @returns {string[]}
  */
 function networkOffences(name, source) {
-  const launches = [...source.matchAll(SERVER_LAUNCH)].map((match) => match.index)
-  return launches.flatMap((index, order) => {
+  const launches = [...source.matchAll(SERVER_LAUNCH), ...source.matchAll(RUST_LAUNCH)]
+    .map((match) => match.index)
+    .sort((left, right) => left - right)
+  const offences = launches.flatMap((index, order) => {
     const region = source.slice(index, launches[order + 1] ?? source.length)
     const offence = launchOffence(region, source, name)
     return offence ? [`${name}: ${offence}`] : []
   })
+  const kit = name.replaceAll('\\', '/') === 'kit/http.mjs'
+  if (!kit && (RUST_BINARY_READ.test(source) || source.match(RUST_LAUNCH))) {
+    offences.push(`${name}: бинарь Rust-сервера запускается только через test/kit (spawnRust, startTestServer)`)
+  }
+  return offences
 }
 
 test('тесты, поднимающие сервер, не стучатся в настоящего провайдера LLM', () => {
@@ -157,6 +177,64 @@ test('набор test/kit — признанная точка запуска: е
   assert.equal(launches.length, 1, 'набор запускает сервер ровно в одном месте')
   assert.deepEqual(networkOffences('kit/http.mjs', kit), [])
   assert.match(kit.slice(launches[0].index), /^[^]*?env:\s*isolatedServerEnv\(/u)
+})
+
+test('бинарь Rust набор запускает в одном месте и тоже через isolatedServerEnv', () => {
+  const kit = readFileSync(join(testDir, 'kit', 'http.mjs'), 'utf8')
+  const launches = [...kit.matchAll(RUST_LAUNCH)]
+  assert.equal(launches.length, 1, 'бинарь Rust запускает только spawnRust')
+  assert.match(kit.slice(launches[0].index), /^[^{]*\{[^}]*?env:\s*isolatedServerEnv\(/u, 'env запуска бинаря — isolatedServerEnv')
+})
+
+test('запуск бинаря Rust мимо набора — нарушение, даже с пустым ключом', () => {
+  const direct = "  const child = spawn(rustServerBinary(), [], {\n    env: {\n      ...process.env,\n      ROUTERAI_API_KEY: '',\n    },\n  })\n"
+  assert.deepEqual(networkOffences('образец', direct), [
+    'образец: бинарь Rust-сервера запускается только через test/kit (spawnRust, startTestServer)',
+  ])
+  const ownPath = "  const child = spawn(process.env.SKAZANIE_RUST_SERVER_BIN, [], { env: { ROUTERAI_API_KEY: '' } })\n"
+  assert.equal(networkOffences('образец', ownPath).length, 1, 'свой путь к бинарю — нарушение')
+  const bracket = "  const bin = process.env['SKAZANIE_RUST_SERVER_BIN']\n"
+  assert.equal(networkOffences('образец', bracket).length, 1)
+  const leaky = "  const child = spawn(rustServerBinary(), [], {\n    env: { ...process.env, AGENT_PORT: String(port) },\n  })\n"
+  assert.equal(networkOffences('kit/http.mjs', leaky).length, 1, 'и в самом наборе запуск без isolatedServerEnv — нарушение')
+})
+
+test('бинарь Rust получает изолированное окружение: проверка исполнением, node вместо бинаря', { timeout: 30_000 }, async (t) => {
+  const saved = {
+    key: process.env.ROUTERAI_API_KEY,
+    url: process.env.ROUTERAI_BASE_URL,
+    bin: process.env.SKAZANIE_RUST_SERVER_BIN,
+    dice: process.env.DND_TEST_DICE_RULES,
+  }
+  const storageDir = mkdtempSync(join(tmpdir(), 'skazanie-network-rust-'))
+  t.after(() => {
+    for (const [name, value] of [['ROUTERAI_API_KEY', saved.key], ['ROUTERAI_BASE_URL', saved.url],
+      ['SKAZANIE_RUST_SERVER_BIN', saved.bin], ['DND_TEST_DICE_RULES', saved.dice]]) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+    rmSync(storageDir, { recursive: true, force: true })
+  })
+  process.env.ROUTERAI_API_KEY = 'inherited-real-key'
+  process.env.ROUTERAI_BASE_URL = 'https://routerai.ru/api/v1'
+  process.env.DND_TEST_DICE_RULES = '{"inherited":true}'
+
+  delete process.env.SKAZANIE_RUST_SERVER_BIN
+  assert.throws(() => rustServerBinary(), /Режим rust не готов/u)
+  await assert.rejects(startTestServer(t, { impl: 'rust' }), /Режим rust не готов/u, 'без бинаря — понятный отказ, не откат на JS')
+  process.env.SKAZANIE_RUST_SERVER_BIN = join(storageDir, 'missing-skazanie-server.exe')
+  assert.throws(() => rustServerBinary(), /Режим rust не готов: бинарь не найден/u)
+
+  process.env.SKAZANIE_RUST_SERVER_BIN = process.execPath
+  await assert.rejects(startTestServer(t, { impl: 'rust', preload: 'test/kit/server-hooks.mjs' }), /только для JS-сервера/u)
+  const seen = await runRustTool(['-e', [
+    'const e = process.env',
+    'process.stdout.write(JSON.stringify({ key: e.ROUTERAI_API_KEY, url: e.ROUTERAI_BASE_URL, dice: e.DND_TEST_DICE_RULES ?? null,',
+    '  storage: e.DND_STORAGE_DIR, mode: e.NODE_ENV, host: e.AGENT_HOST }))',
+  ].join('\n')], { storageDir })
+  assert.deepEqual(seen, {
+    key: '', url: '', dice: null, storage: storageDir, mode: 'test', host: '127.0.0.1',
+  }, 'ключ, адрес и крючки окружения не доходят до бинаря')
 })
 
 test('isolatedServerEnv закрывает сеть: пустой ключ, ключ только с локальным адресом, ничего из окружения', () => {

@@ -309,11 +309,10 @@ test('легендарное действие тратится вне своег
   rejects(state, { ...command, legendary_action_id: 'дыхание-бездны' }, 'LEGENDARY_ACTION_UNKNOWN')
   rejects(fixture({ boss: {} }), command, 'LEGENDARY_ACTIONS_ABSENT')
 
-  // Вторая дверь — HTTP: команда не входит ни в один набор, принимаемый от
-  // браузера, поэтому до движка она оттуда не доходит вовсе. Отказ выше — это
-  // сторож на случай, если набор когда-нибудь расширят.
-  const server = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
-  assert.equal(server.includes('UseLegendaryAction'), false, 'легендарное действие не принимается по HTTP ни от кого')
+  // Вторая дверь — HTTP: от браузера команду не принимают ни у игрока, ни у
+  // ведущего. Это проверяется поведением против обоих серверов
+  // (`test/legendary-action-http.test.mjs`, контрактный список), а не текстом
+  // `server/index.mjs`.
 })
 
 test('одно окно — одно действие, а весь запас кончается и восстанавливается началом хода босса', () => {

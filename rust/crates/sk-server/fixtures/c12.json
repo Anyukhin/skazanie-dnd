@@ -1,0 +1,1319 @@
+{
+  "format": "skazanie.golden/1",
+  "scenario": "ассеты и картинки: портрет NPC, иллюстрация, подготовка, файлы и картинки предметов (поставщик — заглушка)",
+  "exchanges": [
+    {
+      "as": "anon",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/npc%3Amarta/portrait",
+      "headers": {},
+      "body": null,
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/locations/loc-road/illustration",
+      "headers": {},
+      "body": null,
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": null,
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "PUT",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "GET",
+      "path": "/generated/items/abc.webp",
+      "headers": {},
+      "body": null,
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/items/generate-image?x=1",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/auth/setup-admin",
+      "headers": {},
+      "body": {
+        "email": "gm@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Ведущий",
+        "setupToken": "setup-code"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "setupRequired": false
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "anya@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Аня"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "vera@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Вера"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "vera@mail.ru",
+          "name": "Вера",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "ART-1",
+        "name": "Картины",
+        "state": {
+          "sessionCode": "ART-1",
+          "campaign": "Картины",
+          "partyName": "Отряд",
+          "partyMemberIds": [
+            "hero"
+          ],
+          "activePlayerId": "hero",
+          "engine_mode": "enforce",
+          "isNarrating": false,
+          "pendingCheck": null,
+          "suggestions": [],
+          "messages": [],
+          "players": [
+            {
+              "id": "hero",
+              "name": "Player",
+              "character": "Ада",
+              "hp": 10,
+              "maxHp": 10,
+              "armor": 12,
+              "proficiency": 2,
+              "abilities": {
+                "str": 10,
+                "dex": 10,
+                "con": 10,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": [
+                {
+                  "id": "item:key",
+                  "name": "Ключ",
+                  "image": ""
+                },
+                {
+                  "id": "item:map",
+                  "name": "Карта",
+                  "image": "/generated/items/x.webp"
+                }
+              ],
+              "online": true
+            }
+          ],
+          "merchants": [],
+          "social": {
+            "npcs": [
+              {
+                "id": "npc:marta",
+                "name": "Марта",
+                "role": "merchant",
+                "location": "Рынок",
+                "public_summary": "Торговка с серебряной прядью.",
+                "voice": "",
+                "goals": [
+                  "PRIVATE_GOAL_npc:marta"
+                ],
+                "beliefs": [],
+                "known_fact_ids": [],
+                "social_dcs": {},
+                "visibility": "party",
+                "available": true,
+                "tags": [
+                  "important"
+                ],
+                "schedule": [],
+                "inventory": []
+              },
+              {
+                "id": "npc:minor",
+                "name": "Страж ворот",
+                "role": "city guard",
+                "location": "Рынок",
+                "public_summary": "Публичное описание npc:minor.",
+                "voice": "",
+                "goals": [
+                  "PRIVATE_GOAL_npc:minor"
+                ],
+                "beliefs": [],
+                "known_fact_ids": [],
+                "social_dcs": {},
+                "visibility": "party",
+                "available": true,
+                "tags": [],
+                "schedule": [],
+                "inventory": []
+              },
+              {
+                "id": "npc:hidden",
+                "name": "Скрытый советник",
+                "role": "village guard",
+                "location": "Рынок",
+                "public_summary": "GM_ONLY_SUMMARY",
+                "voice": "",
+                "goals": [
+                  "PRIVATE_GOAL_npc:hidden"
+                ],
+                "beliefs": [],
+                "known_fact_ids": [],
+                "social_dcs": {},
+                "visibility": "gm_only",
+                "available": true,
+                "tags": [
+                  "important"
+                ],
+                "schedule": [],
+                "inventory": []
+              },
+              {
+                "id": "npc:broken",
+                "name": "Сломанный BROKEN",
+                "role": "scholar",
+                "location": "Рынок",
+                "public_summary": "Публичное описание npc:broken.",
+                "voice": "",
+                "goals": [
+                  "PRIVATE_GOAL_npc:broken"
+                ],
+                "beliefs": [],
+                "known_fact_ids": [],
+                "social_dcs": {},
+                "visibility": "party",
+                "available": true,
+                "tags": [
+                  "important"
+                ],
+                "schedule": [],
+                "inventory": []
+              },
+              {
+                "id": "toString",
+                "name": "Прототип",
+                "role": "priest",
+                "location": "Рынок",
+                "public_summary": "Публичное описание toString.",
+                "voice": "",
+                "goals": [
+                  "PRIVATE_GOAL_toString"
+                ],
+                "beliefs": [],
+                "known_fact_ids": [],
+                "social_dcs": {},
+                "visibility": "party",
+                "available": true,
+                "tags": [],
+                "schedule": [],
+                "inventory": []
+              }
+            ],
+            "relationships": {},
+            "conversations": [],
+            "promises": []
+          },
+          "scene": {
+            "title": "Разбитый обоз",
+            "location": "Норвинский тракт",
+            "location_id": "loc-road",
+            "mood": "Тревожно",
+            "objective": "Найти уцелевших",
+            "turn": 1,
+            "cells": []
+          },
+          "mechanics": {
+            "world_time": {
+              "elapsed_minutes": 60
+            }
+          },
+          "adventure": {
+            "chapter": 1,
+            "history": [],
+            "visitedLocations": [
+              "Норвинский тракт"
+            ]
+          },
+          "worldMap": {
+            "version": 1,
+            "seed": "c12-seed",
+            "name": "Норвин",
+            "width": 1000,
+            "height": 640,
+            "currentLocationId": "loc-road",
+            "regions": [
+              {
+                "id": "reg:north",
+                "name": "Север",
+                "biome": "plains",
+                "x": 10,
+                "y": 10,
+                "radius": 100
+              }
+            ],
+            "locations": [
+              {
+                "id": "loc-road",
+                "name": "Норвинский тракт",
+                "kind": "landmark",
+                "x": 10,
+                "y": 10,
+                "regionId": "reg:north",
+                "summary": "Разбитая дорога",
+                "known": true,
+                "visited": true
+              }
+            ],
+            "routes": []
+          },
+          "worldMemory": {
+            "entities": [
+              {
+                "id": "loc-road",
+                "kind": "location",
+                "name": "Норвинский тракт",
+                "summary": "Разбитая дорога",
+                "visibility": "party",
+                "aliases": [],
+                "tags": []
+              },
+              {
+                "id": "loc:lair",
+                "kind": "location",
+                "name": "Логово культа",
+                "summary": "GM_ONLY_SUMMARY",
+                "visibility": "gm_only",
+                "aliases": [],
+                "tags": []
+              }
+            ],
+            "facts": [],
+            "relationships": [],
+            "quests": [],
+            "threads": [],
+            "epistemic_claims": [],
+            "summaries": [],
+            "knowledge_ledger": []
+          }
+        }
+      },
+      "status": 201,
+      "body_norm": "<skip>"
+    },
+    {
+      "as": "admin",
+      "method": "ASSIGN",
+      "path": "anya@mail.ru",
+      "headers": {},
+      "body": [
+        "hero"
+      ],
+      "status": 200,
+      "body_norm": null
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/NOPE-1/npcs/npc%3Amarta/portrait",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена",
+        "code": "CAMPAIGN_NOT_FOUND"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/%E0/portrait",
+      "headers": {},
+      "body": null,
+      "status": 400,
+      "body_norm": {
+        "error": "Некорректный npc_id",
+        "code": "INVALID_NPC_ID"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/portrait",
+      "headers": {},
+      "body": null,
+      "status": 400,
+      "body_norm": {
+        "error": "Некорректный npc_id",
+        "code": "INVALID_NPC_ID"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/portrait",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "NPC не найден",
+        "code": "NPC_NOT_VISIBLE"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/npc%3Amarta/portrait",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/npc%3Ahidden/portrait",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "NPC не найден",
+        "code": "NPC_NOT_VISIBLE"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/..%2F..%2Fauth.json/portrait",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "NPC не найден",
+        "code": "NPC_NOT_VISIBLE"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/npc%3Aminor/portrait",
+      "headers": {},
+      "body": null,
+      "status": 302,
+      "body_norm": null,
+      "headers_norm": {
+        "location": "/assets/npcs/roles/guard.png",
+        "cache-control": "private, no-store",
+        "vary": "Cookie",
+        "x-npc-portrait-source": "static",
+        "x-npc-portrait-role": "guard",
+        "x-npc-portrait-reason": "secondary_npc"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/toString/portrait",
+      "headers": {},
+      "body": null,
+      "status": 302,
+      "body_norm": null,
+      "headers_norm": {
+        "location": "/assets/npcs/roles/priest.png",
+        "cache-control": "private, no-store",
+        "vary": "Cookie",
+        "x-npc-portrait-source": "static",
+        "x-npc-portrait-role": "priest",
+        "x-npc-portrait-reason": "secondary_npc"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/npc%3Abroken/portrait",
+      "headers": {},
+      "body": null,
+      "status": 302,
+      "body_norm": null,
+      "headers_norm": {
+        "location": "/assets/npcs/roles/scholar.png",
+        "cache-control": "private, no-store",
+        "vary": "Cookie",
+        "x-npc-portrait-source": "static",
+        "x-npc-portrait-role": "scholar",
+        "x-npc-portrait-reason": "generation_failed"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/npc%3Amarta/portrait",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null,
+      "headers_norm": {
+        "content-type": "image/webp",
+        "content-length": "12",
+        "etag": "\"3fe79651a92ea3850c3fc3dd9519a67c7f70b598fa238a3fd92042f6446e6452\"",
+        "cache-control": "private, max-age=3600",
+        "vary": "Cookie",
+        "x-npc-portrait-source": "generated",
+        "x-npc-portrait-cache": "miss"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/npc%3Amarta/portrait?x=1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null,
+      "headers_norm": {
+        "content-type": "image/webp",
+        "content-length": "12",
+        "etag": "\"3fe79651a92ea3850c3fc3dd9519a67c7f70b598fa238a3fd92042f6446e6452\"",
+        "cache-control": "private, max-age=3600",
+        "vary": "Cookie",
+        "x-npc-portrait-source": "generated",
+        "x-npc-portrait-cache": "hit"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/npc%3Amarta/portrait",
+      "headers": {
+        "If-None-Match": "\"3fe79651a92ea3850c3fc3dd9519a67c7f70b598fa238a3fd92042f6446e6452\""
+      },
+      "body": null,
+      "status": 304,
+      "body_norm": null,
+      "headers_norm": {
+        "content-type": null,
+        "content-length": null,
+        "etag": "\"3fe79651a92ea3850c3fc3dd9519a67c7f70b598fa238a3fd92042f6446e6452\"",
+        "cache-control": "private, max-age=3600",
+        "vary": "Cookie",
+        "x-npc-portrait-source": "generated",
+        "x-npc-portrait-cache": "hit"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/npc%3Amarta/portrait",
+      "headers": {
+        "If-None-Match": "\"other\""
+      },
+      "body": null,
+      "status": 200,
+      "body_norm": null,
+      "headers_norm": {
+        "content-type": "image/webp",
+        "content-length": "12",
+        "etag": "\"3fe79651a92ea3850c3fc3dd9519a67c7f70b598fa238a3fd92042f6446e6452\"",
+        "cache-control": "private, max-age=3600",
+        "vary": "Cookie",
+        "x-npc-portrait-source": "generated",
+        "x-npc-portrait-cache": "hit"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/npcs/npc%3Ahidden/portrait",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null,
+      "headers_norm": {
+        "content-type": "image/webp",
+        "content-length": "12",
+        "etag": "\"3fe79651a92ea3850c3fc3dd9519a67c7f70b598fa238a3fd92042f6446e6452\"",
+        "cache-control": "private, max-age=3600",
+        "vary": "Cookie",
+        "x-npc-portrait-source": "generated",
+        "x-npc-portrait-cache": "miss"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/locations/loc-road/illustration",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Иллюстрация ещё не подготовлена",
+        "code": "LOCATION_ILLUSTRATION_ABSENT"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/locations/loc%3Alair/illustration",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Локация не найдена",
+        "code": "LOCATION_NOT_VISIBLE"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/locations/%E0/illustration",
+      "headers": {},
+      "body": null,
+      "status": 400,
+      "body_norm": {
+        "error": "Некорректный location_id",
+        "code": "INVALID_LOCATION_ID"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/locations/..%2F..%2Fauth.json/illustration",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Локация не найдена",
+        "code": "LOCATION_NOT_VISIBLE"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/locations/loc-road/illustration",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/NOPE-1/locations/loc-road/illustration",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена",
+        "code": "CAMPAIGN_NOT_FOUND"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Подготовка ассетов доступна администратору или владельцу кампании",
+        "code": "ASSET_PREPARATION_FORBIDDEN"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": {
+        "location_ids": [
+          "loc-road"
+        ]
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Подготовка ассетов доступна администратору или владельцу кампании",
+        "code": "ASSET_PREPARATION_FORBIDDEN"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/NOPE-1/asset-preparation",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена",
+        "code": "CAMPAIGN_NOT_FOUND"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/asset-preparation?x=1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "policy_id": "skazanie:asset-preparation-v1",
+        "runtime_image_generation": true,
+        "generator_configured": true,
+        "maximum_batch": 20,
+        "npc_portraits": [
+          {
+            "id": "npc:broken",
+            "name": "Сломанный BROKEN",
+            "role": "scholar",
+            "has_portrait": false
+          },
+          {
+            "id": "npc:hidden",
+            "name": "Скрытый советник",
+            "role": "village guard",
+            "has_portrait": true
+          },
+          {
+            "id": "npc:marta",
+            "name": "Марта",
+            "role": "merchant",
+            "has_portrait": true
+          }
+        ],
+        "location_illustrations": [
+          {
+            "id": "loc-road",
+            "name": "Норвинский тракт",
+            "kind": "",
+            "source": "scene",
+            "has_illustration": false
+          },
+          {
+            "id": "loc:lair",
+            "name": "Логово культа",
+            "kind": "",
+            "source": "world_memory",
+            "has_illustration": false
+          }
+        ],
+        "items_without_illustration": [
+          {
+            "id": "item:key",
+            "name": "Ключ",
+            "owner_id": "hero"
+          }
+        ],
+        "items_note": "Иллюстрация предмета хранится на самой записи предмета и проставляется редактором инвентаря; серверного кеша для неё нет."
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": {},
+      "status": 400,
+      "body_norm": {
+        "error": "Не выбрано ни одной позиции",
+        "code": "NOTHING_REQUESTED"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": "x",
+      "status": 400,
+      "body_norm": {
+        "error": "Не выбрано ни одной позиции",
+        "code": "NOTHING_REQUESTED"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": {
+        "npc_ids": [
+          "npc:nope",
+          "npc:marta"
+        ]
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Неизвестные NPC: npc:nope",
+        "code": "UNKNOWN_ASSET"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": {
+        "location_ids": [
+          "loc:nope"
+        ]
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Неизвестные локации: loc:nope",
+        "code": "UNKNOWN_ASSET"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": {
+        "npc_ids": [
+          "npc:marta"
+        ]
+      },
+      "status": 200,
+      "body_norm": {
+        "policy_id": "skazanie:asset-preparation-v1",
+        "prepared": []
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": {
+        "location_ids": [
+          "loc-road",
+          "loc:lair"
+        ],
+        "npc_ids": [
+          "npc:broken"
+        ]
+      },
+      "status": 200,
+      "body_norm": {
+        "policy_id": "skazanie:asset-preparation-v1",
+        "prepared": [
+          {
+            "id": "npc:broken",
+            "kind": "npc_portrait",
+            "status": "failed",
+            "error": "Генератор изображений вернул файл неподдерживаемого формата"
+          },
+          {
+            "id": "loc-road",
+            "kind": "location_illustration",
+            "status": "ready"
+          },
+          {
+            "id": "loc:lair",
+            "kind": "location_illustration",
+            "status": "ready"
+          }
+        ]
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": {
+        "location_ids": [
+          "loc-road"
+        ]
+      },
+      "status": 200,
+      "body_norm": {
+        "policy_id": "skazanie:asset-preparation-v1",
+        "prepared": []
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": {
+        "location_ids": [
+          "loc-road"
+        ],
+        "npc_ids": [
+          "npc:marta"
+        ],
+        "regenerate": true
+      },
+      "status": 200,
+      "body_norm": {
+        "policy_id": "skazanie:asset-preparation-v1",
+        "prepared": [
+          {
+            "id": "npc:marta",
+            "kind": "npc_portrait",
+            "status": "ready"
+          },
+          {
+            "id": "loc-road",
+            "kind": "location_illustration",
+            "status": "ready"
+          }
+        ]
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/asset-preparation",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "policy_id": "skazanie:asset-preparation-v1",
+        "runtime_image_generation": true,
+        "generator_configured": true,
+        "maximum_batch": 20,
+        "npc_portraits": [
+          {
+            "id": "npc:broken",
+            "name": "Сломанный BROKEN",
+            "role": "scholar",
+            "has_portrait": false
+          },
+          {
+            "id": "npc:hidden",
+            "name": "Скрытый советник",
+            "role": "village guard",
+            "has_portrait": true
+          },
+          {
+            "id": "npc:marta",
+            "name": "Марта",
+            "role": "merchant",
+            "has_portrait": true
+          }
+        ],
+        "location_illustrations": [
+          {
+            "id": "loc-road",
+            "name": "Норвинский тракт",
+            "kind": "",
+            "source": "scene",
+            "has_illustration": true
+          },
+          {
+            "id": "loc:lair",
+            "name": "Логово культа",
+            "kind": "",
+            "source": "world_memory",
+            "has_illustration": true
+          }
+        ],
+        "items_without_illustration": [
+          {
+            "id": "item:key",
+            "name": "Ключ",
+            "owner_id": "hero"
+          }
+        ],
+        "items_note": "Иллюстрация предмета хранится на самой записи предмета и проставляется редактором инвентаря; серверного кеша для неё нет."
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/locations/loc-road/illustration",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null,
+      "headers_norm": {
+        "content-type": "image/webp",
+        "content-length": "12",
+        "etag": "\"3fe79651a92ea3850c3fc3dd9519a67c7f70b598fa238a3fd92042f6446e6452\"",
+        "cache-control": "private, no-cache",
+        "vary": "Cookie",
+        "x-location-illustration-source": "generated",
+        "x-location-illustration-cache": "hit"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/locations/loc-road/illustration",
+      "headers": {
+        "If-None-Match": "\"3fe79651a92ea3850c3fc3dd9519a67c7f70b598fa238a3fd92042f6446e6452\""
+      },
+      "body": null,
+      "status": 304,
+      "body_norm": null,
+      "headers_norm": {
+        "content-type": null,
+        "content-length": null,
+        "etag": "\"3fe79651a92ea3850c3fc3dd9519a67c7f70b598fa238a3fd92042f6446e6452\"",
+        "cache-control": "private, no-cache",
+        "vary": "Cookie",
+        "x-location-illustration-source": "generated",
+        "x-location-illustration-cache": "hit"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/locations/loc%3Alair/illustration",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Локация не найдена",
+        "code": "LOCATION_NOT_VISIBLE"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/ART-1/locations/loc%3Alair/illustration",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null,
+      "headers_norm": {
+        "content-type": "image/webp",
+        "content-length": "12",
+        "etag": "\"3fe79651a92ea3850c3fc3dd9519a67c7f70b598fa238a3fd92042f6446e6452\"",
+        "cache-control": "private, no-cache",
+        "vary": "Cookie",
+        "x-location-illustration-source": "generated",
+        "x-location-illustration-cache": "hit"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {
+        "prompt": "коротко"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Нужен подробный промпт"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {
+        "prompt": {
+          "a": 1
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Нужен подробный промпт"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": "x",
+      "status": 502,
+      "body_norm": {
+        "error": "Тело запроса должно быть JSON-объектом"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {
+        "prompt": "Старый бронзовый ключ с волчьей головой на кольце",
+        "aspectRatio": "16:9"
+      },
+      "status": 200,
+      "body_norm": {
+        "url": "/generated/items/<uuid>.webp",
+        "model": "test/golden-image-v1",
+        "cost": 0.025
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "<url:54>",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null,
+      "headers_norm": {
+        "content-type": "image/webp",
+        "content-length": null,
+        "cache-control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "GET",
+      "path": "<url:54>?v=1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null,
+      "headers_norm": {
+        "content-type": "image/webp",
+        "content-length": null,
+        "cache-control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/generated/items/abc.gif",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Файл не найден"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/generated/items/0000-aaaa.webp",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Файл не найден"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {
+        "prompt": "Старый бронзовый ключ с волчьей головой на кольце BROKEN"
+      },
+      "status": 502,
+      "body_norm": {
+        "error": "Генератор изображений вернул файл неподдерживаемого формата"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {
+        "prompt": "x"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Нужен подробный промпт"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {
+        "prompt": "x"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Нужен подробный промпт"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {
+        "prompt": "x"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Нужен подробный промпт"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {
+        "prompt": "x"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Нужен подробный промпт"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {
+        "prompt": "x"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Нужен подробный промпт"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {
+        "prompt": "Старый бронзовый ключ с волчьей головой на кольце"
+      },
+      "status": 429,
+      "body_norm": {
+        "error": "Слишком много запросов генерации изображений"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/items/generate-image",
+      "headers": {},
+      "body": {
+        "prompt": "Старый бронзовый ключ с волчьей головой на кольце"
+      },
+      "status": 200,
+      "body_norm": {
+        "url": "/generated/items/<uuid>.webp",
+        "model": "test/golden-image-v1",
+        "cost": 0.025
+      }
+    }
+  ]
+}

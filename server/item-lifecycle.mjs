@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import { catalogItem, itemLifecycleProfile } from './item-catalog.mjs'
+import { catalogItem, itemLifecycleProfile, offHandWeaponAllowed } from './item-catalog.mjs'
 import { inventoryStackKey, MAX_STOCK_QUANTITY, normalizeInventoryItem } from './merchant-economy.mjs'
 import {
   MAX_NPC_INVENTORY_ITEMS,
@@ -38,6 +38,11 @@ function player(state, id) {
 
 function itemFor(actor, id) {
   return (actor?.inventory ?? []).find((item) => String(item?.id) === String(id ?? '') && Number(item?.quantity ?? 1) > 0) ?? null
+}
+
+/** Слот, который вещь занимает сейчас: оружие второй руки помечено на экземпляре. */
+function effectiveEquipSlot(item, rulesetId = '') {
+  return item?.equipped_slot === 'off_hand' ? 'off_hand' : String(profileFor(item, rulesetId)?.equip_slot ?? '')
 }
 
 function profileFor(item, rulesetId = '') {
@@ -115,6 +120,8 @@ function assertPlainCommand(command) {
     // допустимость клетки, дальность и принадлежность оружия проверяет
     // Rules Engine, а не отправитель команды.
     'to', 'use_mode', 'weapon_id',
+    // Вторая рука для лёгкого оружия: слот проверяет сам жизненный цикл.
+    'equip_slot',
     'expected_state_version', 'ruleset_id', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility', 'request_fingerprint',
     'server_authoritative',
   ]
@@ -367,6 +374,19 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
         'ITEM_EQUIP_UNCHANGED',
       )
     }
+    // Бой двумя оружиями: лёгкое оружие ближнего боя — во вторую руку, если в
+    // основной тоже лёгкое оружие ближнего боя. Щит и прежнее оружие второй
+    // руки снимаются, основное оружие остаётся.
+    const offHand = equipped && String(command.equip_slot ?? '') === 'off_hand'
+    if (offHand) {
+      if (!offHandWeaponAllowed(item)) throw new ItemLifecycleValidationError('Во вторую руку берут только лёгкое оружие ближнего боя', 'OFF_HAND_WEAPON_NOT_LIGHT')
+      const mainHand = (owner.inventory ?? []).find((candidate) => candidate?.equipped === true && String(candidate.id) !== itemId
+        && effectiveEquipSlot(candidate, state?.ruleset_id) === 'main_hand' && candidate.type === 'weapon')
+      if (!mainHand || !offHandWeaponAllowed(mainHand)) {
+        throw new ItemLifecycleValidationError('Сначала возьмите в основную руку лёгкое оружие ближнего боя', 'OFF_HAND_MAIN_HAND_NOT_LIGHT')
+      }
+    }
+    const targetSlot = offHand ? 'off_hand' : String(profile.equip_slot)
     if (state.mechanics?.combat?.active) {
       if (!combatHeldItem(item, profile)) {
         throw new ItemLifecycleValidationError(
@@ -392,7 +412,7 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
       if (equipped) {
         const occupyingItem = (owner.inventory ?? []).find((candidate) => {
           if (String(candidate?.id) === itemId || candidate?.equipped !== true) return false
-          return String(profileFor(candidate, state?.ruleset_id)?.equip_slot ?? '') === String(profile.equip_slot)
+          return effectiveEquipSlot(candidate, state?.ruleset_id) === targetSlot
         })
         if (occupyingItem) {
           throw new ItemLifecycleValidationError(
@@ -408,7 +428,7 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
       result.combat_action = economy.object_interaction === false ? 'action' : 'object_interaction'
     }
     result.equipped = equipped
-    result.equip_slot = profile.equip_slot
+    result.equip_slot = targetSlot
   }
 
   if (command.command_type === 'UseItem') {
@@ -660,13 +680,29 @@ export function applyItemLifecycleEventToPlayers(players, event) {
   if (event.event_type === 'ItemEquipped' || event.event_type === 'ItemUnequipped') {
     const ownerId = String(event.target_ids?.[0] ?? event.actor_id ?? '')
     const equipped = event.event_type === 'ItemEquipped'
-    next = next.map((actor) => actorId(actor) !== ownerId ? actor : {
-      ...actor,
-      inventory: (actor.inventory ?? []).map((item) => {
-        if (String(item.id) === String(payload.item_id)) return { ...item, equipped, ...(!equipped ? { activated: false } : {}) }
-        if (equipped && profileFor(item).equip_slot === payload.equip_slot) return { ...item, equipped: false, activated: false }
-        return item
-      }),
+    next = next.map((actor) => {
+      if (actorId(actor) !== ownerId) return actor
+      const target = (actor.inventory ?? []).find((item) => String(item.id) === String(payload.item_id))
+      const targetCatalog = catalogItem(String(target?.catalog_id ?? target?.catalogId ?? ''))
+      // Двуручное оружие в основной руке освобождает и вторую.
+      const freesOffHand = equipped && payload.equip_slot === 'main_hand'
+        && (targetCatalog?.combat?.twoHanded === true || (targetCatalog?.combat?.properties ?? []).includes('two-handed'))
+      const unequip = (item) => {
+        const { equipped_slot: _slot, ...rest } = item
+        return { ...rest, equipped: false, activated: false }
+      }
+      return {
+        ...actor,
+        inventory: (actor.inventory ?? []).map((item) => {
+          if (String(item.id) === String(payload.item_id)) {
+            const { equipped_slot: _slot, ...rest } = item
+            return { ...rest, equipped, ...(equipped && payload.equip_slot === 'off_hand' ? { equipped_slot: 'off_hand' } : {}), ...(!equipped ? { activated: false } : {}) }
+          }
+          if (equipped && item.equipped === true && effectiveEquipSlot(item) === payload.equip_slot) return unequip(item)
+          if (freesOffHand && item.equipped === true && item.equipped_slot === 'off_hand') return unequip(item)
+          return item
+        }),
+      }
     })
   }
   if (event.event_type === 'ItemAttunementChanged') {

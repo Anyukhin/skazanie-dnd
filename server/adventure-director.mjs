@@ -362,7 +362,7 @@ export function openingEntrySide(worldMap, locationId) {
     .map((route) => ({ route, neighbor: route.from === locationId ? route.to : route.from }))
     .sort((left, right) => Number(left.route.kind !== 'road') - Number(right.route.kind !== 'road')
       || (Number(left.route.distance) || 0) - (Number(right.route.distance) || 0)
-      || String(left.neighbor).localeCompare(String(right.neighbor)))
+      || String(left.neighbor).localeCompare(String(right.neighbor), 'en'))
   return routes.length ? entrySideToward(worldMap, locationId, routes[0].neighbor) : ''
 }
 
@@ -403,7 +403,8 @@ export function outsideEntranceFor(map, spawn) {
   /** @type {{x: number, y: number, score: number}|null} */
   let best = null
   for (const door of map.doors ?? []) {
-    if (door.locked === true || door.barricade) continue
+    // У двери карты замок — в `state` (`DOOR_STATES`); поля `locked` нет.
+    if (door.state === 'locked' || door.barricade) continue
     const first = { x: Number(door.x), y: Number(door.y) }
     const second = door.dir === 'e' ? { x: first.x + 1, y: first.y } : { x: first.x, y: first.y + 1 }
     const sides = [first, second].map((position) => ({ position, cell: cellAt(map, position.x, position.y) }))

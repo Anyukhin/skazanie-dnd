@@ -86,6 +86,8 @@ export function isSkillProficient(actor, skillId) {
   const selected = actor?.classSkillProficiencies
   if (!Array.isArray(selected)) return true
   const wanted = canonicalSkillKey(skillId)
+  // «Влияние обольщения» колдуна — владение Обманом и Убеждением.
+  if (['deception', 'persuasion'].includes(wanted) && normalizedSelectedFeatureIds(actor).includes('beguiling-influence')) return true
   return normalizedClassSkillProficiencies(actor).some((id) => canonicalSkillKey(id) === wanted)
 }
 

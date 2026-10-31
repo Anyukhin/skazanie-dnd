@@ -219,9 +219,9 @@ const COVER_SCENERY_LABELS = Object.freeze({
  */
 function coverSceneryLabel(feature) {
   const id = String(feature ?? '')
-  if (COVER_SCENERY_LABELS[/** @type {keyof typeof COVER_SCENERY_LABELS} */ (id)]) return COVER_SCENERY_LABELS[/** @type {keyof typeof COVER_SCENERY_LABELS} */ (id)]
-  const base = id.toLowerCase().split(/[_\-\s]+/u).find((part) => COVER_SCENERY_LABELS[/** @type {keyof typeof COVER_SCENERY_LABELS} */ (part)])
-  if (base) return COVER_SCENERY_LABELS[/** @type {keyof typeof COVER_SCENERY_LABELS} */ (base)]
+  if (ownEntry(COVER_SCENERY_LABELS, id)) return ownEntry(COVER_SCENERY_LABELS, id)
+  const base = id.toLowerCase().split(/[_\-\s]+/u).find((part) => ownEntry(COVER_SCENERY_LABELS, part))
+  if (base) return ownEntry(COVER_SCENERY_LABELS, base)
   return /[а-яё]/iu.test(id) ? id : 'укрытие'
 }
 
@@ -265,7 +265,7 @@ const REACTION_ACTION_LABELS = Object.freeze({
 })
 
 export function damageTypeLabel(damageType) {
-  return DAMAGE_TYPE_LABELS[String(damageType ?? '').toLowerCase()] ?? 'Этот урон'
+  return ownEntry(DAMAGE_TYPE_LABELS, String(damageType ?? '').toLowerCase()) ?? 'Этот урон'
 }
 
 /** Название заклинания в ёлочках или пусто, если имени нет ни в событии, ни в каталоге. */
@@ -280,7 +280,7 @@ function reactionActionLabel(payload) {
   const explicit = [payload?.name, ...(Array.isArray(payload?.action_options) ? payload.action_options.map((option) => option?.name) : [])]
     .map((value) => String(value ?? '').trim())
     .find((value) => value && /[А-ЯЁа-яё]/u.test(value))
-  return explicit || REACTION_ACTION_LABELS[String(payload?.action_id ?? '')] || ''
+  return explicit || ownEntry(REACTION_ACTION_LABELS, String(payload?.action_id ?? '')) || ''
 }
 
 function reactionActionText(payload) {
@@ -304,12 +304,16 @@ function attackConditionReason(payload) {
   const disadvantage = payload.condition_disadvantage ?? []
   if ((advantage.length > 0) === (disadvantage.length > 0)) return ''
   const entries = advantage.length ? advantage : disadvantage
-  const described = entries.map((entry) => {
+  // Запись без двоеточия не называет ни стороны, ни состояния: её не
+  // пересказываем, иначе в ленту уходило «атакующий undefined».
+  const described = entries.flatMap((entry) => {
     const [side, condition] = String(entry).split(':')
-    return side === 'target'
-      ? `цель ${CONDITION_LABELS[condition] ?? condition}`
-      : `атакующий ${ATTACKER_CONDITION_LABELS[condition] ?? condition}`
+    if (!condition) return []
+    return [side === 'target'
+      ? `цель ${ownEntry(CONDITION_LABELS, condition) ?? condition}`
+      : `атакующий ${ownEntry(ATTACKER_CONDITION_LABELS, condition) ?? condition}`]
   }).join(', ')
+  if (!described) return ''
   return ` ${advantage.length ? 'с преимуществом' : 'с помехой'} (${described})`
 }
 
@@ -1005,11 +1009,11 @@ function tacticalNarrationLines(events, state, options = {}) {
       meaningful.push(`${target} возвращается к жизни с 1 ОЗ.`)
     } else if (event.event_type === 'HeroReplaced') {
       meaningful.push(`${payload.replacement_name || target} присоединяется к группе вместо погибшего героя.`)
-    } else if (event.event_type === 'ConditionAdded' && payload.action_id && MONSTER_HIT_CONDITION_TERMS[payload.condition]) {
+    } else if (event.event_type === 'ConditionAdded' && payload.action_id && ownEntry(MONSTER_HIT_CONDITION_TERMS, payload.condition)) {
       // Удар чудовища с последствием: паутина опутывает, укус валит с ног. Без
       // строки стол видел «атакует — попадание» без урона и не понимал, что
       // герой уже не может двигаться (плейтест 2026-10-07).
-      meaningful.push(`${target} — состояние «${MONSTER_HIT_CONDITION_TERMS[payload.condition]}».`)
+      meaningful.push(`${target} — состояние «${ownEntry(MONSTER_HIT_CONDITION_TERMS, payload.condition)}».`)
     } else if (event.event_type === 'ConditionAdded' && payload.condition === 'fled') {
       meaningful.push(`${target} отступает и покидает бой.`)
     } else if (event.event_type === 'ConditionAdded' && payload.condition === 'surrendered') {
@@ -1219,3 +1223,15 @@ export const combatNarrator = Object.freeze(assertNarratorContract({
   matches: hasCombatNarrationEvent,
   narrate: (events, state) => tacticalNarration(events, state) || null,
 }))
+
+/**
+ * Значение таблицы только по собственному ключу: `constructor`, `toString` и
+ * прочие свойства `Object.prototype` — «нет записи».
+ *
+ * @param {Record<string, any>} table
+ * @param {unknown} key
+ * @returns {any}
+ */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
+}

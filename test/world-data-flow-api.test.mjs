@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { normalizeCampaignState, resolveCommands } from '../server/rules-engine.mjs'
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
@@ -17,50 +13,6 @@ const SESSION = 'WORLD-DATA-FLOW'
 const SETUP_TOKEN = 'world-data-flow-setup-token'
 const HERO_ID = 'consequence-wizard'
 const NPC_ID = 'astohan-ares'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: SETUP_TOKEN,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Тестовый сервер не завершился')), 5_000)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolve()
-    })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился до health\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`, { headers: { Connection: 'close' } })).ok) return
-    } catch { /* listener ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не стал healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -183,33 +135,18 @@ test('длинный журнал знаний сохраняет раннее �
 })
 
 test('обычный игрок сохраняет смерть NPC, добычу, квест и историю через уход, возврат и restart', { timeout: runnerTimeout(120_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-world-data-flow-'))
-  let child = null
-  let baseUrl = ''
-  let logs = ''
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-
-  const launch = async () => {
-    const port = await freePort()
-    baseUrl = `http://127.0.0.1:${port}`
-    child = startServer(port, storage, (chunk) => { logs += chunk })
-    await waitForHealth(baseUrl, child, () => logs)
-  }
-
-  await launch()
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-world-data-flow-', setupToken: SETUP_TOKEN })
+  let baseUrl = server.baseUrl
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
     body: { name: 'Ведущий', email: 'gm@world-data-flow.test', password: 'world-data-flow-password', setupToken: SETUP_TOKEN },
   })
-  assert.equal(admin.status, 201, `${admin.text}\n${logs}`)
+  assert.equal(admin.status, 201, `${admin.text}\n${server.output()}`)
   const owner = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
     body: { name: 'Игрок', email: 'player@world-data-flow.test', password: 'world-data-flow-password' },
   })
-  assert.equal(owner.status, 201, `${owner.text}\n${logs}`)
+  assert.equal(owner.status, 201, `${owner.text}\n${server.output()}`)
   const adminCookie = sessionCookie(admin)
   const ownerCookie = sessionCookie(owner)
 
@@ -268,12 +205,12 @@ test('обычный игрок сохраняет смерть NPC, добыч�
   const assigned = await request(baseUrl, `/api/admin/users/${ownerId}`, {
     method: 'PATCH', cookie: adminCookie, body: { heroIds: [HERO_ID] },
   })
-  assert.equal(assigned.status, 200, `${assigned.text}\n${logs}`)
+  assert.equal(assigned.status, 200, `${assigned.text}\n${server.output()}`)
   const created = await request(baseUrl, '/api/campaigns', {
     method: 'POST', cookie: adminCookie,
     body: { code: SESSION, name: 'Мир после смерти короля', state: initial },
   })
-  assert.equal(created.status, 201, `${created.text}\n${logs}`)
+  assert.equal(created.status, 201, `${created.text}\n${server.output()}`)
 
   const castKey = 'world-data-flow-fireball'
   const spellCommand = {
@@ -283,7 +220,7 @@ test('обычный игрок сохраняет смерть NPC, добыч�
     method: 'POST', cookie: ownerCookie, key: castKey,
     body: { idempotency_key: castKey, command: spellCommand },
   })
-  assert.equal(cast.status, 200, `${cast.text}\n${logs}`)
+  assert.equal(cast.status, 200, `${cast.text}\n${server.output()}`)
   const castTypes = cast.body.mechanics.map((event) => event.event_type)
   for (const type of ['SpellCast', 'DamageApplied', 'NpcDied', 'LootContainerCreated', 'QuestInvalidated', 'CampaignStoryCompleted']) {
     assert.ok(castTypes.includes(type), `${type}: ${JSON.stringify(cast.body.mechanics)}`)
@@ -304,7 +241,7 @@ test('обычный игрок сохраняет смерть NPC, добыч�
     method: 'POST', cookie: ownerCookie, key: castKey,
     body: { idempotency_key: castKey, command: spellCommand },
   })
-  assert.equal(repeatedCast.status, 200, `${repeatedCast.text}\n${logs}`)
+  assert.equal(repeatedCast.status, 200, `${repeatedCast.text}\n${server.output()}`)
   assert.equal(repeatedCast.body.idempotent_replay, true)
   assert.equal(repeatedCast.body.authoritative_state.campaignConcept.story_history.length, 1)
 
@@ -313,7 +250,7 @@ test('обычный игрок сохраняет смерть NPC, добыч�
     method: 'POST', cookie: ownerCookie,
     body: { campaignId: SESSION, idempotency_key: 'world-data-flow-leave', action: leaveAction },
   })
-  assert.equal(leave.status, 200, `${leave.text}\n${logs}`)
+  assert.equal(leave.status, 200, `${leave.text}\n${server.output()}`)
   assert.equal(leave.body.authoritative_state.scene.location_id, 'astohan-ash-watch')
 
   const returnAction = '[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=astohan-stormberg] Отряд предлагает отправиться из «Пепельная застава» в «Штормберг».'
@@ -321,7 +258,7 @@ test('обычный игрок сохраняет смерть NPC, добыч�
     method: 'POST', cookie: ownerCookie,
     body: { campaignId: SESSION, idempotency_key: 'world-data-flow-return', action: returnAction },
   })
-  assert.equal(returned.status, 200, `${returned.text}\n${logs}`)
+  assert.equal(returned.status, 200, `${returned.text}\n${server.output()}`)
   assert.equal(returned.body.authoritative_state.scene.location_id, 'astohan-stormberg')
   const returnedContainer = returned.body.authoritative_state.loot_containers?.containers?.find((container) => container.id === containerId)
   assert.ok(returnedContainer, `Добыча не пережила уход и возврат: ${JSON.stringify(returned.body.authoritative_state.loot_containers)}`)
@@ -331,9 +268,9 @@ test('обычный игрок сохраняет смерть NPC, добыч�
     method: 'POST', cookie: ownerCookie, key: 'world-data-flow-approach',
     body: { idempotency_key: 'world-data-flow-approach', command: { command_type: 'MoveActor', actor_id: HERO_ID, to: { x: 12, y: 5 } } },
   })
-  assert.equal(moved.status, 200, `${moved.text}\n${logs}`)
+  assert.equal(moved.status, 200, `${moved.text}\n${server.output()}`)
   const nearRoom = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: ownerCookie })
-  assert.equal(nearRoom.status, 200, `${nearRoom.text}\n${logs}`)
+  assert.equal(nearRoom.status, 200, `${nearRoom.text}\n${server.output()}`)
   const nearContainer = nearRoom.body.state.loot_containers.containers.find((container) => container.id === containerId)
   assert.ok(nearContainer?.can_inspect, `Герой не получил защищённое содержимое тела: ${JSON.stringify(nearRoom.body.state.loot_containers)}`)
   const lootItemId = nearContainer.items[0].item_instance_id
@@ -347,7 +284,7 @@ test('обычный игрок сохраняет смерть NPC, добыч�
     method: 'POST', cookie: ownerCookie, key: lootKey,
     body: { idempotency_key: lootKey, command: lootCommand },
   })
-  assert.equal(looted.status, 200, `${looted.text}\n${logs}`)
+  assert.equal(looted.status, 200, `${looted.text}\n${server.output()}`)
   assert.ok(looted.body.mechanics.some((event) => event.event_type === 'LootContainerTaken'))
   const inventoryAfterLoot = looted.body.authoritative_state.players.find((player) => player.id === HERO_ID).inventory
   assert.equal(inventoryAfterLoot.filter((item) => item.catalog_id === 'srd_5_2_1:longsword').length, 1)
@@ -356,16 +293,15 @@ test('обычный игрок сохраняет смерть NPC, добыч�
     method: 'POST', cookie: ownerCookie, key: lootKey,
     body: { idempotency_key: lootKey, command: lootCommand },
   })
-  assert.equal(repeatedLoot.status, 200, `${repeatedLoot.text}\n${logs}`)
+  assert.equal(repeatedLoot.status, 200, `${repeatedLoot.text}\n${server.output()}`)
   assert.equal(repeatedLoot.body.idempotent_replay, true)
   assert.equal(repeatedLoot.body.authoritative_state.players.find((player) => player.id === HERO_ID).inventory
     .filter((item) => item.catalog_id === 'srd_5_2_1:longsword').length, 1)
 
-  await stopServer(child)
-  child = null
-  await launch()
+  await server.restart()
+  baseUrl = server.baseUrl
   const restored = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: ownerCookie })
-  assert.equal(restored.status, 200, `${restored.text}\n${logs}`)
+  assert.equal(restored.status, 200, `${restored.text}\n${server.output()}`)
   const restoredState = restored.body.state
   assert.equal(restoredState.scene.location_id, 'astohan-stormberg')
   assert.equal(restoredState.social.npcs.find((npc) => npc.id === NPC_ID).available, false)
@@ -382,7 +318,7 @@ test('обычный игрок сохраняет смерть NPC, добыч�
     method: 'POST', cookie: ownerCookie, key: lootKey,
     body: { idempotency_key: lootKey, command: lootCommand },
   })
-  assert.equal(replayAfterRestart.status, 200, `${replayAfterRestart.text}\n${logs}`)
+  assert.equal(replayAfterRestart.status, 200, `${replayAfterRestart.text}\n${server.output()}`)
   assert.equal(replayAfterRestart.body.idempotent_replay, true)
   assert.equal(replayAfterRestart.body.authoritative_state.players.find((player) => player.id === HERO_ID).inventory
     .filter((item) => item.catalog_id === 'srd_5_2_1:longsword').length, 1)

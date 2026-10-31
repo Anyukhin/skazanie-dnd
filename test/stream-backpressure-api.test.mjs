@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { get as httpGet } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
@@ -25,33 +24,6 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const CODE = 'SLOWSSE'
 const COMMITS = 12
-
-function startServer(port, storage, emptyEnv, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      DOTENV_CONFIG_PATH: emptyEnv, ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'slow-stream-setup',
-      COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* сервер ещё стартует */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -177,22 +149,27 @@ async function waitFor(check, message, timeoutMs = 30_000) {
 }
 
 test('медленный читатель получает последнюю комнату, промежуточные схлопнуты (аудит PR #131, SEC-06)', { timeout: runnerTimeout(120_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-slow-stream-'))
-  const emptyEnv = join(storage, '.env.empty')
+  // Пустой .env — в своём временном каталоге: хранилище кит создаёт сам, и до
+  // старта сервера его нет. dotenv сервера не подмешивает .env владельца.
+  const envDir = mkdtempSync(join(tmpdir(), 'skazanie-slow-stream-env-'))
+  const emptyEnv = join(envDir, '.env.empty')
+  t.after(() => rmSync(envDir, { recursive: true, force: true }))
   writeFileSync(emptyEnv, '', 'utf8')
-  let logs = ''
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  const child = startServer(port, storage, emptyEnv, (chunk) => { logs += chunk })
   const fastAbort = new AbortController()
   let stalled = null
-  t.after(async () => {
+  // Потоки закрываются раньше остановки сервера, как и прежде: этот t.after
+  // зарегистрирован до остановки, которую регистрирует startTestServer.
+  t.after(() => {
     fastAbort.abort()
     stalled?.destroy()
-    if (child.exitCode == null) await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-    rmSync(storage, { recursive: true, force: true })
   })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, {
+    storagePrefix: 'skazanie-slow-stream-',
+    setupToken: 'slow-stream-setup',
+    env: { DOTENV_CONFIG_PATH: emptyEnv },
+  })
+  // Сервер не перезапускается: адрес постоянен до конца теста.
+  const { baseUrl } = server
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
     body: { name: 'Ведущий', email: 'slow-admin@test.local', password: 'secure-slow-admin-password', setupToken: 'slow-stream-setup' },
@@ -204,7 +181,7 @@ test('медленный читатель получает последнюю к
 
   const fast = await openFastStream(baseUrl, cookie, fastAbort.signal)
   stalled = await openStalledStream(baseUrl, cookie)
-  await waitFor(() => fast.rooms.versions.length > 0, () => `быстрый поток не получил первую комнату\n${logs}`)
+  await waitFor(() => fast.rooms.versions.length > 0, () => `быстрый поток не получил первую комнату\n${server.output()}`)
 
   // Коммиты по одному: каждый сохраняет комнату и рассылает её обоим потокам.
   for (let index = 0; index < COMMITS; index += 1) {
@@ -219,13 +196,13 @@ test('медленный читатель получает последнюю к
   assert.ok(frameBytes > 1_000_000, `кадр комнаты должен быть тяжёлым, а весит ${frameBytes} байт`)
 
   // Быстрый поток не изменился: он получает каждую рассылку.
-  await waitFor(() => fast.rooms.versions.at(-1) >= finalVersion, () => `быстрый поток не дошёл до ${finalVersion}: ${fast.rooms.versions}\n${logs}`)
+  await waitFor(() => fast.rooms.versions.at(-1) >= finalVersion, () => `быстрый поток не дошёл до ${finalVersion}: ${fast.rooms.versions}\n${server.output()}`)
   assert.ok(fast.rooms.versions.length > COMMITS, `быстрый поток потерял рассылки: ${fast.rooms.versions}`)
   assert.equal(stalled.closed, false, 'медленный поток закрыт, хотя его очередь схлопывается и не переполняется')
 
   // Медленный начинает читать: приходит уже принятое Node и последнее состояние.
   stalled.resume()
-  await waitFor(() => stalled.rooms.versions.at(-1) >= finalVersion, () => `медленный поток не получил последнюю комнату ${finalVersion}: ${stalled.rooms.versions}\n${logs}`)
+  await waitFor(() => stalled.rooms.versions.at(-1) >= finalVersion, () => `медленный поток не получил последнюю комнату ${finalVersion}: ${stalled.rooms.versions}\n${server.output()}`)
   const slow = stalled.rooms.versions
   t.diagnostic(`кадров комнаты: медленный ${slow.length} (${stalled.rooms.bytes} Б), быстрый ${fast.rooms.versions.length} (${fast.rooms.bytes} Б)`)
   assert.deepEqual([...slow].sort((left, right) => left - right), slow, 'комнаты пришли не по порядку')

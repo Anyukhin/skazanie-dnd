@@ -299,7 +299,7 @@ const CONTAINER_TITLES = Object.freeze({
 })
 
 function containerName(kind, enemyName) {
-  const title = CONTAINER_TITLES[kind] ?? 'Добыча'
+  const title = ownEntry(CONTAINER_TITLES, kind) ?? 'Добыча'
   const name = text(enemyName, 100)
   return kind === 'abandoned' || !name ? title : `${title}: ${name}`
 }
@@ -694,7 +694,7 @@ export function planLootContainerDrafts(before = {}, after = {}, events = []) {
     .filter((event) => event?.event_type === 'NpcDied')
     .map((event) => [String(event?.payload?.npc_id ?? event?.target_ids?.[0] ?? ''), event])
     .filter(([npcId]) => npcId)
-    .sort((left, right) => left[0].localeCompare(right[0]))
+    .sort((left, right) => left[0].localeCompare(right[0], 'en'))
   const socialNpcIds = new Set((Array.isArray(before?.social?.npcs) ? before.social.npcs : [])
     .map((npc) => text(npc?.id, 120)).filter(Boolean))
   const authoredNpcIds = new Set(enemiesBefore.values()
@@ -742,7 +742,7 @@ export function planLootContainerDrafts(before = {}, after = {}, events = []) {
     }
   }
   const abandoned = []
-  for (const [enemyId, enemyBefore] of [...enemiesBefore.entries()].sort((left, right) => left[0].localeCompare(right[0]))) {
+  for (const [enemyId, enemyBefore] of [...enemiesBefore.entries()].sort((left, right) => left[0].localeCompare(right[0], 'en'))) {
     // Авторский боевой NPC и его social-запись — один и тот же владелец. Если
     // у него есть фактический `npc_world` инвентарь, тело уже планируется выше;
     // старый enemy-loadout путь не должен создать вторую добычу.
@@ -1005,7 +1005,7 @@ export function inventoryItemFromInstance(instance, { id, quantity, containerKin
   const declared = String(instance?.origin?.kind ?? '')
   const origin = declared && declared !== 'enemy_loadout' && declared !== 'unknown'
     ? declared
-    : CONTAINER_ORIGIN_KINDS[String(containerKind)] ?? 'found'
+    : ownEntry(CONTAINER_ORIGIN_KINDS, String(containerKind)) ?? 'found'
   return normalizeInventoryItem({
     ...clone(snapshot),
     id,
@@ -1454,7 +1454,9 @@ export function lootContainerReachFor(state = {}, actor = null, container = {}) 
 export function lootContainerForViewer(container = {}, { withContents = false, distanceFeet = null, cellRevealed = true } = {}) {
   const normalized = normalizeLootContainer(container)
   if (!normalized) return null
-  const distance = Number.isFinite(Number(distanceFeet)) && Number(distanceFeet) >= 0
+  // Без расстояния (`null`) — без поля: `Number(null)` — 0, и карточка
+  // показывала `distance_feet: 0` там, где померить нечем.
+  const distance = distanceFeet != null && Number.isFinite(Number(distanceFeet)) && Number(distanceFeet) >= 0
     ? Math.round(Number(distanceFeet))
     : null
   return {
@@ -1555,4 +1557,9 @@ export function lootContainersForViewer(state = {}, { actorId = '', isAdmin = fa
         return cost ? { ...card, action_cost: cost } : card
       }),
   }
+}
+
+/** Запись таблицы по собственному ключу: ключи `Object.prototype` (`constructor`, `toString`…) записями не считаются. */
+function ownEntry(table, key) {
+  return Object.hasOwn(table, String(key)) ? table[String(key)] : undefined
 }

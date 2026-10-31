@@ -1,0 +1,31 @@
+[package]
+name = "sk-story"
+description = "Сюжетный слой сцены «Сказания»: библиотека готовых построек и подбор карты под сцену; дальше — диалоги кампании, политика цикла, разбор намерения и схемы ответов модели"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sk-core.workspace = true
+sk-scene-base = { path = "../sk-scene-base" }
+sk-map-core = { path = "../sk-map-core" }
+sk-tactical = { path = "../sk-tactical" }
+sk-world-story = { path = "../sk-world-story" }
+sk-memory = { path = "../sk-memory" }
+sk-society = { path = "../sk-society" }
+sk-scenario = { path = "../sk-scenario" }
+sk-attention = { path = "../sk-attention" }
+sk-social = { path = "../sk-social" }
+sk-encounters = { path = "../sk-encounters" }
+icu_collator.workspace = true
+# Локаль `ru` для явного `localeCompare(…, 'ru')`; та же версия, что уже в Cargo.lock.
+icu_locale_core = "2.3.0"
+sk-combat-content = { path = "../sk-combat-content" }
+sk-items = { path = "../sk-items" }
+
+[dev-dependencies]
+# Эталоны диалогов и разбора намерения хранятся в gzip; версия и возможности —
+# как у sk-world-story, нового в Cargo.lock нет.
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }

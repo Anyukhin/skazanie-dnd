@@ -137,15 +137,15 @@
     },
     {
       "path": "data/dndsu-class-build-rules-1-12.json",
-      "sha256": "0c3ed5a59267c003c0d488f56e5d110ece5e78c501faa5cddabdedba3f1efdbc",
-      "size_bytes": 9818,
+      "sha256": "ee20a69d251ca5b9f1f636e6c0ef6ed9ff868445cd31dd327686f4ad6775530d",
+      "size_bytes": 10517,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
     {
       "path": "data/dndsu-spell-mechanics-overrides.json",
-      "sha256": "418868dec84e4ebf7957a5772959c7b87624cc36436e57d4049f666817717bb5",
-      "size_bytes": 269194,
+      "sha256": "1ecd7a78cac64aea4480e9c1922bc2b229275a4f7497bdab1da155bb9b037194",
+      "size_bytes": 269151,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },

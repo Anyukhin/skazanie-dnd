@@ -1,0 +1,21 @@
+[package]
+name = "sk-items-life"
+description = "Жизнь вещи и целостность контента «Сказания»: надеть и снять, настройка, передача, заряды, уничтожение вещи; проверка встроенного контента и прав на него"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sk-core.workspace = true
+sk-combat-content = { path = "../sk-combat-content" }
+sk-encounters = { path = "../sk-encounters" }
+sk-items = { path = "../sk-items" }
+sk-rulepack = { path = "../sk-rulepack" }
+sk-ruleset = { path = "../sk-ruleset" }
+sk-economy = { path = "../sk-economy" }
+sk-npc-world = { path = "../sk-npc-world" }
+
+[dev-dependencies]
+sk-society = { path = "../sk-society" }

@@ -1,6 +1,7 @@
 /**
- * Чистые правила мастера создания героя: черновик между открытиями мастера и
- * бюджет стартовых покупок.
+ * Чистые правила мастера создания героя: черновик между открытиями мастера,
+ * бюджет стартовых покупок, покупка характеристик за очки с предпросмотром
+ * чисел 1 уровня и список «перед созданием».
  *
  * Отдельный `.mjs` рядом с `CharacterCreationWizard.tsx` — по той же причине,
  * по какой рядом с `LootPanel.tsx` лежит `loot-panel-rules.mjs`: корпус
@@ -200,4 +201,116 @@ export function purchaseShortfallCp({ remainingCp, priceCp = 0, quantity = 1 }) 
   if (remainingCp == null) return 0
   const cost = Math.max(0, Number(priceCp) || 0) * Math.max(0, Number(quantity) || 0)
   return Math.max(0, cost - remainingCp)
+}
+
+/**
+ * Положить покупку в корзину. Тот же предмет прибавляется к своей строке, а не
+ * заводит вторую: прежде два кинжала подряд давали две строки «Кинжал ×1».
+ *
+ * @param {ReadonlyArray<{ id: string, quantity: number }>} purchases
+ * @param {string} id
+ * @param {number} quantity
+ * @returns {Array<{ id: string, quantity: number }>}
+ */
+export function addStartingPurchase(purchases, id, quantity) {
+  const existing = purchases.findIndex((item) => item.id === id)
+  if (existing < 0) return [...purchases, { id, quantity }]
+  return purchases.map((item, index) => index === existing ? { ...item, quantity: item.quantity + quantity } : { ...item })
+}
+
+/**
+ * Расставлены ли уже ровно значения этого броска. Мастер раскладывает броски
+ * по порядку, только если расстановки ещё нет: прежде он делал это при каждом
+ * открытии и сбрасывал восстановленную из черновика раскладку игрока.
+ *
+ * @param {Readonly<Record<string, number>>} abilities
+ * @param {ReadonlyArray<number>} scores
+ * @returns {boolean}
+ */
+export function isRolledAssignment(abilities, scores) {
+  const sorted = (/** @type {number[]} */ values) => [...values].sort((left, right) => left - right).join(',')
+  const assigned = Object.values(abilities).map(Number)
+  return assigned.length === scores.length && sorted(assigned) === sorted([...scores])
+}
+
+/**
+ * Номер первого шага с незавершённым выбором, либо -1. Создание героя
+ * проверяет все шаги, а не только последний: иначе смена класса после
+ * «Личности» сбрасывала навыки и заклинания незаметно для мастера.
+ *
+ * @param {ReadonlyArray<string>} stepIds
+ * @param {(stepId: string) => string} validate сообщение об ошибке или пустая строка
+ * @returns {number}
+ */
+export function firstIncompleteStepIndex(stepIds, validate) {
+  return stepIds.findIndex((stepId) => validate(stepId) !== '')
+}
+
+/**
+ * Сколько очков покупки ушло на эти значения. Значение вне таблицы цен не
+ * стоит ничего: его и так не пропустит проверка шага и сервер.
+ *
+ * @param {Readonly<Record<string, number>>} scores
+ * @param {Readonly<Record<string | number, number>>} costs
+ * @returns {number}
+ */
+export function pointBuySpent(scores, costs) {
+  return Object.values(scores).reduce((sum, score) => sum + (Number(costs[score]) || 0), 0)
+}
+
+/**
+ * Один шаг кнопок −/+ при покупке за очки. Прежде значение выбиралось списком
+ * 8–15, и игрок узнавал о перерасходе только у кнопки «Дальше»; теперь шаг,
+ * который не по карману или выходит за 8–15, просто недоступен, а причина
+ * подписана у кнопки.
+ *
+ * @param {{ scores: Readonly<Record<string, number>>, ability: string, delta: 1 | -1, costs: Readonly<Record<string | number, number>>, budget?: number, minimum?: number, maximum?: number }} input
+ * @returns {{ ok: true, score: number, cost: number } | { ok: false, reason: string }}
+ */
+export function pointBuyStep({ scores, ability, delta, costs, budget = 27, minimum = 8, maximum = 15 }) {
+  const current = Number(scores[ability])
+  const next = current + delta
+  if (next < minimum) return { ok: false, reason: `Покупкой ниже ${minimum} не опустить` }
+  if (next > maximum) return { ok: false, reason: `До прибавок выше ${maximum} не поднять` }
+  const cost = (Number(costs[next]) || 0) - (Number(costs[current]) || 0)
+  const remaining = budget - pointBuySpent(scores, costs)
+  if (cost > remaining) return { ok: false, reason: `Нужно ${cost} оч., осталось ${remaining}` }
+  return { ok: true, score: next, cost }
+}
+
+/**
+ * Что получится на 1 уровне из итоговых характеристик: предпросмотр для шага
+ * характеристик. Это подсказка, а не лист — хиты, КД и бонусы при создании
+ * пересчитывает сервер.
+ *
+ * @param {{ abilities: Readonly<Record<string, number>>, hitDie?: number | null, savingThrows?: ReadonlyArray<string>, spellcastingAbility?: string | null, primaryAbility?: string | null, proficiency?: number }} input
+ * @returns {{ hitPoints: number | null, initiative: number, proficiency: number, savingThrows: Array<{ ability: string, bonus: number }>, attack: { ability: string, bonus: number } | null, spell: { ability: string, saveDc: number, attack: number } | null }}
+ */
+export function abilityPreview({ abilities, hitDie = null, savingThrows = [], spellcastingAbility = null, primaryAbility = null, proficiency = 2 }) {
+  const modifier = (/** @type {string} */ ability) => Math.floor((Number(abilities[ability] ?? 10) - 10) / 2)
+  return {
+    hitPoints: hitDie ? Math.max(1, hitDie + modifier('con')) : null,
+    initiative: modifier('dex'),
+    proficiency,
+    savingThrows: savingThrows.map((ability) => ({ ability, bonus: modifier(ability) + proficiency })),
+    attack: primaryAbility ? { ability: primaryAbility, bonus: modifier(primaryAbility) + proficiency } : null,
+    spell: spellcastingAbility
+      ? { ability: spellcastingAbility, saveDc: 8 + proficiency + modifier(spellcastingAbility), attack: proficiency + modifier(spellcastingAbility) }
+      : null,
+  }
+}
+
+/**
+ * Список «перед созданием» для итогового шага: каждый шаг мастера с отметкой,
+ * завершён ли он, и словами, чего не хватает.
+ *
+ * @param {ReadonlyArray<{ id: string, title: string }>} steps
+ * @param {(stepId: string) => string} validate сообщение об ошибке или пустая строка
+ * @returns {Array<{ id: string, title: string, done: boolean, message: string }>}
+ */
+export function creationChecklist(steps, validate) {
+  return steps.map((step) => {
+    const message = validate(step.id)
+    return { id: step.id, title: step.title, done: message === '', message }
+  })
 }

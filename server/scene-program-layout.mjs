@@ -386,7 +386,7 @@ export function placeThresholdStones(map, count) {
       outside.push({ x: point.x, y: point.y, steps, door: door.id })
     }
   }
-  outside.sort((left, right) => left.steps - right.steps || left.door.localeCompare(right.door))
+  outside.sort((left, right) => left.steps - right.steps || left.door.localeCompare(right.door, 'en'))
   let placed = 0
   for (const point of outside) {
     if (placed >= count) break

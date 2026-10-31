@@ -1,0 +1,1 @@
+{"one":{"hp":8,"scene":{"map":{"width":2,"height":1,"cells":[{"x":0,"y":0,"terrain":"floor"},{"x":1,"y":0,"terrain":"wall"}]},"cells":[]},"state_version":3},"two":{"hp":19,"state_version":2}}

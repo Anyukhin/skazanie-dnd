@@ -1,47 +1,9 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
-
-function startServer({ port, storage, setupToken, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: setupToken, GAME_ENGINE_MODE: 'shadow',
-      COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Test server did not stop')), 5_000)
-    child.once('exit', () => { clearTimeout(timer); resolve() })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, log) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Test server exited with ${child.exitCode}\n${log()}`)
-    try { const response = await fetch(`${baseUrl}/api/health`); if (response.ok) return response.json() } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Test server did not become healthy\n${log()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie, body, idempotencyKey } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -79,18 +41,12 @@ function stateVersion(result) {
 }
 
 test('admin merchant lifecycle API is enforce-only, event-sourced, idempotent, projected and rate-limited', { timeout: runnerTimeout(50_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-merchant-lifecycle-api-'))
   const setupToken = 'merchant-lifecycle-setup-token'
-  let logs = ''
-  let child = null
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  const log = () => logs
-  const appendLog = (chunk) => { logs += chunk }
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
-
-  child = startServer({ port, storage, setupToken, appendLog })
-  await waitForHealth(baseUrl, child, log)
+  // GAME_ENGINE_MODE прежнего запуска сервер не читает (grep по server/ пуст) — снята.
+  const server = await startTestServer(t, { setupToken, storagePrefix: 'skazanie-merchant-lifecycle-api-' })
+  const log = server.output
+  // После restart() порт новый — адрес перечитывается ниже.
+  let baseUrl = server.baseUrl
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST', body: { name: 'Lifecycle Admin', email: 'admin@merchant-lifecycle.test', password: 'very-secure-admin-password', setupToken },
@@ -269,11 +225,8 @@ test('admin merchant lifecycle API is enforce-only, event-sourced, idempotent, p
   assert.equal(room.body.state.merchants[0].location, 'Старый порт')
   assert.equal(room.body.state.merchants[0].available, false)
 
-  await stopServer(child)
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({ port, storage, setupToken, appendLog })
-  await waitForHealth(baseUrl, child, log)
+  await server.restart()
+  baseUrl = server.baseUrl
   const login = await request(baseUrl, '/api/auth/login', {
     method: 'POST', body: { email: 'admin@merchant-lifecycle.test', password: 'very-secure-admin-password' },
   })

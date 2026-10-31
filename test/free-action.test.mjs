@@ -1269,3 +1269,42 @@ test('замер 22: пустые тела — «карманы пусты» и 
   assert.equal(one.free_action_outcome, 'loot_inspection', one.narration)
   assert.doesNotMatch(one.narration, /Назовите конкретного участника/u)
 })
+
+test('без модели цель — сама фраза игрока: исход звучит от лица героя, а не её эхом', async () => {
+  // Прогон Асстохана без модели 2026-10-12: «Обращаюсь к Терену: ты …!» →
+  // «Вышло: Обращаюсь к Терену: ты …» — судья без модели берёт фразу как цель.
+  const phrase = 'Ору на весь двор, что все здесь трусы и лжецы!'
+  const success = await setup(campaign(), {
+    narrator: new Narrator(),
+    reading: passageReading({ goal_summary: phrase, approach_summary: phrase, ability: 'cha', skill: 'performance' }),
+  })
+  const told = await success.orchestrator.handle(actionInput(phrase, 'free-echo', campaign()))
+  assert.equal(told.free_action_outcome, 'check_success')
+  assert.doesNotMatch(told.narration, /Вышло: Ору/u, told.narration)
+  assert.match(told.narration, /Ада добивается своего\./u, told.narration)
+  const failure = await setup(campaign(), {
+    narrator: new Narrator(), diceRolls: [2, 2, 2, 2],
+    reading: passageReading({ goal_summary: phrase, approach_summary: phrase, ability: 'cha', skill: 'performance' }),
+  })
+  const missed = await failure.orchestrator.handle(actionInput(phrase, 'free-echo-fail', campaign()))
+  assert.equal(missed.free_action_outcome, 'check_failure')
+  assert.doesNotMatch(missed.narration, /Не вышло: Ору/u, missed.narration)
+})
+
+test('шаблоны подхода ловят кириллические окончания: `\w` в JS только ASCII', async () => {
+  const { contextualResolutionFor, interpretFreeAction } = await import('../server/free-action-adjudication.mjs')
+  for (const [text, skill, obstacle] of [
+    ['Держу дверь плечом', 'athletics', 'дверь'],
+    ['Факелом к соломе тянусь', 'sleight-of-hand', 'огонь'],
+    ['Прошу помощи у стражника', 'persuasion', 'собеседник'],
+    // Была латинская «a» в «окликa» — «окликаю» не ловилось.
+    ['Окликаю стражника', 'persuasion', 'окружающие'],
+  ]) {
+    const reading = interpretFreeAction(text)
+    assert.equal(reading.source, 'deterministic-pattern', text)
+    assert.equal(reading.skill, skill, text)
+    assert.equal(reading.obstacle, obstacle, text)
+  }
+  const resolution = contextualResolutionFor({}, 'hero', interpretFreeAction('Держу дверь плечом'), 'Это простая задача, держу дверь')
+  assert.deepEqual(resolution.difficulty_factors, ['favorable_conditions'])
+})

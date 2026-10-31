@@ -382,6 +382,19 @@ test('смешанная карта берёт крышу из зоны геро
   assert.equal(weatherRangedPenalty(replayed, 'scout'), null)
 })
 
+// Находка переноса (docs/rust-port-js-findings.md): без героя шапка брала
+// активного, а бросок — сцену целиком, и на смешанной карте они расходились.
+test('без героя проверка и выстрел читают небо над активным героем, как шапка', () => {
+  const indoors = mixedFortress({ minutes: minutesWithWeather('rain'), actorAt: { x: 4, y: 0 } })
+  assert.equal(worldClockFor(indoors).indoors, true)
+  assert.equal(weatherCheckSwing(indoors, 'perception'), null, 'активный герой под крышей')
+  const indoorShot = mixedFortress({ minutes: minutesWithWeather('fog', { biome: 'marsh' }), locationId: 'fen', actorAt: { x: 4, y: 0 } })
+  assert.equal(worldClockFor(indoorShot).indoors, true)
+  assert.equal(weatherRangedPenalty(indoorShot), null)
+  const outdoors = mixedFortress({ minutes: minutesWithWeather('rain'), actorAt: { x: 1, y: 0 } })
+  assert.equal(weatherCheckSwing(outdoors, 'perception')?.swing, 'disadvantage')
+})
+
 test('шапка, рассказчик и проекция читают зону выбранного героя', () => {
   const state = mixedFortress({ minutes: minutesWithWeather('fog', { biome: 'marsh' }), locationId: 'fen' })
   const yardHero = { ...state.players[0], id: 'yard-scout', character: 'Разведчик двора', x: 1, y: 0 }
@@ -690,7 +703,12 @@ test('небо дописывается к запасному тексту ро�
   const withTurn = tacticalNarrationOr([knockout, dusk], state, () => { calls += 1; return 'запасной' })
   assert.equal(calls, 0, 'запасной рассказчик вызван зря')
   assert.equal(withTurn, combatNarration([knockout, dusk], state), 'на описанном ходу текст прежний')
+})
 
+// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
+// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust та же
+// проводка — tactical_narration_or в rust/crates/sk-server/src/routes/autonomy.rs.
+test('JS-only (server/index.mjs): маршрут Режиссёра кормит рассказчика очищенным списком событий', () => {
   // Сторож проводки: маршрут Режиссёра обязан кормить очищенным списком и
   // текст шага (`directorStepNarration`), и бриф запасного рассказчика.
   assert.match(

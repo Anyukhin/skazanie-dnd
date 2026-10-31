@@ -1,16 +1,10 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
-import { auditLegacyCutover } from '../server/cutover-audit.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
-import { MapStore } from '../server/map-store.mjs'
+import { auditStorage, readJournal, startTestServer } from './kit/index.mjs'
+// Аудит перехода читает файловое хранилище JS напрямую: помощника кита для
+// него нет (решение ведущего), поэтому файл пока не контрактный.
 import { projectionHash } from '../server/projection-integrity.mjs'
-import { GAME_STATE_PROJECTOR_VERSION, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
@@ -34,37 +28,17 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
 const CRASH_ROUNDS = 3
 const CONCURRENT_COMMANDS = 6
 
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'soak-setup', GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
-
-/** SIGKILL: процесс не получает шанса ничего дописать или прибрать. */
-async function kill(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill('SIGKILL') })
+/**
+ * SIGKILL: процесс не получает шанса ничего дописать или прибрать. Штатный
+ * `server.stop()` кита шлёт SIGTERM, а его сервер обрабатывает.
+ *
+ * @param {import('./kit/http.mjs').TestServer} server
+ */
+async function kill(server) {
+  if (!server.running()) return
+  const exited = server.waitForExit()
+  server.child?.kill('SIGKILL')
+  await exited
 }
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
@@ -89,39 +63,26 @@ const hero = (id, name) => ({
   abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 10, cha: 10 }, inventory: [],
 })
 
-function storeFor(storage) {
-  const engineRoot = join(storage, 'engine')
-  return new FileEventStore({
-    rootDir: engineRoot,
-    reducer: applyGameEvent,
-    normalizeState: normalizeCampaignState,
-    snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
-    mapStore: new MapStore({ rootDir: engineRoot }),
-  })
-}
+/**
+ * Подтверждённая команда в журнале по её ключу или `undefined`.
+ *
+ * @param {import('./kit/journal.mjs').Journal} journal
+ * @param {string} key
+ */
+const commitByKey = (journal, key) => journal.commits.find((commit) => commit.idempotency_key === key)
 
 test('сервер переживает убийства посреди конкурентных запросов и не теряет ни одной команды', { timeout: runnerTimeout(180_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-soak-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await kill(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
+  // Адрес меняется на каждом подъёме: запросы берут `server.baseUrl` в момент вызова.
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-soak-', setupToken: 'soak-setup' })
 
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
-
-  const owner = await request(baseUrl, '/api/auth/setup-admin', {
+  const owner = await request(server.baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
     body: { name: 'Owner', email: 'soak-owner@test.local', password: 'secure-owner-password', setupToken: 'soak-setup' },
   })
   assert.equal(owner.status, 201, owner.text)
   const cookie = sessionCookie(owner)
 
-  const created = await request(baseUrl, '/api/campaigns', {
+  const created = await request(server.baseUrl, '/api/campaigns', {
     method: 'POST', cookie,
     body: { code: 'SOAK', name: 'Soak', bootstrap: { partyName: 'Двое', players: [hero('hero-1', 'Первый'), hero('hero-2', 'Второй')] } },
   })
@@ -129,7 +90,7 @@ test('сервер переживает убийства посреди конк
 
   // Пробная команда до первой аварии: если она не проходит, дальше проверять
   // нечего, и падать надо с её ответом, а не с загадочным «ноль подтверждений».
-  const probe = await request(baseUrl, '/api/campaigns/SOAK/commands', {
+  const probe = await request(server.baseUrl, '/api/campaigns/SOAK/commands', {
     method: 'POST', cookie, key: 'soak-probe',
     body: { idempotency_key: 'soak-probe', command: { command_type: 'ApplyHealing', actor_id: 'hero-1', amount: 1 } },
   })
@@ -150,7 +111,7 @@ test('сервер переживает убийства посреди конк
       const key = `soak-${round}-${index}`
       const actorId = index % 2 === 0 ? 'hero-1' : 'hero-2'
       inFlight.push(
-        request(baseUrl, '/api/campaigns/SOAK/commands', {
+        request(server.baseUrl, '/api/campaigns/SOAK/commands', {
           method: 'POST', cookie, key,
           body: { idempotency_key: key, command: { command_type: 'ApplyHealing', actor_id: actorId, amount: 1 } },
         })
@@ -163,7 +124,7 @@ test('сервер переживает убийства посреди конк
     // приходится на промежуток между подтверждённым событием и записанной
     // проекцией, а не до начала работы.
     await Promise.race([sawFirst, new Promise((resolve) => setTimeout(resolve, 5_000))])
-    await kill(child)
+    await kill(server)
     await Promise.allSettled(inFlight)
     assert.ok(
       [...acknowledged].some((key) => key.startsWith(`soak-${round}-`)),
@@ -171,9 +132,8 @@ test('сервер переживает убийства посреди конк
     )
 
     // Инвариант 1: поток переигрывается в то же состояние без снимков.
-    const store = storeFor(storage)
-    const loaded = await store.load('SOAK')
-    const replayed = await store.replay('SOAK', { useSnapshots: false })
+    const loaded = await readJournal(server, 'SOAK')
+    const replayed = await readJournal(server, 'SOAK', { useSnapshots: false })
     assert.equal(
       projectionHash(loaded.state), projectionHash(replayed.state),
       `раунд ${round}: состояние из снимка разошлось с чистым replay`,
@@ -181,17 +141,17 @@ test('сервер переживает убийства посреди конк
 
     // Инвариант 2: каждая подтверждённая команда осталась ровно одной записью.
     for (const key of acknowledged) {
-      const committed = await store.getByIdempotencyKey('SOAK', key)
+      const committed = commitByKey(loaded, key)
       assert.ok(committed, `раунд ${round}: подтверждённая команда ${key} исчезла после аварии`)
     }
 
-    child = startServer(port, storage, (chunk) => { logs += chunk })
-    await waitForHealth(baseUrl, child, () => logs)
+    await server.start()
 
     // Инвариант 3: поднявшись, сервер сам приводит проекцию в согласие.
-    const room = await request(baseUrl, '/api/rooms/SOAK', { cookie })
+    const room = await request(server.baseUrl, '/api/rooms/SOAK', { cookie })
     assert.equal(room.status, 200, room.text)
-    const report = await auditLegacyCutover({ storageRoot: storage })
+    const report = await auditStorage(server)
+    assert.ok(report.campaigns.some((entry) => entry.campaign_id === 'SOAK'), `раунд ${round}: аудит не увидел кампанию: ${JSON.stringify(report)}`)
     assert.deepEqual(
       report.blockers, [],
       `раунд ${round}: после подъёма остались блокеры целостности: ${JSON.stringify(report.blockers)}`,
@@ -202,14 +162,13 @@ test('сервер переживает убийства посреди конк
 
   // Повтор подтверждённого ключа после всех аварий обязан вернуть прежний
   // commit, а не создать второй: идемпотентность переживает падение.
-  const store = storeFor(storage)
   const [firstKey] = acknowledged
-  const before = await store.getByIdempotencyKey('SOAK', firstKey)
-  const repeated = await request(baseUrl, '/api/campaigns/SOAK/commands', {
+  const before = commitByKey(await readJournal(server, 'SOAK'), firstKey)
+  const repeated = await request(server.baseUrl, '/api/campaigns/SOAK/commands', {
     method: 'POST', cookie, key: firstKey,
     body: { idempotency_key: firstKey, command: { command_type: 'ApplyHealing', actor_id: 'hero-1', amount: 1 } },
   })
   assert.equal(repeated.status, 200, repeated.text)
-  const after = await store.getByIdempotencyKey('SOAK', firstKey)
-  assert.equal(after.state_version, before.state_version, 'повтор ключа создал новый commit вместо возврата прежнего')
+  const after = commitByKey(await readJournal(server, 'SOAK'), firstKey)
+  assert.equal(after.state_version_after, before.state_version_after, 'повтор ключа создал новый commit вместо возврата прежнего')
 })

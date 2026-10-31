@@ -56,7 +56,7 @@ export function deepestRoom(map) {
   const entrance = cellAt(map, spawn.x, spawn.y)?.zone ?? ''
   const [deepest] = [...depths]
     .filter(([zone]) => zone && zone !== entrance && interior.has(zone))
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], 'en'))
   if (!deepest) return null
   const [zoneId, steps] = deepest
   const doors = map.doors.filter((door) => [

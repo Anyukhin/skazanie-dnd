@@ -566,8 +566,8 @@ test('семантические семьи покрывают каталог, �
   const schoolFallback = executable.filter((spell) => effects.spellEffectPalette(spell.id).family === 'school').map((spell) => spell.id)
   const unsupported = catalog.filter((spell) => !isExecutable(spell))
   assert.ok(catalog.length > 400)
-  assert.equal(executable.length, 248, 'исполняемый набор должен совпадать с partial/verified override-карточками')
-  assert.equal(unsupported.length, 191, 'heuristic/ruling-only карточки не входят в реализованный набор')
+  assert.equal(executable.length, 249, 'исполняемый набор должен совпадать с partial/verified override-карточками')
+  assert.equal(unsupported.length, 190, 'heuristic/ruling-only карточки не входят в реализованный набор')
   assert.ok(catalog.every((spell) => allowed.has(effects.spellEffectPalette(spell.id).family)))
   assert.deepEqual(schoolFallback, [], 'каждая executable-карточка должна иметь semantic family')
   for (const family of ['fire', 'cold', 'lightning', 'thunder', 'acid', 'poison', 'necrotic', 'radiant', 'force', 'psychic', 'healing', 'protection', 'control', 'teleport', 'summon', 'earth', 'wind', 'water', 'swarm', 'weapon', 'illusion', 'divination', 'light', 'darkness', 'environment', 'enchantment', 'restoration', 'invisibility', 'flight', 'mobility', 'transmutation', 'communication', 'utility']) {

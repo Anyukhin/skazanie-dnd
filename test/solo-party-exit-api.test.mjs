@@ -1,44 +1,19 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { spawn } from 'node:child_process'
 import test from 'node:test'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-
-async function waitForHealth(baseUrl, child) {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    if (child.exitCode != null) throw new Error('Тестовый сервер завершился')
-    try {
-      const response = await fetch(baseUrl + '/api/health')
-      if (response.ok) return
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error('Тестовый сервер не запустился')
-}
 
 function cookie(response) {
   return response.headers.get('set-cookie')?.split(';')[0]
 }
 
 async function soloCampaign(t, { code, quests = [], stateOverrides = {} }) {
-  const port = 30_000 + Math.floor(Math.random() * 10_000)
-  const baseUrl = 'http://127.0.0.1:' + port
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-solo-'))
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      // Ключ пуст намеренно: сторож проверяет детерминированный уход соло-стола,
-      // а не модель. С непустым ключом сервер уходил в настоящий routerai.ru и
-      // ждал таймаут соединения на каждой модели каскада.
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'solo-setup-token', COOKIE_SECURE: 'false',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  t.after(() => { if (child.exitCode == null) child.kill() })
-  await waitForHealth(baseUrl, child)
+  // Ключ провайдера кит держит пустым: сторож проверяет детерминированный уход
+  // соло-стола, а не модель. С непустым ключом сервер уходил в настоящий
+  // routerai.ru и ждал таймаут соединения на каждой модели каскада.
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-solo-', setupToken: 'solo-setup-token' })
+  // Сервер не перезапускается: адрес постоянен до конца теста.
+  const { baseUrl } = server
 
   const setup = await fetch(baseUrl + '/api/auth/setup-admin', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
