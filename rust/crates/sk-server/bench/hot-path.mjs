@@ -114,10 +114,13 @@ async function main() {
         // `этап#n` — сколько раз этап прошёл за запрос (урок 4: счёт
         // нормализаций и копий состояния).
         for (const line of lines) {
-          for (const [name, [count, ms]] of Object.entries(line.spans)) {
+          for (const [name, [count, ms, mb = 0]] of Object.entries(line.spans)) {
             sums[name] = (sums[name] ?? 0) + ms
             sums[`${name}#n`] = (sums[`${name}#n`] ?? 0) + count
+            // `этап@MB` — мегабайты выделений за этап (сборка с `alloc-count`).
+            if (mb) sums[`${name}@MB`] = (sums[`${name}@MB`] ?? 0) + mb
           }
+          if (line.alloc?.mb) sums['request@MB'] = (sums['request@MB'] ?? 0) + line.alloc.mb
         }
         if (!spanStats.has(label)) spanStats.set(label, [])
         spanStats.get(label).push(sums)
