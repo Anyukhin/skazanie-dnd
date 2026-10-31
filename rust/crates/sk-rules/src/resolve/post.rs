@@ -149,10 +149,10 @@ impl Resolve<'_> {
             return Ok(());
         }
         let snapshot = self.events.clone();
-        let mut triggered = self.state.clone();
+        let mut triggered = self.state_chain();
         let command = self.command.clone();
         for resolved in &snapshot {
-            triggered = apply_game_event(&triggered, resolved)?;
+            triggered.apply(resolved)?;
             let kind = event_type(resolved);
             if kind == "AttackResolved" || kind == "SpellCast" {
                 let acting = js::s(resolved.get("actor_id"));
@@ -170,7 +170,7 @@ impl Resolve<'_> {
                     payload.insert("spell_id".into(), Value::String("invisibility".into()));
                     payload.insert("trigger".into(), Value::String(if kind == "SpellCast" { "cast-spell" } else { "attack" }.into()));
                     let removed = event_from(&command_with_rules(&command, &[rule_ids::CONDITIONS]), "ConditionRemoved", Some(Value::Object(payload)), Some(&json!([acting])));
-                    triggered = apply_game_event(&triggered, &removed)?;
+                    triggered.apply(&removed)?;
                     self.events.push(removed);
                 }
                 let duels: Vec<(String, Value)> = match sk_core::game::mechanics(&triggered).get("conditions") {
@@ -198,7 +198,7 @@ impl Resolve<'_> {
                         js::delete(&mut payload, "effect_id");
                     }
                     let ended = event_from(&as_actor(&command, &acting, &[rule_ids::CONCENTRATION]), "ConcentrationEnded", Some(payload), Some(&json!([acting])));
-                    triggered = apply_game_event(&triggered, &ended)?;
+                    triggered.apply(&ended)?;
                     self.events.push(ended);
                 }
             }
@@ -214,8 +214,9 @@ impl Resolve<'_> {
             if damaged.is_empty() {
                 continue;
             }
-            triggered = self.damage_concentration(triggered, resolved, &damaged, damage_taken)?;
-            triggered = self.damage_conditions(triggered, resolved, &damaged)?;
+            let current = std::mem::replace(&mut triggered, crate::normalized::EventChain::from_raw(Value::Null));
+            let concentrated = self.damage_concentration(current.into_raw(), resolved, &damaged, damage_taken)?;
+            triggered = crate::normalized::EventChain::from_raw(self.damage_conditions(concentrated, resolved, &damaged)?);
         }
         Ok(())
     }
@@ -523,7 +524,7 @@ pub fn finish(mut r: Resolve<'_>) -> Result<Resolved, Interrupt> {
         resolved.extend(extra);
     }
     if top && resolved.iter().any(|event| matches!(event_type(event), "DamageApplied" | "ActorMoved")) {
-        let after = r.projector.project(&resolved)?;
+        let after = r.projector.project_shared(&resolved)?;
         let drafts = sk_npc_world::npc_positioning::plan_authored_npc_world_events(
             &state,
             &after,
@@ -534,7 +535,7 @@ pub fn finish(mut r: Resolve<'_>) -> Result<Resolved, Interrupt> {
         resolved.extend(crate::core::npc_world_events_from(&command, &Value::Array(drafts)));
     }
     if top && resolved.iter().any(|event| matches!(event_type(event), "NpcDied" | "TimeAdvanced")) {
-        let mut projected = r.projector.project(&resolved)?;
+        let mut projected = r.projector.project_shared(&resolved)?;
         let empty = json!({});
         let vacancies = sk_world_life::world_offices::plan_office_vacancy_drafts(&projected, &resolved, &empty);
         append_world_drafts(&command, &mut resolved, &mut projected, vacancies)?;
@@ -548,7 +549,7 @@ pub fn finish(mut r: Resolve<'_>) -> Result<Resolved, Interrupt> {
         append_world_drafts(&command, &mut resolved, &mut projected, consequences)?;
     }
     if top && sk_director::loot_containers::loot_commit_touches_containers(&state, &Value::Array(resolved.clone())) {
-        let after = r.projector.project(&resolved)?;
+        let after = r.projector.project_shared(&resolved)?;
         let drafts = sk_director::loot_containers::plan_loot_container_drafts(&state, &after, &Value::Array(resolved.clone())).map_err(|error| fault(error.name, error.code.clone(), error.message.clone()))?;
         for draft in drafts {
             let mut event = event_from(&with_draft_visibility(&command, &draft), &js::s(draft.get("event_type")), draft.get("payload").cloned(), draft.get("target_ids"));
@@ -571,9 +572,9 @@ pub fn finish(mut r: Resolve<'_>) -> Result<Resolved, Interrupt> {
             resolved.push(event_from(&with_draft_visibility(&command, &story), &js::s(story.get("event_type")), story.get("payload").cloned(), story.get("target_ids")));
         }
         if let Some(level_before) = sk_scenario::campaign_scenario::scenario_milestone_level(&state) {
-            let after = r.projector.project(&resolved)?;
+            let after = r.projector.project_shared(&resolved)?;
             if let Some(level_after) = sk_scenario::campaign_scenario::scenario_milestone_level(&after).filter(|level| *level > level_before) {
-                let projected = r.projector.project(&resolved)?;
+                let projected = r.projector.project_shared(&resolved)?;
                 let source = command_with(&command_with(&command, "actor_id", Value::Null), "visibility", Value::String("party".into()));
                 for hero_id in unique_strings(projected.get("partyMemberIds")) {
                     let Some(hero) = crate::core::player_actor(&projected, Some(&Value::String(hero_id.clone()))) else { continue };
@@ -593,7 +594,7 @@ pub fn finish(mut r: Resolve<'_>) -> Result<Resolved, Interrupt> {
 
 /// `append(drafts)` хвоста: черновики последствий мира в события с
 /// устойчивым `event_id`, состояние идёт следом.
-fn append_world_drafts(command: &Value, resolved: &mut Vec<Value>, projected: &mut Value, drafts: Vec<Value>) -> Result<(), Interrupt> {
+fn append_world_drafts(command: &Value, resolved: &mut Vec<Value>, projected: &mut std::sync::Arc<Value>, drafts: Vec<Value>) -> Result<(), Interrupt> {
     for draft in drafts {
         let mut event = event_from(&with_draft_visibility(command, &draft), &js::s(draft.get("event_type")), draft.get("payload").cloned(), draft.get("target_ids"));
         let id = match draft.get("event_id").filter(|value| js::truthy(Some(value))) {
@@ -606,7 +607,7 @@ fn append_world_drafts(command: &Value, resolved: &mut Vec<Value>, projected: &m
             }
         };
         event["event_id"] = id;
-        *projected = apply_game_event(projected, &event)?;
+        *projected = std::sync::Arc::new(apply_game_event(projected, &event)?);
         resolved.push(event);
     }
     Ok(())

@@ -8,6 +8,7 @@
 //! Легендарное действие экономику хода не трогает вовсе: запас тратится
 //! маркерами по одному на единицу стоимости.
 
+use std::sync::Arc;
 use serde_json::{json, Map, Value};
 use sk_core::{game, js, text};
 
@@ -319,10 +320,10 @@ pub fn use_legendary_action(r: &mut Resolve<'_>) -> Flow {
             let body = spread(&payload, vec![("legendary_action_id", Value::String(action.id.clone())), ("saved", json!(saved))]);
             let applied = event_from(&command_with_rules(&command, &[rule_ids::DAMAGE]), "DamageApplied", Some(body), Some(&targets(&caught_id)));
             r.events.push(applied.clone());
-            sweep_state = apply_game_event(&sweep_state, &applied)?;
+            sweep_state = Arc::new(apply_game_event(&sweep_state, &applied)?);
             let consequences = crate::death::zero_hit_point_damage_consequences(&damage_state, &command, &caught_id, &payload, false);
             for event in &consequences {
-                sweep_state = apply_game_event(&sweep_state, event)?;
+                sweep_state = Arc::new(apply_game_event(&sweep_state, event)?);
             }
             r.events.extend(consequences);
         }

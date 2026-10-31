@@ -46,6 +46,8 @@ pub mod world_time;
 
 pub use dispatch::RESOLVE_LABELS;
 
+use std::sync::Arc;
+
 use serde_json::{json, Value};
 use sk_core::indexmap::{IndexMap, IndexSet};
 use sk_core::js;
@@ -70,8 +72,10 @@ pub struct Resolved {
 /// Контекст разбора — локальные переменные `resolveCommandInternal`, которые
 /// в JS видят замыкания и ветки `switch`.
 pub struct Resolve<'a> {
-    /// `state`: нормализованное состояние до команды (с прокси NPC для заклинаний).
-    pub state: Value,
+    /// `state`: нормализованное состояние до команды (с прокси NPC для
+    /// заклинаний). Общее с входом разбора (`Arc`): ветки читают его по
+    /// ссылке, а меняют через `Arc::make_mut` — копия только при записи.
+    pub state: Arc<Value>,
     /// `command`: проверенная команда (`validateCommand`).
     pub command: Value,
     /// `context` с `__resolve_depth` на единицу больше входного.
@@ -147,8 +151,13 @@ pub fn reaction_choices(raw: Option<&Value>, key_field: &str) -> IndexMap<String
 
 /// Прокси NPC сцены для заклинаний 2014 (13066–13075): видимый NPC без листа
 /// в бою получает в расчёте свой стат-блок. События сохраняют id NPC.
+/// Первое условие [`push_npc_spell_proxies`] — без копии состояния.
+fn may_push_npc_spell_proxies(state: &Value, input: &Value) -> bool {
+    input.get("command_type").and_then(Value::as_str) == Some("CastSpell") && sk_core::game::uses_2014(state)
+}
+
 fn push_npc_spell_proxies(state: &mut Value, input: &Value) -> Result<bool, Interrupt> {
-    if input.get("command_type").and_then(Value::as_str) != Some("CastSpell") || !sk_core::game::uses_2014(state) {
+    if !may_push_npc_spell_proxies(state, input) {
         return Ok(false);
     }
     let options = json!({ "rulesetId": "dnd_5e_2014" });
@@ -180,19 +189,23 @@ fn push_npc_spell_proxies(state: &mut Value, input: &Value) -> Result<bool, Inte
 /// Без прокси проектор и проверка берут вход как есть; с прокси изменённая
 /// копия нормализуется один раз — её нормализовал бы `validateCommand`.
 pub(crate) struct CommandStart {
-    pub state: Value,
+    pub state: Arc<Value>,
     pub projector: CommandProjector,
     pub proxied: Option<NormalizedState>,
 }
 
 pub(crate) fn command_start(normalized: &NormalizedState, input: &Value) -> Result<CommandStart, Interrupt> {
-    let mut state = normalized.to_value();
-    if push_npc_spell_proxies(&mut state, input)? {
-        let projector = CommandProjector::new(&state);
-        let proxied = NormalizedState::normalize(&state)?;
-        return Ok(CommandStart { state, projector, proxied: Some(proxied) });
+    // Копия входа — только если прокси NPC могут понадобиться; без прокси
+    // рабочее состояние — сам вход (общий `Arc`).
+    if may_push_npc_spell_proxies(normalized, input) {
+        let mut state = normalized.to_value();
+        if push_npc_spell_proxies(&mut state, input)? {
+            let projector = CommandProjector::new(&state);
+            let proxied = NormalizedState::normalize(&state)?;
+            return Ok(CommandStart { state: Arc::new(state), projector, proxied: Some(proxied) });
+        }
     }
-    Ok(CommandStart { state, projector: CommandProjector::over(normalized), proxied: None })
+    Ok(CommandStart { state: normalized.shared(), projector: CommandProjector::over(normalized), proxied: None })
 }
 
 /// `TruceBroken` для команды, которая бьёт через линию перемирия
@@ -281,6 +294,23 @@ impl Resolve<'_> {
     /// `command.command_type`.
     pub fn command_type(&self) -> String {
         js::s(self.command.get("command_type"))
+    }
+
+    /// Цепочка событий от состояния разбора (`state = applyGameEvent(state,
+    /// event)` подряд): если `state` — сам нормализованный вход (тот же
+    /// `Arc`, что у проектора), первое событие не нормализует его заново, а
+    /// замкнутые события не нормализуют итог (Ск5). Итог тот же.
+    pub fn state_chain(&self) -> crate::normalized::EventChain {
+        match self.projector.normalized_start() {
+            Some(start) if start.shares(&self.state) => crate::normalized::EventChain::new(start.clone()),
+            _ => crate::normalized::EventChain::from_raw((*self.state).clone()),
+        }
+    }
+
+    /// [`Self::project_events`] для чтения: общий итог, повтор с теми же
+    /// событиями — без пересчёта (`CommandProjector::project_shared`).
+    pub fn project_events_shared(&mut self) -> Result<Arc<Value>, Interrupt> {
+        Ok(self.projector.project_shared(&self.events)?)
     }
 
     /// `projectEvents(events)`: состояние после событий команды.

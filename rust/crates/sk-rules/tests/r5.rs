@@ -323,7 +323,7 @@ fn resolve_for<'a>(raw: &Value, command: Value, context: &Context, dice: &'a mut
     let protective_reaction_choices = sk_rules::resolve::reaction_choices(context.get("protectiveReactionChoices"), "key");
     let truce_before_command = sk_society::parley::truce_for(&state);
     Resolve {
-        state,
+        state: std::sync::Arc::new(state),
         command,
         context,
         depth,

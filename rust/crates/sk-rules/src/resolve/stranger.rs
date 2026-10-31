@@ -3,6 +3,7 @@
 //! JS: `server/rules-engine.mjs`, 20952–21007. Диспетчер — `resolve/dispatch.rs`
 //! (Р0); ветка дописывает события в `r.events` и броски в `r.rolls`.
 
+use std::sync::Arc;
 use serde_json::{json, Map, Value};
 use sk_attention::scenario_attention::{scenario_stranger_breath, SCENARIO_STRANGER_EVENT, SCENARIO_STRANGER_EVENT_SCHEMA_VERSION};
 use sk_core::{game, js};
@@ -116,11 +117,11 @@ pub fn stage_scenario_stranger(r: &mut Resolve<'_>) -> Flow {
         applied_payload.insert("source".into(), json!("scenario-stranger"));
         let applied = event_from(&command_with_rules(&command, &[rule_ids::DAMAGE]), "DamageApplied", Some(Value::Object(applied_payload)), Some(&hero_targets));
         r.events.push(applied.clone());
-        sweep_state = apply_game_event(&sweep_state, &applied)?;
+        sweep_state = Arc::new(apply_game_event(&sweep_state, &applied)?);
         let consequences = zero_hit_point_damage_consequences(&damage_state, &command, &hero_id, &resolved, false);
         r.events.extend(consequences.iter().cloned());
         for event in &consequences {
-            sweep_state = apply_game_event(&sweep_state, event)?;
+            sweep_state = Arc::new(apply_game_event(&sweep_state, event)?);
         }
     }
     r.events.extend(profile_events);

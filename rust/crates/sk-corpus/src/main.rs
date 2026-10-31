@@ -24,6 +24,11 @@ fn main() {
             // точка нормализации. Код 1 — замкнутость нарушена.
             let report = sk_corpus::check_closure(&corpus, filter).expect("проверка замкнутости");
             print!("{}", report.render());
+            // Ск5: замкнутость в целом не достигнута (код 1 — как прежде), а
+            // список замкнутых типов горячего пути обязан держаться (код 3).
+            if !report.closed_types_hold() {
+                std::process::exit(3);
+            }
             if !report.closed() {
                 std::process::exit(1);
             }

@@ -15,6 +15,14 @@
 //! нормализация меняет итог редьюсера (умолчания `combat`, ресурсы врагов,
 //! `stack_key`, сводки мест, производные поля героя), поэтому
 //! `NormalizedState::applied` нормализует итог каждого события.
+//!
+//! Ск5: 26 типов горячего пути (`NORMALIZATION_CLOSED_EVENT_TYPES`) замкнуты:
+//! итог после `normalized::settle_closed` (шаг метки начала хода у
+//! `TurnStarted`, `TurnEnded`, `ReactionWindowClosed`, у прочих — ничего) —
+//! неподвижная точка на всех состояниях корпуса после них. Их итог горячий
+//! путь не нормализует; код выхода 3 — тип из списка не замкнут, и список
+//! надо сузить. «Не неподвижная точка» выше считается по сырому итогу
+//! редьюсера (он байт в байт итог JS).
 
 use std::collections::BTreeMap;
 
@@ -34,6 +42,12 @@ pub struct ClosureReport {
     pub start_not_fixed: usize,
     /// Состояние после события — не неподвижная точка (тип события → записей).
     pub not_closed: BTreeMap<String, usize>,
+    /// Проверено состояний после события (тип события → состояний), Ск5.
+    pub checked: BTreeMap<String, usize>,
+    /// Типы из `sk_rules::normalized::NORMALIZATION_CLOSED_EVENT_TYPES`, после
+    /// которых нормализация всё же меняет итог (тип → состояний): горячий путь
+    /// пропустил бы нужную нормализацию. Должно быть пусто.
+    pub closed_type_failures: BTreeMap<String, usize>,
     /// Первое расхождение по пути (тип события и путь → записей).
     pub paths: BTreeMap<String, usize>,
     /// Нормализованное состояние не прошло проверку формы
@@ -47,6 +61,12 @@ pub struct ClosureReport {
 impl ClosureReport {
     pub fn closed(&self) -> bool {
         self.start_not_fixed == 0 && self.not_closed.is_empty() && self.errors.is_empty() && self.shape_failures.is_empty()
+    }
+
+    /// Список замкнутых типов горячего пути подтверждён корпусом: ни одно
+    /// состояние после события из списка не меняется нормализацией.
+    pub fn closed_types_hold(&self) -> bool {
+        self.closed_type_failures.is_empty() && self.errors.is_empty()
     }
 
     pub fn render(&self) -> String {
@@ -74,6 +94,25 @@ impl ClosureReport {
             for (path, count) in &self.paths {
                 text.push_str(&format!("  {count:5}  {path}\n"));
             }
+        }
+        // Ск5: замкнутые типы горячего пути (`NORMALIZATION_CLOSED_EVENT_TYPES`) —
+        // сколько состояний после каждого проверено и сколько не сошлось.
+        text.push_str("
+замкнутые типы горячего пути (проверено / не сошлось):
+");
+        for kind in sk_rules::normalized::NORMALIZATION_CLOSED_EVENT_TYPES {
+            let checked = self.checked.get(*kind).copied().unwrap_or(0);
+            let failed = self.closed_type_failures.get(*kind).copied().unwrap_or(0);
+            text.push_str(&format!("  {checked:6} / {failed}  {kind}{}
+", if failed > 0 { "  ← НЕ ЗАМКНУТ" } else if checked == 0 { "  (нет в корпусе)" } else { "" }));
+        }
+        text.push_str("
+проверено состояний после события, по типам:
+");
+        for (kind, count) in &self.checked {
+            let failed = self.not_closed.get(kind).copied().unwrap_or(0);
+            text.push_str(&format!("  {count:6} / {failed}  {kind}
+"));
         }
         for (message, count) in &self.errors {
             text.push_str(&format!("  {count:5}  ошибка: {message}\n"));
@@ -194,9 +233,22 @@ pub fn check_closure(corpus: &Corpus, filter: Option<&str>) -> std::io::Result<C
                 }
             };
             report.states += 1;
+            *report.checked.entry(kind.clone()).or_default() += 1;
             match renormalize(&next, Some(event)) {
                 Ok(again) => {
                     check_shape(&mut report, &again);
+                    // Горячий путь пропускает нормализацию итога замкнутого
+                    // типа после шага `settle_closed` (метка начала хода).
+                    if sk_rules::normalized::NORMALIZATION_CLOSED_EVENT_TYPES.contains(&kind.as_str()) {
+                        let mut settled = next.clone();
+                        sk_rules::normalized::settle_closed(&mut settled, event);
+                        if let Some(at) = first_ordered_difference(&again, &settled, &mut Vec::new()) {
+                            *report.closed_type_failures.entry(kind.clone()).or_default() += 1;
+                            if report.examples.len() < 40 {
+                                report.examples.push(format!("{place} [{kind}, замкнутый]: {at}"));
+                            }
+                        }
+                    }
                     if let Some(at) = first_ordered_difference(&again, &next, &mut Vec::new()) {
                         *report.not_closed.entry(kind.clone()).or_default() += 1;
                         *report.paths.entry(format!("{kind} {}", bucket(at.split(':').next().unwrap_or(&at)))).or_default() += 1;

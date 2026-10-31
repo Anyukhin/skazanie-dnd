@@ -235,17 +235,28 @@ enum ProjectorStart {
 pub struct CommandProjector {
     initial: ProjectorStart,
     cache: Option<ProjectorCache>,
+    /// Итог последней [`Self::project_shared`]: тот же список событий —
+    /// тот же итог без повторного применения (Ск5).
+    last: Option<(&'static str, Vec<String>, std::sync::Arc<Value>)>,
 }
 
 impl CommandProjector {
     /// Проектор над состоянием как есть (нормализует его первая проекция).
     pub fn new(initial: &Value) -> Self {
-        Self { initial: ProjectorStart::Raw(initial.clone()), cache: None }
+        Self { initial: ProjectorStart::Raw(initial.clone()), cache: None, last: None }
     }
 
     /// Проектор над нормализованным состоянием: без копии.
     pub fn over(initial: &NormalizedState) -> Self {
-        Self { initial: ProjectorStart::Normalized(initial.clone()), cache: None }
+        Self { initial: ProjectorStart::Normalized(initial.clone()), cache: None, last: None }
+    }
+
+    /// Нормализованное исходное состояние, если проектор начат с него.
+    pub fn normalized_start(&self) -> Option<&NormalizedState> {
+        match &self.initial {
+            ProjectorStart::Normalized(state) => Some(state),
+            ProjectorStart::Raw(_) => None,
+        }
     }
 
     /// Исходное состояние проектора.
@@ -262,6 +273,22 @@ impl CommandProjector {
             ProjectorStart::Normalized(state) if state.mode() == mode => Ok(state.clone()),
             _ => in_mode(mode, || NormalizedState::normalize(self.initial())),
         }
+    }
+
+    /// [`Self::project`] общим значением для чтения: если список событий тот
+    /// же (по `JSON.stringify`), что у прошлого вызова, — тот же итог без
+    /// повторного применения последнего события и без копии (Ск5). Редьюсер
+    /// детерминирован, итог тот же.
+    pub fn project_shared(&mut self, events: &[Value]) -> Result<std::sync::Arc<Value>, Halt> {
+        let mode = replay_mode_for(events);
+        if let Some((last_mode, fingerprints, state)) = &self.last {
+            if *last_mode == mode && fingerprints.len() == events.len() && events.iter().zip(fingerprints).all(|(event, fingerprint)| js::stringify(event) == *fingerprint) {
+                return Ok(std::sync::Arc::clone(state));
+            }
+        }
+        let state = std::sync::Arc::new(self.project(events)?);
+        self.last = Some((mode, events.iter().map(js::stringify).collect(), std::sync::Arc::clone(&state)));
+        Ok(state)
     }
 
     /// `projectEvents(events)`: последнее событие применяется всегда заново,

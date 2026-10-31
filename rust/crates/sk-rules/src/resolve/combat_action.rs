@@ -10,6 +10,7 @@
 //! со значением `undefined` (`visibility: command.visibility`), помечены
 //! [`undef`], чтобы порядок ключей стенограммы совпал с JS.
 
+use std::sync::Arc;
 use serde_json::{json, Map, Value};
 use sk_core::js;
 
@@ -117,7 +118,7 @@ fn effect_id_fields(condition: &Value) -> Vec<(&'static str, Option<Value>)> {
 
 /// Разбор одного приёма.
 struct Act {
-    state: Value,
+    state: Arc<Value>,
     command: Value,
     actor_id: String,
     /// Карточка приёма: исполнимость доказана на границе команды.
@@ -1521,7 +1522,7 @@ fn species_breath(r: &mut Resolve<'_>, a: &Act) -> Flow {
             Some(&json!([caught])),
         );
         r.events.push(damage_event.clone());
-        breath_state = crate::replay::apply_game_event(&breath_state, &damage_event)?;
+        breath_state = Arc::new(crate::replay::apply_game_event(&breath_state, &damage_event)?);
         if hp_after_zero(&payload) {
             r.events.extend(zero_hit_point_damage_consequences(&before_state, &a.command, &caught, &payload, false));
         }
@@ -2003,9 +2004,9 @@ fn weapon_attack(r: &mut Resolve<'_>, a: &Act) -> Flow {
         }
         r.events.extend(result.events.iter().cloned());
         r.rolls.extend(result.rolls);
-        working = crate::replay::replay_events(&working, &result.events)?;
+        working = Arc::new(crate::replay::replay_events(&working, &result.events)?);
         if !monk_bonus {
-            if let Some(economy) = sk_core::game::combat_mut(&mut working).get_mut("action_economy").and_then(|all| all.get_mut(&a.actor_id)).filter(|economy| js::truthy(Some(economy))) {
+            if let Some(economy) = sk_core::game::combat_mut(Arc::make_mut(&mut working)).get_mut("action_economy").and_then(|all| all.get_mut(&a.actor_id)).filter(|economy| js::truthy(Some(economy))) {
                 if let Some(map) = economy.as_object_mut() {
                     map.insert("action".into(), Value::Bool(true));
                 }
@@ -2128,7 +2129,7 @@ fn turn_undead(r: &mut Resolve<'_>, a: &Act) -> Flow {
             r.events.extend(consequences.iter().cloned());
             let mut applied = vec![damage_event];
             applied.extend(consequences);
-            working = reduce_events(&working, &applied)?;
+            working = Arc::new(reduce_events(&working, &applied)?);
             turned.push(candidate_id);
             continue;
         }
@@ -2141,7 +2142,7 @@ fn turn_undead(r: &mut Resolve<'_>, a: &Act) -> Flow {
         ]);
         let condition = event_from(&a.rules(&[rule_ids::CONDITIONS]), "ConditionAdded", Some(payload), Some(&json!([candidate_id])));
         r.events.push(condition.clone());
-        working = crate::replay::apply_game_event(&working, &condition)?;
+        working = Arc::new(crate::replay::apply_game_event(&working, &condition)?);
         turned.push(candidate_id);
     }
     r.events.push(a.action_event(vec![("success", Value::Bool(!turned.is_empty())), ("affected_ids", js::strings_value(turned))]));

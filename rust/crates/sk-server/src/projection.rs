@@ -187,7 +187,8 @@ fn projected_room_state(room_state: &Value, engine_state: &Value, events: &[Valu
     if options.force_projector_refresh {
         next.insert("engine_mode".into(), Value::String("enforce".into()));
     }
-    normalize(&Value::Object(next))
+    // Своё значение — без копии входа нормализации (Ск5); итог тот же.
+    Ok(sk_rules::normalize::normalize_campaign_state_owned(Value::Object(next))?)
 }
 
 /// `persistAuthoritativeProjection(campaignId, engineState, events,
