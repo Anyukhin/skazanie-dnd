@@ -541,7 +541,7 @@ for (let n = 0; n < 1500; n += 1) {
 // --- ветки разбора ------------------------------------------------------------------
 
 const engineLines = readFileSync(SOURCE_URL, 'utf8').split(/\r?\n/)
-const RANGES = [[15218, 15288], [15292, 15334], [15346, 15364], [15392, 15394], [22661, 22794]]
+const RANGES = [[15222, 15292], [15296, 15338], [15350, 15368], [15396, 15398], [22665, 22798]]
 const ANCHORS = ["case 'ReduceHitPointMaximum'", "case 'IdentifyEnemy'", "case 'AddCondition'", "case 'RemoveCondition'", "case 'StartRest'"]
 RANGES.forEach(([from], index) => { if (!engineLines[from - 1].trimStart().startsWith(ANCHORS[index])) throw new Error(`строка ${from} не «${ANCHORS[index]}»`) })
 const body = RANGES.map(([from, to]) => engineLines.slice(from - 1, to).join('\n')).join('\n')

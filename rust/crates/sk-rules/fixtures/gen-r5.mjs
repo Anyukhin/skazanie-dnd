@@ -404,7 +404,7 @@ for (let s = 0; s < states.length; s += 1) {
 
 // --- замыкания resolveCommandInternal --------------------------------------------------
 
-const prologue = await blockFunction([[13082, 13749]], ["if (!diceService) throw new TypeError('RulesEngine требует DiceService')"], ['input', 'rawState', 'diceService', 'context', '__probe'],
+const prologue = await blockFunction([[13086, 13753]], ["if (!diceService) throw new TypeError('RulesEngine требует DiceService')"], ['input', 'rawState', 'diceService', 'context', '__probe'],
   'return __probe({ state, command, events, rolls, diceTranscript, diceService, spendBardicInspiration, damageTurnKey, consumeResistanceBonus, resistanceSaveState, rollSavingThrow, areaSaveModifierFor, legendaryResistanceFor, resolveDamagePayload, prepareElementalReactionDamage, resolveDamageWithReactions, appendMagicMissileResolution, rollAmount })')
 const probes = []
 const PROBE_CONTEXTS = [

@@ -259,8 +259,8 @@ for (const [name, [from, to]] of Object.entries(BLOCKS)) {
 
 // --- ветки разбора без хвоста -----------------------------------------------------
 
-const PREP = [13082, 13750]
-const CASES = [[19760, 19833], [20401, 20982], [22366, 22660], [22795, 22810], [22817, 22949]]
+const PREP = [13086, 13754]
+const CASES = [[19764, 19837], [20405, 20986], [22370, 22664], [22799, 22814], [22821, 22953]]
 const ANCHORS = ["if (!diceService)", "case 'UseLevelTransition'", "case 'BargainWithMerchant'", "case 'ImportLocationMap'", "case 'RevealArea'", 'case \'UpsertWorldEntity\'']
 ;[PREP, ...CASES].forEach(([from], index) => { if (!lines[from - 1].trimStart().startsWith(ANCHORS[index])) throw new Error(`строка ${from} не «${ANCHORS[index]}»`) })
 const prep = lines.slice(PREP[0] - 1, PREP[1]).join('\n')

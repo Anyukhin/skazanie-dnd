@@ -31,7 +31,7 @@ const groups = {
   g3: await blockFunction([[7003, 7006]], ['const actorFate'], ['state', 'command', 'context'], 'return actorFate ?? null'),
   g4: await blockFunction([[7843, 7856]], ['if (!command.source_rule_ids.length'], ['state', 'command', 'context']),
 }
-const truce = await blockFunction([[13149, 13166]], ['const truceBeforeCommand'], ['state', 'command', 'targetId', 'events'], 'return events')
+const truce = await blockFunction([[13153, 13170]], ['const truceBeforeCommand'], ['state', 'command', 'targetId', 'events'], 'return events')
 
 const windows = [
   null, { id: 'w', pending_command: { command_type: 'MakeAttack' }, action_ids: ['cast:shield', 'decline-reaction'] },
