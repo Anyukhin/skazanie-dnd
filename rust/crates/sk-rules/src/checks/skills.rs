@@ -200,10 +200,13 @@ pub fn skill_proficiency_for_actor(actor: Option<&Value>, skill: Option<&Value>,
             return json!({ "skill": id, "proficient": true, "expertise": false, "multiplier": 1, "bonus": bonus, "explicit_total": total });
         }
     }
-    let sheet_entry = nullish_chain(&[at_path(actor, &["characterSheet", "skills", &id]), at_path(actor, &["characterSheet", "skills", &underscored])]).filter(|value| !value.is_null());
+    // Лист героя не хранится (урок 2): записанный или выведенный из каталога.
+    let sheet = crate::derived::read_opt(state, actor, crate::derived::CHARACTER_SHEET);
+    let sheet = sheet.as_deref();
+    let sheet_entry = nullish_chain(&[at_path(sheet, &["skills", &id]), at_path(sheet, &["skills", &underscored])]).filter(|value| !value.is_null());
     let from_background = listed_skill(at(actor, "backgroundSkillProficiencies"), &id);
     let from_species = listed_skill(at(actor, "speciesSkillProficiencies"), &id);
-    let expertise = [at(actor, "skillExpertiseIds"), at(actor, "expertiseSkillIds"), at(actor, "skillExpertise"), at(actor, "expertiseSkills"), at_path(actor, &["characterSheet", "skill_expertise"])]
+    let expertise = [at(actor, "skillExpertiseIds"), at(actor, "expertiseSkillIds"), at(actor, "skillExpertise"), at(actor, "expertiseSkills"), at(sheet, "skill_expertise")]
         .into_iter()
         .any(|values| listed_skill(values, &id))
         || js::is_true(at(sheet_entry, "expertise"));

@@ -14,8 +14,11 @@ use sk_rules::normalize::normalize_campaign_state;
 
 static SYNTHETIC: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/normalize-synthetic.json")).expect("эталон читается")).expect("эталон"));
 
+/// Хеш нормализованного состояния в форме JS: производные поля героев в
+/// состоянии — пустые слоты (урок 2), JS их хранит — сверяется герой с
+/// вычисленными полями (`sk_rules::derived`).
 fn digest(value: &Value) -> String {
-    hash::sha256_hex(js::stringify(value))
+    hash::sha256_hex(js::stringify(&sk_rules::derived::materialized_state(value)))
 }
 
 #[test]
@@ -54,6 +57,7 @@ fn input_is_not_mutated_and_derived_fields_keep_their_place() {
     assert_eq!(raw, before, "вход не меняется");
     let keys: Vec<&String> = normalized["players"][0].as_object().expect("герой").keys().collect();
     assert_eq!(&keys[..4], ["id", "combatSpells", "name", "inventoryLoad"], "производные поля на прежних местах");
+    assert!(normalized["players"][0]["combatSpells"].is_null() && normalized["players"][0]["inventoryLoad"].is_null(), "в состоянии — пустые слоты, значения не хранятся");
     let root: Vec<&String> = normalized.as_object().expect("состояние").keys().collect();
     assert_eq!(&root[..3], ["players", "worldMemory", "zzz"], "worldMemory на своём месте");
 }

@@ -95,7 +95,9 @@ fn report(name: &str, failures: &[String], total: usize) {
 #[test]
 fn rust_normalization_matches_js_on_fixture_states() {
     let expected = DATA["normalized_sha"].as_array().expect("хеши");
-    let failures: Vec<String> = NORMALIZED.iter().zip(expected).enumerate().filter(|(_, (state, sha_js))| sha(state) != sha_js.as_str().unwrap_or_default()).map(|(index, _)| format!("состояние {index}")).collect();
+    // JS хранит производные поля героя значениями, Rust — пустыми слотами
+    // (урок 2): сверяется состояние с вычисленными полями.
+    let failures: Vec<String> = NORMALIZED.iter().zip(expected).enumerate().filter(|(_, (state, sha_js))| sha(&sk_rules::derived::materialized_state(state)) != sha_js.as_str().unwrap_or_default()).map(|(index, _)| format!("состояние {index}")).collect();
     report("нормализация", &failures, expected.len());
 }
 

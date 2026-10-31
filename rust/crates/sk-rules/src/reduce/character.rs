@@ -203,7 +203,6 @@ pub(super) fn character_lifecycle_event(state: &mut Value, event: &Event) -> Red
     let Some(index) = player_index(state, &key) else { return Ok(()) };
     let options = class_resource_options(state);
     let sheet = derive_character_sheet(Some(&state["players"][index]), Some(&options)).map_err(lifecycle_error)?;
-    let spell_options = ruleset_options(state);
     let mut players = state.get("players").and_then(Value::as_array).cloned().unwrap_or_default();
     for actor in players.iter_mut() {
         if actor_id(actor) != key {
@@ -211,15 +210,14 @@ pub(super) fn character_lifecycle_event(state: &mut Value, event: &Event) -> Red
         }
         let armor = sheet_value(&sheet, "armor_class")?;
         let speed = sheet_value(&sheet, "speed")?;
-        let spells = sk_combat_content::combat_spells::combat_spells_for(Some(actor), Some(&spell_options));
-        let actions = sk_combat_content::combat_actions::combat_actions_for(Some(actor));
         let mut map = actor.as_object().cloned().unwrap_or_default();
         put_defined(&mut map, "proficiency", sheet.get("proficiency_bonus").cloned());
         put_defined(&mut map, "armor", armor);
         put_defined(&mut map, "speed", speed);
-        map.insert("characterSheet".into(), sheet.clone());
-        map.insert("combatSpells".into(), Value::Array(spells));
-        map.insert("combatActions".into(), Value::Array(actions));
+        // Лист, заклинания и действия — пустые слоты в порядке JS (урок 2).
+        for field in [crate::derived::CHARACTER_SHEET, crate::derived::COMBAT_SPELLS, crate::derived::COMBAT_ACTIONS] {
+            map.insert(field.into(), Value::Null);
+        }
         *actor = Value::Object(map);
     }
     state["players"] = Value::Array(players);
