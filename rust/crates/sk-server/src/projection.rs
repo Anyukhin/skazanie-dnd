@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
 use sk_core::js;
-use sk_narration_base::projection_integrity::{compare_projection, CANONICAL_PROJECTION_FIELDS};
+use sk_narration_base::projection_integrity::CANONICAL_PROJECTION_FIELDS;
 use sk_store::accounts::Accounts;
 use sk_store::executor::{AuthoritativeExecutor, DeriveEvents, DerivedRequest, Executed, ExecutorError, Producer};
 use sk_store::{LoadOptions, RoomProjectionAck};
@@ -216,7 +216,7 @@ pub fn persist_authoritative_projection(
         }
         if !options.force_projector_refresh && proposed == current && journal_message.is_none() {
             // SEC-02: равная версия ещё не значит равное содержимое.
-            let comparison = compare_projection(engine_state, room_state);
+            let comparison = sk_tactics::cutover_audit::compare_js_projection(engine_state, room_state);
             if comparison.matched {
                 acknowledge(core, campaign_id, proposed_version, &comparison.projected_hash, options)?;
                 return Ok(Some(room));
@@ -230,7 +230,7 @@ pub fn persist_authoritative_projection(
         // раз; `isNarrating` в каноническую проекцию не входит.
         let comparison = {
             let _span = sk_store::perf::span("persist.compare_projection");
-            compare_projection(engine_state, &next)
+            sk_tactics::cutover_audit::compare_js_projection(engine_state, &next)
         };
         let ack = comparison.matched.then(|| RoomProjectionAck { campaign_id: campaign_id.to_string(), projected_version: proposed_version, projection_hash: Some(comparison.projected_hash.clone()) });
         let (saved, acknowledged) = {
@@ -248,7 +248,7 @@ pub fn persist_authoritative_projection(
     }
     let reconciled = get_room(core, campaign_id)?;
     if version_of(reconciled.state.as_ref(), -1.0) >= proposed {
-        let comparison = compare_projection(engine_state, reconciled.state.as_ref().unwrap_or(&Value::Null));
+        let comparison = sk_tactics::cutover_audit::compare_js_projection(engine_state, reconciled.state.as_ref().unwrap_or(&Value::Null));
         if comparison.matched {
             acknowledge(core, campaign_id, proposed_version, &comparison.projected_hash, options)?;
             return Ok(Some(reconciled));
@@ -311,7 +311,7 @@ fn reconcile_inner(core: &Rc<GameCore>, campaign_id: &str, now_ms: i64) -> Resul
         let projected_version = version_of(Some(room_state), -1.0);
         let (comparison, head_version) = {
             let _compare = sk_store::perf::span("reconcile.compare");
-            core.events.inspect(campaign_id, &LoadOptions::default(), |state, version| (compare_projection(state, room_state), version))?
+            core.events.inspect(campaign_id, &LoadOptions::default(), |state, version| (sk_tactics::cutover_audit::compare_js_projection(state, room_state), version))?
         };
         if projected_version >= head_version as f64 && comparison.matched {
             if pending.is_some() {
@@ -341,7 +341,7 @@ fn reconcile_inner(core: &Rc<GameCore>, campaign_id: &str, now_ms: i64) -> Resul
         return Err(Failure::new("Cannot convert undefined or null to object", Some("TYPE_ERROR")));
     };
     let projected_version = version_of(Some(room_state), -1.0);
-    let comparison = compare_projection(&authoritative.state, room_state);
+    let comparison = sk_tactics::cutover_audit::compare_js_projection(&authoritative.state, room_state);
     if projected_version >= authoritative.state_version as f64 && comparison.matched {
         if pending.is_some() {
             crate::test_hooks::acknowledge_projection(&core.events, campaign_id, authoritative.state_version, Some(&comparison.projected_hash))?;

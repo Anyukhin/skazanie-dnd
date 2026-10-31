@@ -551,7 +551,11 @@ fn import_rooms(from: &Path, events: &EventStore, journal: &ImportReport) -> Res
             }
             room.messages = messages.len();
         }
-        let state = Value::Object(state);
+        let mut state = Value::Object(state);
+        // Комната JS хранит производные поля героя значениями; в каноническом
+        // состоянии на их месте пустые слоты, значения выводятся при чтении
+        // (урок 2) — иначе накладка тащила бы их и не сходилась с журналом.
+        sk_rules::derived::strip_derived_fields(&mut state);
         let body = crate::room::overlay_for(events, &code, &state).map_err(|failure| failure.message)?;
         let composed = match crate::room::compose(events, &body) {
             Ok(composed) => composed,

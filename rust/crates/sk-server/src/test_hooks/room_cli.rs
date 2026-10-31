@@ -77,7 +77,14 @@ fn room_json(room: &Room) -> Value {
     if room.state.is_none() && room.updated_at.is_none() {
         return Value::Null;
     }
-    room.to_json()
+    // Как `rooms/<код>.json` JS: производные поля героя — значениями, а не
+    // пустыми слотами канонического состояния (урок 2). В той же форме сервер
+    // считает хеш отметки проекции.
+    let mut json = room.to_json();
+    if let Some(state) = room.state.as_ref() {
+        json["state"] = sk_rules::derived::materialized_state(state);
+    }
+    json
 }
 
 /// Исполнить подкоманду.
@@ -109,7 +116,11 @@ fn write_room(store: &EventStore, campaign: &str, state: &Value) -> Result<Value
     if current.state.is_none() {
         return Err(format!("writeRoom: нет комнаты {key}"));
     }
-    let body = overlay_for(store, &key, state).map_err(|failure| failure.message)?;
+    // Производные поля, пришедшие значениями, — не отличие от журнала: в
+    // накладку ложатся только настоящие отличия.
+    let mut state = state.clone();
+    sk_rules::derived::strip_derived_fields(&mut state);
+    let body = overlay_for(store, &key, &state).map_err(|failure| failure.message)?;
     match store.save_room_overlay(RoomOverlayWrite { room_id: &key, expected_version: current.version, body: &body, ack: None }).map_err(|error| error.to_string())? {
         RoomOverlaySave::Saved { .. } => Ok(room_json(&read_room(store, &key).map_err(|failure| failure.message)?)),
         RoomOverlaySave::Conflict { .. } => Err(format!("writeRoom: комнату {key} переписали одновременно — повторите")),

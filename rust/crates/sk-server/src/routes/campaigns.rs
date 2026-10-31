@@ -266,7 +266,8 @@ fn list_heroes(ctx: &mut RouteCtx) -> RouteFuture<'_> {
                 let mut heroes: IndexMap<String, Value> = IndexMap::new();
                 for room in &rooms {
                     for hero in array(room.state.as_ref().and_then(|state| state.get("players"))) {
-                        heroes.insert(js::string(hero.get("id")), hero.clone());
+                        // Герой целиком, как в комнате JS: с производными полями (урок 2).
+                        heroes.insert(js::string(hero.get("id")), sk_rules::derived::materialize_player(room.state.as_ref(), hero));
                     }
                 }
                 let mut list: Vec<Value> = heroes.into_values().collect();
@@ -510,7 +511,12 @@ async fn create_body(ctx: &mut RouteCtx, creator: &Value) -> Result<axum::respon
         blocking(move || accounts.upsert_campaign_membership(&campaign, &user_id, "owner", &hero_ids)).await??;
     }
     let user = refreshed_user(ctx, creator).await?;
-    Ok(json(StatusCode::CREATED, &js::spread(&room.to_json(), json!({ "user": user }))))
+    // Комната целиком, как в JS: герои — с производными полями (урок 2).
+    let mut body = room.to_json();
+    if let Some(state) = room.state.as_ref() {
+        body["state"] = sk_rules::derived::materialized_state(state);
+    }
+    Ok(json(StatusCode::CREATED, &js::spread(&body, json!({ "user": user }))))
 }
 
 /// `POST /api/campaigns` (4485–4595): мастер создания (`bootstrap`) для

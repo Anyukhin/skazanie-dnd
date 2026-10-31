@@ -210,7 +210,9 @@ fn read(store: &EventStore, campaign: &str, at_version: Option<i64>, use_snapsho
         "campaign_id": loaded.campaign_id,
         "state_version": loaded.state_version,
         "current_state_version": loaded.current_state_version,
-        "state": loaded.state,
+        // Как журнал JS на диске: производные поля героя — значениями, не
+        // пустыми слотами канонического состояния (урок 2).
+        "state": sk_rules::derived::materialized_state(&loaded.state),
         "commits": commits.iter().map(|commit| json!({
             "idempotency_key": commit.get("idempotency_key"),
             "command_id": commit.get("command_id"),
@@ -264,7 +266,7 @@ fn append(store: &EventStore, campaign: &str, input: &str) -> Result<Value, CliE
         force_snapshot: false,
         metadata: json!({}),
     })?;
-    Ok(json!({ "state_version": result.state_version, "state": result.state, "events": result.events, "duplicate": result.duplicate }))
+    Ok(json!({ "state_version": result.state_version, "state": sk_rules::derived::materialized_state(&result.state), "events": result.events, "duplicate": result.duplicate }))
 }
 
 #[cfg(test)]

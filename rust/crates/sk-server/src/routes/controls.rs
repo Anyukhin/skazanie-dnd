@@ -148,9 +148,12 @@ fn rewind(core: &std::rc::Rc<GameCore>, campaign_id: &str, idempotency_key: &str
             let action_value = Value::String(action.to_string());
             let plan = sk_scenario::campaign_controls::plan_campaign_control(Some(&action_value), Some(&Value::Array(events)), Some(&Value::from(loaded.state_version))).map_err(control_failure)?;
             let target = core.events.load(campaign_id, &LoadOptions { at_version: Some(plan.target_version), ..LoadOptions::default() })?;
+            // Событие несёт состояние целиком, как в JS: герои — с
+            // производными полями (в журнале на их месте пустые слоты, урок 2).
+            let target_state = sk_rules::derived::materialized_state(&target.state);
             let mut event = sk_scenario::campaign_controls::campaign_rewind_event(
                 Some(&action_value),
-                Some(&target.state),
+                Some(&target_state),
                 Some(&loaded.state),
                 Some(&Value::from(plan.target_version)),
                 Some(&Value::String(actor_id.to_string())),

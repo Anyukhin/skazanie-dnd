@@ -96,6 +96,9 @@ pub fn check_normalize(corpus: &Corpus, limit: Option<usize>) -> std::io::Result
                     *report.errors.entry(format!("JS бросает: {without}")).or_default() += 1;
                     continue;
                 }
+                // Производные поля в состоянии — пустые слоты (урок 2); JS их
+                // хранит, поэтому «целиком» сверяется герой с вычисленными полями.
+                let normalized = sk_rules::derived::materialized_state(&normalized);
                 if hash::sha256_hex(js::stringify(&normalized).as_bytes()) == full {
                     report.equal += 1;
                     continue;

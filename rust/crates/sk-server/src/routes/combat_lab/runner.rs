@@ -817,10 +817,13 @@ fn combat_frame(state: &Value, events: &[Value], index: i64) -> Value {
             entry.insert("conditions".into(), Value::Array(conditions));
             entry.insert("resources".into(), get(get(mechanics, "resources"), &id).filter(|value| !value.is_null()).cloned().unwrap_or_else(js::obj));
             let mut arsenal = Vec::new();
-            for spell in list(actor.get("combatSpells")).iter().filter(|spell| !js::is_false(spell.get("prepared"))) {
+            // Карточки героя не хранятся (урок 2): записанные или выведенные из каталога.
+            let spells = sk_rules::derived::read(Some(state), actor, sk_rules::derived::COMBAT_SPELLS);
+            let actions = sk_rules::derived::read(Some(state), actor, sk_rules::derived::COMBAT_ACTIONS);
+            for spell in list(spells.as_deref()).iter().filter(|spell| !js::is_false(spell.get("prepared"))) {
                 arsenal.push(arsenal_entry(spell.get("name").cloned(), support_or_partial(spell.get("mechanicsSupport"))));
             }
-            for action in list(actor.get("combatActions")).iter().filter(|action| action.get("category").and_then(Value::as_str) != Some("common")) {
+            for action in list(actions.as_deref()).iter().filter(|action| action.get("category").and_then(Value::as_str) != Some("common")) {
                 arsenal.push(arsenal_entry(action.get("name").cloned(), support_or_partial(action.get("mechanicsSupport"))));
             }
             for action in list(actor.get("action_profiles")) {
@@ -1194,7 +1197,8 @@ fn run_combat_scenario(request: ScenarioRun, on_frame: &mut dyn FnMut(Value) -> 
     report.insert("rng".into(), json!("lcg32-1664525-1013904223/v1"));
     report.insert("scenario".into(), Value::String(scenario));
     report.insert("seed".into(), request.seed.clone());
-    report.insert("initial_state".into(), initial_state.clone());
+    // Состояния отчёта — в форме JS: производные поля героев значениями (урок 2).
+    report.insert("initial_state".into(), sk_rules::derived::materialized_state(&initial_state));
     report.insert("steps".into(), Value::Array(run.steps.iter().cloned().map(Value::Object).collect()));
     report.insert("rolls".into(), Value::Array(rolls.borrow().clone()));
     report.insert("passed".into(), Value::Bool(run.passed));
@@ -1203,7 +1207,7 @@ fn run_combat_scenario(request: ScenarioRun, on_frame: &mut dyn FnMut(Value) -> 
     }
     let final_state = run.final_state.take().or_else(|| store.load(&run.campaign_id, &LoadOptions::default()).ok().map(|loaded| loaded.state));
     if let Some(final_state) = final_state {
-        report.insert("final_state".into(), final_state);
+        report.insert("final_state".into(), sk_rules::derived::materialized_state(&final_state));
     }
     Ok(Value::Object(report))
 }
