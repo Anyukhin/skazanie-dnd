@@ -8,8 +8,11 @@
 //! - [`plan_legendary_action`] — легендарное действие босса между чужими ходами;
 //! - [`run_npc_turn_scheduler`] — цикл сервера: ходы NPC, конец боя,
 //!   легендарные действия, восстановление стабилизированного отряда. Мораль
-//!   спрашивается один раз на пороге (`sk_agents::npc_controller`), вне
-//!   момента морали контроллер не зовётся.
+//!   спрашивается один раз на пороге через [`NpcController`], вне момента
+//!   морали контроллер не зовётся. Момент морали и перевод решения в команды —
+//!   детерминированное ядро [`crate::morale`]; роль модели `NpcMoraleAgent`
+//!   и её реализация [`NpcController`] — в слое агентов
+//!   (`sk_agents::npc_controller`), ядро от него не зависит.
 //!
 //! Ошибки, которые JS бросил бы наружу (отказ нормализации, `TypeError`
 //! движка), возвращаются как [`Halt`] / [`SchedulerError`].
@@ -19,12 +22,12 @@ use std::future::Future;
 use std::pin::Pin;
 
 use serde_json::{json, Map, Value};
-use sk_agents::npc_controller::{commands_for_morale_decision, is_morale_moment, NpcMoraleAgent};
 use sk_combat_base::legendary_actions::{choose_legendary_action, is_boss_actor, legendary_profile_for, legendary_uses_spent, legendary_window_key, legendary_window_spent, LegendaryTarget};
 use sk_combat_base::monster_actions::{monster_action_available, monster_attack_target_allowed, monster_multiattack_sequence_for, monster_multiattack_sequences};
 use sk_combat_content::combat_spells::{is_hostile_summon, is_party_summon, is_untargetable_summon, monster_combat_spell_for, monster_spell_uses_spent_in, monster_spellcasting_for};
 use sk_core::indexmap::IndexSet;
 use sk_core::{game, hash, js, re, text, v8sort, MechanicsSupport, RuleError};
+use crate::morale::{commands_for_morale_decision, is_morale_moment};
 use sk_economy::npc_equipment::{npc_action_unavailable_reason, npc_needs_healing_potion, npc_tactic_condition, npc_usable_items, npc_weapon_binding_for};
 use sk_geometry::actor_footprint::{footprint_distance_feet, footprint_size_for};
 use sk_geometry::Point;
@@ -2142,12 +2145,6 @@ pub type DecisionFuture<'a> = Pin<Box<dyn Future<Output = Option<Value>> + 'a>>;
 /// Контроллер морали (`npcController.decide({ state, enemyId })`).
 pub trait NpcController {
     fn decide<'a>(&'a self, state: &'a Value, enemy_id: &'a str) -> DecisionFuture<'a>;
-}
-
-impl NpcController for NpcMoraleAgent {
-    fn decide<'a>(&'a self, state: &'a Value, enemy_id: &'a str) -> DecisionFuture<'a> {
-        Box::pin(NpcMoraleAgent::decide(self, state, enemy_id))
-    }
 }
 
 /// Отказ планировщика.

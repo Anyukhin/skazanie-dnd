@@ -11,15 +11,19 @@ serde_json.workspace = true
 sk-core.workspace = true
 sk-dice.workspace = true
 sk-rules.workspace = true
-sk-agents = { path = "../sk-agents" }
-sk-agents-base = { path = "../sk-agents-base" }
 sk-combat-base = { path = "../sk-combat-base" }
 sk-combat-content = { path = "../sk-combat-content" }
 sk-economy = { path = "../sk-economy" }
 sk-geometry = { path = "../sk-geometry" }
+sk-ruleset = { path = "../sk-ruleset" }
 sk-scenario = { path = "../sk-scenario" }
 sk-society = { path = "../sk-society" }
 sk-store = { path = "../sk-store" }
 
 [dev-dependencies]
+# Сверка с эталонами (`tests/n1.rs`) гоняет планировщик с настоящим
+# `NpcMoraleAgent` и заглушкой модели — слой агентов только в тестах
+# (урок 7: рантайм ядра от `sk-agents` не зависит).
+sk-agents = { path = "../sk-agents" }
+sk-agents-base = { path = "../sk-agents-base" }
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
