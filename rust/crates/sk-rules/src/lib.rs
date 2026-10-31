@@ -46,6 +46,7 @@ pub mod combat;
 
 // Р4: нормализация, сцена, общество, replay, память карт.
 pub mod normalize;
+pub mod normalized;
 pub mod replay;
 pub mod schema;
 pub mod scene;

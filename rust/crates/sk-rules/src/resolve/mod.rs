@@ -54,10 +54,10 @@ use crate::command::types::{PARLEY_POLICY_ID, TRUCE_BREAKING_COMMAND_TYPES};
 use crate::context::{Context, Uuid};
 use crate::core::{coalesce, command_with, event_from, target_for, unique_strings};
 use crate::dice_record::{Recording, RulesDice};
-use crate::normalize::normalize_campaign_state;
-use crate::pause::{resistance_choices_from_context, Interrupt, Flow};
+use crate::normalized::NormalizedState;
+use crate::pause::{resistance_choices_from_context, Interrupt};
 use crate::replay::CommandProjector;
-use crate::validate::validate_command;
+use crate::validate::validate_normalized;
 
 /// Итог разбора: `{ command, events, rolls }`.
 #[derive(Debug, Clone, PartialEq)]
@@ -147,15 +147,16 @@ pub fn reaction_choices(raw: Option<&Value>, key_field: &str) -> IndexMap<String
 
 /// Прокси NPC сцены для заклинаний 2014 (13066–13075): видимый NPC без листа
 /// в бою получает в расчёте свой стат-блок. События сохраняют id NPC.
-fn push_npc_spell_proxies(state: &mut Value, input: &Value) -> Flow {
+fn push_npc_spell_proxies(state: &mut Value, input: &Value) -> Result<bool, Interrupt> {
     if input.get("command_type").and_then(Value::as_str) != Some("CastSpell") || !sk_core::game::uses_2014(state) {
-        return Ok(());
+        return Ok(false);
     }
     let options = json!({ "rulesetId": "dnd_5e_2014" });
     let spell = sk_combat_content::combat_spells::canonical_combat_spell_for(input.get("spell_id"), Some(&options));
     if spell.as_ref().and_then(|spell| spell.get("mechanicsSupport")).and_then(Value::as_str) != Some("verified") {
-        return Ok(());
+        return Ok(false);
     }
+    let mut pushed = false;
     let ids = match input.get("target_ids").and_then(Value::as_array).filter(|ids| !ids.is_empty()) {
         Some(_) => unique_strings(input.get("target_ids")),
         None => vec![js::s(input.get("target_id"))],
@@ -168,9 +169,30 @@ fn push_npc_spell_proxies(state: &mut Value, input: &Value) -> Flow {
             let mut proxy = crate::core::spread_value(Some(&npc));
             proxy.insert("kind".into(), Value::String("npc-spell-proxy".into()));
             js::array_mut(state, "actors").push(Value::Object(proxy));
+            pushed = true;
         }
     }
-    Ok(())
+    Ok(pushed)
+}
+
+/// Состояние команды над нормализованным входом: рабочая копия (`Resolve.state`)
+/// с прокси NPC для заклинаний, проектор и нормализованный вход проверки.
+/// Без прокси проектор и проверка берут вход как есть; с прокси изменённая
+/// копия нормализуется один раз — её нормализовал бы `validateCommand`.
+pub(crate) struct CommandStart {
+    pub state: Value,
+    pub projector: CommandProjector,
+    pub proxied: Option<NormalizedState>,
+}
+
+pub(crate) fn command_start(normalized: &NormalizedState, input: &Value) -> Result<CommandStart, Interrupt> {
+    let mut state = normalized.to_value();
+    if push_npc_spell_proxies(&mut state, input)? {
+        let projector = CommandProjector::new(&state);
+        let proxied = NormalizedState::normalize(&state)?;
+        return Ok(CommandStart { state, projector, proxied: Some(proxied) });
+    }
+    Ok(CommandStart { state, projector: CommandProjector::over(normalized), proxied: None })
 }
 
 /// `TruceBroken` для команды, которая бьёт через линию перемирия
@@ -210,13 +232,17 @@ pub fn truce_broken_event(state: &Value, command: &Value, target_id: &Value, tru
 
 /// `resolveCommandInternal(input, rawState, { diceService, context })`.
 pub fn resolve_command_internal(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
+    let normalized = NormalizedState::normalize(raw_state)?;
+    resolve_command_internal_state(input, &normalized, dice, context, uuid)
+}
+
+/// [`resolve_command_internal`] над нормализованным состоянием.
+pub(crate) fn resolve_command_internal_state(input: &Value, normalized: &NormalizedState, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
     let depth = context.resolve_depth().max(0);
     let context = context.with("__resolve_depth", Value::from(depth + 1));
     let recording = Recording::new(dice);
-    let mut state = normalize_campaign_state(raw_state)?;
-    push_npc_spell_proxies(&mut state, input)?;
-    let projector = CommandProjector::new(&state);
-    let command = validate_command(input, &state, &context, &mut *uuid)?;
+    let CommandStart { state, projector, proxied } = command_start(normalized, input)?;
+    let command = validate_normalized(input, proxied.as_ref().unwrap_or(normalized), &context, &mut *uuid)?;
     let target_id = target_for(&command);
     let resistance_choices = resistance_choices_from_context(context.get("resistanceChoices"));
     let elemental_reaction_choices = reaction_choices(context.get("elementalDamageChoices"), "damage_key");

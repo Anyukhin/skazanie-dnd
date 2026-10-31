@@ -993,7 +993,7 @@ impl Run<'_> {
     }
 
     fn load(&self) -> Try<Value> {
-        self.store.load(&self.campaign_id, &LoadOptions::default()).map(|loaded| loaded.state).map_err(|error| Thrown::store(&error))
+        self.store.load(&self.campaign_id, &LoadOptions::default()).map(|loaded| std::sync::Arc::unwrap_or_clone(loaded.state)).map_err(|error| Thrown::store(&error))
     }
 
     fn rolls_len(&self) -> usize {
@@ -1087,7 +1087,7 @@ impl Run<'_> {
                 events.extend(settled.events.iter().cloned());
                 self.finish(&state, &events)?;
                 self.passed = true;
-                self.final_state = Some(state);
+                self.final_state = Some(std::sync::Arc::unwrap_or_clone(state));
                 break;
             }
             let actor_id = get(get(combat, "reaction_window"), "actor_id").filter(|id| !id.is_null()).cloned().or_else(|| {
@@ -1201,7 +1201,7 @@ fn run_combat_scenario(request: ScenarioRun, on_frame: &mut dyn FnMut(Value) -> 
     if let Err(thrown) = outcome {
         report.insert("error".into(), thrown.to_json());
     }
-    let final_state = run.final_state.take().or_else(|| store.load(&run.campaign_id, &LoadOptions::default()).ok().map(|loaded| loaded.state));
+    let final_state = run.final_state.take().or_else(|| store.load(&run.campaign_id, &LoadOptions::default()).ok().map(|loaded| std::sync::Arc::unwrap_or_clone(loaded.state)));
     if let Some(final_state) = final_state {
         report.insert("final_state".into(), final_state);
     }

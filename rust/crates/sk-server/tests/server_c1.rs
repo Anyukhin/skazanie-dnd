@@ -161,7 +161,7 @@ fn create(core: &Rc<GameCore>, code: &str, raw: &Value) -> Result<Room, String> 
         metadata: json!({}),
     };
     let (initialized, _) = core.events.initialize_campaign(request).map_err(|error| error.to_string())?;
-    let mut room_state = initialized.state.clone();
+    let mut room_state = serde_json::Value::clone(&initialized.state);
     let messages = room_state.get("messages").filter(|value| value.is_array()).cloned().unwrap_or(json!([]));
     room_state["messages"] = messages;
     room_state["engine_mode"] = json!("enforce");
@@ -218,7 +218,7 @@ async fn replay(core: Rc<GameCore>, scenario: Value, connected: Arc<Mutex<Vec<St
             }
             "persist" => {
                 let options = LoadOptions { at_version: step.get("at").and_then(Value::as_i64), ..LoadOptions::default() };
-                let engine = core.events.load(&code, &options).map(|loaded| loaded.state).unwrap_or(Value::Null);
+                let engine = core.events.load(&code, &options).map(|loaded| std::sync::Arc::unwrap_or_clone(loaded.state)).unwrap_or(Value::Null);
                 let events = match step.get("events") {
                     Some(Value::String(_)) => committed.as_ref().map(|result| result.events.clone()).unwrap_or_default(),
                     Some(Value::Array(list)) => list.clone(),
@@ -319,7 +319,7 @@ async fn replay(core: Rc<GameCore>, scenario: Value, connected: Arc<Mutex<Vec<St
         // Смысл `room-projection-equivalence`: после проекции головы комната
         // совпадает с полной проекцией авторитетного состояния.
         if code == "C1-FLOW" && op == "persist" && step.get("at").is_none_or(Value::is_null) {
-            let head = core.events.load(&code, &LoadOptions::default()).map(|loaded| loaded.state).unwrap_or_default();
+            let head = core.events.load(&code, &LoadOptions::default()).map(|loaded| std::sync::Arc::unwrap_or_clone(loaded.state)).unwrap_or_default();
             let room = room::get_room(&core, &code).ok().and_then(|room| room.state).unwrap_or_default();
             if !sk_narration_base::projection_integrity::compare_projection(&head, &room).matched {
                 problems.push(format!("{label}: комната разошлась с полной проекцией авторитетного состояния"));

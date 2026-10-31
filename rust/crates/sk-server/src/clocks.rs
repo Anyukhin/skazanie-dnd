@@ -170,9 +170,9 @@ pub fn run_merchant_economy_clock(core: &GameCore, campaign_id: &str) -> Result<
         let loaded = load(core, campaign_id)?;
         let plans = sk_economy::merchant_economy::plan_merchant_economy_clock(&loaded.state, None);
         if plans.is_empty() {
-            return Ok(ClockRun::idle(loaded.state));
+            return Ok(ClockRun::idle(std::sync::Arc::unwrap_or_clone(loaded.state)));
         }
-        let mut projected = loaded.state.clone();
+        let mut projected = Value::clone(&loaded.state);
         let mut events: Vec<Value> = Vec::new();
         let mut engine = RulesEngine::new(Box::new(sk_rules::dice_record::ServiceDice::new(core.dice.clone())));
         for plan in &plans {
@@ -200,7 +200,7 @@ pub fn run_merchant_economy_clock(core: &GameCore, campaign_id: &str) -> Result<
             }
         }
         if events.is_empty() {
-            return Ok(ClockRun::idle(loaded.state));
+            return Ok(ClockRun::idle(std::sync::Arc::unwrap_or_clone(loaded.state)));
         }
         let minute = js::f64_string(elapsed_minutes(&loaded.state));
         let request = CommitRequest {
@@ -212,7 +212,7 @@ pub fn run_merchant_economy_clock(core: &GameCore, campaign_id: &str) -> Result<
             ..Default::default()
         };
         match crate::test_hooks::commit(&core.events, request) {
-            Ok(committed) => return Ok(ClockRun { state: committed.state, events: committed.events }),
+            Ok(committed) => return Ok(ClockRun { state: std::sync::Arc::unwrap_or_clone(committed.state), events: committed.events }),
             Err(error) if error.code == "STATE_VERSION_CONFLICT" && attempt < 2 => continue,
             Err(error) => return Err(error.into()),
         }

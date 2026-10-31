@@ -26,7 +26,7 @@ fn commit_from(value: &Value) -> CommitResult {
         campaign_id: js::s(value.get("campaign_id")),
         state_version: value["state_version"].as_i64().unwrap_or(0),
         current_state_version: value["current_state_version"].as_i64().unwrap_or(0),
-        state: value["state"].clone(),
+        state: std::sync::Arc::new(value["state"].clone()),
         metadata: value["metadata"].clone(),
         events: value["events"].as_array().cloned().unwrap_or_default(),
         duplicate: value["duplicate"].as_bool().unwrap_or(false),
@@ -37,7 +37,7 @@ fn commit_from(value: &Value) -> CommitResult {
 
 impl Journal for FakeJournal {
     fn load(&self, campaign_id: &str) -> StoreResult<Loaded> {
-        Ok(Loaded { campaign_id: campaign_id.into(), state_version: 7, current_state_version: 7, state: self.state.clone(), reducer_version: 15, metadata: json!({}), events_applied: 0 })
+        Ok(Loaded { campaign_id: campaign_id.into(), state_version: 7, current_state_version: 7, state: std::sync::Arc::new(self.state.clone()), reducer_version: 15, metadata: json!({}), events_applied: 0 })
     }
 
     fn commit(&self, request: CommitRequest) -> StoreResult<CommitResult> {
@@ -49,7 +49,7 @@ impl Journal for FakeJournal {
             campaign_id: request.campaign_id.clone(),
             state_version: 8,
             current_state_version: 8,
-            state: json!({}),
+            state: std::sync::Arc::new(json!({})),
             metadata: json!({}),
             events: request.events.clone(),
             duplicate: false,

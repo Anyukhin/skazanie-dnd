@@ -186,6 +186,11 @@ pub struct Executed {
 /// Разбор плана Rules Engine: команды, состояние, контекст → `{ events, … }`.
 pub type ResolvePlan<'a> = dyn Fn(&[Value], &Value, &Value) -> Result<Value, RuleError> + 'a;
 
+/// [`ResolvePlan`] над головой журнала: состояние и версия редьюсера, в
+/// режиме которой хранилище его нормализовало (урок 4: движок берёт голову
+/// без повторной нормализации).
+pub type ResolveHeadPlan<'a> = dyn Fn(&[Value], &std::sync::Arc<Value>, i64, &Value) -> Result<Value, RuleError> + 'a;
+
 /// Сборка производных событий против свежего состояния.
 pub type DeriveEvents<'a> = dyn Fn(&Value, &Loaded) -> Result<Vec<Value>, RuleError> + 'a;
 
@@ -242,6 +247,12 @@ impl<'a> AuthoritativeExecutor<'a> {
 
     /// `executeCommands`: план → разбор → коммит с повтором на конфликте версии.
     pub fn execute_commands(&self, campaign_id: &str, idempotency_key: &str, commands: &[Value], context: &Value, resolve_plan: &ResolvePlan<'_>) -> ExecutorResult<Executed> {
+        self.execute_commands_on_head(campaign_id, idempotency_key, commands, context, &|commands, state, _reducer_version, context| resolve_plan(commands, state, context))
+    }
+
+    /// [`Self::execute_commands`] с разбором над головой журнала и версией
+    /// её редьюсера.
+    pub fn execute_commands_on_head(&self, campaign_id: &str, idempotency_key: &str, commands: &[Value], context: &Value, resolve_plan: &ResolveHeadPlan<'_>) -> ExecutorResult<Executed> {
         if idempotency_key.is_empty() {
             return Err(ExecutorError::new("IDEMPOTENCY_KEY_REQUIRED", "Нужен идемпотентный ключ"));
         }
@@ -251,10 +262,11 @@ impl<'a> AuthoritativeExecutor<'a> {
         if let Some(duplicate) = self.journal.get_by_idempotency_key(campaign_id, idempotency_key)? {
             return Ok(Self::replayed(duplicate));
         }
-        let mut state = self.journal.load(campaign_id)?.state;
+        let loaded = self.journal.load(campaign_id)?;
+        let (mut state, mut reducer_version) = (loaded.state, loaded.reducer_version);
         let mut last_error = None;
         for attempt in 0..self.max_attempts {
-            let resolved = resolve_plan(commands, &state, context)?;
+            let resolved = resolve_plan(commands, &state, reducer_version, context)?;
             let events = resolved.get("events").and_then(Value::as_array).cloned().unwrap_or_default();
             if events.is_empty() {
                 return Err(ExecutorError::new("EMPTY_EVENT_SET", "План не создал ни одного события"));
@@ -274,7 +286,8 @@ impl<'a> AuthoritativeExecutor<'a> {
                 }
                 Err(error) if is_version_conflict(&error) && attempt + 1 < self.max_attempts => {
                     last_error = Some(error);
-                    state = self.journal.load(campaign_id)?.state;
+                    let loaded = self.journal.load(campaign_id)?;
+                    (state, reducer_version) = (loaded.state, loaded.reducer_version);
                 }
                 Err(error) if error.code == "IDEMPOTENCY_CONFLICT" => {
                     if let Some(existing) = self.journal.get_by_idempotency_key(campaign_id, idempotency_key)? {

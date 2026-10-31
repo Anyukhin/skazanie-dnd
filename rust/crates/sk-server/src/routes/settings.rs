@@ -94,7 +94,7 @@ async fn load_with_events(state: &AppState, campaign_id: &str) -> Result<Result<
             Box::pin(async move {
                 let loaded = core.events.load(&campaign_id, &LoadOptions::default())?;
                 let events = core.events.get_events(&campaign_id, 0, None)?;
-                Ok::<_, Failure>((loaded.state, Value::Array(events)))
+                Ok::<_, Failure>((std::sync::Arc::unwrap_or_clone(loaded.state), Value::Array(events)))
             })
         })
         .await?)
@@ -332,7 +332,7 @@ fn change_ruleset(core: &std::rc::Rc<GameCore>, change: &RulesetChange) -> Resul
         };
         let latest = core.events.load(campaign_id, &LoadOptions::default())?;
         persist_authoritative_projection(core, campaign_id, &latest.state, &committed_events, None, PersistOptions::default())?;
-        ruleset_state = latest.state;
+        ruleset_state = std::sync::Arc::unwrap_or_clone(latest.state);
     }
     // Домашние правила идущей кампании — механика, а не настройка ИИ: событие
     // журнала тем же производным путём, что и смена редакции.
@@ -350,7 +350,7 @@ fn change_ruleset(core: &std::rc::Rc<GameCore>, change: &RulesetChange) -> Resul
         // миллисекунду больше не делят id строки летописи.
         let line_version = events.first().and_then(|event| event.get("state_version_after")).filter(|version| js::present(Some(version))).map_or_else(|| sk_core::clock::now_ms().to_string(), |version| js::string(Some(version)));
         persist_authoritative_projection(core, campaign_id, &latest.state, &events, None, PersistOptions::default())?;
-        ruleset_state = latest.state;
+        ruleset_state = std::sync::Arc::unwrap_or_clone(latest.state);
         if !committed.replayed {
             let settings = campaign_ruleset_settings(Some(&ruleset_state), None, false).map_err(|error| Failure::new(error.message, Some(&error.code)))?;
             let rule = settings.get("houseRules").and_then(Value::as_array).and_then(|rules| rules.iter().find(|entry| entry.get("id").and_then(Value::as_str) == Some(house_rule_id.as_str())));
@@ -404,7 +404,7 @@ async fn patch_body(ctx: &mut RouteCtx, user: &Value, campaign_id: &str, room: R
     room?;
     let loaded = {
         let campaign_id = campaign_id.to_string();
-        ctx.state.core.call(move |core| Box::pin(async move { core.events.load(&campaign_id, &LoadOptions::default()).map(|loaded| loaded.state) })).await?.map_err(Failure::from)?
+        ctx.state.core.call(move |core| Box::pin(async move { core.events.load(&campaign_id, &LoadOptions::default()).map(|loaded| std::sync::Arc::unwrap_or_clone(loaded.state)) })).await?.map_err(Failure::from)?
     };
     let current = stored_settings(&ctx.state, campaign_id).await.map_err(Caught::Reply)??;
     let requested = requested_settings(&ctx.state, &body, &current)?;

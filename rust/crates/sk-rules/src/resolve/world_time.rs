@@ -364,9 +364,10 @@ impl Resolve<'_> {
 /// нормализуется, проектор команды строится от него, события и броски
 /// возвращаются как `{ events, rolls }` замыкания.
 pub fn world_time_consequences(state: &Value, source_command: &Value, amount: Option<&Value>, unit: Option<&Value>, options: TimeAdvanceOptions, dice: &mut dyn RulesDice) -> Result<(Vec<Value>, Vec<Value>), Interrupt> {
-    let state = crate::normalize::normalize_campaign_state(state)?;
+    let normalized = crate::normalized::NormalizedState::normalize(state)?;
     let mut uuid = crate::context::sequence_uuids("world-time");
-    let projector = crate::replay::CommandProjector::new(&state);
+    let projector = crate::replay::CommandProjector::over(&normalized);
+    let state = normalized.to_value();
     let truce_before_command = sk_society::parley::truce_for(&state);
     let mut r = Resolve {
         state,

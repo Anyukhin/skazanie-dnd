@@ -26,7 +26,7 @@ use serde_json::{json, Map, Value};
 use sk_core::indexmap::{IndexMap, IndexSet};
 use sk_core::{clock, game, hash, js, text};
 use sk_rules::combat::turn::initiative_group_ids;
-use sk_rules::normalize::{normalize_campaign_state, normalize_campaign_state_cow};
+use sk_rules::normalize::normalize_campaign_state_cow;
 use sk_rules::pause::{Fault, Halt};
 use sk_society::parley::truce_holds;
 use sk_store::executor::Executed;
@@ -351,7 +351,7 @@ fn clock_for_normalized_state(state: &Value, clock: &Value) -> Option<Value> {
 #[derive(Debug, Clone)]
 pub enum TimedOut {
     Committed(Box<Executed>),
-    Nothing { state: Value, state_version: i64 },
+    Nothing { state: std::sync::Arc<Value>, state_version: i64 },
 }
 
 impl TimedOut {
@@ -744,7 +744,7 @@ impl<'a> CombatTurnCoordinator<'a> {
             let normalized = if npc_normalized && npc.state_version == loaded.state_version {
                 npc.state
             } else {
-                normalize_campaign_state(&loaded.state)?
+                sk_rules::normalized::NormalizedState::from_loaded(&loaded)?.shared()
             };
             let turn_actor_ids = active_ids_normalized(&normalized);
             let unclaimed = !turn_actor_ids.is_empty() && self.host.is_seat_unclaimed(id, &loaded.state, &turn_actor_ids);

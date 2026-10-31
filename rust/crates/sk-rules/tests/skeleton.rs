@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use sk_dice::{DiceService, SequenceRng};
 use sk_rules::context::{sequence_uuids, Context};
 use sk_rules::dice_record::ServiceDice;
-use sk_rules::normalize::{assume_normalized, normalize_campaign_state};
+use sk_rules::normalize::normalize_campaign_state;
 use sk_rules::pause::Halt;
 use sk_rules::validate::{validate_command, validate_normalized};
 
@@ -26,12 +26,12 @@ fn code(result: Result<Value, Halt>) -> String {
 }
 
 #[test]
-fn normalization_is_ported_and_assumption_stays_identity() {
+fn normalization_is_ported_and_idempotent() {
     let normalized = normalize_campaign_state(&state()).expect("нормализация перенесена (Р4б)");
     assert_eq!(normalized["engine_mode"], json!("enforce"));
     assert_eq!(normalized["state_version"], json!(4));
     assert_eq!(normalized["players"][0]["maxHp"], json!(1));
-    assert_eq!(assume_normalized(|| normalize_campaign_state(&state()).expect("тождественно")), state());
+    assert_eq!(normalize_campaign_state(&normalized).expect("повторная нормализация"), normalized);
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn resolve_entry_runs_preparation_then_validation() {
     let mut dice = ServiceDice::new(DiceService::deterministic(SequenceRng::new(vec![10, 10]), "roll"));
     let mut uuid = sequence_uuids("u");
     let input = json!({ "command_type": "Teleport", "expected_state_version": 4 });
-    let refused = assume_normalized(|| sk_rules::resolve::resolve_command_internal(&input, &state(), &mut dice, &Context::default(), &mut uuid));
+    let refused = sk_rules::resolve::resolve_command_internal(&input, &state(), &mut dice, &Context::default(), &mut uuid);
     assert_eq!(refused.err().and_then(|halt| halt.code().map(str::to_string)).as_deref(), Some("COMMAND_NOT_ALLOWED"));
 }
 

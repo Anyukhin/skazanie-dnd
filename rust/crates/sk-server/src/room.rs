@@ -256,7 +256,7 @@ pub(crate) fn compose(events: &EventStore, body: &Value) -> Result<Value, Failur
         Some(Value::Object(base)) => {
             let campaign_id = js::s(base.get("campaign_id"));
             let version = js::safe_int(base.get("state_version"), 0);
-            events.load(&campaign_id, &LoadOptions { at_version: Some(version), ..LoadOptions::default() })?.state
+            std::sync::Arc::unwrap_or_clone(events.load(&campaign_id, &LoadOptions { at_version: Some(version), ..LoadOptions::default() })?.state)
         }
         _ => Value::Object(Map::new()),
     };

@@ -553,7 +553,7 @@ pub async fn execute_solo_party_exit(input: SoloExitInput<'_>) -> Result<Option<
     if resolution.get("type").and_then(Value::as_str) != Some("scene_request") {
         return Ok(None);
     }
-    let state = if committed.commit.state.is_null() { room_state } else { committed.commit.state.clone() };
+    let state = if committed.commit.state.is_null() { room_state } else { Value::clone(&committed.commit.state) };
     let resolution = js::spread(&resolution, json!({ "partyDecision": { "interaction_id": interaction_id, "resolved_option_id": chosen_id } }));
     execute_director_scene_transition(TransitionInput { core, app, services, campaign_id, room_state: state, user, action, idempotency_key, resolution }).await.map(Some)
 }

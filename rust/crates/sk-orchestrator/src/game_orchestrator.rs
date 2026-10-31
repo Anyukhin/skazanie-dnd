@@ -62,6 +62,7 @@ use sk_projection::trace_store::{build_turn_explanation, is_mechanical_trace, Fi
 use sk_projection::viewer_projection::{campaign_state_for_viewer, mechanics_for_viewer, public_adventure_for, turn_explanation_for_viewer, ProjectionError};
 use sk_rules::context::Context;
 use sk_rules::normalize::normalize_campaign_state;
+use sk_rules::normalized::NormalizedState;
 use sk_rules::pause::Halt;
 use sk_rules::preview_checks::{preview_d20_check, preview_tavern_dice_roll, shrine_prayer_refusal_for};
 use sk_rules::resolve::api::RulesEngine;
@@ -127,11 +128,21 @@ fn idempotency_conflict(campaign_id: &str, idempotency_key: &str) -> Orchestrato
 pub trait TurnRules: OrchestratorRules {
     /// `rulesEngine.resolvePlan(plan, state, context)` → `{ commands, events, rolls, state }`.
     fn resolve_turn_plan(&self, plan: &Value, state: &Value, context: &Value) -> Result<Value, Halt>;
+    /// [`Self::resolve_turn_plan`] над нормализованным состоянием (урок 4):
+    /// движок не нормализует его заново.
+    fn resolve_turn_plan_normalized(&self, plan: &Value, state: &NormalizedState, context: &Value) -> Result<Value, Halt> {
+        self.resolve_turn_plan(plan, state.value(), context)
+    }
 }
 
 impl TurnRules for RefCell<RulesEngine> {
     fn resolve_turn_plan(&self, plan: &Value, state: &Value, context: &Value) -> Result<Value, Halt> {
         let resolved = self.borrow_mut().resolve_plan(plan, state, &Context::from_json(context))?;
+        Ok(json!({ "commands": resolved.commands, "events": resolved.events, "rolls": resolved.rolls, "state": resolved.state }))
+    }
+
+    fn resolve_turn_plan_normalized(&self, plan: &Value, state: &NormalizedState, context: &Value) -> Result<Value, Halt> {
+        let resolved = self.borrow_mut().resolve_plan_normalized(plan, state, &Context::from_json(context))?;
         Ok(json!({ "commands": resolved.commands, "events": resolved.events, "rolls": resolved.rolls, "state": resolved.state }))
     }
 }
@@ -3439,7 +3450,7 @@ impl GameOrchestrator {
         let head = RequestHead::read(&input, &original_state);
         let coalesces = !input.has_commands() && head.message != "/why" && !js::is_true(input.field("why")) && !head.campaign_id.is_empty() && !head.idempotency_key.is_empty();
         if !coalesces {
-            return self.run_handle(input, &head).await;
+            return self.run_handle(input, &head, original_state).await;
         }
         let key = format!("{}\u{1f}{}", head.campaign_id, head.idempotency_key);
         let fingerprint = narration_request_fingerprint(&head.fingerprint(""));
@@ -3454,14 +3465,17 @@ impl GameOrchestrator {
         let slot: SharedInflight = Arc::new(Mutex::new(InflightSlot { done: None, wakers: Vec::new() }));
         lock(&self.narration_inflight).insert(key.clone(), (fingerprint, slot.clone()));
         let guard = InflightGuard { owner: self, key, slot };
-        let result = self.run_handle(input, &head).await;
+        let result = self.run_handle(input, &head, original_state).await;
         guard.finish(result.clone());
         result
     }
 
     /// Тело `run` из `handle`.
-    async fn run_handle(&self, input: HandleInput, head: &RequestHead) -> OrchestratorResult<Value> {
-        let result = self.handle_turn(input.clone()).await?;
+    /// `original_state` — `normalizeCampaignState(input.state)`, уже
+    /// посчитанное для заголовка запроса: `_handle` берёт его, а не
+    /// нормализует тот же вход второй раз (урок 4).
+    async fn run_handle(&self, input: HandleInput, head: &RequestHead, original_state: Value) -> OrchestratorResult<Value> {
+        let result = self.handle_turn(input.clone(), original_state).await?;
         let talk_npc_id = if is_str(at(Some(&result), &["route_hint", "route"]), "talk") { js::s(at(Some(&result), &["route_hint", "npc_hint"])) } else { String::new() };
         let redirected = js::is_true(input.field("routeRedirect"));
         if !talk_npc_id.is_empty() && self.npc_social_controller.is_some() && head.npc_id.is_empty() && !redirected && head.request_kind == "action" && !input.has_commands() {
@@ -3563,9 +3577,10 @@ impl GameOrchestrator {
         Ok(self.event_store.get_by_idempotency_key(campaign_id, key)?.map(|commit| commit.to_json()))
     }
 
-    fn load_state(&self, campaign_id: &str) -> OrchestratorResult<(Value, i64)> {
+    /// Состояние журнала: голова хранилища уже нормализована (урок 4).
+    fn load_state(&self, campaign_id: &str) -> OrchestratorResult<(NormalizedState, i64)> {
         let loaded = self.event_store.load(campaign_id)?;
-        Ok((normalize_campaign_state(&loaded.state)?, loaded.state_version))
+        Ok((NormalizedState::from_loaded(&loaded)?, loaded.state_version))
     }
 
     fn commit(&self, campaign_id: &str, expected: Option<&Value>, key: &str, events: Vec<Value>) -> Result<CommitResult, StoreError> {
@@ -3598,11 +3613,10 @@ impl GameOrchestrator {
     }
 
     /// `_handle(input)`.
-    async fn handle_turn(&self, mut input: HandleInput) -> OrchestratorResult<Value> {
+    async fn handle_turn(&self, mut input: HandleInput, original_state: Value) -> OrchestratorResult<Value> {
         let prelude_span = sk_store::perf::span("orch.handle_turn.prelude");
         let started = self.now_ms();
         let request_operation = request_operation_for(&input.fields);
-        let original_state = normalize_campaign_state(nullish(input.field("state"), None).unwrap_or(&json!({})))?;
         let head = RequestHead::read(&input, &original_state);
         let campaign_id = head.campaign_id.clone();
         let player_id = head.player_id.clone();
@@ -4067,9 +4081,9 @@ impl GameOrchestrator {
                 match &duplicate {
                     Some(duplicate) => {
                         let first = list(duplicate.get("events")).first().ok_or_else(|| type_error("Cannot read properties of undefined (reading 'state_version_before')"))?;
-                        self.event_store.load_at(&campaign_id, js::safe_int(first.get("state_version_before"), 0))?.state
+                        self.event_store.load_at(&campaign_id, js::safe_int(first.get("state_version_before"), 0))?.state.as_ref().clone()
                     }
-                    None => authoritative_state.clone(),
+                    None => authoritative_state.to_value(),
                 }
             } else {
                 original_state.clone()
@@ -4114,7 +4128,7 @@ impl GameOrchestrator {
         let maneuver = ["approach_attack", "long_jump_attack", "swing_attack"].contains(&js::string(plan.get("maneuver")).as_str()) && plan.get("maneuver").is_some_and(Value::is_string);
         if maneuver && duplicate.is_none() {
             let first = list(plan.get("proposed_commands")).first().cloned().unwrap_or(Value::Null);
-            self.rules_engine.validate(&first, &authoritative_state, &rules_context)?;
+            self.rules_engine.validate_normalized(&first, &authoritative_state, &rules_context)?;
             let confirmed = input.field("confirmedProposalId").filter(|value| js::truthy(Some(value))).cloned();
             let Some(confirmed) = confirmed else {
                 let request = obj(vec![
@@ -4194,7 +4208,7 @@ impl GameOrchestrator {
             if unavailable {
                 set(&mut intent, "requires_clarification", Value::Bool(true));
                 set(&mut intent, "missing_information", json!(["available_npc"]));
-                let viewer_social = npc_social_for_viewer(authoritative_state.get("social").unwrap_or(&Value::Null), &json!({ "state": authoritative_state, "playerId": player_id, "isPartyMember": true }));
+                let viewer_social = npc_social_for_viewer(authoritative_state.get("social").unwrap_or(&Value::Null), &json!({ "state": authoritative_state.value(), "playerId": player_id, "isPartyMember": true }));
                 let known = list(viewer_social.get("npcs")).iter().any(|npc| js::s(npc.get("id")) == js::s(get(profile.as_ref(), "id")));
                 if js::truthy(get(profile.as_ref(), "name")) && !speaks_under_truce && known {
                     let reason = if in_combat { "combat" } else if elsewhere { "elsewhere" } else { "unavailable" };
@@ -4220,7 +4234,7 @@ impl GameOrchestrator {
                 ("state_version", authoritative_state.get("state_version").cloned()),
                 ("mechanics", Some(json!([]))),
                 ("visible_state_changes", Some(json!([]))),
-                ("authoritative_state", Some(authoritative_state.clone())),
+                ("authoritative_state", Some(authoritative_state.to_value())),
                 ("turn_consumed", Some(Value::Bool(false))),
                 ("action_kind", Some(str_value(if absent { "answer" } else { "clarification" }))),
                 ("request_kind", Some(str_value("action"))),
@@ -4335,7 +4349,7 @@ impl GameOrchestrator {
         if let Some(npc_id) = &social_request {
             let hero = list(authoritative_state.get("players")).iter().find(|hero| js::s(get(Some(hero), "id")) == player_id);
             let bribe_reference = currency_to_copper(get(hero, "currency"));
-            let policy = build_npc_social_check_policy(&json!({ "state": authoritative_state, "npcId": npc_id, "heroId": player_id, "message": message, "turnId": turn_id, "bribeReferenceCp": bribe_reference }));
+            let policy = build_npc_social_check_policy(&json!({ "state": authoritative_state.value(), "npcId": npc_id, "heroId": player_id, "message": message, "turnId": turn_id, "bribeReferenceCp": bribe_reference }));
             let check_key = format!("{idempotency_key}:social-check");
             let mut check_commit = if policy.is_some() { self.by_key(&campaign_id, &check_key)? } else { None };
             if duplicate.is_none() {
@@ -4344,7 +4358,7 @@ impl GameOrchestrator {
                     set(&mut rules_context, "isSocialController", Value::Bool(true));
                     set(&mut rules_context, "socialCheck", policy.clone());
                     let check_plan = json!({ "rule_ids": [], "proposed_commands": [check_command], "roll_requests": [], "ruling_required": false, "ruling_draft": null, "narration_constraints": [], "confidence": 1 });
-                    let check_result = self.rules_engine.resolve_turn_plan(&check_plan, &authoritative_state, &rules_context)?;
+                    let check_result = self.rules_engine.resolve_turn_plan_normalized(&check_plan, &authoritative_state, &rules_context)?;
                     let events = list(check_result.get("events")).to_vec();
                     check_commit = match self.commit(&campaign_id, authoritative_state.get("state_version"), &check_key, events) {
                         Ok(commit) => Some(commit.to_json()),
@@ -4373,7 +4387,7 @@ impl GameOrchestrator {
             if duplicate.is_none() {
                 let controller = self.npc_social_controller.as_ref().ok_or_else(|| type_error("npcSocialController is null"))?;
                 let request = json!({
-                    "state": social_base_state, "playerId": player_id, "npcId": npc_id, "message": message, "turnId": turn_id, "checkOutcome": check_outcome,
+                    "state": social_base_state.value(), "playerId": player_id, "npcId": npc_id, "message": message, "turnId": turn_id, "checkOutcome": check_outcome,
                     "justSeen": js::s(input.field("precedingStep")),
                 });
                 let social_turn = controller.respond(&request).await?.filter(|turn| js::truthy(Some(turn))).ok_or_else(|| OrchestratorError::plain("NPC is no longer available for this social turn"))?;
@@ -4430,7 +4444,7 @@ impl GameOrchestrator {
                 let mut outcome: Option<(Value, Value)> = None;
                 for attempt in 0..3 {
                     let resolve_span = sk_store::perf::span("orch.resolve_turn_plan");
-                    let engine = self.rules_engine.resolve_turn_plan(&plan, &resolution_state, &rules_context)?;
+                    let engine = self.rules_engine.resolve_turn_plan_normalized(&plan, &resolution_state, &rules_context)?;
                     drop(resolve_span);
                     let events = list(engine.get("events")).to_vec();
                     if events.is_empty() {
@@ -4751,7 +4765,7 @@ impl GameOrchestrator {
                         return Ok(committed);
                     }
                     let (state, version) = self.load_state(campaign_id)?;
-                    base_state = state;
+                    base_state = state.into_value();
                     base_version = Some(Value::from(version));
                 }
             }
@@ -4948,7 +4962,7 @@ struct HandleContext {
     viewer: Value,
     visible_state: Value,
     original_state: Value,
-    authoritative_state: Value,
+    authoritative_state: NormalizedState,
     pending_clarification: Option<Value>,
     standalone_action: bool,
     rules_context: Value,

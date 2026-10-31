@@ -19,7 +19,7 @@ use crate::command::rules::rule_ids;
 use crate::core::{command_with, command_with_rules, condition_ids_for, event_from};
 use crate::enervation_link::{enervation_link_for, EnervationLink};
 use crate::pause::Halt;
-use crate::replay::{apply_game_event, replay_events};
+use crate::replay::apply_game_event;
 use crate::resolve::Resolved;
 use crate::tactical_geometry::actor_point;
 
@@ -136,7 +136,8 @@ fn consumes_action(event: &Value, actor_id: &str) -> bool {
 
 /// `closeEnervationAfterOtherAction(result, rawState)`: заклинатель потратил
 /// обычное действие на другой поступок — связь кончается (событие встаёт первым).
-pub fn close_enervation_after_other_action(result: Resolved, raw_state: &Value) -> Result<Resolved, Halt> {
+pub fn close_enervation_after_other_action(result: Resolved, state: crate::normalized::StateIn<'_>) -> Result<Resolved, Halt> {
+    let raw_state = state.raw;
     let command = &result.command;
     if !js::truthy(Some(command)) || js::s(command.get("action_id")) == "enervation-repeat" {
         return Ok(result);
@@ -144,8 +145,7 @@ pub fn close_enervation_after_other_action(result: Resolved, raw_state: &Value) 
     if !has_enervation_continuation(raw_state) {
         return Ok(result);
     }
-    let state = crate::normalize::normalize_campaign_state_cow(raw_state)?;
-    let Some(link) = enervation_link_for(&state, command.get("actor_id")) else { return Ok(result) };
+    let Some(link) = enervation_link_for(state.normalized, command.get("actor_id")) else { return Ok(result) };
     let actor = js::string(command.get("actor_id"));
     let ended = result.events.iter().any(|event| {
         event.get("event_type").and_then(Value::as_str) == Some("ConcentrationEnded")
@@ -175,7 +175,8 @@ pub fn close_enervation_after_other_action(result: Resolved, raw_state: &Value) 
 /// `closeEnervationAfterTriggers(result, rawState)`: связь, которую оборвал
 /// внешний триггер команды (уход цели, преграда, выбытие, время), закрывается
 /// в той же команде.
-pub fn close_enervation_after_triggers(result: Resolved, raw_state: &Value) -> Result<Resolved, Halt> {
+pub fn close_enervation_after_triggers(result: Resolved, state: crate::normalized::StateIn<'_>) -> Result<Resolved, Halt> {
+    let raw_state = state.raw;
     if !js::truthy(Some(&result.command)) {
         return Ok(result);
     }
@@ -188,8 +189,8 @@ pub fn close_enervation_after_triggers(result: Resolved, raw_state: &Value) -> R
     if !has_enervation_continuation(raw_state) && !creates_link {
         return Ok(result);
     }
-    let before = crate::normalize::normalize_campaign_state_cow(raw_state)?;
-    let mut projected = replay_events(&before, &result.events)?;
+    let mut projected = crate::replay::replay_events_normalized(state.normalized, &result.events)?;
+    let before: &Value = state.normalized.value();
     let mut ended: IndexSet<String> = result
         .events
         .iter()
@@ -198,7 +199,7 @@ pub fn close_enervation_after_triggers(result: Resolved, raw_state: &Value) -> R
         .filter(|id| !id.is_empty())
         .collect();
     let mut caster_ids: IndexSet<String> = IndexSet::new();
-    for state in [&before, &projected] {
+    for state in [before, &projected] {
         if let Some(Value::Object(concentration)) = sk_core::game::mechanics(state).get("concentration") {
             for key in js::keys(concentration) {
                 caster_ids.insert(key.clone());
@@ -208,7 +209,7 @@ pub fn close_enervation_after_triggers(result: Resolved, raw_state: &Value) -> R
     let mut appended = Vec::new();
     for caster_id in caster_ids {
         let caster = Value::String(caster_id);
-        let Some(link) = enervation_link_for(&projected, Some(&caster)).or_else(|| enervation_link_for(&before, Some(&caster))) else { continue };
+        let Some(link) = enervation_link_for(&projected, Some(&caster)).or_else(|| enervation_link_for(before, Some(&caster))) else { continue };
         if ended.contains(&link.effect_id) {
             continue;
         }

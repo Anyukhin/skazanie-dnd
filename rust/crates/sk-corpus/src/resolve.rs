@@ -229,7 +229,6 @@ pub fn check_resolve(corpus: &Corpus, kind: &str) -> std::io::Result<ResolveRepo
 pub fn check_resolve_many(corpus: &Corpus, kinds: &[&str]) -> std::io::Result<Vec<(String, ResolveReport)>> {
     sk_rules::merchants::install_talespire_importer(import_talespire);
     let mut reports: Vec<(String, ResolveReport)> = kinds.iter().map(|kind| (kind.to_string(), ResolveReport::default())).collect();
-    let assume = std::env::var("SK_CORPUS_ASSUME_NORMALIZED").is_ok_and(|value| value == "1");
     for record in corpus.records()? {
         let Some(index) = reports.iter().position(|(kind, _)| record.command_type() == kind.as_str()) else {
             continue;
@@ -247,8 +246,7 @@ pub fn check_resolve_many(corpus: &Corpus, kinds: &[&str]) -> std::io::Result<Ve
         let mut skipped = Vec::new();
         let command_id = record.outcome.get("events").and_then(Value::as_array).and_then(|events| events.first()).and_then(|event| event.get("command_id")).map(|id| js::string(Some(id))).map(|id| top_command_id(&id));
         // Нормализация перенесена (Р4б): разбор нормализует состояние сам, как
-        // `resolveCommandInternal`. `SK_CORPUS_ASSUME_NORMALIZED=1` — прежний
-        // режим (состояние корпуса считается уже нормализованным).
+        // `resolveCommandInternal`.
         let branch_only = std::env::var("SK_CORPUS_BRANCH_ONLY").is_ok_and(|value| value == "1");
         let mut run = || {
             if !branch_only {
@@ -272,14 +270,14 @@ pub fn check_resolve_many(corpus: &Corpus, kinds: &[&str]) -> std::io::Result<Ve
             }
             // JS: `resolveCommandInternal` нормализует состояние, `validateCommand`
             // — ещё раз (нормализация не всегда идемпотентна).
-            let validated_state = if assume { state.clone() } else { sk_rules::normalize::normalize_campaign_state(&sk_rules::normalize::normalize_campaign_state(&state)?)? };
+            let validated_state = sk_rules::normalize::normalize_campaign_state(&sk_rules::normalize::normalize_campaign_state(&state)?)?;
             let command = validate_ported(&record.command, &validated_state, &context, command_id.clone(), &mut skipped)?;
             let mut recorded = outcome_uuids(&record.outcome, command_id.as_deref()).into_iter();
             let mut fallback = sequence_uuids("corpus-uuid");
             let mut uuid = move || recorded.next().unwrap_or_else(&mut fallback);
             sk_rules::resolve::vitals::resolve_branch_without_tail(command, &state, &mut recording, &context, &mut uuid)
         };
-        let result = if assume { sk_rules::normalize::assume_normalized(run) } else { run() };
+        let result = run();
         let any_skipped = !skipped.is_empty();
         for name in skipped {
             *report.skipped_blocks.entry(name.to_string()).or_default() += 1;

@@ -44,11 +44,11 @@ fn file_store_moves_into_sqlite_and_replays_to_the_same_state() {
     assert_eq!(summary, vec![("LEGACY-ONE".into(), 3, 3, None), ("LEGACY-TWO".into(), 2, 2, None)]);
 
     let one = store.load("LEGACY-ONE", &LoadOptions::default()).expect("первая кампания");
-    assert_eq!(one.state, expected["one"]);
+    assert_eq!(*one.state, expected["one"]);
     let one_full = store.load("LEGACY-ONE", &LoadOptions { use_snapshots: Some(false), ..Default::default() }).expect("replay");
     assert_eq!(one_full.state["hp"], expected["one"]["hp"]);
     let two = store.load("LEGACY-TWO", &LoadOptions::default()).expect("вторая кампания");
-    assert_eq!(two.state, expected["two"]);
+    assert_eq!(*two.state, expected["two"]);
 
     // Ключ идемпотентности прежнего журнала работает и после переноса.
     let retry = store

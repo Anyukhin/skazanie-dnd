@@ -54,6 +54,28 @@ pub trait Reducer: Send + Sync {
     fn normalize(&self, state: Value, mode: RetentionMode) -> Value;
     /// `applyGameEvent(state, event)`.
     fn apply(&self, state: Value, event: &Value, mode: RetentionMode) -> Result<Value, String>;
+    /// [`Self::apply`] к голове журнала, уже нормализованной в режиме `mode`
+    /// (урок 4): редьюсер может не нормализовать вход заново. Итог тот же.
+    fn apply_to_head(&self, state: Value, event: &Value, mode: RetentionMode) -> Result<Value, String> {
+        self.apply(state, event, mode)
+    }
+    /// Версия схемы состояния в снимке (урок 4). `0` — редьюсер схем не
+    /// знает: снимок нормализуется при каждой загрузке, версия в него не
+    /// пишется. Больше нуля — снимок этой версии в текущем режиме
+    /// удержания загружается без нормализации, после [`Self::check_shape`].
+    fn state_schema_version(&self) -> i64 {
+        0
+    }
+    /// Миграция состояния снимка с версии схемы `from` до
+    /// [`Self::state_schema_version`] в текущем режиме удержания.
+    fn migrate(&self, state: Value, _from: i64) -> Value {
+        self.normalize(state, RetentionMode::Current)
+    }
+    /// Проверка формы состояния снимка известной версии: ошибка — путь поля
+    /// и что с ним не так.
+    fn check_shape(&self, _state: &Value) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// Редьюсер без механики: события только двигают версию. Для тестов
@@ -115,7 +137,8 @@ pub struct Loaded {
     pub campaign_id: String,
     pub state_version: i64,
     pub current_state_version: i64,
-    pub state: Value,
+    /// Состояние журнала, общее с кэшем головы: клон — без копии (урок 4).
+    pub state: Arc<Value>,
     pub reducer_version: i64,
     pub metadata: Value,
     pub events_applied: usize,
@@ -127,7 +150,7 @@ impl Loaded {
             "campaign_id": self.campaign_id,
             "state_version": self.state_version,
             "current_state_version": self.current_state_version,
-            "state": self.state,
+            "state": self.state.as_ref(),
             "reducer_version": self.reducer_version,
             "metadata": self.metadata,
             "events_applied": self.events_applied,
@@ -153,7 +176,8 @@ pub struct CommitResult {
     pub campaign_id: String,
     pub state_version: i64,
     pub current_state_version: i64,
-    pub state: Value,
+    /// Голова после коммита, общая с кэшем головы.
+    pub state: Arc<Value>,
     pub metadata: Value,
     pub events: Vec<Value>,
     pub duplicate: bool,
@@ -167,7 +191,7 @@ impl CommitResult {
             "campaign_id": self.campaign_id,
             "state_version": self.state_version,
             "current_state_version": self.current_state_version,
-            "state": self.state,
+            "state": self.state.as_ref(),
             "metadata": self.metadata,
             "events": self.events,
             "duplicate": self.duplicate,
@@ -253,7 +277,7 @@ pub struct PendingProjection {
     pub campaign_id: String,
     pub checkpoint_version: i64,
     pub state_version: i64,
-    pub state: Option<Value>,
+    pub state: Option<Arc<Value>>,
     pub events: Vec<Value>,
 }
 
@@ -262,7 +286,7 @@ struct HeadEntry {
     version: i64,
     reducer_version: i64,
     events_applied: usize,
-    state: Value,
+    state: Arc<Value>,
     /// Недавние версии ниже головы (новые первыми, не больше
     /// [`RECENT_VERSIONS`]): прежние головы и загрузки `atVersion`. Комната
     /// сервера (`sk-server::room`) привязана к версии журнала, которую голова
@@ -279,7 +303,7 @@ struct VersionEntry {
     commit_id: String,
     reducer_version: i64,
     events_applied: usize,
-    state: Value,
+    state: Arc<Value>,
 }
 
 /// Сколько версий ниже головы держит кэш одной кампании.
@@ -470,7 +494,7 @@ impl EventStore {
         versioned_state(self.reducer.normalize(state, mode), version)
     }
 
-    fn apply_event(&self, state: Value, event: &Value, forced: Option<i64>, skip_output_normalization: bool) -> StoreResult<Value> {
+    fn apply_event(&self, state: Value, event: &Value, forced: Option<i64>, skip_output_normalization: bool, head_mode: Option<RetentionMode>) -> StoreResult<Value> {
         let reducer_version = forced.unwrap_or_else(|| int_field(event, "reducer_version"));
         let current = forced.unwrap_or(self.reducer.reducer_version());
         let mode = self.retention_mode(reducer_version, current)?;
@@ -480,9 +504,8 @@ impl EventStore {
                 return self.normalize_state(imported.clone(), version_after, reducer_version);
             }
         }
-        let reduced = self
-            .reducer
-            .apply(state, event, mode)
+        let applied = if head_mode == Some(mode) { self.reducer.apply_to_head(state, event, mode) } else { self.reducer.apply(state, event, mode) };
+        let reduced = applied
             .map_err(|message| StoreError::new("INVALID_REDUCER_RESULT", format!("{}: {message}", sk_core::js::s(event.get("event_type")))))?;
         if skip_output_normalization && mode == RetentionMode::Current {
             return versioned_state(reduced, version_after);
@@ -490,7 +513,10 @@ impl EventStore {
         self.normalize_state(reduced, version_after, reducer_version)
     }
 
-    fn apply_events(&self, state: Value, events: &[Value], forced: Option<i64>) -> StoreResult<Value> {
+    /// `head_reducer_version`: вход — голова журнала, нормализованная в режиме
+    /// этой версии редьюсера (коммит); первое событие того же режима
+    /// применяется без повторной нормализации входа.
+    fn apply_events(&self, state: Value, events: &[Value], forced: Option<i64>, head_reducer_version: Option<i64>) -> StoreResult<Value> {
         let _span = crate::perf::span("store.apply_events");
         if events.is_empty() {
             return Ok(state);
@@ -500,9 +526,10 @@ impl EventStore {
             Some(version) => version == current,
             None => events.iter().all(|event| int_field(event, "reducer_version") == current),
         };
+        let mut head_mode = head_reducer_version.and_then(|version| self.retention_mode(version, current).ok());
         let mut next = state;
         for event in events {
-            next = self.apply_event(next, event, forced, fast_path)?;
+            next = self.apply_event(next, event, forced, fast_path, head_mode.take())?;
         }
         if !fast_path {
             return Ok(next);
@@ -656,6 +683,40 @@ impl EventStore {
         Ok(metadata)
     }
 
+    /// Состояние снимка в рабочем виде (урок 4): версия схемы известна —
+    /// проверка формы и состояние как есть; версии нет или она старая —
+    /// миграция; журнал прежнего режима удержания — нормализация, как раньше.
+    fn snapshot_state(&self, campaign_id: &str, snapshot: &mut Value, version: i64, reducer_version: i64) -> StoreResult<Value> {
+        let state = snapshot.get_mut("state").map(Value::take).unwrap_or(Value::Null);
+        let supported = self.reducer.state_schema_version();
+        let mode = self.retention_mode(reducer_version, self.reducer.reducer_version()).ok();
+        if supported <= 0 || mode != Some(RetentionMode::Current) || !state.is_object() {
+            return self.normalize_state(state, version, reducer_version);
+        }
+        let schema = int_field(snapshot, "state_schema_version");
+        let file = format!("{version:016}.json");
+        if schema > supported {
+            return Err(StoreError::corrupt(
+                campaign_id,
+                format!("snapshot {file}: state schema version {schema} is newer than supported {supported}"),
+                json!({ "state_version": version, "state_schema_version": schema }),
+            ));
+        }
+        if schema < supported {
+            let _span = crate::perf::span("store.migrate");
+            return versioned_state(self.reducer.migrate(state, schema), version);
+        }
+        let _span = crate::perf::span("store.check_shape");
+        if let Err(problem) = self.reducer.check_shape(&state) {
+            return Err(StoreError::corrupt(
+                campaign_id,
+                format!("snapshot {file}: invalid campaign state shape: {problem}"),
+                json!({ "state_version": version, "state_schema_version": schema, "problem": problem }),
+            ));
+        }
+        versioned_state(state, version)
+    }
+
     /// Пригодный снимок не новее `target`: контрольная сумма сходится, версия
     /// проектора та же (кроме исходного), карты возвращаются на место.
     fn read_snapshot(&self, conn: &Connection, campaign_id: &str, target: i64, use_snapshots: bool) -> StoreResult<Option<Value>> {
@@ -690,7 +751,7 @@ impl EventStore {
 
     fn write_snapshot(&self, conn: &Connection, campaign_id: &str, state: &Value, state_version: i64, reducer_version: i64) -> StoreResult<Value> {
         let externalized = maps::externalize(conn, state)?;
-        let snapshot = json!({
+        let mut snapshot = json!({
             "schema_version": STORE_SCHEMA_VERSION,
             "projector_version": self.reducer.snapshot_projector_version(),
             "reducer_version": reducer_version,
@@ -700,6 +761,13 @@ impl EventStore {
             "checksum": snapshot_checksum(&externalized),
             "state": externalized,
         });
+        // Версия схемы — только у состояния, нормализованного в текущем режиме.
+        let current_mode = matches!(self.retention_mode(reducer_version, self.reducer.reducer_version()), Ok(RetentionMode::Current));
+        if self.reducer.state_schema_version() > 0 && current_mode {
+            if let Some(map) = snapshot.as_object_mut() {
+                map.insert("state_schema_version".into(), Value::from(self.reducer.state_schema_version()));
+            }
+        }
         let existing: Option<String> = conn
             .query_row("SELECT body FROM snapshots WHERE campaign_id = ?1 AND state_version = ?2", params![campaign_id, state_version], |row| row.get(0))
             .optional()?;
@@ -763,14 +831,14 @@ impl EventStore {
 
     /// Запомнить переигранную версию ниже головы — только при закэшированной
     /// голове кампании и только на границе коммита.
-    fn remember_version(&self, inner: &mut Inner, campaign_id: &str, version: i64, reducer_version: i64, events_applied: usize, state: &Value) -> StoreResult<()> {
+    fn remember_version(&self, inner: &mut Inner, campaign_id: &str, version: i64, reducer_version: i64, events_applied: usize, state: &Arc<Value>) -> StoreResult<()> {
         if !inner.head_cache.contains_key(campaign_id) {
             return Ok(());
         }
         let Some(commit_id) = Self::commit_id_at(&inner.conn, campaign_id, version)? else { return Ok(()) };
         if let Some(entry) = inner.head_cache.get_mut(campaign_id) {
             entry.previous.retain(|recent| recent.version != version);
-            entry.previous.insert(0, VersionEntry { version, commit_id, reducer_version, events_applied, state: state.clone() });
+            entry.previous.insert(0, VersionEntry { version, commit_id, reducer_version, events_applied, state: Arc::clone(state) });
             entry.previous.truncate(RECENT_VERSIONS);
         }
         Ok(())
@@ -782,7 +850,7 @@ impl EventStore {
             Some(hit) => {
                 let metadata = Self::read_metadata(&inner.conn, campaign_id, plan.current_version)?;
                 let (state, reducer_version, events_applied) = match Self::cached(inner, campaign_id, hit) {
-                    Some(entry) => (entry.0.clone(), entry.1, entry.2),
+                    Some(entry) => (Arc::clone(entry.0), entry.1, entry.2),
                     None => return self.replay(inner, campaign_id, options, &plan),
                 };
                 Ok(Loaded { campaign_id: campaign_id.to_string(), state_version: plan.target, current_state_version: plan.current_version, state, reducer_version, metadata, events_applied })
@@ -847,7 +915,7 @@ impl EventStore {
     }
 
     /// Состояние, версия редьюсера и `events_applied` записи кэша.
-    fn cached<'a>(inner: &'a Inner, campaign_id: &str, hit: CacheHit) -> Option<(&'a Value, i64, usize)> {
+    fn cached<'a>(inner: &'a Inner, campaign_id: &str, hit: CacheHit) -> Option<(&'a Arc<Value>, i64, usize)> {
         let entry = inner.head_cache.get(campaign_id)?;
         match hit {
             CacheHit::Head => Some((&entry.state, entry.reducer_version, entry.events_applied)),
@@ -861,11 +929,11 @@ impl EventStore {
         let last_commit_id = last_commit_id.clone();
         let _replay = crate::perf::span(if head_load { "store.load.head_replay" } else { "store.load.at_version_replay" });
         let snapshot = if options.from_initial { None } else { self.read_snapshot(&inner.conn, campaign_id, target, use_snapshots)? };
-        let (mut state, from_version, selected_reducer_version) = match snapshot {
-            Some(snapshot) => {
+        let (state, from_version, selected_reducer_version) = match snapshot {
+            Some(mut snapshot) => {
                 let reducer_version = forced.unwrap_or_else(|| int_field(&snapshot, "reducer_version"));
                 let version = int_field(&snapshot, "state_version");
-                let state = self.normalize_state(snapshot["state"].clone(), version, reducer_version)?;
+                let state = self.snapshot_state(campaign_id, &mut snapshot, version, reducer_version)?;
                 (state, version, reducer_version)
             }
             None => {
@@ -888,14 +956,14 @@ impl EventStore {
                 after > from_version && after <= target
             })
             .collect();
-        state = self.apply_events(state, &events, forced)?;
+        let state = Arc::new(self.apply_events(state, &events, forced, None)?);
         let final_reducer_version = forced.unwrap_or_else(|| events.last().map_or(selected_reducer_version, |event| int_field(event, "reducer_version")));
         if head_load {
             if let Some(last_commit_id) = last_commit_id {
                 self.remember_head(
                     inner,
                     campaign_id,
-                    HeadEntry { last_commit_id, version: current_version, reducer_version: final_reducer_version, events_applied: events.len(), state: state.clone(), previous: Vec::new() },
+                    HeadEntry { last_commit_id, version: current_version, reducer_version: final_reducer_version, events_applied: events.len(), state: Arc::clone(&state), previous: Vec::new() },
                 );
             }
         } else if version_load {
@@ -990,7 +1058,7 @@ impl EventStore {
         let metadata = self.write_metadata(&transaction, &campaign_id, None, &Value::Object(patch), 0)?;
         transaction.commit()?;
         Ok((
-            Loaded { campaign_id: campaign_id.clone(), state_version: 0, current_state_version: 0, state: requested, reducer_version: self.reducer.reducer_version(), metadata, events_applied: 0 },
+            Loaded { campaign_id: campaign_id.clone(), state_version: 0, current_state_version: 0, state: Arc::new(requested), reducer_version: self.reducer.reducer_version(), metadata, events_applied: 0 },
             true,
         ))
     }
@@ -1008,6 +1076,16 @@ impl EventStore {
             Self::check_head_evidence(&inner.conn, &campaign_id, head)?;
         }
         let imported = self.normalize_state(legacy_state, 1, self.reducer.reducer_version())?;
+        // Проверка формы на импорте (урок 4): сломанное состояние — явный
+        // отказ с путём поля, а не ошибка где-то в правилах позже.
+        if self.reducer.state_schema_version() > 0 {
+            if let Err(problem) = self.reducer.check_shape(&imported) {
+                let mut error = StoreError::invalid("INVALID_CAMPAIGN_STATE", format!("Campaign state shape is invalid: {problem}"));
+                error.campaign_id = Some(campaign_id.clone());
+                error.details = json!({ "problem": problem });
+                return Err(error);
+            }
+        }
         let zero_state = sk_core::js::spread(&imported, json!({ "state_version": 0 }));
         let legacy_hash = stable_hash(&zero_state);
         if let Some(duplicate) = Self::commit_by_key(&inner.conn, &campaign_id, &key)? {
@@ -1077,7 +1155,7 @@ impl EventStore {
             campaign_id: campaign_id.clone(),
             state_version: 1,
             current_state_version: 1,
-            state: imported,
+            state: Arc::new(imported),
             metadata,
             events: vec![event],
             duplicate: false,
@@ -1130,8 +1208,11 @@ impl EventStore {
             .enumerate()
             .map(|(index, event)| self.normalize_event(event, &campaign_id, &command_id, &key, actual + index as i64, &timestamp))
             .collect::<StoreResult<Vec<_>>>()?;
-        // Состояние головы дальше не нужно — без второй копии (Ск2).
-        let next_state = self.apply_events(std::mem::take(&mut current.state), &events, None)?;
+        // Голова до коммита остаётся в кэше версий (её читает комната), поэтому
+        // редьюсер меняет свою копию; если головы больше никто не держит —
+        // без копии.
+        let base = std::mem::take(&mut current.state);
+        let next_state = Arc::new(self.apply_events(Arc::unwrap_or_clone(base), &events, None, Some(current.reducer_version))?);
         let next_version = actual + events.len() as i64;
         let commit_id = self.new_id("commit_id")?;
         let commit = json!({
@@ -1167,7 +1248,7 @@ impl EventStore {
                 version: next_version,
                 reducer_version: last_reducer_version,
                 events_applied: if snapshot_due { 0 } else { current.events_applied + events.len() },
-                state: next_state.clone(),
+                state: Arc::clone(&next_state),
                 previous: Vec::new(),
             },
         );
