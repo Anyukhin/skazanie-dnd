@@ -670,7 +670,9 @@ export function officesForViewer(input = {}, options = {}) {
   return state.offices
     .filter((office) => isAdmin || office.visibility === 'party' && isPartyMember)
     .map((office) => {
-      const projected = isAdmin ? office : projectedOfficeStatus(office, viewer)
+      // Ведущему — запись как есть: у неё держатель в `holder_npc_id`, а
+      // `holder` есть только у проекции игрока (прежде ведущий его не видел).
+      const projected = isAdmin ? { status: office.status, holder: office.holder_npc_id } : projectedOfficeStatus(office, viewer)
       return {
         office_id: office.id,
         title: office.title,

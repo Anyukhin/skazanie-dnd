@@ -78,8 +78,15 @@ fn quiet_scene_is_described_honestly_and_empty_scene_gives_nothing() {
 /// `null` вместо объекта параметров или состояния — `TypeError`.
 #[test]
 fn js_quirks_are_kept() {
-    assert_eq!(notable_scene_moments(&[event("QuestResolved", json!({}))]), ["квест завершён: undefined"]);
     assert!(build_scene_summary_text(Some(&Value::Null)).is_err());
     assert!(scene_summary_for(Some(&json!({ "state": null, "events": [event("DieRolled", json!({}))] }))).is_err());
     assert!(scene_summary_for(Some(&json!({ "state": null, "events": [] }))).is_ok());
+}
+
+/// Квест без итога и исхода заметен без `undefined`.
+#[test]
+fn quest_without_summary_or_outcome_has_no_undefined() {
+    let event = |payload: Value| json!({ "event_type": "QuestResolved", "payload": payload });
+    assert_eq!(notable_scene_moments(&[event(json!({ "quest_id": "q1" }))]), ["квест завершён"]);
+    assert_eq!(notable_scene_moments(&[event(json!({ "outcome": "success" }))]), ["квест завершён: success"]);
 }

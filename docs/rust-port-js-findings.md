@@ -13,12 +13,7 @@
 
 | Модуль | Ошибка | Влияние |
 | --- | --- | --- |
-| `world-memory` | `AdvanceQuestClock` с `proof_fact_ids` вида `['', ' ']`: сырые поля команды остаются в событии, редьюсер помечает чужие источники использованными без доказательства | дыра в доказательствах для часов поручения |
-| `character-progression`, `combat-actions`, `starter-kit` | образец `маг\b`: `\b` в JS — только ASCII | роль «Маг», «Маг огня» не распознаётся как волшебник |
-| `starter-kit` | герой 2014 без `characterClass`, но с узнаваемой ролью — «Для класса нет стартового набора 2014» | создание героя падает |
-| `starter-kit` | полный набор солдата — два предмета с одинаковым id `…-starter-background-choice-1` | возможна путаница вещей в инвентаре |
-| `encounter-assembler` (найдено сценарием внимания) | `CreateEncounter` (`raiders`, `easy`) при повторном визите отряда из двух героев в Редстоуновку — `NO_SAFE_PLACEMENT_CELLS` на всех шести сидах | встреча не собирается |
-| `scene-graph` | `reachableZones`: ключ, найденный в том же обходе после проверки запертой двери, её не открывает | ложный `GOAL_UNREACHABLE` при проверке карты |
+| `encounter-assembler` (найдено сценарием внимания) | `CreateEncounter` (`raiders`, `easy`) при повторном визите отряда из двух героев в Редстоуновку — `NO_SAFE_PLACEMENT_CELLS` на всех шести сидах. Разбор 2026-10-26: ошибка не в сборщике. Редстоуновка — нарисованная карта (`authored-tactical-scene`) с постоянным набором раскрытых клеток у обычного входа (82:63); при приходе с севера (от башни Ломара) отряд встаёт на 41:0 / 40:0, и открыты только его две клетки — досягаемого раскрытого пола нет, сборщик честно отказывает. Лечится раскрытием обзора у точки прихода при повторном визите (переход сцены, `scene-entry-road`), а не размещением | встреча не собирается |
 | `backup-service` | путь вида `storage/..имя` считается «снаружи» хранилища | копия пишется внутрь `storage` |
 | `room-floors`, `map-store` | генератор пишет `zone.wall` раньше `zone.floor`, а чтение карты — наоборот: 14 из 56 сгенерированных карт после круга «чтение → запись» дают другой JSON | у одной карты два адреса в `map-store`; хеш с сортировкой ключей этого не видит |
 | `tactical-map` | отказ `setCell` посреди заплатки уже ставит бит существования клетки, но не расширяет охват | после отказа карта не проходит проверку `BOUNDS_MISMATCH` |
@@ -27,15 +22,10 @@
 | `combat-lab-maps` | арена «пещерный мост»: уступы по краям моста затирает проход стен вокруг воды, мост идёт между двумя стенами, закрывающими обзор | арена играется не так, как задумана |
 | `settlement-generator` | город у реки: русло встаёт на южную кольцевую улицу (`height − 4`), а не в середину — `horizontals.find` по несортированному списку | река всегда у южного края города |
 | `level-generator` | собранные этажи почти все проваливают аудит играбельности: на 725 этажах `PASSAGE_OFF_MAP` ~15 на карту, `UNREACHABLE_FLOOR` 145, `SPAWN_CRAMPED` 72, `PARTY_SPAWN_BLOCKED` 29; генератор проверяет только `validateTacticalMap` и достижимость перехода | второй этаж, подвал и пещерный ярус с недостижимым полом и проходами за край |
-| `adventure-director` | `outsideEntranceFor`: проверка `door.locked === true` не срабатывает никогда (у двери есть только `state`) | запертая дверь выбирается выходом наружу |
-| `loot-containers` | `coordinate(null)` → 0: контейнер выбывшего, которого не было на доске, встаёт на клетку 0:0; карточка без расстояния показывает `distance_feet: 0` | тело «в углу карты», обыск недоступен там, где задумано «досягаемо по сцене» |
-| `world-offices` | в `officesForViewer` ведущему читается `projected.holder`, которого у записи нет | ведущий не видит держателя должности |
-| `campaign-lifecycle` | `npcs.filter(visibleToParty)` передаёт номер элемента как запасную видимость | NPC и записи без поля видимости не попадают в эпилог |
-| `world-deeds` | дробная поправка репутации (2.5) после нормализации обнуляет репутацию | слух и репутация пропадают |
-| `combat-narration`, `scene-summary` | `QuestResolved` без `summary` — «квест завершён: undefined»; условие атаки без двоеточия — «атакующий undefined» | служебный мусор в тексте ведущего |
-| `weather` | `weatherCheckSwing`/`weatherRangedPenalty` без героя не подставляют активного, а шапка подставляет | на смешанной карте шапка и бросок расходятся |
-| `rules-engine` (Р2) | `litByLightCantrip`: носитель «Света» без позиции (`null <= радиус`) освещает всех | свет заговора на всю карту |
-| все модули с `localeCompare()` без локали | порядок зависит от локали процесса: Windows владельца — ru-RU, Docker — en-US | при равной цене выбор легендарного действия, порядок кандидатов встречи, лента розыска, поиск по справочнику **различаются между машиной разработки и боевым сервером** |
+| `character-progression`, `combat-actions`, `combat-spells`, `starter-kit` (и `src/combat-actions.ts`, `src/combat-spells.ts`) | образец `маг\b`: `\b` в JS — только ASCII | роль «Маг», «Маг огня» не распознаётся как волшебник. Исправление (`(?<![\p{L}\p{N}])маг(?![\p{L}\p{N}])`) сделано и откачено 2026-10-30 — не исправлено: правка меняет применение старых событий редьюсером (брифу — остановиться и описать), нужно решение владельца: `characterClassKey` зовёт `normalizeCampaignState` (кость хитов `die_size` 8 → 6), класс по роли задаёт и производные поля героя (`combatSpells`, `combatActions`). Корпус v2 таких героев не содержит |
+| `starter-kit` | полный набор солдата — два предмета с одинаковым id `…-starter-background-choice-1` | возможна путаница вещей в инвентаре. Приставка `background-choice-keepsake` сделана и откачена 2026-10-30 — не исправлено: правка меняет применение старых событий редьюсером (брифу — остановиться и описать), нужно решение владельца: набор собирает редьюсер `CharacterImported`, у 4 записей корпуса v2 меняется id вещи, а поздние события ссылаются на вещи по id. Путь без поломки — новая версия политики набора (`starter_equipment_policy_version` уже есть в событии): новый id только для новой версии |
+| `loot-containers` | `coordinate(null)` → 0: контейнер выбывшего, которого не было на доске, встаёт на клетку 0:0 | тело «в углу карты», досягаемость меряется от 0:0. Исправление сделано и откачено 2026-10-30 — не исправлено: правка меняет применение старых событий редьюсером (брифу — остановиться и описать), нужно решение владельца: `normalizeLootContainersState` идёт в редьюсере на каждом событии, контейнер старого журнала с `x: null` проигрывался бы на «без места». В корпусе v2 таких контейнеров нет (162 события, все с числами). Вторая половина находки — `distance_feet: 0` в карточке без расстояния — исправлена (проекция, не редьюсер) |
+| `world-deeds`, `autonomous-campaign` | дробная поправка репутации (2.5) после нормализации обнуляет репутацию. Сам `world-deeds` даёт только целые поправки; обнуляет `normalizeAutonomyState` (`Number.isSafeInteger` на всей репутации) в редьюсере — правка меняет применение старых событий, это изменение схемы, не сделано | репутация пропадает |
 
 ## P2 — мусор старых сохранений и ключи прототипа
 
@@ -167,20 +157,19 @@
 
 Перенесено как есть, закреплено эталонами `sk-rules/fixtures/r5…r11`.
 
-- **P1-кандидаты.** `PickpocketNpc`: неизвестное расстояние (`null > 5` —
-  ложь) разрешает кражу издалека. `MerchantSaleCompleted` убирает из
-  инвентаря **все** вещи с количеством ≤ 0, а не только проданную.
-  `ReceiveScenarioPurse` с дробным `gold_per_point` теряет монеты.
-  Неизвестное расстояние (`null`) в `MakeAttack` — отказ «вне дальности»,
-  а во взрыве заготовленного удара, вторичном взрыве заклинания, громе
-  телепорта и радиусе легендарного действия — цель **в** области.
-  Пауза внутри удара вдогонку в `MoveActor` теряет записанные события
-  (включая `CombatActionUsed` атакующего).
-- **P2.** CalmBeast: `...roll` после полей `BeastSoothingResolved` подменяет
-  `actor_id` зверя id героя. Нечисловой `initiative_bonus` роняет StartCombat.
-  `closeFinishedSpellBuffs` у состояний без `effect_id` не закрывает усиление.
-  «Поглощение стихий» в ударе: шаблон не совпадает с id `absorbing-element-rider:`.
-  Оборона без `reactor_id` тратит реакцию без помехи.
+- **P1-кандидаты (разобраны 2026-10-26, не исправлялись).**
+  `MerchantSaleCompleted` убирает из инвентаря **все** вещи с количеством
+  ≤ 0, а не только проданную, — не наблюдается: редьюсер получает состояние
+  после `normalizeCampaignState`, а `normalizeInventory` такие вещи уже
+  выбросил. `ReceiveScenarioPurse` с дробным `gold_per_point` теряет монеты —
+  недостижимо: проверка сценария требует целое 1–1000, `SCENARIOS` заморожен.
+  Пауза внутри удара вдогонку в `MoveActor` не кладёт записанные события
+  (включая `CombatActionUsed` атакующего) в промежуточное состояние окна
+  реакции; итог после ответа верен — продолжение заново проигрывает весь
+  `MoveActor` по стенограмме костей, и события появляются по одному разу.
+  Положить их в `prefixEvents` — значит задвоить при продолжении; нужна
+  новая семантика продолжения (`pending_execution`), это изменение схемы.
+- **P2.** `closeFinishedSpellBuffs` у состояний без `effect_id` не закрывает усиление.
 - **P3.** Мёртвый код в `MakeAttack` (`enemyAdjacent`, `dodging`, `reckless`…),
   в «Встать», `purpose` у `areaSaveModifierFor`; фильтр люстры по этажу никогда
   не срабатывает; недостижимая запасная формула урона заклинания.
@@ -332,3 +321,76 @@ HTTP-маршруты и живой поток (ветка `rs/fix-http`): JS и
 - **Враг с id `__proto__` в `attackForecast`** и герой `__proto__` у досягаемости зверя — состояния ищутся по собственному ключу (`actorConditionList`, как `sk_core::game::conditions`); JS `test/prototype-keys.test.mjs`.
 - **Карта мира старого сохранения** (`null` вместо концепта, источника, сцены, `knownLocations`, места-не-объекты в `worldLocationById`); JS `test/old-save-registries.test.mjs`, Rust — встроенный тест `sk-geometry` `world_map`.
 - **`campaignRulesetCanChange`**: `null` в журнале не скрывает событие после себя, запись без типа — «без типа», а не `undefined`; JS `test/old-save-registries.test.mjs`, Rust `sk-ruleset/tests/campaign_ruleset.rs` (`null_journal_entry_does_not_hide_later_event`).
+
+### Правила и мир (ветка `rs/fix-rules`)
+
+Правила и мир (ветка `rs/fix-rules`): JS и Rust одинаково, схемы событий не
+менялись, старые журналы применяются как прежде (сверка: корпус v2,
+`reducer` и `resolve … all`). Исправления, менявшие редьюсер, откачены и
+описаны в P1. Корпус v2 против базы `c4f9c4b0`: `reducer` 6831 из 6831, как
+в базе; `resolve … all` совпадает по 118 типам из 119, новое расхождение одно —
+`CalmBeast`, 35 записей `BeastSoothingResolved.payload.actor_id` (корпус
+записан прежним JS с id героя; поле никто не читает — редьюсер берёт
+`beast_id`, рассказ — `actor_id` события).
+
+- `rules-engine`: неизвестное расстояние (`null`) — цель вне области во
+  взрыве заготовленного удара, вторичном взрыве заклинания, громе телепорта,
+  радиусе легендарного действия и для «Карманной кражи» (`withinFeet`, Rust —
+  `is_some_and`/`unwrap_or(∞)`). На живых состояниях недостижимо (позиции
+  целые, место без координат отбрасывает нормализация) — защита без
+  отдельного теста.
+- `rules-engine` `litByLightCantrip`: носитель «Света» без позиции не освещает
+  остальных. Тесты: `world-utility-spells.test.mjs`, эталон `vitals.json`.
+- `rules-engine` `CalmBeast`: `BeastSoothingResolved.actor_id` — зверь, герой —
+  в `hero_id`. Тесты: `beast-taming.test.mjs`, эталон `r11.json.gz`.
+- `rules-engine` `StartCombat`: нечисловая прибавка к инициативе — ноль, а не
+  `DiceExpressionError`. Тесты: `group-initiative.test.mjs`, эталон `r11.json.gz`
+  (11 состояний с `initiative_bonus: "__undefined__"`).
+- `rules-engine` Оборона: принятый выбор без `reactor_id` даёт помеху. Тест:
+  `ally-attack-reactions.test.mjs`.
+- `rules-engine` «Поглощение стихий»: вид урона добавки из id условия
+  (`absorbing-element-rider:<вид>`) и в ударе оружием, и в заклинании
+  (`absorbedRiderDamageType`, Rust — `reactions::absorbed_rider_damage_type`).
+  Тест: `spell-reactions-audit.test.mjs`.
+- `world-memory` `AdvanceQuestClock`: пустые после очистки
+  `proof_fact_ids` — сырые поля доказательства не доходят до события. Тесты:
+  `world-memory.test.mjs`, `sk-memory/tests/world_memory_commands.rs`, эталон
+  `world-memory-chains`.
+- `starter-kit`: класс, узнанный по роли, выбирает набор 2014 (прежде —
+  «Для класса нет стартового набора 2014»; такой импорт не проходил, старых
+  событий с ним нет). Тесты: `character-creation-equipment-complete.test.mjs`,
+  `sk-chargen/tests/starter_kit.rs`, эталоны `starter-kit.json` (20 случаев:
+  отказ → набор), `a1` (`random-148`: кампания создаётся).
+- `scene-graph` `reachableZones`: повторный обход раскрывает все достигнутые
+  зоны — ключ, найденный после проверки двери, её открывает. Тесты:
+  `scene-graph.test.mjs`, `sk-geometry` (модульный), эталон `scene-graph.json`
+  (ручной случай `a→b→c`, ключ в `d`).
+- `adventure-director` `outsideEntranceFor`: запертая (`state: 'locked'`) дверь
+  выходом наружу не служит. Тесты: `adventure-director.test.mjs`,
+  `sk-director/tests/adventure_director.rs`, эталоны `adventure-director`,
+  `director-scene-transition` (поле `outside`, хеши перехода).
+- `loot-containers` `lootContainerForViewer`: карточка без расстояния — без
+  `distance_feet`, а не 0 (координаты 0:0 — см. P1, не исправлены). Тесты:
+  `loot-containers.test.mjs`, `sk-director/tests/loot_containers_rules.rs`,
+  эталон `loot-containers`.
+- `world-offices` `officesForViewer`: ведущему — `holder_npc_id` записи. Тесты:
+  `world-offices-knowledge.test.mjs`, `world_offices_behaviour.rs`, эталон
+  `world-offices`.
+- `campaign-lifecycle`: NPC и история сцен без поля видимости — отрядные
+  (лямбда вместо `filter(visibleToParty)`); пустая запись истории в бриф не
+  попадает и его не роняет. Тесты: `campaign-lifecycle.test.mjs`,
+  `sk-director/tests/campaign_lifecycle.rs`, эталон `campaign-lifecycle`.
+- `world-deeds` `rumorWording`: вид поступка из ключей `Object.prototype` не
+  роняет такт молвы — запасная фраза (Rust так и вёл себя). Нормализация
+  летописи такой вид отбрасывает (ветка `rs/fix-saves`). Тесты: `world-deeds.test.mjs`,
+  `world_deeds_behaviour.rs`.
+- `combat-narration`, `scene-summary`: запись состояния без стороны не
+  пересказывается, квест без итога — «квест завершён». Тесты:
+  `combat-narration.test.mjs`, `scene-summary.test.mjs`, тесты `sk-narration`,
+  эталоны `combat-narration`, `scene-summary`.
+- `weather`: проверка и выстрел без героя читают небо над активным героем, как
+  шапка. Тесты: `weather.test.mjs`, эталон `weather.json.gz` (52 опроса;
+  входы карт оставлены прежними — свежий прогон генератора дал бы ещё дрейф
+  карт от чужих правок генератора, не относящийся к погоде).
+- `localeCompare`/`Intl.Collator` в `server/` — с локалью `'en'` (корневой
+  порядок ICU, как у Rust и эталонов). Сторож: `locale-compare-pinned.test.mjs`.

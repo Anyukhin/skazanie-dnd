@@ -661,10 +661,7 @@ fn on_hit(r: &mut Resolve<'_>, cast: &Cast, hit: &HitContext<'_>) -> Flow {
     if field(spell, "attackKind").and_then(Value::as_str) == Some("melee") && absorbing.as_ref().is_some_and(|condition| is_true(at(Some(condition), "absorb_elements_rider_armed"))) {
         let condition = absorbing.unwrap_or(Value::Null);
         let condition_id = js::string(condition.get("id"));
-        let rider_type = match nn(condition.get("rider_damage_type")) {
-            Some(value) => js::string(Some(value)),
-            None => sk_core::text::replace_first(sk_core::re!(r"^absorbing-element-rider:", "u"), &condition_id, "elemental"),
-        };
+        let rider_type = crate::reactions::absorbed_rider_damage_type(&condition);
         let slot_level = js::safe_int(condition.get("slot_level"), 1).max(1);
         let rider = js::string(Some(nn(condition.get("rider_damage")).unwrap_or(&json!("1d6"))));
         let base = crate::spells::slots::scaled_dice_expression(&rider, Some(&Value::from((slot_level - 1).max(0))), Some(&json!(1)), None);
@@ -859,7 +856,8 @@ fn secondary_burst(r: &mut Resolve<'_>, cast: &Cast, state: &Value, burst: &Valu
             let id = actor_id_of(candidate);
             let (Some(at_point), Some(center)) = (crate::tactical_geometry::actor_point(&burst_state, &id), center) else { return false };
             let distance = sk_geometry::actor_footprint::footprint_distance_feet(Some(candidate), target_actor.as_ref(), Some(&point_json(at_point)), Some(&point_json(center)));
-            distance.unwrap_or(0.0) <= radius && (sk_core::game::is_living_actor(candidate) || id == target_id)
+            // Неизвестное расстояние — цель не в области (как у `MakeAttack`).
+            distance.is_some_and(|distance| distance <= radius) && (sk_core::game::is_living_actor(candidate) || id == target_id)
         })
         .cloned()
         .collect();

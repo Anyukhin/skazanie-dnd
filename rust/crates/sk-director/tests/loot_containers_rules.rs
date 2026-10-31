@@ -312,14 +312,23 @@ fn thrown_dagger_drops_and_returns_to_its_stack() {
 }
 
 /// Замечено в JS: `coordinate(null)` — это `Number(null)`, то есть 0, и
-/// контейнер «без клетки» после нормализации стоит на клетке 0:0; а
-/// `distanceFeet = null` по умолчанию даёт `distance_feet: 0` там, где
-/// померить нечем. Перенесено как есть.
+/// контейнер «без клетки» после нормализации стоит на клетке 0:0. Перенесено
+/// как есть: нормализация идёт в редьюсере, исправление изменило бы
+/// проигрывание старых журналов.
 #[test]
 fn js_quirk_null_coordinates_become_zero() {
     let container = json!({ "id": "loot:corpse:a", "kind": "corpse", "x": null, "y": null, "items": [instance("i", "srd_5_2_1:dagger", 1, 1.0)] });
     let normalized = normalize_loot_container(Some(&container)).unwrap();
     assert_eq!((normalized["x"].clone(), normalized["y"].clone()), (json!(0), json!(0)));
+}
+
+/// Без расстояния (`distanceFeet = null`) карточка — без поля, а не
+/// `distance_feet: 0` (`Number(null)` — 0). Исправлено в обоих серверах.
+#[test]
+fn viewer_card_without_distance_has_no_distance_field() {
+    let container = json!({ "id": "loot:corpse:a", "kind": "corpse", "x": 2, "y": 2, "items": [instance("i", "srd_5_2_1:dagger", 1, 1.0)] });
     let view = loot_container_for_viewer(&container, ContainerViewOptions::default()).unwrap();
-    assert_eq!(view["distance_feet"], 0);
+    assert!(view.get("distance_feet").is_none(), "померить нечем — поля нет");
+    let measured = loot_container_for_viewer(&container, ContainerViewOptions { distance_feet: Some(&json!(0)), ..ContainerViewOptions::default() }).unwrap();
+    assert_eq!(measured["distance_feet"], 0, "настоящий ноль остаётся");
 }

@@ -506,7 +506,7 @@ function effectiveStarterOptionSignature(option) {
         quantity: (byIdentity.get(key)?.quantity ?? 0) + Math.max(1, Number(quantity) || 1),
       })
     }
-    return [...byIdentity.values()].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))
+    return [...byIdentity.values()].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right), 'en'))
   }
   return JSON.stringify({
     items: stack(option?.items),
@@ -744,7 +744,9 @@ export function withStarterKit(hero, { rulesetId = LEGACY_DEFAULT_RULESET_ID, st
       ? kit2024Inventory(heroId, kit2024)
       : rulesetId === DND_2014_RULESET_ID
       ? classicProfile
-        ? classicStarterInventory(hero, classicProfile, { policyVersion: starterPolicyVersion, complete: useComplete })
+        // Класс, узнанный по роли, — и для выбора набора: без него герой 2014
+        // без `characterClass` получал «Для класса нет стартового набора 2014».
+        ? classicStarterInventory({ ...hero, characterClass: hero?.characterClass ?? profile?.key }, classicProfile, { policyVersion: starterPolicyVersion, complete: useComplete })
         : [starterWeapon(heroId, profile?.weapon ?? 'dagger')]
       : [
         starterWeapon(heroId, profile?.weapon ?? 'dagger'),

@@ -652,8 +652,7 @@ pub fn light_bright_radius_feet() -> i64 {
 
 /// `litByLightCantrip(state, actorId)`: стоит ли актёр в ярком свету заговора.
 ///
-/// Как в JS, `distanceBetweenActors` без позиции (`null`) сравнивается как 0:
-/// носитель вне поля освещает всех.
+/// Без позиции одного из двух расстояние неизвестно, и свет не достаёт.
 pub fn lit_by_light_cantrip(state: &Value, actor_id: &str) -> bool {
     if actor_id.is_empty() {
         return false;
@@ -670,7 +669,7 @@ pub fn lit_by_light_cantrip(state: &Value, actor_id: &str) -> bool {
         if bearer == actor_id || !condition_ids_for(state, &bearer).contains(LIGHT_CONDITION) {
             return false;
         }
-        distance_between_actors(state, actor_id, &bearer).unwrap_or(0.0) <= radius as f64
+        distance_between_actors(state, actor_id, &bearer).is_some_and(|distance| distance <= radius as f64)
     })
 }
 

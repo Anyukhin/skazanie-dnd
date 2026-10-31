@@ -317,7 +317,7 @@ export function sceneContextForAgent(state = {}, actorId = '') {
       && footprintVisible && !['broken', 'destroyed'].includes(prop.state)
   }).sort((left, right) => position
     ? Math.hypot(left.x - position.x, left.y - position.y) - Math.hypot(right.x - position.x, right.y - position.y)
-    : String(left.id).localeCompare(String(right.id)))
+    : String(left.id).localeCompare(String(right.id), 'en'))
   const objects = visibleObjects.slice(0, 16).map((prop) => ({ id: clean(prop.id, 120), kind: prop.assetId, x: prop.x, y: prop.y, state: prop.state }))
   const visibleAreas = zones.filter((zone) => discovered.has(zone.id) && zone.label)
   const objectSelection = boundedSelectionMetadata({ scope: 'visible_interactable_objects_in_current_area', candidateCount: visibleObjects.length, limit: 16 })

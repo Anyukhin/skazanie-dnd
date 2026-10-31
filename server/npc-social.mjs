@@ -83,7 +83,7 @@ function scheduleDaysOverlap(left, right) {
 
 function safeSchedule(value) {
   const candidates = (Array.isArray(value) ? value : []).map(safeScheduleEntry).filter(Boolean)
-    .sort((left, right) => left.start_minute - right.start_minute || left.end_minute - right.end_minute || left.id.localeCompare(right.id))
+    .sort((left, right) => left.start_minute - right.start_minute || left.end_minute - right.end_minute || left.id.localeCompare(right.id, 'en'))
   const accepted = []
   const ids = new Set()
   for (const entry of candidates) {

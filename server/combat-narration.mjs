@@ -304,12 +304,16 @@ function attackConditionReason(payload) {
   const disadvantage = payload.condition_disadvantage ?? []
   if ((advantage.length > 0) === (disadvantage.length > 0)) return ''
   const entries = advantage.length ? advantage : disadvantage
-  const described = entries.map((entry) => {
+  // Запись без двоеточия не называет ни стороны, ни состояния: её не
+  // пересказываем, иначе в ленту уходило «атакующий undefined».
+  const described = entries.flatMap((entry) => {
     const [side, condition] = String(entry).split(':')
-    return side === 'target'
+    if (!condition) return []
+    return [side === 'target'
       ? `цель ${ownEntry(CONDITION_LABELS, condition) ?? condition}`
-      : `атакующий ${ownEntry(ATTACKER_CONDITION_LABELS, condition) ?? condition}`
+      : `атакующий ${ownEntry(ATTACKER_CONDITION_LABELS, condition) ?? condition}`]
   }).join(', ')
+  if (!described) return ''
   return ` ${advantage.length ? 'с преимуществом' : 'с помехой'} (${described})`
 }
 

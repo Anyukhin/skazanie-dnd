@@ -10,9 +10,11 @@ import {
   MAX_LOOT_CONTAINERS,
   lootCommitTouchesContainers,
   lootContainerList,
+  lootContainerForViewer,
   lootContainersForViewer,
   lootContainersInScene,
   lootItemForViewer,
+  normalizeLootContainer,
   normalizeLootContainersState,
   sceneLootLocationKey,
 } from '../server/loot-containers.mjs'
@@ -1314,4 +1316,16 @@ test('«обыскивает поверженных» — тела, а не об
   const crouching = searchAloud(both.state, 'hero', 'Мирель приседает у тел, осторожно обыскивает одежду и мешочек с компонентами')
   assert.ok(crouching?.narration.includes('Разбойник 2'), crouching?.narration)
   assert.doesNotMatch(crouching.narration, /Тело: /u, 'подпись панели не звучит в рассказе')
+})
+
+// Находка переноса (docs/rust-port-js-findings.md): без расстояния карточка
+// показывала `distance_feet: 0` — `Number(null)` равно 0. Координаты контейнера
+// без места (`coordinate(null)` — 0:0) не тронуты: это нормализация в
+// редьюсере, и старые журналы проигрывались бы иначе.
+test('карточка контейнера без расстояния — без поля distance_feet, а не 0', () => {
+  const container = normalizeLootContainer({ id: 'corpse-1', kind: 'corpse', x: 2, y: 2, items: [] })
+  assert.equal(Object.hasOwn(lootContainerForViewer(container), 'distance_feet'), false)
+  assert.equal(Object.hasOwn(lootContainerForViewer(container, { distanceFeet: null }), 'distance_feet'), false)
+  assert.equal(lootContainerForViewer(container, { distanceFeet: 0 }).distance_feet, 0, 'настоящий ноль остаётся')
+  assert.equal(lootContainerForViewer(container, { distanceFeet: 7.4 }).distance_feet, 7)
 })

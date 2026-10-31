@@ -694,7 +694,7 @@ export function planLootContainerDrafts(before = {}, after = {}, events = []) {
     .filter((event) => event?.event_type === 'NpcDied')
     .map((event) => [String(event?.payload?.npc_id ?? event?.target_ids?.[0] ?? ''), event])
     .filter(([npcId]) => npcId)
-    .sort((left, right) => left[0].localeCompare(right[0]))
+    .sort((left, right) => left[0].localeCompare(right[0], 'en'))
   const socialNpcIds = new Set((Array.isArray(before?.social?.npcs) ? before.social.npcs : [])
     .map((npc) => text(npc?.id, 120)).filter(Boolean))
   const authoredNpcIds = new Set(enemiesBefore.values()
@@ -742,7 +742,7 @@ export function planLootContainerDrafts(before = {}, after = {}, events = []) {
     }
   }
   const abandoned = []
-  for (const [enemyId, enemyBefore] of [...enemiesBefore.entries()].sort((left, right) => left[0].localeCompare(right[0]))) {
+  for (const [enemyId, enemyBefore] of [...enemiesBefore.entries()].sort((left, right) => left[0].localeCompare(right[0], 'en'))) {
     // Авторский боевой NPC и его social-запись — один и тот же владелец. Если
     // у него есть фактический `npc_world` инвентарь, тело уже планируется выше;
     // старый enemy-loadout путь не должен создать вторую добычу.
@@ -1454,7 +1454,9 @@ export function lootContainerReachFor(state = {}, actor = null, container = {}) 
 export function lootContainerForViewer(container = {}, { withContents = false, distanceFeet = null, cellRevealed = true } = {}) {
   const normalized = normalizeLootContainer(container)
   if (!normalized) return null
-  const distance = Number.isFinite(Number(distanceFeet)) && Number(distanceFeet) >= 0
+  // Без расстояния (`null`) — без поля: `Number(null)` — 0, и карточка
+  // показывала `distance_feet: 0` там, где померить нечем.
+  const distance = distanceFeet != null && Number.isFinite(Number(distanceFeet)) && Number(distanceFeet) >= 0
     ? Math.round(Number(distanceFeet))
     : null
   return {

@@ -825,11 +825,14 @@ pub fn offices_for_viewer(input: Option<&Value>, options: &Value) -> Vec<Value> 
         .iter()
         .filter(|office| is_admin || (is_str(office.get("visibility"), "party") && is_party_member))
         .map(|office| {
-            // Замечено в JS: ведущему отдаётся сама запись (`projected = office`),
-            // а читается `projected.holder` — у записи такого поля нет, и
-            // `holder_npc_id` ведущему не приходит вовсе. Перенесено как есть.
+            // Ведущему — держатель из самой записи (`holder_npc_id`); прежде
+            // читалось `holder` проекции игрока, и ведущий держателя не видел.
             if is_admin {
-                return json!({ "office_id": office["id"], "title": office["title"], "status": office["status"] });
+                let mut entry = json!({ "office_id": office["id"], "title": office["title"], "status": office["status"] });
+                if let (Some(map), Some(holder)) = (entry.as_object_mut(), office.get("holder_npc_id")) {
+                    map.insert("holder_npc_id".into(), holder.clone());
+                }
+                return entry;
             }
             let (status, holder) = projected_office_status(office, &viewer);
             json!({ "office_id": office["id"], "title": office["title"], "status": status, "holder_npc_id": holder })

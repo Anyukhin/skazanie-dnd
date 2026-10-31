@@ -584,3 +584,23 @@ fn offline_director_scene_advance_grows_one_chapter() {
     assert_eq!(continued["adventure"]["chapter"], 1, "continued — шаг той же главы");
     assert_eq!(continued["adventure"]["history"][0]["status"], "continued");
 }
+
+/// Выход наружу не ведёт через запертую дверь (прежде проверялось поле
+/// `locked`, которого у двери нет, и запертая дверь годилась в выход).
+#[test]
+fn outside_entrance_skips_locked_door() {
+    let house = |door_state: &str| {
+        let mut map = create_tactical_map(&TacticalMapOptions { width: 6, height: 3, ..Default::default() }).expect("карта");
+        sk_tactical::tactical_map::add_zone(&mut map, &json!({ "id": "hall", "kind": "interior" })).expect("зал");
+        sk_tactical::tactical_map::add_zone(&mut map, &json!({ "id": "yard", "kind": "exterior" })).expect("двор");
+        for y in 0..3 {
+            for x in 0..6 {
+                sk_tactical::tactical_map::set_cell_json(&mut map, x, y, &json!({ "passable": true, "revealed": true, "zone": if x < 3 { "hall" } else { "yard" } })).expect("клетка");
+            }
+        }
+        sk_tactical::tactical_map::set_door(&mut map, &json!({ "id": "front", "x": 2, "y": 1, "dir": "e", "state": door_state })).expect("дверь");
+        map
+    };
+    assert_eq!(outside_entrance_for(&house("closed"), 1.0, 1.0), Some((4, 1)));
+    assert_eq!(outside_entrance_for(&house("locked"), 1.0, 1.0), None);
+}

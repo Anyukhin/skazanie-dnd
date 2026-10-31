@@ -123,7 +123,7 @@ export class FileTraceStore {
     const traces = readdirSync(directory)
       .filter((name) => name.endsWith('.json') && SAFE_ID.test(name.slice(0, -5)))
       .map((name) => JSON.parse(readFileSync(join(directory, name), 'utf8')))
-      .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))
+      .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at), 'en'))
     return (typeof predicate === 'function' ? traces.filter(predicate) : traces).slice(0, boundedLimit)
   }
 }

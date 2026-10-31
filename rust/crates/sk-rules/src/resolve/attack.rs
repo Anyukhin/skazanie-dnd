@@ -381,13 +381,15 @@ pub fn make_attack(r: &mut Resolve<'_>) -> Flow {
         }
     }
     let protected_by = protection_choice.as_ref().filter(|choice| js::is_true(choice.get("use"))).map(|choice| js::s(choice.get("reactor_id")));
+    // Помеху даёт принятая реакция; `protected_by` — только известный защитник.
     let protected = protected_by.as_ref().is_some_and(|reactor| !reactor.is_empty());
+    let protection_used = protected_by.is_some();
     let mut options = Map::new();
     options.insert("modifier".into(), js::num(modifier));
     options.insert("purpose".into(), json!("attack"));
     options.insert("actorId".into(), undef(command.get("actor_id")));
     options.insert("advantage".into(), Value::Bool(advantage));
-    options.insert("disadvantage".into(), Value::Bool(disadvantage || protected));
+    options.insert("disadvantage".into(), Value::Bool(disadvantage || protection_used));
     options.insert("visibility".into(), undef(command.get("visibility")));
     let mut attack = roll_d20_with_species_luck(&state, &mut r.dice, &actor_id, &Value::Object(options), D20Method::RollD20)?;
     if protected {
@@ -1366,10 +1368,7 @@ pub fn make_attack(r: &mut Resolve<'_>) -> Flow {
     }
     if let Some(condition) = absorbing_element_condition.as_ref().filter(|_| landed && absorbing_element_matches) {
         let condition_id = js::string(condition.get("id"));
-        let rider_type = match condition.get("rider_damage_type").filter(|value| !value.is_null()) {
-            Some(value) => js::string(Some(value)),
-            None => text::replace_first(sk_core::re!(r"^absorbing-element:", "u"), &condition_id, "elemental"),
-        };
+        let rider_type = crate::reactions::absorbed_rider_damage_type(condition);
         let slot_level = js::safe_int(condition.get("slot_level"), 1).max(1);
         let extra_levels = (slot_level - 1).max(0);
         let base = crate::spells::slots::scaled_dice_expression(&js::string(Some(coalesce(&[condition.get("rider_damage")]).unwrap_or(&Value::from("1d6")))), Some(&Value::from(extra_levels)), Some(&Value::from(1)), None);
@@ -1689,8 +1688,8 @@ fn next_weapon_hit(r: &mut Resolve<'_>, state: &Value, hit: &NextWeaponHit<'_>) 
                             return false;
                         }
                         let Some(position) = actor_point(&hit_effect_state, &id) else { return false };
-                        // `null <= radius`: неизвестное расстояние — ноль.
-                        sk_geometry::actor_footprint::footprint_distance_feet(Some(candidate), target_actor, Some(&point_json(position)), Some(&point_json(target_position))).unwrap_or(0.0) <= radius
+                        // Неизвестное расстояние — цель не в области (как у `MakeAttack`).
+                        sk_geometry::actor_footprint::footprint_distance_feet(Some(candidate), target_actor, Some(&point_json(position)), Some(&point_json(target_position))).is_some_and(|distance| distance <= radius)
                     })
                     .cloned()
                     .collect()

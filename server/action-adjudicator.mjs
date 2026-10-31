@@ -342,7 +342,7 @@ function scenePropsBrief(state, actorId) {
     })
     // Ближнее — первым: досягаемость всё равно проверит движок, но выбирать
     // модели проще из упорядоченного списка, а порядок обязан быть устойчивым.
-    .sort((left, right) => (left.distance_feet ?? 10_000) - (right.distance_feet ?? 10_000) || left.id.localeCompare(right.id))
+    .sort((left, right) => (left.distance_feet ?? 10_000) - (right.distance_feet ?? 10_000) || left.id.localeCompare(right.id, 'en'))
   return {
     items: candidates.slice(0, 12),
     metadata: boundedSelectionMetadata({ scope: 'visible_interactable_objects_in_current_area', candidateCount: candidates.length, limit: 12 }),

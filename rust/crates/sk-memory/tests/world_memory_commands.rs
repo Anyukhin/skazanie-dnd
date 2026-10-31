@@ -107,6 +107,26 @@ fn progress_proofs_are_versioned_kept_by_quest_updates_and_hidden_from_players()
     assert!(public.get("progress_fact_ids").is_none() && public.get("progress_source_event_ids").is_none());
 }
 
+/// Пустые id доказательства (`['', ' ']`) не превращаются в подтверждение:
+/// сырые поля команды не доходят до события, чужой источник не помечается.
+#[test]
+fn blank_proof_ids_are_not_progress_proof() {
+    let prepared = run(&campaign(), &[json!({ "command_type": "UpsertQuest", "quest": { "id": "supplies", "title": "Найти припасы", "clock": { "current": 0, "max": 3 } } })])
+        .expect("подготовка")
+        .state;
+    let progressed = run(
+        &prepared,
+        &[json!({ "command_type": "AdvanceQuestClock", "quest_id": "supplies", "amount": 1, "proof_fact_ids": ["", " "], "proof_source_event_ids": ["someone-else-check"] })],
+    )
+    .expect("шаг");
+    let payload = &progressed.events[0]["payload"];
+    assert!(payload.get("schema_version").is_none(), "событие — как у шага без доказательства");
+    assert!(payload.get("proof_fact_ids").is_none());
+    let quest = progressed.state["worldMemory"]["quests"].as_array().and_then(|quests| quests.iter().find(|quest| quest["id"] == "supplies")).cloned().expect("поручение");
+    assert_eq!(quest["clock"]["current"], 1);
+    assert!(quest.get("progress_source_event_ids").is_none(), "чужой источник не помечен использованным");
+}
+
 #[test]
 fn legacy_quest_clock_event_gets_no_proof_meaning_on_replay() {
     let memory = build_memory().state["worldMemory"].clone();

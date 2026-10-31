@@ -446,3 +446,15 @@ test('дошедший слух попадает в разговор своег�
   assert.deepEqual(silent.disclosed_claim_ids, [])
   assert.match(silent.reply, /Больше мне сказать нечего/u)
 })
+
+// Находка переноса (docs/rust-port-js-findings.md): вид поступка — ключ
+// `Object.prototype` проходил нормализацию, а такт молвы падал на нём
+// (`RUMOR_PHRASES['constructor']` — функция). Нормализация летописи такой вид
+// отбрасывает (ветка `rs/fix-saves`), а молва на нём берёт запасную фразу.
+test('поступок вида из ключей Object.prototype не роняет молву: фраза запасная', async () => {
+  const { normalizeWorldDeedsState: normalize } = await import('../server/world-deeds.mjs')
+  for (const kind of ['constructor', 'toString', 'hasOwnProperty']) {
+    assert.deepEqual(normalize({ deeds: [{ id: 'deed:x', kind }] }).deeds, [], `${kind}: не вид летописи`)
+    assert.match(rumorWording({ kind, location_name: 'Брод' }, 0), /^В «Брод» случилось нехорошее/u, kind)
+  }
+})

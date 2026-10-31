@@ -133,3 +133,26 @@ test('rider срабатывает на melee spell attack, а не только
   assert.equal(rider?.payload.damage_type, 'fire')
   assert.equal(cast.events.some((event) => event.event_type === 'ConditionRemoved' && event.payload.condition === 'absorbing-element-rider:fire'), true)
 })
+
+// Находка переноса (docs/rust-port-js-findings.md): у условия без
+// `rider_damage_type` (мусор старого сохранения) удар оружием брал шаблон
+// чужого условия и получал видом урона весь id, а удар заклинанием — склейку.
+test('добавка без rider_damage_type берёт вид урона из id условия — и в ударе, и в заклинании', () => {
+  const stripped = (stateValue) => {
+    const copy = structuredClone(stateValue)
+    for (const condition of copy.mechanics.conditions.fighter) {
+      if (condition.id === 'absorbing-element-rider:fire') delete condition.rider_damage_type
+    }
+    return normalizeCampaignState(copy)
+  }
+  const armed = stripped(advanceToFighter(triggerAbsorbElements(state()).state))
+  assert.equal(armed.mechanics.conditions.fighter.find((entry) => entry.id === 'absorbing-element-rider:fire')?.rider_damage_type ?? null, null)
+  const hit = meleeAttack(armed)
+  assert.equal(hit.events.find((event) => event.event_type === 'DamageApplied' && event.payload.absorb_elements === true)?.payload.damage_type, 'fire')
+
+  const spellArmed = stripped(advanceToFighter(triggerAbsorbElements(state({ meleeSpell: true })).state))
+  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'fighter', spell_id: 'shocking-grasp', target_id: 'goblin', target_ids: ['goblin'], server_authoritative: true }, spellArmed, {
+    diceService: dice([18, 6, 1, 1, 1]), context: { serverAuthoritativeCombat: true },
+  })
+  assert.equal(cast.events.find((event) => event.event_type === 'DamageApplied' && event.payload.absorb_elements === true)?.payload.damage_type, 'fire')
+})

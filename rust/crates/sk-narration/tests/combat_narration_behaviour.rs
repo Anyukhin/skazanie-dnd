@@ -144,3 +144,14 @@ fn js_type_errors_on_garbage_are_errors() {
     let immune = narrate(&[event("DamageApplied", json!({ "immune": true, "raw_amount": 3, "damage_type": "constructor" }), &["wolf"])], &state());
     assert_eq!(immune, "Этот урон не действует на Волк.");
 }
+
+/// Запись состояния без стороны не печатает `undefined` в причине преимущества.
+#[test]
+fn condition_entry_without_side_does_not_print_undefined() {
+    let malformed = narrate(&[event("AttackResolved", json!({ "target_id": "wolf", "total": 18, "armor_class": 12, "hit": true, "condition_advantage": ["prone"] }), &["wolf"])], &state());
+    assert!(!malformed.contains("undefined"), "{malformed}");
+    assert!(!malformed.contains("с преимуществом ()"), "{malformed}");
+    let mixed = narrate(&[event("AttackResolved", json!({ "target_id": "wolf", "total": 18, "armor_class": 12, "hit": true, "condition_advantage": ["prone", "target:prone"] }), &["wolf"])], &state());
+    assert!(mixed.contains("с преимуществом (цель "), "{mixed}");
+    assert!(!mixed.contains("undefined"), "{mixed}");
+}

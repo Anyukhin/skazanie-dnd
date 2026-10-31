@@ -225,7 +225,7 @@ export function chooseLegendaryAction({ actor, remainingUses, targets = [], cool
       if (action.radiusFeet <= 0) return targets.some((target) => target.distanceFeet <= action.rangeFeet)
       return targets.filter((target) => target.distanceFeet <= action.radiusFeet).length >= 2
     })
-    .sort((left, right) => right.cost - left.cost || left.id.localeCompare(right.id))
+    .sort((left, right) => right.cost - left.cost || left.id.localeCompare(right.id, 'en'))
   const action = affordable[0]
   if (!action) return null
   // Цель — ближайшая досягаемая, при равенстве побеждает меньший
@@ -233,6 +233,6 @@ export function chooseLegendaryAction({ actor, remainingUses, targets = [], cool
   const reach = action.radiusFeet > 0 ? action.radiusFeet : action.rangeFeet
   const target = targets
     .filter((candidate) => candidate.distanceFeet <= reach)
-    .sort((left, right) => left.distanceFeet - right.distanceFeet || String(left.id).localeCompare(String(right.id)))[0]
+    .sort((left, right) => left.distanceFeet - right.distanceFeet || String(left.id).localeCompare(String(right.id), 'en'))[0]
   return target ? { action, target_id: String(target.id) } : null
 }

@@ -253,7 +253,7 @@ export function rollEncounterCoins(plan, diceService) {
     total_cp: 0,
   })
   if (!diceService || typeof diceService.roll !== 'function') throw new TypeError('Encounter coin policy requires DiceService')
-  const enemies = [...plan.enemies].sort((left, right) => left.enemy_id.localeCompare(right.enemy_id))
+  const enemies = [...plan.enemies].sort((left, right) => left.enemy_id.localeCompare(right.enemy_id, 'en'))
   if (enemies.length < 1 || enemies.length > ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures) {
     reject('Frozen plan содержит недопустимое число врагов', 'ENCOUNTER_ENEMY_COUNT_INVALID')
   }

@@ -122,7 +122,7 @@ function capitalized(value) {
 function propHintOrder(left, right) {
   return left.priority - right.priority
     || (left.distance ?? Number.POSITIVE_INFINITY) - (right.distance ?? Number.POSITIVE_INFINITY)
-    || left.id.localeCompare(right.id)
+    || left.id.localeCompare(right.id, 'en')
 }
 
 /**
@@ -285,7 +285,7 @@ function theftHints(room, actorId) {
     .map((npc) => ({ npc, feet: feetBetween(cell, npc) }))
     .filter((entry) => entry.feet == null || entry.feet <= THEFT_HINT_REACH_FEET)
     .sort((left, right) => (left.feet ?? Number.POSITIVE_INFINITY) - (right.feet ?? Number.POSITIVE_INFINITY)
-      || String(left.npc?.id ?? '').localeCompare(String(right.npc?.id ?? '')))[0]
+      || String(left.npc?.id ?? '').localeCompare(String(right.npc?.id ?? ''), 'en'))[0]
   const name = text(nearest?.npc?.name, 60)
   if (!name) return []
   return [{
@@ -672,7 +672,7 @@ export function suggestedActionsFor(room, actorId = '') {
   if (room?.mechanics?.combat?.active === true) return []
   const seen = new Set()
   const ordered = (hints) => hints
-    .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
+    .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id, 'en'))
     .filter((hint) => {
       if (!hint.text || seen.has(hint.text)) return false
       seen.add(hint.text)
@@ -707,7 +707,7 @@ export function suggestedActionsFor(room, actorId = '') {
     ...fenceHints(room, actorId),
   ]).slice(0, budget)
   return [...props, ...reserved]
-    .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
+    .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id, 'en'))
     .slice(0, MAX_ACTION_HINTS)
     .map((hint) => ({ id: hint.id, text: hint.text }))
 }

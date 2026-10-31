@@ -590,7 +590,7 @@ function bypassLinks(graph) {
     if (lock?.keyId) found.push({ link: { ...base, kind: 'locked', keyId: lock.keyId }, doors: way.doors })
   }
   return found
-    .sort((left, right) => right.doors - left.doors || Number(left.link.kind === 'locked') - Number(right.link.kind === 'locked') || left.link.id.localeCompare(right.link.id))
+    .sort((left, right) => right.doors - left.doors || Number(left.link.kind === 'locked') - Number(right.link.kind === 'locked') || left.link.id.localeCompare(right.link.id, 'en'))
     .map((entry) => entry.link)
 }
 

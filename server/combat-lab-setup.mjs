@@ -97,7 +97,7 @@ function classCatalog() {
   return (catalog?.classes ?? []).map((entry) => ({
     id: String(entry.class_id),
     name: ownEntry(CLASS_NAMES, entry.class_id) || String(entry.class_id),
-  })).sort((left, right) => Number(left.id !== 'fighter') - Number(right.id !== 'fighter') || left.id.localeCompare(right.id))
+  })).sort((left, right) => Number(left.id !== 'fighter') - Number(right.id !== 'fighter') || left.id.localeCompare(right.id, 'en'))
 }
 
 let contentPromise
@@ -333,7 +333,7 @@ export async function combatLabHeroes({ loadCampaign = null } = {}) {
       })
     }
   }
-  return result.sort((left, right) => `${left.campaignId}:${left.id}`.localeCompare(`${right.campaignId}:${right.id}`))
+  return result.sort((left, right) => `${left.campaignId}:${left.id}`.localeCompare(`${right.campaignId}:${right.id}`, 'en'))
 }
 
 async function loadSourceCampaign(campaignId, loadCampaign) {
@@ -507,7 +507,7 @@ function monsterBreakdown(records) {
       count: (previous?.count ?? 0) + 1,
     })
   }
-  return [...grouped.values()].sort((left, right) => left.id.localeCompare(right.id))
+  return [...grouped.values()].sort((left, right) => left.id.localeCompare(right.id, 'en'))
 }
 
 function rosterCaveatWarnings(records, partyLevels) {
@@ -610,7 +610,7 @@ function enemyPositionsForGeneratedEncounter(map, party, records, seed) {
     .sort((left, right) => {
       const leftDistance = Math.min(...party.map((member) => Math.abs(left.x - member.x) + Math.abs(left.y - member.y)))
       const rightDistance = Math.min(...party.map((member) => Math.abs(right.x - member.x) + Math.abs(right.y - member.y)))
-      return rightDistance - leftDistance || `${seed}:${right.x},${right.y}`.localeCompare(`${seed}:${left.x},${left.y}`)
+      return rightDistance - leftDistance || `${seed}:${right.x},${right.y}`.localeCompare(`${seed}:${left.x},${left.y}`, 'en')
     })
   const positions = []
   for (const [index, record] of records.entries()) {

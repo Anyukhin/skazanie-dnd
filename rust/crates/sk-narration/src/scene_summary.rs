@@ -105,7 +105,11 @@ pub fn notable_scene_moments(events: &[Value]) -> Vec<String> {
                 }
             }
             // `${summary || outcome}`: без обоих JS печатает «undefined».
-            Some("QuestResolved") => add(format!("квест завершён: {}", js::string(or_value(field("summary"), field("outcome"))))),
+            // Без итога и исхода — просто факт (прежде «квест завершён: undefined»).
+            Some("QuestResolved") => {
+                let result = or_value(field("summary"), field("outcome"));
+                add(if js::truthy(result) { format!("квест завершён: {}", js::string(result)) } else { "квест завершён".to_string() })
+            }
             Some("MerchantPurchaseCompleted") => {
                 let name = or_value(path(Some(payload), &["item", "name"]), field("catalog_id"));
                 if js::truthy(name) {

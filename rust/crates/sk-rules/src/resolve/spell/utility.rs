@@ -49,7 +49,8 @@ pub(super) fn teleport(r: &mut Resolve<'_>, cast: &mut Cast) -> Flow {
                 return false;
             }
             let Some(at_point) = crate::tactical_geometry::actor_point(&state, &id) else { return false };
-            sk_geometry::actor_footprint::footprint_distance_feet(Some(candidate), cast.actor.as_ref(), Some(&point_json(at_point)), Some(&origin_json)).unwrap_or(0.0) <= radius
+            // Неизвестное расстояние — цель не в области (как у `MakeAttack`).
+            sk_geometry::actor_footprint::footprint_distance_feet(Some(candidate), cast.actor.as_ref(), Some(&point_json(at_point)), Some(&origin_json)).is_some_and(|distance| distance <= radius)
         })
         .cloned()
         .collect();

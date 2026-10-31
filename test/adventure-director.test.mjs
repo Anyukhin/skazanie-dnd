@@ -251,3 +251,21 @@ test('выбор генератора детерминирован от seed', (
   })
   assert.deepEqual(build(), build())
 })
+
+// Находка переноса (docs/rust-port-js-findings.md): у двери карты есть только
+// `state`, и проверка `door.locked === true` не срабатывала — запертая дверь
+// выбиралась выходом наружу.
+test('выход наружу не ведёт через запертую дверь', async () => {
+  const { outsideEntranceFor } = await import('../server/adventure-director.mjs')
+  const { addZone, createTacticalMap, setCell, setDoor } = await import('../server/tactical-map.mjs')
+  const house = (doorState) => {
+    const map = createTacticalMap({ width: 6, height: 3 })
+    addZone(map, { id: 'hall', kind: 'interior' })
+    addZone(map, { id: 'yard', kind: 'exterior' })
+    for (let y = 0; y < 3; y += 1) for (let x = 0; x < 6; x += 1) setCell(map, x, y, { passable: true, revealed: true, zone: x < 3 ? 'hall' : 'yard' })
+    setDoor(map, { id: 'front', x: 2, y: 1, dir: 'e', state: doorState })
+    return map
+  }
+  assert.deepEqual(outsideEntranceFor(house('closed'), { x: 1, y: 1 }), { x: 4, y: 1 })
+  assert.equal(outsideEntranceFor(house('locked'), { x: 1, y: 1 }), null)
+})

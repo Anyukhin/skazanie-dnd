@@ -140,3 +140,26 @@ fn deterministic_epilogue_uses_only_visible_facts() {
     assert_eq!(facts["outcome"], "failed");
     assert_eq!(facts["fact_keys"], json!(["hero:hero", "quest:quest:storm", "quest:quest:left"]));
 }
+
+/// NPC и история сцен без поля видимости видны в эпилоге как отрядные
+/// (прежде запасной видимостью становился номер элемента).
+#[test]
+fn entries_without_visibility_are_party_visible_in_epilogue() {
+    let state = json!({
+        "social": {
+            "npcs": [{ "id": "npc-ada", "name": "Ада" }, { "id": "npc-bo", "name": "Бо" }],
+            "promises": [
+                { "id": "promise-1", "npc_id": "npc-ada", "status": "fulfilled", "text": "Принести меч", "visibility": "party" },
+                { "id": "promise-2", "npc_id": "npc-bo", "status": "broken", "text": "Вернуть долг", "visibility": "party" },
+            ],
+        },
+        // Пустая запись истории не роняет бриф и в него не попадает.
+        "adventure": { "history": [{ "chapter": 1, "location": "Мельница" }, null, { "chapter": 2, "location": "Брод" }] },
+    });
+    let facts = collect_epilogue_facts(&state, None);
+    let names: Vec<&Value> = facts["promises"].as_array().expect("обещания").iter().map(|promise| &promise["npc_name"]).collect();
+    assert_eq!(names, [&json!("Ада"), &json!("Бо")]);
+    let brief = build_epilogue_narration_brief(&state, None).expect("бриф");
+    let history: Vec<&Value> = brief["known_environment"]["confirmed_scene_history"].as_array().expect("история").iter().map(|entry| &entry["location"]).collect();
+    assert_eq!(history, [&json!("Мельница"), &json!("Брод")]);
+}

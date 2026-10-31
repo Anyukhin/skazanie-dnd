@@ -177,8 +177,12 @@ export function reachableZones(graph, fromZoneId) {
   while (grew) {
     grew = false
     rounds += 1
-    const queue = [start]
     zones.add(start)
+    // Повторный обход раскрывает заново все уже достигнутые зоны, а не только
+    // вход: иначе запертая дверь рядом с дальней зоной, проверенная до того,
+    // как нашёлся ключ, так и оставалась закрытой (ложный GOAL_UNREACHABLE).
+    // Вход добавлен первым, поэтому и в очереди он первый.
+    const queue = [...zones]
     for (const key of byId.get(start)?.keys ?? []) {
       if (!keys.has(key)) { keys.add(key); grew = true }
     }

@@ -89,7 +89,7 @@ export function healingTargetFor(state, actorIdValue) {
   return candidates.sort((left, right) => {
     const downed = Number(hpOf(left) > 0) - Number(hpOf(right) > 0)
     if (downed !== 0) return downed
-    return hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right))
+    return hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right), 'en')
   })[0] ?? null
 }
 
@@ -187,7 +187,7 @@ export function planHeroTurn(state, actorIdValue) {
   //    возможности ради цели, до которой ещё надо дожить.
   const adjacent = livingEnemies
     .filter((enemy) => actorDistanceFeet(state, actorIdValue, idOf(enemy), from) <= HEALING_RANGE_FEET)
-    .sort((left, right) => hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right)))[0]
+    .sort((left, right) => hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right), 'en'))[0]
   if (adjacent) {
     return {
       rule: 'attack-adjacent',
@@ -196,7 +196,7 @@ export function planHeroTurn(state, actorIdValue) {
   }
 
   // 3. Иначе — прежнее сосредоточение огня на самом раненом противнике.
-  const target = [...livingEnemies].sort((left, right) => hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right)))[0]
+  const target = [...livingEnemies].sort((left, right) => hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right), 'en'))[0]
   const targetId = idOf(target)
   const commands = []
   let position = from
@@ -560,7 +560,7 @@ function spellCandidatesFor(state, actorIdValue, actor, add) {
       }
       if (HEALING_SPELL_KINDS.has(spell.kind) && spell.target !== 'point') {
         const targets = allies.filter((ally) => !isDeadHero(state, combatId(ally)) && (downedAlly(ally) || Number(ally.hp) <= Math.max(1, Math.floor(combatMaxHp(ally) * HEAL_THRESHOLD_RATIO))))
-          .sort((left, right) => Number(left.hp) - Number(right.hp) || combatId(left).localeCompare(combatId(right)))
+          .sort((left, right) => Number(left.hp) - Number(right.hp) || combatId(left).localeCompare(combatId(right), 'en'))
         for (const target of targets) {
           const command = { ...base, target_id: combatId(target), target_ids: [combatId(target)] }
           const healing = Number(spell.healingAmount) || spellDamageEstimate(actor, { ...spell, damage: spell.healing, upcastDicePerLevel: spell.upcastHealingDicePerLevel }, slot?.level)
@@ -608,7 +608,7 @@ function spellCandidatesFor(state, actorIdValue, actor, add) {
           const area = areaTargetsForTactics(validationState, actorIdValue, spell, null)
           if (area.enemies.length && !area.allies.length) addSpell(base, spellTacticalScore(actor, spell, slot?.level, area.enemies.length), `${spell.name} поражает врагов рядом`)
         } else if (spell.target === 'enemy') {
-          const targets = enemies.slice().sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right)))
+          const targets = enemies.slice().sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right), 'en'))
           for (const target of targets) {
             if (combatDistance(state, actorIdValue, combatId(target)) > Number(spell.range ?? 0)) continue
             const command = { ...base, target_id: combatId(target), target_ids: [combatId(target)] }
@@ -853,9 +853,9 @@ function addActionCandidates(state, actorIdValue, actor, add) {
     const target = action.target === 'self' ? null : action.target === 'ally'
       ? allies.filter(visibleLivingAlly).filter((ally) => action.id !== 'extinguish-ally' || hasExtinguishableFlames(state, combatId(ally)))
         .filter(ally => combatId(ally) !== String(actorIdValue) && !alreadyAffected(ally))
-        .sort((left, right) => Number(left.hp) - Number(right.hp) || combatId(left).localeCompare(combatId(right)))[0]
+        .sort((left, right) => Number(left.hp) - Number(right.hp) || combatId(left).localeCompare(combatId(right), 'en'))[0]
       : enemies.filter(enemy => !alreadyAffected(enemy) && combatDistance(state, actorIdValue, combatId(enemy)) <= Number(action.range ?? 5))
-        .sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right)))[0]
+        .sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right), 'en'))[0]
     if (action.target === 'enemy' && (!target || combatDistance(state, actorIdValue, combatId(target)) > Number(action.range ?? 5))) continue
     if (action.target === 'ally' && !target) continue
     // Изгнание нежити — когда рядом есть неизгнанная нежить; без неё действие пустое.
@@ -935,8 +935,8 @@ export function planHeroCombatCommand(state, actorIdValue) {
   addAttackCandidates(state, actorId, actor, add)
 
   const ranked = candidates.sort((left, right) => right.score - left.score
-    || String(left.command.command_type).localeCompare(String(right.command.command_type))
-    || JSON.stringify(left.command).localeCompare(JSON.stringify(right.command)))
+    || String(left.command.command_type).localeCompare(String(right.command.command_type), 'en')
+    || JSON.stringify(left.command).localeCompare(JSON.stringify(right.command), 'en'))
   let best = ranked[0]
   if (best?.command.command_type === 'CastSpell' && best.command.slot_level > 0) {
     // При почти равной полезности одного заклинания бережём старшую ячейку,
@@ -950,7 +950,7 @@ export function planHeroCombatCommand(state, actorIdValue) {
   }
   if (best) return { command: best.command, reason: best.reason }
 
-  const target = enemiesForTactics(state).sort((left, right) => combatDistance(state, actorId, combatId(left)) - combatDistance(state, actorId, combatId(right)) || combatId(left).localeCompare(combatId(right)))[0]
+  const target = enemiesForTactics(state).sort((left, right) => combatDistance(state, actorId, combatId(left)) - combatDistance(state, actorId, combatId(right)) || combatId(left).localeCompare(combatId(right), 'en'))[0]
   if (target && economy.action !== false) {
     const movement = movementCandidateFor(state, actorId, combatId(target))
     if (movement) return { command: movement.command, reason: `Сблизиться с ${combatId(target)} по доступному маршруту` }

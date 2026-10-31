@@ -191,3 +191,15 @@ test('complete background choices are normalized and validated before materializ
   assert.equal(validateCompleteBackgroundChoices('guild-artisan', selected).ok, true)
   assert.equal(validateCompleteBackgroundChoices('guild-artisan', { 'artisan-tool': ['not-a-tool'] }).ok, false)
 })
+
+// Находка переноса (docs/rust-port-js-findings.md): герой 2014 без
+// `characterClass` с узнаваемой ролью падал «Для класса нет стартового набора
+// 2014». Такой импорт прежде не проходил, поэтому старых событий с ним нет.
+test('класс, узнанный по роли, выбирает стартовый набор 2014', () => {
+  for (const [role, key] of [['Воин', 'fighter'], ['Волшебник', 'wizard']]) {
+    const hero = withStarterKit({ id: 'by-role', role, inventory: [], currency: {} }, { rulesetId: RULESET_ID })
+    assert.equal(hero.characterClass, key)
+    assert.ok(hero.inventory.length > 1, `${role}: набор класса, а не одно оружие`)
+    assert.ok(hero.starterEquipmentChoices && Object.keys(hero.starterEquipmentChoices).length > 0, role)
+  }
+})

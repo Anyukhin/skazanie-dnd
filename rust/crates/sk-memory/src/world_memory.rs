@@ -2051,6 +2051,11 @@ pub fn validate_world_memory_command(command: &Value, state: &Value, context: &V
                 );
                 set(&mut result, "proof_fact_ids", list_value(proof_fact_ids));
                 set(&mut result, "proof_source_event_ids", list_value(sources));
+            } else {
+                // Пустые после очистки id (`['', ' ']`) — не доказательство:
+                // сырые поля команды не доходят до события (как JS).
+                result.shift_remove("proof_fact_ids");
+                result.shift_remove("proof_source_event_ids");
             }
             put(&mut result, "visibility", get(Some(quest), "visibility"));
         }

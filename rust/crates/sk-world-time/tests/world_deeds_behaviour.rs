@@ -182,6 +182,9 @@ fn prototype_keys_are_unknown_table_values() {
     // Вид `constructor` — не вид летописи: запись отбрасывается.
     let ledger = normalize_world_deeds_state(Some(&json!({ "deeds": [{ "id": "deed:x", "kind": "constructor" }] })));
     assert_eq!(ledger["deeds"], json!([]));
+    // Молва о таком поступке — запасной фразой (JS прежде падал на
+    // `RUMOR_PHRASES['constructor']`, исправлено вместе с ним).
+    assert!(rumor_wording(&json!({ "kind": "constructor", "location_name": "Брод" }), None).starts_with("В «Брод» случилось нехорошее"));
     // Ступень `toString` — незнакомая: поправка как у неизвестной ступени.
     assert_eq!(rumor_reputation_delta(Some(&json!({ "severity": "toString" })), None), -2.0);
     // Обстановка вида `constructor` — общее слово «обстановка».

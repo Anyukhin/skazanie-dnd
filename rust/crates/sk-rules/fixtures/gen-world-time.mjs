@@ -24,7 +24,7 @@ if (!corpus) throw new Error('Укажите каталог корпуса')
 const E = await loadOpenCopy()
 const sha = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const block = await blockFunction(
-  [[13141, 13335]],
+  [[13169, 13363]],
   ['const appendTimeAdvance'],
   ['events', 'rolls', 'diceService', 'projectEvents', 'sourceCommand0', 'amount0', 'unit0', 'options0'],
   'return appendWorldTimeConsequences(sourceCommand0, amount0, unit0, options0)',

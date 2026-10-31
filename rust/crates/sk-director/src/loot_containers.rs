@@ -1779,10 +1779,10 @@ pub struct ContainerViewOptions<'a> {
 /// содержимое — только по защищённому чтению (`withContents`).
 pub fn loot_container_for_viewer(container: &Value, options: ContainerViewOptions<'_>) -> Option<Value> {
     let normalized = normalize_loot_container(Some(container))?;
-    // `distanceFeet = null` по умолчанию: `Number(null)` — 0, и он конечен.
+    // Без расстояния (`null` по умолчанию) — без поля, а не `Number(null) = 0`.
     let distance_source = options.distance_feet.unwrap_or(&Value::Null);
     let distance_number = js::number(Some(distance_source));
-    let distance = (distance_number.is_finite() && distance_number >= 0.0).then(|| js::round(distance_number));
+    let distance = (!distance_source.is_null() && distance_number.is_finite() && distance_number >= 0.0).then(|| js::round(distance_number));
     let with_contents = options.with_contents.unwrap_or(&Value::Bool(false));
     let items = array(normalized.get("items"));
     let total: f64 = items

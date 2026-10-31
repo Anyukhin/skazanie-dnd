@@ -176,3 +176,19 @@ test('секретный проход не запирает путь', () => {
   const report = validateSceneGraph(graph)
   assert.deepEqual(report.errors, [], 'секрет — это видимость, а не замок; отдельная механика поиска не дело графа')
 })
+
+// Находка порта на Rust (docs/rust-port-js-findings.md): запертая связь,
+// объявленная раньше связи к ключу, проверялась до находки ключа, а повторный
+// обход шёл только от входа и уже достигнутые зоны не раскрывал.
+test('ключ, найденный после проверки двери, открывает её на следующем обходе', () => {
+  const graph = tavernGraph({
+    links: [
+      { id: 'front', from: 'yard', to: 'hall', kind: 'door' },
+      { id: 'to-store', from: 'hall', to: 'store', kind: 'locked', keyId: 'store-key' },
+      { id: 'to-kitchen', from: 'hall', to: 'kitchen', kind: 'open' },
+    ],
+  })
+  const reached = reachableZones(graph)
+  assert.ok(reached.zones.has('store'), 'кладовая открывается ключом из кухни')
+  assert.deepEqual(validateSceneGraph(graph).errors, [])
+})

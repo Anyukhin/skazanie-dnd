@@ -77,7 +77,7 @@ export function corpusExtract(state) {
       temporary_hp: mechanics.temporary_hp?.[id] ?? null,
       level: actor?.level ?? null,
       inventory: Array.isArray(actor?.inventory)
-        ? actor.inventory.map((/** @type {any} */ item) => ({ id: String(item?.id ?? ''), quantity: item?.quantity ?? null, equipped: item?.equipped === true })).sort((/** @type {any} */ a, /** @type {any} */ b) => a.id.localeCompare(b.id))
+        ? actor.inventory.map((/** @type {any} */ item) => ({ id: String(item?.id ?? ''), quantity: item?.quantity ?? null, equipped: item?.equipped === true })).sort((/** @type {any} */ a, /** @type {any} */ b) => a.id.localeCompare(b.id, 'en'))
         : null,
       currency: actor?.currency ?? null,
     }

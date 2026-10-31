@@ -416,7 +416,7 @@ export function tameableBeasts(state = {}) {
       blocked_reason: beastApproachBlockedReason(state, enemy),
     }))
     .filter((entry) => entry.beast?.status !== 'companion')
-    .sort((left, right) => String(left.enemy.id).localeCompare(String(right.enemy.id)))
+    .sort((left, right) => String(left.enemy.id).localeCompare(String(right.enemy.id), 'en'))
 }
 
 /** Запись зверя по идентификатору либо черновик для ещё не заведённой. */

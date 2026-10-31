@@ -66,8 +66,10 @@ export function collectEpilogueFacts(state = {}, outcomeOrOptions = undefined) {
     }))
     .filter((quest) => quest.quest_id && quest.title)
 
+  // Лямбда, а не `filter(visibleToParty)`: номер элемента иначе становился
+  // запасной видимостью, и NPC без поля видимости выпадал из эпилога.
   const visibleNpcs = new Map((Array.isArray(state?.social?.npcs) ? state.social.npcs : [])
-    .filter(visibleToParty)
+    .filter((npc) => visibleToParty(npc))
     .map((npc) => [clean(npc?.id, 120), npc]))
   const promises = (Array.isArray(state?.social?.promises) ? state.social.promises : [])
     .filter((promise) => visibleToParty(promise)
@@ -121,7 +123,7 @@ export function collectEpilogueFacts(state = {}, outcomeOrOptions = undefined) {
       score: Math.max(-100, Math.min(100, Number.isSafeInteger(Number(rawScore)) ? Number(rawScore) : 0)),
     }))
     .filter((entry) => entry.score !== 0 && visibleFactions.has(entry.faction_id))
-    .sort((left, right) => Math.abs(right.score) - Math.abs(left.score) || left.faction_id.localeCompare(right.faction_id))
+    .sort((left, right) => Math.abs(right.score) - Math.abs(left.score) || left.faction_id.localeCompare(right.faction_id, 'en'))
     .slice(0, 6)
     .map((entry) => ({
       key: `reputation:${entry.faction_id}`,
@@ -492,7 +494,7 @@ export function buildEpilogueNarrationBrief(state = {}, outcomeOrOptions = undef
       faction_reputations: facts.faction_reputations,
       visited_locations: facts.visited_locations,
       confirmed_scene_history: (Array.isArray(state.adventure?.history) ? state.adventure.history : [])
-        .filter(visibleToParty)
+        .filter((entry) => entry != null && visibleToParty(entry))
         .slice(-12)
         .map((entry) => ({
         chapter: Math.max(1, Number(entry.chapter) || 1),

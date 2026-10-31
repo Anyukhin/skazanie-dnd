@@ -397,7 +397,7 @@ export function wantedFeed(state = {}) {
     })
     .sort((left, right) => right.level - left.level
       || (right.last_crime_at_minutes ?? 0) - (left.last_crime_at_minutes ?? 0)
-      || left.region_id.localeCompare(right.region_id))
+      || left.region_id.localeCompare(right.region_id, 'en'))
 }
 
 // ---------------------------------------------------------------------------

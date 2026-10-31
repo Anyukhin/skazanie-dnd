@@ -138,7 +138,7 @@ export function visibleCampaignLocations(projectedState) {
     if (text(entity?.kind, 30) !== 'location') continue
     remember(locationProfile({ id: entity?.id, name: entity?.name, summary: entity?.summary, kind: '' }, 'world_memory'))
   }
-  return [...known.values()].sort((left, right) => left.id.localeCompare(right.id))
+  return [...known.values()].sort((left, right) => left.id.localeCompare(right.id, 'en'))
 }
 
 /**

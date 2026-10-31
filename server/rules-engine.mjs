@@ -2509,14 +2509,14 @@ function planImportRelocations(state, map, partyPositions) {
     for (const cell of footprintCellsFor(findActor(state, position.actor_id), position)) occupied.add(positionKey(cell))
   }
   const movers = []
-  for (const [id, position] of Object.entries(state.mechanics.positions ?? {}).sort(([left], [right]) => left.localeCompare(right))) {
+  for (const [id, position] of Object.entries(state.mechanics.positions ?? {}).sort(([left], [right]) => left.localeCompare(right, 'en'))) {
     if (partyIds.has(String(id))) continue
     const x = Number(position?.x)
     const y = Number(position?.y)
     if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) continue
     movers.push({ kind: 'actor', id: String(id), x, y, body: findActor(state, id), creature: true })
   }
-  for (const entity of [...(state.entities ?? [])].sort((left, right) => String(left?.id ?? '').localeCompare(String(right?.id ?? '')))) {
+  for (const entity of [...(state.entities ?? [])].sort((left, right) => String(left?.id ?? '').localeCompare(String(right?.id ?? ''), 'en'))) {
     const x = Number(entity?.x)
     const y = Number(entity?.y)
     if (!entity?.id || !Number.isSafeInteger(x) || !Number.isSafeInteger(y)) continue
@@ -3091,7 +3091,7 @@ function farthestSafeDestinationAwayFrom(state, moverId, origin, distanceFeet) {
   const distanceFromOrigin = (position) => (footprintDistanceFeet(findActor(state, moverId), [origin], position) ?? 0) / 5
   return candidates.sort((left, right) => distanceFromOrigin(right.position) - distanceFromOrigin(left.position)
     || right.path.length - left.path.length
-    || positionKey(left.position).localeCompare(positionKey(right.position)))[0] ?? null
+    || positionKey(left.position).localeCompare(positionKey(right.position), 'en'))[0] ?? null
 }
 
 function diceExpression(dice, bonus, fallbackSides) {
@@ -4584,7 +4584,7 @@ function opportunityAttackers(state, moverId, from, path) {
       return path.some((step) => (footprintDistanceFeet(candidate, findActor(state, moverId), position, step) ?? 0) > reachFeet)
     })
     .sort((left, right) => (initiativeOrder.get(actorId(left)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right)) ?? Number.MAX_SAFE_INTEGER)
-      || actorId(left).localeCompare(actorId(right)))
+      || actorId(left).localeCompare(actorId(right), 'en'))
 }
 
 function sourceIdsFor(command, state) {
@@ -7207,7 +7207,9 @@ export function validateCommand(input, rawState, context = {}) {
     const distanceFeet = actorAt && npcPlacement
       ? footprintDistanceFeet(actor, [npcPlacement], actorAt)
       : Number.POSITIVE_INFINITY
-    if (distanceFeet > 5) {
+    // Неизвестное расстояние (`null`) — не «вплотную»: как у `MakeAttack`,
+    // без клеток обеих площадей кража издалека не разрешается.
+    if (distanceFeet == null || distanceFeet > 5) {
       throw new RulesValidationError('До кармана надо дойти: встаньте вплотную, в пределах 5 футов', 'PICKPOCKET_OUT_OF_REACH')
     }
     if (conditionIdsFor(state, npcId).has(pickpocketSpentCondition(npcId))) {
@@ -9684,7 +9686,7 @@ function allyAttackReactionFor(state, attackerId, targetId, kind) {
     })
     .filter(Boolean)
     .sort((left, right) => (initiativeOrder.get(actorId(left.actor)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right.actor)) ?? Number.MAX_SAFE_INTEGER)
-      || actorId(left.actor).localeCompare(actorId(right.actor)))[0] ?? null
+      || actorId(left.actor).localeCompare(actorId(right.actor), 'en'))[0] ?? null
 }
 
 /** Вариант окна для союзной реакции: то же описание, что у плитки. */
@@ -9709,6 +9711,18 @@ function shieldConditionEvent(command, targetId) {
   return eventFrom(commandWithRules({ ...command, actor_id: targetId }, RULE_IDS.conditions), 'ConditionAdded', {
     condition: 'shielded', duration: 'until-next-turn', source_actor: targetId, spell_id: 'shield',
   }, [targetId])
+}
+
+/**
+ * Вид урона добавки «Поглощения стихий». Условие без `rider_damage_type`
+ * (мусор старого сохранения) называет вид своим id `absorbing-element-rider:<вид>`;
+ * прежде удар оружием брал шаблон другого условия (`absorbing-element:`) и
+ * получал весь id видом урона, а удар заклинанием — склейку «elementalfire».
+ * @param {any} condition
+ */
+function absorbedRiderDamageType(condition) {
+  if (condition?.rider_damage_type != null) return String(condition.rider_damage_type)
+  return String(condition?.id ?? condition ?? '').replace(/^absorbing-element-rider:/u, '') || 'elemental'
 }
 
 function absorbElementsConditionEvents(command, targetId, damageType, slotLevel = 1) {
@@ -9774,7 +9788,7 @@ function counterspellReactionFor(state, casterId) {
     })
     .filter(Boolean)
     .sort((left, right) => (initiativeOrder.get(actorId(left.actor)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right.actor)) ?? Number.MAX_SAFE_INTEGER)
-      || actorId(left.actor).localeCompare(actorId(right.actor)))[0] ?? null
+      || actorId(left.actor).localeCompare(actorId(right.actor), 'en'))[0] ?? null
 }
 
 function silveryBarbsReactionFor(state, sourceActorId, preferredActorId = null) {
@@ -9794,7 +9808,7 @@ function silveryBarbsReactionFor(state, sourceActorId, preferredActorId = null) 
     .filter(Boolean)
     .sort((left, right) => Number(actorId(right.actor) === preferredActorId) - Number(actorId(left.actor) === preferredActorId)
       || (initiativeOrder.get(actorId(left.actor)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right.actor)) ?? Number.MAX_SAFE_INTEGER)
-      || actorId(left.actor).localeCompare(actorId(right.actor)))[0] ?? null
+      || actorId(left.actor).localeCompare(actorId(right.actor), 'en'))[0] ?? null
 }
 
 function reducedReactionDamage(damage, preventedAmount) {
@@ -9985,6 +9999,17 @@ function circularAreaMetadata(spell, center) {
     spell_id: spell.id,
     spreadsAroundCorners: spreadsAroundCorners(spell),
   } : {}
+}
+
+/**
+ * Цель в радиусе, только если расстояние известно. `footprintDistanceFeet`
+ * возвращает `null` без клеток площади, а `null <= r` в JS истинно — так
+ * взрыв задевал фигуру, чьё место неизвестно. Отказ — как у `MakeAttack`.
+ * @param {number|null} distanceFeet
+ * @param {number} radiusFeet
+ */
+function withinFeet(distanceFeet, radiusFeet) {
+  return distanceFeet != null && distanceFeet <= radiusFeet
 }
 
 function positionInArea(position, center, radiusFeet, shape = 'sphere', sideFeet = null, geometryVersion = null) {
@@ -10849,7 +10874,7 @@ function enervationLinkFor(state, casterIdValue) {
       && String(condition?.effect_id ?? '') === effectId
       && safeInteger(condition?.continuation_version, 0) === 1
       && (condition?.spell_id == null || String(condition.spell_id) === 'enervation'))
-    .sort((left, right) => String(left.targetId).localeCompare(String(right.targetId)))
+    .sort((left, right) => String(left.targetId).localeCompare(String(right.targetId), 'en'))
   const match = candidates[0]
   if (!match) return null
   const spell = canonicalCombatSpellFor('enervation', { rulesetId: state?.ruleset_id })
@@ -10996,7 +11021,7 @@ function monsterMultiattackActionCounts(multiattack) {
   return new Map(Object.entries(multiattack.action_counts)
     .map(([id, count]) => [String(id), Math.max(0, Math.min(8, safeInteger(count, 0)))])
     .filter(([id, count]) => id && count > 0)
-    .sort(([left], [right]) => left.localeCompare(right)))
+    .sort(([left], [right]) => left.localeCompare(right, 'en')))
 }
 
 function monsterMultiattackActionIds(actor, fallbackActionId = null, usedActionIds = []) {
@@ -11607,7 +11632,7 @@ function activeAuraOfProtection(state, targetId) {
       radius_feet: 10,
     })
   }
-  return candidates.sort((left, right) => right.bonus - left.bonus || left.source_id.localeCompare(right.source_id))[0] ?? null
+  return candidates.sort((left, right) => right.bonus - left.bonus || left.source_id.localeCompare(right.source_id, 'en'))[0] ?? null
 }
 
 function savingThrowModifierWithAura(state, targetId, baseModifier) {
@@ -11736,7 +11761,9 @@ function litByLightCantrip(state, actorIdValue) {
   return listActors(state).some((candidate) => {
     const bearerId = actorId(candidate)
     if (bearerId === id || !conditionIdsFor(state, bearerId).has(LIGHT_CONDITION)) return false
-    return distanceBetweenActors(state, id, bearerId) <= radius
+    // Без позиции одного из двух расстояние неизвестно (`null`), и свет
+    // заговора не достаёт — иначе `null <= радиус` освещал бы всю карту.
+    return withinFeet(distanceBetweenActors(state, id, bearerId), radius)
   })
 }
 
@@ -12201,7 +12228,7 @@ function savingThrowSucceeded(save, difficulty) {
 }
 
 function sortedInitiative(entries) {
-  return [...entries].sort((left, right) => right.total - left.total || right.modifier - left.modifier || String(left.actor_id).localeCompare(String(right.actor_id)))
+  return [...entries].sort((left, right) => right.total - left.total || right.modifier - left.modifier || String(left.actor_id).localeCompare(String(right.actor_id), 'en'))
 }
 
 function sceneAdvancePartyIds(state) {
@@ -14064,7 +14091,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
       }
       const protectedBy = protectionChoice?.use === true ? String(protectionChoice.reactor_id ?? '') : null
-      let attack = rollD20WithSpeciesLuck(state, diceService, command.actor_id, { modifier, purpose: 'attack', actorId: command.actor_id, advantage, disadvantage: disadvantage || Boolean(protectedBy), visibility: command.visibility })
+      // Помеху даёт принятая реакция, а не известность защитника: выбор без
+      // `reactor_id` (старое окно) уже оплачен реакцией и обязан мешать удару.
+      let attack = rollD20WithSpeciesLuck(state, diceService, command.actor_id, { modifier, purpose: 'attack', actorId: command.actor_id, advantage, disadvantage: disadvantage || protectedBy != null, visibility: command.visibility })
       if (protectedBy) attack = { ...attack, protected_by: protectedBy }
       // Чемпион критует на 19–20: такой удар попадает, как и натуральная 20.
       const criticalThreshold = weaponCriticalThreshold(state, actor)
@@ -14887,7 +14916,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             if (!isLivingActor(candidate)) return false
             if (burst.excludesTarget === true && actorId(candidate) === String(targetId)) return false
             const position = actorPosition(hitEffectState, actorId(candidate))
-            return position && footprintDistanceFeet(candidate, findActor(hitEffectState, targetId), position, targetPosition) <= Math.max(0, safeInteger(burst.radius, 5))
+            return position && withinFeet(footprintDistanceFeet(candidate, findActor(hitEffectState, targetId), position, targetPosition), Math.max(0, safeInteger(burst.radius, 5)))
           }) : []
           const expression = scaledDiceExpression(burst.damage, extraLevels, burst.upcastDicePerLevel, burst.maximumDice)
           const burstRoll = diceService.roll(expression, `spell:next-weapon-hit-burst:${pendingWeaponHitSpell.id}`, command.actor_id, command.visibility ?? 'public')
@@ -14926,7 +14955,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       }
       if (landed && absorbingElementMatches && absorbingElementCondition) {
         const conditionId = String(absorbingElementCondition.id)
-        const damageType = String(absorbingElementCondition.rider_damage_type ?? conditionId.replace(/^absorbing-element:/u, 'elemental'))
+        const damageType = absorbedRiderDamageType(absorbingElementCondition)
         const slotLevel = Math.max(1, safeInteger(absorbingElementCondition.slot_level, 1))
         const extraLevels = Math.max(0, slotLevel - 1)
         const baseExpression = scaledDiceExpression(String(absorbingElementCondition.rider_damage ?? '1d6'), extraLevels, 1)
@@ -16714,7 +16743,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             return Boolean(toward) && hasClearActorTrajectory(state, command.actor_id, candidateId, centre, at)
               && actorInArea(state, candidateId, at, toward, action.radiusFeet, 'cone', command.actor_id, centre)
           }
-          return footprintDistanceFeet(candidate, actor, at, centre) <= action.radiusFeet
+          return withinFeet(footprintDistanceFeet(candidate, actor, at, centre), action.radiusFeet)
         })
         : [target].filter(Boolean)
       for (let ordinal = declared.uses_before + 1; ordinal <= declared.uses_after; ordinal += 1) {
@@ -16897,7 +16926,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               && ![...OPPORTUNITY_BLOCKING_CONDITIONS].some((condition) => conditionIdsFor(state, readyId).has(condition)))
             // Заготовленный удар оружием требует дотянуться, заклинание — нет.
             .filter(([readyId, readied]) => Boolean(readied?.spell_id) || distanceBetweenActors(state, readyId, command.actor_id) <= 5)
-            .sort(([left], [right]) => (initiativeOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(right) ?? Number.MAX_SAFE_INTEGER) || left.localeCompare(right))[0]
+            .sort(([left], [right]) => (initiativeOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(right) ?? Number.MAX_SAFE_INTEGER) || left.localeCompare(right, 'en'))[0]
           if (readyEntry) events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowOpened', {
             id: `reaction:${command.command_id}:readied`,
             trigger: 'readied',
@@ -17262,7 +17291,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               if (spell.id === 'color-spray' && (conditions.has('blinded') || conditions.has('cannot-see'))) return false
               return true
             })
-            .sort((left, right) => actorHp(left) - actorHp(right) || actorId(left).localeCompare(actorId(right)))
+            .sort((left, right) => actorHp(left) - actorHp(right) || actorId(left).localeCompare(actorId(right), 'en'))
           for (const target of eligible) {
             const hp = actorHp(target)
             if (hp > remaining) continue
@@ -17520,7 +17549,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                   const at = actorPosition(state, actorId(candidate))
                   return at && footprintDistanceFeet(candidate, findActor(state, resolvedTargetId), at, targetAt) === 5
                 })
-                .sort((left, right) => actorId(left).localeCompare(actorId(right)))[0] : null
+                .sort((left, right) => actorId(left).localeCompare(actorId(right), 'en'))[0] : null
               if (secondTarget) {
                 const fireDice = cantripLevel >= 11 ? 2 : cantripLevel >= 5 ? 1 : 0
                 const expression = fireDice > 0 ? `${fireDice}d8${spellModifier >= 0 ? '+' : ''}${spellModifier}` : null
@@ -17631,7 +17660,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               .find((condition) => String(condition?.id ?? condition).startsWith('absorbing-element-rider:'))
             if (spell.attackKind === 'melee' && absorbingElementCondition?.absorb_elements_rider_armed === true) {
               const conditionId = String(absorbingElementCondition.id)
-              const riderDamageType = String(absorbingElementCondition.rider_damage_type ?? conditionId.replace(/^absorbing-element-rider:/u, 'elemental'))
+              const riderDamageType = absorbedRiderDamageType(absorbingElementCondition)
               const slotLevel = Math.max(1, safeInteger(absorbingElementCondition.slot_level, 1))
               const baseExpression = scaledDiceExpression(String(absorbingElementCondition.rider_damage ?? '1d6'), Math.max(0, slotLevel - 1), 1)
               const expression = critical ? criticalDamageExpression(baseExpression) : baseExpression
@@ -17719,7 +17748,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             const center = actorPosition(burstState, resolvedTargetId) ?? actorPosition(state, resolvedTargetId)
             const burstTargets = listActors(burstState).filter((candidate) => {
               const at = actorPosition(burstState, actorId(candidate))
-              return at && center && footprintDistanceFeet(candidate, findActor(burstState, resolvedTargetId), at, center) <= Math.max(0, safeInteger(burst.radius, 5))
+              return at && center && withinFeet(footprintDistanceFeet(candidate, findActor(burstState, resolvedTargetId), at, center), Math.max(0, safeInteger(burst.radius, 5)))
                 && (isLivingActor(candidate) || actorId(candidate) === resolvedTargetId)
             })
             for (const burstTarget of burstTargets) {
@@ -18622,7 +18651,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             const caught = listActors(state).filter((candidate) => {
               if (!isLivingActor(candidate) || actorId(candidate) === command.actor_id) return false
               const at = actorPosition(state, actorId(candidate))
-              return at && footprintDistanceFeet(candidate, actor, at, from) <= radiusFeet
+              return at && withinFeet(footprintDistanceFeet(candidate, actor, at, from), radiusFeet)
             })
             if (caught.length) {
               const blastExpression = scaledSpellDice(spell, actor, command.slot_level) ?? spell.damage
@@ -19069,7 +19098,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             return before <= reach && leavesReach
           })
           .sort((left, right) => (initiativeOrder.get(actorId(left)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right)) ?? Number.MAX_SAFE_INTEGER)
-            || actorId(left).localeCompare(actorId(right)))[0]
+            || actorId(left).localeCompare(actorId(right), 'en'))[0]
         if (reactor) events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowOpened', {
           id: `reaction:${command.command_id}:opportunity`,
           trigger: 'enemy-left-reach',
@@ -19106,7 +19135,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             // Именно «подошёл»: был дальше досягаемости, стал в её пределах.
             return before > 5 && after <= 5
           })
-          .sort(([left], [right]) => (initiativeOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(right) ?? Number.MAX_SAFE_INTEGER) || left.localeCompare(right))[0]
+          .sort(([left], [right]) => (initiativeOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(right) ?? Number.MAX_SAFE_INTEGER) || left.localeCompare(right, 'en'))[0]
         if (readyEntry) events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowOpened', {
           id: `reaction:${command.command_id}:readied`,
           trigger: 'readied',
@@ -19902,7 +19931,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       for (const id of [...partyIds, ...enemyIds]) {
         const actor = findActor(state, id)
         if (!actor) throw new RulesValidationError(`Участник ${id} не найден`, 'TARGET_NOT_FOUND')
-        const modifier = actor?.creationBenefits ? abilityModifier(actor.abilities?.dex) + Number(actor.creationBenefits.initiative_bonus ?? 0) : Number.isSafeInteger(Number(actor?.initiativeBonus))
+        // Нечисловая прибавка старого листа (`"5"` прошёл бы, `"x"` — нет) не
+        // роняет весь старт боя ошибкой кости: считается нулём, как запас.
+        const modifier = actor?.creationBenefits ? abilityModifier(actor.abilities?.dex) + safeInteger(actor.creationBenefits.initiative_bonus, 0) : Number.isSafeInteger(Number(actor?.initiativeBonus))
           ? Math.max(-30, Math.min(30, Number(actor.initiativeBonus)))
           : abilityModifier(actor?.abilities?.dex)
         const initiativeItemSources = activeItemMechanicEffects(actor)
@@ -19932,7 +19963,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         })
       }
       const initiative = sortedInitiative(entries)
-      for (const summon of summons.sort((left, right) => actorId(left).localeCompare(actorId(right)))) {
+      for (const summon of summons.sort((left, right) => actorId(left).localeCompare(actorId(right), 'en'))) {
         const ownerId = String(summon.ownerId ?? summon.owner_id)
         const ownerIndex = initiative.findIndex((entry) => String(entry.actor_id) === ownerId)
         if (ownerIndex < 0) continue
@@ -21331,6 +21362,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           stage_after: policy.stage_after,
           difficulty_parts: policy.parts,
           ...roll,
+          // У броска своё `actor_id` — герой; поле события называет зверя, и
+          // спред броска не должен его подменять (герой уже в `hero_id`).
+          actor_id: command.beast_actor_id,
           success: roll.success,
           at_minutes: minutes,
           policy_id: BEAST_TAMING_POLICY_ID,
@@ -22211,7 +22245,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
         const runners = state.players
           .filter((hero) => memberIds.has(actorId(hero)) && isLivingActor(hero))
-          .sort((left, right) => actorId(left).localeCompare(actorId(right)))
+          .sort((left, right) => actorId(left).localeCompare(actorId(right), 'en'))
         const checks = []
         for (const hero of runners) {
           const heroId = actorId(hero)

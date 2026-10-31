@@ -568,9 +568,9 @@ export function deriveArmorClass(actor, { abilities = normalizedAbilityScores(ac
       base: integer(entry.profile.armorClassBase, `armor profile ${entry.catalogId}.armorClassBase`, { minimum: 1, maximum: 30 }),
       dexterityCap: entry.profile.dexterityCap == null ? null : integer(entry.profile.dexterityCap, `armor profile ${entry.catalogId}.dexterityCap`, { minimum: -5, maximum: 10 }),
     }))
-    .sort((left, right) => right.base - left.base || left.catalogId.localeCompare(right.catalogId))[0] ?? null
+    .sort((left, right) => right.base - left.base || left.catalogId.localeCompare(right.catalogId, 'en'))[0] ?? null
   const shields = equipped.filter((entry) => entry.profile.kind === 'shield')
-    .sort((left, right) => left.catalogId.localeCompare(right.catalogId)).slice(0, 1)
+    .sort((left, right) => left.catalogId.localeCompare(right.catalogId, 'en')).slice(0, 1)
   const levelFeatIds = Object.values(actor?.levelFeats ?? {})
     .filter((entry) => entry && typeof entry === 'object')
     .map((entry) => String(entry.id ?? ''))

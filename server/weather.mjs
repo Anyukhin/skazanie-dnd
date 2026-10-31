@@ -518,13 +518,15 @@ export function weatherEffectLabels(state = {}, actorIdValue = null) {
 export function weatherCheckSwing(state = {}, skill = '', actorIdValue = null) {
   const id = String(skill ?? '').trim().toLocaleLowerCase('en').replace(/_/gu, '-')
   if (!WEATHER_AFFECTED_SKILLS.has(id)) return null
-  const effect = activeEffects(state, undefined, actorIdValue).find((candidate) => (candidate.skills ?? []).includes(id))
+  // Без героя — тот же активный герой, что у шапки (`worldClockFor`): иначе
+  // на смешанной карте шапка и бросок читали небо над разными клетками.
+  const effect = activeEffects(state, undefined, resolvedWeatherActorId(state, actorIdValue)).find((candidate) => (candidate.skills ?? []).includes(id))
   return effect ? { swing: effect.swing, reason: effect.reason, effect_id: effect.id } : null
 }
 
 /** Причина помехи дальней атаке под открытым небом либо `null`. */
 export function weatherRangedPenalty(state = {}, actorIdValue = null) {
-  const effect = activeEffects(state, undefined, actorIdValue).find((candidate) => candidate.ranged === true)
+  const effect = activeEffects(state, undefined, resolvedWeatherActorId(state, actorIdValue)).find((candidate) => candidate.ranged === true)
   return effect ? { reason: effect.reason, effect_id: effect.id } : null
 }
 
