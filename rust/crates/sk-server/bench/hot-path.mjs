@@ -58,7 +58,7 @@ const DICE = { format: 'skazanie.test-dice/1', description: 'все кости �
 function fighterDocument(name) {
   const baseScores = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
   return { schema: 'skazanie.character', schema_version: 1, character: {
-    character: name, characterClass: 'fighter', species: 'Человек', background: 'Мудрец', backgroundId: 'sage',
+    character: name, characterClass: 'fighter', species: 'Человек', background: 'Мудрец', backgroundId: 'sage', phbCreation: { schema_version: 1, classChoices: {} },
     level: 1, experience: 0, abilities: Object.fromEntries(Object.entries(baseScores).map(([id, value]) => [id, value + 1])),
     abilityGeneration: { policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2, method: 'standard_array',
       baseScores, originBonusProfileId: 'human', originBonuses: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1 }, speciesOptionId: 'human' },
