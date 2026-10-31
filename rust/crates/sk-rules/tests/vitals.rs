@@ -418,6 +418,7 @@ fn resolve_branches_match_js() {
         let context = Context::from_json(&case["context"]);
         let mut dice = sequence(&case["v"]);
         let mut uuid = sequence_uuids("uuid");
+        // Состояния эталона JS снял без нормализации: ветка идёт без неё.
         let result = sk_rules::normalize::assume_normalized(|| sk_rules::resolve::vitals::resolve_branch_without_tail(case["command"].clone(), state, &mut dice, &context, &mut uuid));
         let actual = outcome(result.map(|resolved| json!({ "events": resolved.events, "rolls": resolved.rolls })));
         let expected = expected_outcome(&case["o"]);

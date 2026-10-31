@@ -202,6 +202,7 @@ fn execute(core: &Rc<GameCore>, campaign_id: &str, idempotency_key: &str, comman
     let executed = with_rules_plan(core, |resolve| AuthoritativeExecutor::new(&journal).execute_commands(campaign_id, idempotency_key, &[command], &context, resolve)).map_err(executor_failure)?;
     let duplicate = executed.replayed || executed.commit.duplicate;
     let CommitResult { state: committed_state, events, .. } = executed.commit;
+    let committed_state = std::sync::Arc::unwrap_or_clone(committed_state);
     let (state, version) = if duplicate {
         let current = room::get_room(core, campaign_id)?;
         (current.state.unwrap_or(committed_state), Some(current.version))

@@ -18,7 +18,6 @@ use crate::context::{Context, Uuid};
 use crate::core::{ability_modifier, actor_max_hp, command_with_rules, event_from, hero_died_event_from, monster_trait_for, player_actor, resource_pool};
 use crate::dice_record::RulesDice;
 use crate::pause::{resistance_choices_from_context, rule, Interrupt, Flow};
-use crate::replay::CommandProjector;
 use crate::targets::is_dead_hero;
 
 /// `String(actor?.character ?? actor?.name ?? fallback)`.
@@ -228,9 +227,8 @@ pub fn resolve_branch_without_tail(command: Value, state: &Value, dice: &mut dyn
     let depth = context.resolve_depth().max(0);
     let context = context.with("__resolve_depth", Value::from(depth + 1));
     let recording = crate::dice_record::Recording::new(dice);
-    let mut state = crate::normalize::normalize_campaign_state(state)?;
-    super::push_npc_spell_proxies(&mut state, &command)?;
-    let projector = CommandProjector::new(&state);
+    let normalized = crate::normalized::NormalizedState::normalize(state)?;
+    let super::CommandStart { state, projector, .. } = super::command_start(&normalized, &command)?;
     let target_id = crate::core::target_for(&command);
     let resistance_choices = resistance_choices_from_context(context.get("resistanceChoices"));
     let elemental_reaction_choices = super::reaction_choices(context.get("elementalDamageChoices"), "damage_key");

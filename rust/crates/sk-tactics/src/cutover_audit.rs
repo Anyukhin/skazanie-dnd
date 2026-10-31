@@ -113,6 +113,39 @@ impl Reducer for GameReducer {
     fn apply(&self, state: Value, event: &Value, mode: RetentionMode) -> Result<Value, String> {
         with_retention_mode(mode_name(mode), || apply_game_event(&state, event))?.map_err(|error| error.to_string())
     }
+
+    /// Голова хранилища нормализована в текущем режиме: ветка редьюсера без
+    /// повторной нормализации входа (`NormalizedState::reduced`).
+    fn apply_to_head(&self, state: Value, event: &Value, mode: RetentionMode) -> Result<Value, String> {
+        if mode != RetentionMode::Current {
+            return self.apply(state, event, mode);
+        }
+        with_retention_mode(mode_name(mode), || sk_rules::normalized::NormalizedState::from_store_head(state).reduced(event))?.map_err(|error| error.to_string())
+    }
+
+    fn state_schema_version(&self) -> i64 {
+        sk_rules::schema::STATE_SCHEMA_VERSION
+    }
+
+    /// Цепочка миграций движка (`sk_rules::schema::migrations`); ошибка — как
+    /// у [`Self::normalize`]: запоминается, состояние остаётся как было.
+    fn migrate(&self, state: Value, from: i64) -> Value {
+        match with_retention_mode("current", || sk_rules::schema::migrations::migrate(&state, from)) {
+            Ok(Ok(migrated)) => migrated,
+            Ok(Err(error)) => {
+                self.failures.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push(error.to_string());
+                state
+            }
+            Err(error) => {
+                self.failures.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push(error);
+                state
+            }
+        }
+    }
+
+    fn check_shape(&self, state: &Value) -> Result<(), String> {
+        sk_rules::schema::shape::check_campaign_state(state).map_err(|error| error.to_string())
+    }
 }
 
 /// Клетки сцены из карты: `legacyCellsFromTacticalMap(deserializeTacticalMap(map))`,

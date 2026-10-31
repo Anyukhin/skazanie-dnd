@@ -88,8 +88,8 @@ fn normalize(state: &Value) -> Result<Value, Failure> {
 /// запасное.
 pub fn latest_campaign_state(core: &GameCore, campaign_id: &str, fallback_state: Option<&Value>) -> Result<Value, Failure> {
     let _span = sk_store::perf::span("latest_campaign_state");
-    // Нормализация читает голову по ссылке, без копии состояния (Ск2).
-    let loaded = core.events.inspect(campaign_id, &LoadOptions::default(), |state, _| normalize(state)).map_err(Failure::from).and_then(|normalized| normalized);
+    // Голова журнала уже нормализована (урок 4): копия — только своё значение.
+    let loaded = core.events.load(campaign_id, &LoadOptions::default()).map_err(Failure::from).and_then(|loaded| Ok(sk_rules::normalized::NormalizedState::from_loaded(&loaded)?.into_value()));
     match loaded {
         Ok(state) => Ok(state),
         Err(_) => normalize(fallback_state.unwrap_or(&Value::Null)),

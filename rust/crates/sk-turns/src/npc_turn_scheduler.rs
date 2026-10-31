@@ -35,9 +35,9 @@ use sk_rules::context::Context;
 use sk_rules::core::incapacitating_condition_for;
 use sk_rules::geometry::movement::movement_for_actor;
 use sk_rules::geometry::terrain::movement_step_cost_for;
-use std::borrow::Cow;
 
-use sk_rules::normalize::{normalize_campaign_state, normalize_campaign_state_cow};
+use sk_rules::normalize::normalize_campaign_state;
+use sk_rules::normalized::NormalizedState;
 use sk_rules::pause::{Fault, Halt};
 use sk_rules::preview_attack::preview_monster_action;
 use sk_rules::resolve::api::RulesEngine;
@@ -1172,7 +1172,7 @@ fn flee_destination(state: &Value, enemy: &Value, source_id: &str) -> Option<Poi
     best.map(|(_, destination)| destination)
 }
 
-fn turned_undead_plan(state: &Value, enemy: &Value, source_id: &str) -> Result<Vec<Value>, Halt> {
+fn turned_undead_plan(state: &NormalizedState, enemy: &Value, source_id: &str) -> Result<Vec<Value>, Halt> {
     let id = id_of(enemy);
     let mut commands = Vec::new();
     let destination = flee_destination(state, enemy, source_id);
@@ -1471,10 +1471,10 @@ fn with_authority(command: &Value) -> Value {
 }
 
 /// `validateSpellPlan(spell, extra)`: команда с кругом ячейки движка или `None`.
-fn validate_spell_plan(state: &Value, enemy: &Value, spell: &Value, extra: (&str, Value)) -> Result<Option<Value>, Halt> {
+fn validate_spell_plan(state: &NormalizedState, enemy: &Value, spell: &Value, extra: (&str, Value)) -> Result<Option<Value>, Halt> {
     let command = spell_cast_command(enemy, spell, extra);
     let mut uuid = validation_uuid();
-    match sk_rules::validate::validate_command(&with_authority(&command), state, &npc_context(&id_of(enemy)), &mut uuid) {
+    match sk_rules::validate::validate_normalized(&with_authority(&command), state, &npc_context(&id_of(enemy)), &mut uuid) {
         Ok(normalized) => {
             let mut result = command.as_object().cloned().unwrap_or_default();
             if js::present(normalized.get("slot_level")) {
@@ -1500,7 +1500,7 @@ fn spell_level_value(command: &Value, spell: &Value) -> Value {
 
 /// `monsterSpellPlanFor(state, enemy, candidate, economy)`: лечение союзника,
 /// контроль, область по двоим героям, урон по лучшей цели.
-fn monster_spell_plan_for(state: &Value, enemy: &Value, candidate: Option<&Candidate<'_>>, economy: Option<&Value>) -> Result<Option<Value>, Halt> {
+fn monster_spell_plan_for(state: &NormalizedState, enemy: &Value, candidate: Option<&Candidate<'_>>, economy: Option<&Value>) -> Result<Option<Value>, Halt> {
     if js::is_false(get(economy, "action")) {
         return Ok(None);
     }
@@ -1680,7 +1680,12 @@ fn monster_spell_plan_for(state: &Value, enemy: &Value, candidate: Option<&Candi
 /// `planLegendaryAction(rawState, bossId)`: легендарное действие после чужого
 /// хода или `None`.
 pub fn plan_legendary_action(raw_state: &Value, boss_id: &str) -> Result<Option<Value>, Halt> {
-    let state = normalize_campaign_state_cow(raw_state)?;
+    plan_legendary_action_normalized(&NormalizedState::normalize(raw_state)?, boss_id)
+}
+
+/// [`plan_legendary_action`] над нормализованным состоянием.
+pub fn plan_legendary_action_normalized(state: &NormalizedState, boss_id: &str) -> Result<Option<Value>, Halt> {
+    let state = state.in_ambient_mode()?;
     let boss = game::find_actor(&state, boss_id);
     let profile = legendary_profile_for(boss);
     let combat = path(Some(&state), &["mechanics", "combat"]);
@@ -1805,9 +1810,9 @@ fn monster_area_plan_for(state: &Value, enemy: &Value, candidate: Option<&Candid
 }
 
 /// `npcCommandValid(state, command)`.
-fn npc_command_valid(state: &Value, command: &Value) -> Result<bool, Halt> {
+fn npc_command_valid(state: &NormalizedState, command: &Value) -> Result<bool, Halt> {
     let mut uuid = validation_uuid();
-    match sk_rules::validate::validate_command(&with_authority(command), state, &npc_context(&js::string(command.get("actor_id"))), &mut uuid) {
+    match sk_rules::validate::validate_normalized(&with_authority(command), state, &npc_context(&js::string(command.get("actor_id"))), &mut uuid) {
         Ok(_) => Ok(true),
         Err(halt) if halt.is_rule() => Ok(false),
         Err(halt) => Err(halt),
@@ -1818,8 +1823,14 @@ fn npc_command_valid(state: &Value, command: &Value) -> Result<bool, Halt> {
 
 /// `planNpcTurn(rawState, enemyId)`: команды хода существа.
 pub fn plan_npc_turn(raw_state: &Value, enemy_id: &str) -> Result<Vec<Value>, Halt> {
-    let state = normalize_campaign_state_cow(raw_state)?;
-    let state = &state;
+    plan_npc_turn_normalized(&NormalizedState::normalize(raw_state)?, enemy_id)
+}
+
+/// [`plan_npc_turn`] над нормализованным состоянием: проверки команд-кандидатов
+/// идут без повторной нормализации.
+pub fn plan_npc_turn_normalized(state: &NormalizedState, enemy_id: &str) -> Result<Vec<Value>, Halt> {
+    let state = state.in_ambient_mode()?;
+    let state: &NormalizedState = &state;
     let end = || end_turn(enemy_id);
     let Some(enemy) = game::find_actor(state, enemy_id).filter(|enemy| game::is_enemy_actor(state, enemy_id) && is_combat_capable(state, enemy)) else {
         return Ok(vec![end()]);
@@ -2105,12 +2116,22 @@ impl NpcTurnJournal for EventStore {
 /// `{ commands, events, rolls, state }`.
 pub trait NpcRulesEngine {
     fn resolve_plan(&self, commands: &[Value], state: &Value, context: &Value) -> Result<Value, Halt>;
+    /// [`Self::resolve_plan`] над нормализованным состоянием (урок 4).
+    fn resolve_plan_normalized(&self, commands: &[Value], state: &NormalizedState, context: &Value) -> Result<Value, Halt> {
+        self.resolve_plan(commands, state.value(), context)
+    }
 }
 
 impl NpcRulesEngine for RefCell<RulesEngine> {
     fn resolve_plan(&self, commands: &[Value], state: &Value, context: &Value) -> Result<Value, Halt> {
         let plan = json!({ "proposed_commands": commands });
         let resolved = self.borrow_mut().resolve_plan(&plan, state, &Context::from_json(context))?;
+        Ok(json!({ "commands": resolved.commands, "events": resolved.events, "rolls": resolved.rolls, "state": resolved.state }))
+    }
+
+    fn resolve_plan_normalized(&self, commands: &[Value], state: &NormalizedState, context: &Value) -> Result<Value, Halt> {
+        let plan = json!({ "proposed_commands": commands });
+        let resolved = self.borrow_mut().resolve_plan_normalized(&plan, state, &Context::from_json(context))?;
         Ok(json!({ "commands": resolved.commands, "events": resolved.events, "rolls": resolved.rolls, "state": resolved.state }))
     }
 }
@@ -2194,7 +2215,7 @@ impl From<StoreError> for SchedulerError {
 /// Итог `runNpcTurnScheduler`: `{ state, state_version, turns, events }`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SchedulerResult {
-    pub state: Value,
+    pub state: std::sync::Arc<Value>,
     pub state_version: i64,
     pub turns: Vec<Value>,
     pub events: Vec<Value>,
@@ -2202,7 +2223,7 @@ pub struct SchedulerResult {
 
 impl SchedulerResult {
     pub fn to_json(&self) -> Value {
-        json!({ "state": self.state, "state_version": self.state_version, "turns": self.turns, "events": self.events })
+        json!({ "state": self.state.as_ref(), "state_version": self.state_version, "turns": self.turns, "events": self.events })
     }
 }
 
@@ -2242,8 +2263,9 @@ struct PlanCommit {
 pub fn execute_plan(journal: &dyn NpcTurnJournal, rules_engine: &dyn NpcRulesEngine, campaign_id: &str, key: &str, commands: &[Value], context: &Value, max_attempts: usize) -> Result<Executed, SchedulerError> {
     let executor = AuthoritativeExecutor::new(journal).with_max_attempts(max_attempts);
     let fault: RefCell<Option<Halt>> = RefCell::new(None);
-    let resolve = |commands: &[Value], state: &Value, context: &Value| -> Result<Value, RuleError> {
-        match rules_engine.resolve_plan(commands, state, context) {
+    // Голова журнала уже нормализована хранилищем: движок берёт её как есть.
+    let resolve = |commands: &[Value], state: &std::sync::Arc<Value>, reducer_version: i64, context: &Value| -> Result<Value, RuleError> {
+        match NormalizedState::from_journal(state, reducer_version).and_then(|state| rules_engine.resolve_plan_normalized(commands, &state, context)) {
             Ok(resolved) => Ok(resolved),
             Err(Halt::Rule(error)) => Err(error),
             Err(other) => {
@@ -2254,7 +2276,7 @@ pub fn execute_plan(journal: &dyn NpcTurnJournal, rules_engine: &dyn NpcRulesEng
             }
         }
     };
-    match executor.execute_commands(campaign_id, key, commands, context, &resolve) {
+    match executor.execute_commands_on_head(campaign_id, key, commands, context, &resolve) {
         Ok(executed) => Ok(executed),
         Err(ExecutorError::Rule(error)) => match fault.borrow_mut().take() {
             Some(halt) => Err(SchedulerError::Halt(halt)),
@@ -2340,10 +2362,10 @@ pub(crate) async fn run_npc_turn_scheduler_marked(options: SchedulerOptions<'_>)
     let mut loaded = options.journal.load(campaign_id)?;
     let mut turns: Vec<Value> = Vec::new();
     let mut events: Vec<Value> = Vec::new();
-    let done = |state: Value, version: i64, turns: Vec<Value>, events: Vec<Value>| Ok((SchedulerResult { state, state_version: version, turns, events }, false));
-    let done_normalized = |state: Value, version: i64, turns: Vec<Value>, events: Vec<Value>| Ok((SchedulerResult { state, state_version: version, turns, events }, true));
+    let done = |state: std::sync::Arc<Value>, version: i64, turns: Vec<Value>, events: Vec<Value>| Ok((SchedulerResult { state, state_version: version, turns, events }, false));
+    let done_normalized = |state: std::sync::Arc<Value>, version: i64, turns: Vec<Value>, events: Vec<Value>| Ok((SchedulerResult { state, state_version: version, turns, events }, true));
     for _ in 0..options.max_turns {
-        let state = normalize_campaign_state_cow(&loaded.state)?;
+        let state = NormalizedState::from_loaded(&loaded)?;
         let combat = path(Some(&state), &["mechanics", "combat"]).cloned().unwrap_or(Value::Null);
         let combat = Some(&combat);
         if !js::truthy(get(combat, "active")) {
@@ -2367,21 +2389,11 @@ pub(crate) async fn run_npc_turn_scheduler_marked(options: SchedulerOptions<'_>)
                 continue;
             }
             let version = loaded.state_version;
-            // Заимствованное — это `loaded.state` (уже нормализованное): его и отдать без копии.
-            let state = match state {
-                Cow::Owned(state) => Some(state),
-                Cow::Borrowed(_) => None,
-            };
-            return done_normalized(state.unwrap_or_else(|| std::mem::take(&mut loaded.state)), version, turns, events);
+            return done_normalized(state.shared(), version, turns, events);
         }
         if js::truthy(get(combat, "reaction_window")) || truce_holds(&state) {
             let version = loaded.state_version;
-            // Заимствованное — это `loaded.state` (уже нормализованное): его и отдать без копии.
-            let state = match state {
-                Cow::Owned(state) => Some(state),
-                Cow::Borrowed(_) => None,
-            };
-            return done_normalized(state.unwrap_or_else(|| std::mem::take(&mut loaded.state)), version, turns, events);
+            return done_normalized(state.shared(), version, turns, events);
         }
         let completed: IndexSet<String> = list(get(combat, "turn_completed")).iter().map(|id| js::string(Some(id))).collect();
         let current_id = match initiative_group_ids(&state).into_iter().find(|id| !completed.contains(id)) {
@@ -2439,7 +2451,7 @@ pub(crate) async fn run_npc_turn_scheduler_marked(options: SchedulerOptions<'_>)
         if options.advance_npc {
             let mut bosses: Vec<(String, Value)> = Vec::new();
             for enemy in living_enemies(&state).into_iter().filter(|enemy| is_boss_actor(Some(enemy))) {
-                if let Some(command) = plan_legendary_action(&state, &id_of(enemy))? {
+                if let Some(command) = plan_legendary_action_normalized(&state, &id_of(enemy))? {
                     bosses.push((id_of(enemy), command));
                 }
             }
@@ -2481,7 +2493,7 @@ pub(crate) async fn run_npc_turn_scheduler_marked(options: SchedulerOptions<'_>)
             return Err(SchedulerError::rule("INVALID_COMBAT_STATE", "Initiative references an unknown actor"));
         };
         let ordinary_enemy = capable && enemy_turn;
-        let ordinary_commands = if ordinary_enemy { plan_npc_turn(&state, &current_id)? } else { vec![end_turn(&current_id)] };
+        let ordinary_commands = if ordinary_enemy { plan_npc_turn_normalized(&state, &current_id)? } else { vec![end_turn(&current_id)] };
         let ordinary_tactic = if ordinary_enemy {
             let candidates = target_candidates(&state, current)?;
             public_tactic_for(&state, current, candidates.first(), &ordinary_commands)

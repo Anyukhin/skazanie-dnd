@@ -70,7 +70,7 @@ fn lab(state: &Shared) -> Arc<CombatLabRuns> {
     // `loadCampaign: async (id) => (await eventStore.load(String(id).toUpperCase())).state`.
     options.load_campaign = Some(Arc::new(move |campaign_id: &str| {
         let campaign_id = campaign_id.to_uppercase();
-        core_job(&app, move |core| core.events.load(&campaign_id, &LoadOptions::default()).map(|loaded| Some(loaded.state)).map_err(|error| setup_error(&error.message, Some(error.code))))
+        core_job(&app, move |core| core.events.load(&campaign_id, &LoadOptions::default()).map(|loaded| Some(std::sync::Arc::unwrap_or_clone(loaded.state))).map_err(|error| setup_error(&error.message, Some(error.code))))
     }));
     // `chooseCommand: planHeroCombatCommand`: прогон своего боя зовёт его сам
     // (`runner`), здесь — признак и та же функция для вызывающих реестр.

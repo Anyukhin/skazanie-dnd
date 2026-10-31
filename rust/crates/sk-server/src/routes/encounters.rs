@@ -460,14 +460,14 @@ async fn run(core: Rc<GameCore>, app: Arc<AppState>, job: Assembly) -> Result<Va
     }
     if let Some(map) = result.as_object_mut() {
         map.insert("state_version".into(), Value::from(latest.state_version));
-        map.insert("authoritative_state".into(), latest.state.clone());
+        map.insert("authoritative_state".into(), Value::clone(&latest.state));
         map.insert("mechanics".into(), Value::Array(mechanics.clone()));
         map.insert("npc_turns".into(), Value::Array(npc_turns));
         map.insert("narration".into(), Value::String(narration.clone()));
     }
     let narration_message = (!narration.is_empty()).then(|| json!({ "id": combat_message_id(idempotency_key), "text": narration, "turnConsumed": false }));
     let projected = persist_authoritative_projection(&core, campaign_id, &latest.state, &mechanics, narration_message.as_ref(), PersistOptions::default())?;
-    let response_state = projected.as_ref().and_then(|room| room.state.clone()).filter(|state| !state.is_null()).unwrap_or(latest.state);
+    let response_state = projected.as_ref().and_then(|room| room.state.clone()).filter(|state| !state.is_null()).unwrap_or_else(|| std::sync::Arc::unwrap_or_clone(latest.state));
     let encounter = mechanics.iter().find(|event| event_type(event) == Some("EncounterCreated")).and_then(|event| get(get(Some(event), "payload"), "encounter")).filter(|encounter| !encounter.is_null()).cloned();
     if let Some(map) = result.as_object_mut() {
         map.insert("authoritative_state".into(), response_state);

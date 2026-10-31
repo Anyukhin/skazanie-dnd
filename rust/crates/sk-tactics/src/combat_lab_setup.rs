@@ -307,7 +307,7 @@ impl CampaignRooms for sk_store::EventStore {
 
     fn room_state(&self, code: &str) -> Result<Option<Value>> {
         match self.load(code, &sk_store::store::LoadOptions::default()) {
-            Ok(loaded) => Ok(Some(loaded.state)),
+            Ok(loaded) => Ok(Some(std::sync::Arc::unwrap_or_clone(loaded.state))),
             Err(error) if error.code == "CAMPAIGN_NOT_FOUND" => Ok(None),
             Err(error) => Err(store_error(error)),
         }

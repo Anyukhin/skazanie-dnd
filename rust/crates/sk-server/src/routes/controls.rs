@@ -186,7 +186,7 @@ async fn controls_body(ctx: &mut RouteCtx, user: &Value, campaign_id: &str) -> R
     let idempotency_key = crate::idempotency::required_key_sliced(&body, &ctx.headers)?;
     let job = (campaign_id.to_string(), idempotency_key, action.clone(), js::s(user.get("id")));
     let (committed, projected) = ctx.state.core.call(move |core| Box::pin(async move { rewind(&core, &job.0, &job.1, &job.2, &job.3) })).await??;
-    let response_state = projected.as_ref().and_then(|room| room.state.clone()).unwrap_or_else(|| committed.state.clone());
+    let response_state = projected.as_ref().and_then(|room| room.state.clone()).unwrap_or_else(|| Value::clone(&committed.state));
     let viewer = viewer_state(&ctx.state, user, campaign_id, &response_state).await?;
     let target_version = first_payload(&committed).and_then(|payload| payload.get("target_version")).filter(|value| !value.is_null()).cloned().unwrap_or(Value::Null);
     let mut reply = Map::new();

@@ -254,6 +254,11 @@ pub trait OrchestratorRules {
     fn resolve_plan(&self, commands: &[Value], state: &Value, context: &Value) -> Result<Value, Halt>;
     /// `validate(command, state, context)`.
     fn validate(&self, command: &Value, state: &Value, context: &Value) -> Result<Value, Halt>;
+    /// [`Self::validate`] над нормализованным состоянием (урок 4): движок не
+    /// нормализует его заново.
+    fn validate_normalized(&self, command: &Value, state: &sk_rules::normalized::NormalizedState, context: &Value) -> Result<Value, Halt> {
+        self.validate(command, state.value(), context)
+    }
     /// `rollEncounterCoins(plan, rulesEngine.diceService)`.
     fn roll_encounter_coins(&self, plan: &Value) -> RewardResult<Value>;
 }
@@ -291,6 +296,10 @@ impl OrchestratorRules for RefCell<RulesEngine> {
 
     fn validate(&self, command: &Value, state: &Value, context: &Value) -> Result<Value, Halt> {
         self.borrow_mut().validate(command, state, &Context::from_json(context))
+    }
+
+    fn validate_normalized(&self, command: &Value, state: &sk_rules::normalized::NormalizedState, context: &Value) -> Result<Value, Halt> {
+        self.borrow_mut().validate_normalized(command, state, &Context::from_json(context))
     }
 
     fn roll_encounter_coins(&self, plan: &Value) -> RewardResult<Value> {
@@ -1220,7 +1229,7 @@ impl AutonomousCampaignOrchestrator {
     /// `load(campaignId)`: голова журнала с нормализованным состоянием.
     pub fn load(&self, campaign_id: &str) -> OrchestratorResult<Loaded> {
         let mut loaded = self.event_store.load(campaign_id)?;
-        loaded.state = normalize_campaign_state(&loaded.state)?;
+        loaded.state = std::sync::Arc::new(normalize_campaign_state(&loaded.state)?);
         Ok(loaded)
     }
 
@@ -2066,7 +2075,7 @@ impl AutonomousCampaignOrchestrator {
             map.insert("narration".into(), narration);
             map.insert("turn_consumed".into(), Value::Bool(false));
             map.insert("admin_commands".into(), Value::from(0));
-            map.insert("state".into(), state.clone());
+            map.insert("state".into(), Value::clone(state));
             map.insert("state_version".into(), Value::from(loaded.state_version));
             map.insert("events".into(), json!([]));
             map.insert("commands".into(), json!([]));
@@ -2315,7 +2324,7 @@ impl AutonomousCampaignOrchestrator {
                     version.set(after.state_version);
                 } else {
                     let mut reply = plain(meta, "clarification", str_value("Обстановка изменилась, пока ведущий разбирал действие. Отправьте его ещё раз: цель и цена будут проверены заново."));
-                    reply["state"] = after.state;
+                    reply["state"] = std::sync::Arc::unwrap_or_clone(after.state);
                     reply["state_version"] = Value::from(after.state_version);
                     return Ok(reply);
                 }
@@ -2577,7 +2586,7 @@ impl AutonomousCampaignOrchestrator {
             let mut commands = list(corpse_approach.as_ref().and_then(|approach| approach.get("commands"))).to_vec();
             commands.extend(list(corpse_clue.as_ref().and_then(|clue| clue.get("commands"))).iter().cloned());
             let mut reply = plain(meta, kind, narration);
-            reply["state"] = pick("state", state.clone());
+            reply["state"] = pick("state", Value::clone(state));
             reply["state_version"] = pick("state_version", Value::from(loaded.state_version));
             reply["events"] = Value::Array(events);
             reply["commands"] = Value::Array(commands);
@@ -3057,7 +3066,7 @@ impl AutonomousCampaignOrchestrator {
             format!("Не вышло. {failure_text} Можно изменить способ действия.")
         };
         let pick = |key: &str| -> Value {
-            nullish(consequence_commit.as_ref().and_then(|commit| commit.get(key)), check_commit.get(key)).filter(|value| !value.is_null()).cloned().unwrap_or_else(|| if key == "state" { state.clone() } else { Value::from(loaded.state_version) })
+            nullish(consequence_commit.as_ref().and_then(|commit| commit.get(key)), check_commit.get(key)).filter(|value| !value.is_null()).cloned().unwrap_or_else(|| if key == "state" { Value::clone(state) } else { Value::from(loaded.state_version) })
         };
         let mut commands = list(check_commit.get("commands")).to_vec();
         commands.extend(list(consequence_commit.as_ref().and_then(|commit| commit.get("commands"))).iter().cloned());

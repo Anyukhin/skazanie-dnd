@@ -20,6 +20,7 @@ use sk_core::Event;
 pub use sk_society::retention_context::{retention_context_active, retention_mode, with_retention_mode, RETENTION_REDUCER_VERSION};
 
 use crate::normalize::{normalize_campaign_state, normalize_campaign_state_owned};
+use crate::normalized::NormalizedState;
 use crate::pause::{Fault, Halt};
 
 fn coded(message: String, code: &str) -> Halt {
@@ -75,6 +76,14 @@ fn event_mode(marker: f64, event: &Value) -> &'static str {
     }
 }
 
+/// Режим retention, в котором применяется событие (`legacy` или `current`);
+/// версия редьюсера не той формы считается нулевой.
+pub fn event_retention_mode(event: &Value) -> &'static str {
+    let raw_marker = event.get("reducer_version");
+    let marker = if js::present(raw_marker) { js::number(raw_marker) } else { 0.0 };
+    event_mode(if marker.is_finite() { marker } else { 0.0 }, event)
+}
+
 /// `applyGameEvent(rawState, event)`: событие в явном retention-контексте.
 pub fn apply_game_event(raw_state: &Value, event: &Value) -> Result<Value, Halt> {
     apply_game_event_from(StateArg::Borrowed(raw_state), event)
@@ -86,10 +95,13 @@ pub fn apply_game_event_owned(raw_state: Value, event: &Value) -> Result<Value, 
     apply_game_event_from(StateArg::Owned(raw_state), event)
 }
 
-/// Состояние до события: по ссылке (копируется при нормализации) или своё.
+/// Состояние до события: по ссылке (копируется при нормализации), своё или
+/// уже нормализованное (нормализуется заново, только если режим события
+/// другой).
 enum StateArg<'a> {
     Borrowed(&'a Value),
     Owned(Value),
+    Normalized(NormalizedState),
 }
 
 impl StateArg<'_> {
@@ -97,6 +109,7 @@ impl StateArg<'_> {
         match self {
             StateArg::Borrowed(state) => state,
             StateArg::Owned(state) => state,
+            StateArg::Normalized(state) => state.value(),
         }
     }
 
@@ -104,6 +117,7 @@ impl StateArg<'_> {
         match self {
             StateArg::Borrowed(state) => normalize_campaign_state(state),
             StateArg::Owned(state) => normalize_campaign_state_owned(state),
+            StateArg::Normalized(state) => Ok(state.into_ambient_mode()?.into_value()),
         }
     }
 }
@@ -147,6 +161,13 @@ fn apply_game_event_current(raw_state: StateArg, event: &Value) -> Result<Value,
     Ok(state)
 }
 
+/// [`NormalizedState::reduced`]: `applyGameEvent` над нормализованным
+/// состоянием — та же проверка версии и тот же режим события; вход в режиме
+/// события повторно не нормализуется.
+pub(crate) fn apply_game_event_normalized(state: NormalizedState, event: &Value) -> Result<Value, Halt> {
+    apply_game_event_from(StateArg::Normalized(state), event)
+}
+
 /// `replayModeFor(stream)`: режим потока — по первому событию.
 fn replay_mode_for(stream: &[Value]) -> &'static str {
     if retention_context_active() {
@@ -168,44 +189,86 @@ fn replay_mode_for(stream: &[Value]) -> &'static str {
 /// `replayEvents(initialState, events)`.
 pub fn replay_events(initial_state: &Value, events: &[Value]) -> Result<Value, Halt> {
     let mode = replay_mode_for(events);
-    let mut state = in_mode(mode, || normalize_campaign_state(initial_state))?;
-    for event in events {
-        state = apply_game_event_owned(state, event)?;
+    let state = in_mode(mode, || NormalizedState::normalize(initial_state))?;
+    replay_normalized(state, events)
+}
+
+/// [`replay_events`] над нормализованным началом: без повторной
+/// нормализации, если режим потока тот же.
+pub fn replay_events_normalized(initial_state: &NormalizedState, events: &[Value]) -> Result<Value, Halt> {
+    let mode = replay_mode_for(events);
+    let state = if initial_state.mode() == mode { initial_state.clone() } else { in_mode(mode, || NormalizedState::normalize(initial_state))? };
+    replay_normalized(state, events)
+}
+
+/// Хвост `replayEvents` над нормализованным началом: префикс применяется
+/// с нормализацией итога каждого события (её сделал бы следующий шаг), итог
+/// последнего события остаётся сырым, как в JS.
+fn replay_normalized(mut state: NormalizedState, events: &[Value]) -> Result<Value, Halt> {
+    let Some((last, prefix)) = events.split_last() else { return Ok(state.into_value()) };
+    for event in prefix {
+        state = state.applied(event)?;
     }
-    Ok(state)
+    state.reduced(last)
 }
 
 #[derive(Debug, Clone)]
 struct ProjectorCache {
     mode: &'static str,
     fingerprints: Vec<String>,
-    state: Value,
+    /// Нормализованное состояние после префикса.
+    state: NormalizedState,
+}
+
+/// Исходное состояние проектора: нормализованное состояние команды или её
+/// изменённая копия (прокси NPC для заклинаний), которую нормализует первая
+/// проекция.
+#[derive(Debug, Clone)]
+enum ProjectorStart {
+    Normalized(NormalizedState),
+    Raw(Value),
 }
 
 /// `createCommandProjector(initialState)`: состояние после событий команды,
 /// где список событий только растёт.
 #[derive(Debug, Clone)]
 pub struct CommandProjector {
-    /// Исходное состояние команды — её приватная нормализованная копия.
-    initial: Value,
+    initial: ProjectorStart,
     cache: Option<ProjectorCache>,
 }
 
 impl CommandProjector {
+    /// Проектор над состоянием как есть (нормализует его первая проекция).
     pub fn new(initial: &Value) -> Self {
-        Self { initial: initial.clone(), cache: None }
+        Self { initial: ProjectorStart::Raw(initial.clone()), cache: None }
+    }
+
+    /// Проектор над нормализованным состоянием: без копии.
+    pub fn over(initial: &NormalizedState) -> Self {
+        Self { initial: ProjectorStart::Normalized(initial.clone()), cache: None }
     }
 
     /// Исходное состояние проектора.
     pub fn initial(&self) -> &Value {
-        &self.initial
+        match &self.initial {
+            ProjectorStart::Normalized(state) => state.value(),
+            ProjectorStart::Raw(state) => state,
+        }
+    }
+
+    /// Начало в режиме `mode`.
+    fn start(&self, mode: &'static str) -> Result<NormalizedState, Halt> {
+        match &self.initial {
+            ProjectorStart::Normalized(state) if state.mode() == mode => Ok(state.clone()),
+            _ => in_mode(mode, || NormalizedState::normalize(self.initial())),
+        }
     }
 
     /// `projectEvents(events)`: последнее событие применяется всегда заново,
     /// префикс берётся из кэша, если он совпал целиком.
     pub fn project(&mut self, events: &[Value]) -> Result<Value, Halt> {
         if events.is_empty() {
-            return replay_events(&self.initial, events);
+            return Ok(self.start(replay_mode_for(events))?.into_value());
         }
         let mode = replay_mode_for(events);
         let last = events.len() - 1;
@@ -232,14 +295,14 @@ impl CommandProjector {
             None => {
                 applied = 0;
                 fingerprints.clear();
-                in_mode(mode, || normalize_campaign_state(&self.initial))?
+                self.start(mode)?
             }
         };
         for event in &events[applied..last] {
-            state = apply_game_event(&state, event)?;
+            state = state.applied(event)?;
             fingerprints.push(js::stringify(event));
         }
-        let result = apply_game_event(&state, &events[last]);
+        let result = state.clone().reduced(&events[last]);
         self.cache = Some(ProjectorCache { mode, fingerprints, state });
         result
     }

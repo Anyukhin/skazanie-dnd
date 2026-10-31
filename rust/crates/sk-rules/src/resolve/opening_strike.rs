@@ -45,7 +45,8 @@ pub struct OpeningStrike {
 }
 
 /// `openingStrikeFor(input, rawState, context)`: открывает ли команда бой.
-pub fn opening_strike_for(input: &Value, raw_state: &Value, context: &Context) -> Result<Option<OpeningStrike>, Halt> {
+pub fn opening_strike_for(input: &Value, state: crate::normalized::StateIn<'_>, context: &Context) -> Result<Option<OpeningStrike>, Halt> {
+    let raw_state = state.raw;
     if context.resolve_depth() != 0 || context.is_npc_scheduler() || context.is_director() {
         return Ok(None);
     }
@@ -56,8 +57,8 @@ pub fn opening_strike_for(input: &Value, raw_state: &Value, context: &Context) -
     if js::is_true(at(at(raw_state.get("mechanics"), "combat"), "active")) {
         return Ok(None);
     }
-    let state = crate::normalize::normalize_campaign_state_cow(raw_state)?;
-    if sk_core::game::combat_active(&state) {
+    let state = state.normalized;
+    if sk_core::game::combat_active(state) {
         return Ok(None);
     }
     let hero_id = js::s(either(input, "actor_id", "actorId"));
@@ -127,13 +128,12 @@ pub fn opening_strike_turn_state(started: &Value, before: &Value, hero_id: &str,
 }
 
 /// `resolveOpeningStrike(input, rawState, opening, { diceService, context })`.
-pub fn resolve_opening_strike(input: &Value, raw_state: &Value, opening: &OpeningStrike, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
+pub fn resolve_opening_strike(input: &Value, state: &crate::normalized::NormalizedState, opening: &OpeningStrike, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
     let command_id = match crate::core::coalesce(&[input.get("command_id")]).or_else(|| crate::core::coalesce(&[input.get("commandId")])) {
         Some(id) => js::string(Some(id)),
         None => uuid(),
     };
     let strike = command_with(input, "command_id", Value::String(command_id.clone()));
-    let state = crate::normalize::normalize_campaign_state_cow(raw_state)?;
     let rule_id = sk_ruleset::ruleset_config::BG3_OPENING_STRIKE_HOUSE_RULE_ID;
     let free_strike = state.get("enabled_house_rules").and_then(Value::as_array).is_some_and(|rules| rules.iter().any(|rule| rule.as_str() == Some(rule_id)));
     let mut opening_action = Map::new();
@@ -167,17 +167,19 @@ pub fn resolve_opening_strike(input: &Value, raw_state: &Value, opening: &Openin
         entry.insert("visibility".into(), visibility.clone());
     }
     let start_context = context.with("serverAuthoritativeCombat", Value::Bool(true)).with("openingAction", Value::Object(opening_action));
-    let start = resolve_internal(&Value::Object(entry), &state, dice, &start_context, &mut *uuid)?;
-    let mut started: Value = (*state).clone();
+    let start = resolve_internal(&Value::Object(entry), state, dice, &start_context, &mut *uuid)?;
+    let mut chain = crate::normalized::EventChain::new(state.clone());
     for event in &start.events {
-        started = apply_game_event(&started, event)?;
+        chain.apply(event)?;
     }
+    let started = chain.into_raw();
     let combat = sk_core::game::combat(&started);
     let turn_started = start.events.iter().rev().find(|event| event.get("event_type").and_then(Value::as_str) == Some("TurnStarted"));
     let active_index = js::safe_int(combat.get("active_index"), -1);
     let first = combat.get("initiative").and_then(Value::as_array).and_then(|initiative| usize::try_from(active_index).ok().and_then(|index| initiative.get(index)));
     let hero_acts_first = js::s(first.and_then(|entry| entry.get("actor_id"))) == opening.actor_id;
-    let own_turn = opening_strike_turn_state(&started, &state, &opening.actor_id, turn_started)?;
+    let own_turn = opening_strike_turn_state(&started, state, &opening.actor_id, turn_started)?;
+    let own_turn_normalized = crate::normalized::NormalizedState::normalize(&own_turn)?;
     let mut follow_up = command_with(&strike, "expected_state_version", own_turn.get("state_version").cloned().unwrap_or(Value::Null));
     if own_turn.get("state_version").is_none() {
         js::delete(&mut follow_up, "expected_state_version");
@@ -186,7 +188,7 @@ pub fn resolve_opening_strike(input: &Value, raw_state: &Value, opening: &Openin
         follow_up["house_rule_id"] = Value::String(rule_id.into());
     }
     if free_strike || hero_acts_first {
-        let resolved = match resolve_internal(&follow_up, &own_turn, dice, context, &mut *uuid) {
+        let resolved = match resolve_internal(&follow_up, &own_turn_normalized, dice, context, &mut *uuid) {
             Ok(resolved) => resolved,
             Err(Interrupt::Pause(mut pause)) => {
                 let mut prefix = start.events.clone();
@@ -212,7 +214,7 @@ pub fn resolve_opening_strike(input: &Value, raw_state: &Value, opening: &Openin
         return Ok(Resolved { command: marked.command, events, rolls });
     }
     let mut dry = crate::dice_record::dry_run_dice();
-    match resolve_internal(&follow_up, &own_turn, &mut dry, context, &mut *uuid) {
+    match resolve_internal(&follow_up, &own_turn_normalized, &mut dry, context, &mut *uuid) {
         Ok(_) | Err(Interrupt::Pause(_)) => {}
         Err(other) => return Err(other),
     }

@@ -56,6 +56,21 @@ impl Outcome {
         }
     }
 
+    /// [`Self::with_state_before`] над нормализованным состоянием до команды.
+    pub fn with_normalized_state_before(resolved: Resolved, state: &crate::normalized::NormalizedState) -> Self {
+        if !resolved.events.iter().any(is_window_opened) {
+            return Outcome::Committed(resolved);
+        }
+        let mut chain = crate::normalized::EventChain::new(state.clone());
+        for event in &resolved.events {
+            if chain.apply(event).is_err() {
+                return Outcome::Committed(resolved);
+            }
+        }
+        let after = chain.into_raw();
+        Self::with_state_after(resolved, &after)
+    }
+
     /// События и броски команды — для коммита в обоих исходах.
     pub fn resolved(&self) -> &Resolved {
         match self {

@@ -101,6 +101,32 @@
   чистая функция `(state, user, actor_id)` — часы и случайность в неё не
   вносить. Сторож — `sk-server/tests/long_journal_budget.rs` (выделения не
   растут с длиной журнала), замер — `bench/long-journal.mjs`.
+- **Нормализация на границе** (урок 4). Нормализованное состояние ходит
+  типом `sk_rules::normalized::NormalizedState` (`Arc<Value>` и режим
+  удержания, в котором оно нормализовано). Получить его можно нормализацией
+  на границе (`normalize`, `normalize_owned`), из журнала (`from_loaded`:
+  голова хранилища с `GameReducer` уже нормализована) и применением события
+  (`applied`: ветка редьюсера без повторной нормализации входа, итог
+  нормализуется один раз). Функция, которой нужен нормализованный вход,
+  принимает `&NormalizedState` (или `StateIn`, если читает и сырое
+  состояние, как JS до нормализации) и сама не нормализует. Памяти итогов
+  больше нет; `assume_normalized` — только для эталона веток
+  `sk-rules/tests/vitals.rs`, в коде не применять. Редьюсер **не замкнут** относительно
+  нормализации (`sk-corpus closure`: 2275 из 30793 состояний, 37 типов
+  событий), поэтому итог события нормализуется — по одному разу на событие.
+  Рабочее представление остаётся `serde_json::Value`.
+- **Версия схемы состояния** (урок 4). Снимок SQLite хранит
+  `state_schema_version` (`sk_rules::schema::STATE_SCHEMA_VERSION`, сейчас 1).
+  Снимок этой версии грузится без нормализации, после проверки формы
+  (`schema::shape`, отказ `CORRUPT_EVENT_LOG` с кампанией и путём поля);
+  снимок без версии или старой — цепочкой `schema::migrations` в памяти;
+  новее поддерживаемой — отказ. Любая правка нормализации, меняющая итог, —
+  новая версия и шаг миграции, иначе снимки прежней формы загрузятся как
+  есть.
+- **Быстродействие.** Бюджеты горячего пути —
+  `sk-server/tests/hot_path_budget.rs`, замер против JS — `bench/hot-path.mjs`
+  (`--trace`: отрезки `normalize.full`, `state.copy`, `store.*`; `этап#n` —
+  сколько раз этап прошёл за запрос).
 
 ## 3. Крейты
 
@@ -131,6 +157,7 @@ cargo build --release --workspace --all-targets --locked
 cargo test --release -p sk-<крейт> --no-fail-fast       # точечно, как node --test
 cargo run --release -p sk-corpus -- reducer ../tmp/corpus-v2
 cargo run --release -p sk-corpus -- resolve ../tmp/corpus-v2 all
+cargo run --release -p sk-corpus -- closure ../tmp/corpus-v2  # где итог события — не неподвижная точка нормализации
 cargo build --release -p sk-server --features test-hooks --bin skazanie-server
 ```
 

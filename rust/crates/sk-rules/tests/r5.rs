@@ -202,8 +202,8 @@ fn run_call(f: &str, s: usize, a: &Args) -> Result<Value, Halt> {
         "removeSilveryFortuneEvent" => ok(en::remove_silvery_fortune_event(a.null(0), st, &a.id(1), a.v(2).and_then(Value::as_str))),
         "hasEnervationContinuation" => ok(json!(en::has_enervation_continuation(raw))),
         "enervationReasons" => ok(sk_rules::enervation_link::enervation_link_for(st, a.v(0)).map_or(Value::Null, |link| json!([en::enervation_continuation_invalid_reason(st, &link), en::enervation_trigger_reason(st, &link)]))),
-        "closeEnervationAfterOtherAction" => Ok(resolved_json(&en::close_enervation_after_other_action(result_of(a.null(0)), raw)?)),
-        "closeEnervationAfterTriggers" => Ok(resolved_json(&en::close_enervation_after_triggers(result_of(a.null(0)), raw)?)),
+        "closeEnervationAfterOtherAction" => Ok(resolved_json(&en::close_enervation_after_other_action(result_of(a.null(0)), sk_rules::normalized::StateIn { raw, normalized: &sk_rules::normalized::NormalizedState::normalize(raw)? })?)),
+        "closeEnervationAfterTriggers" => Ok(resolved_json(&en::close_enervation_after_triggers(result_of(a.null(0)), sk_rules::normalized::StateIn { raw, normalized: &sk_rules::normalized::NormalizedState::normalize(raw)? })?)),
         "closeFinishedSpellBuffs" => Ok(resolved_json(&en::close_finished_spell_buffs(result_of(a.null(0)), raw)?)),
         // reactions.rs
         "opportunityAttackers" => {
@@ -263,7 +263,7 @@ fn run_call(f: &str, s: usize, a: &Args) -> Result<Value, Halt> {
             Ok(Value::Array(post::concentration_reconciliation_events(st, a.null(0), &events)?))
         }
         // opening_strike.rs
-        "openingStrikeFor" => Ok(match os::opening_strike_for(a.null(0), raw, &Context::from_json(a.null(1)))? {
+        "openingStrikeFor" => Ok(match os::opening_strike_for(a.null(0), sk_rules::normalized::StateIn { raw, normalized: &sk_rules::normalized::NormalizedState::normalize(raw)? }, &Context::from_json(a.null(1)))? {
             Some(strike) => {
                 let mut map = Map::new();
                 map.insert("actor_id".into(), Value::String(strike.actor_id));

@@ -723,7 +723,7 @@ async fn settle_after_commit(core: &Rc<GameCore>, campaign_id: &str, result: &mu
     let merged: Vec<Value> = mechanics.into_iter().chain(subsequent).filter(|event| seen.insert(identity(event))).collect();
     if let Some(map) = result.as_object_mut() {
         map.insert("state_version".into(), Value::from(latest.state_version));
-        map.insert("authoritative_state".into(), latest.state);
+        map.insert("authoritative_state".into(), std::sync::Arc::unwrap_or_clone(latest.state));
         map.insert("mechanics".into(), Value::Array(merged));
         map.insert("npc_turns".into(), Value::Array(turns));
     }

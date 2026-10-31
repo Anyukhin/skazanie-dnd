@@ -605,7 +605,7 @@ fn run_case(case: &Value) -> RunOutcome {
     }
     if let Ok(dir) = std::env::var("O1_DUMP_DIR") {
         let events = journal.get_events(&campaign, 0, None).unwrap_or_default();
-        let last = sk_store::executor::Journal::load(journal.as_ref(), &campaign).map(|loaded| loaded.state).unwrap_or(Value::Null);
+        let last = sk_store::executor::Journal::load(journal.as_ref(), &campaign).map(|loaded| std::sync::Arc::unwrap_or_clone(loaded.state)).unwrap_or(Value::Null);
         let dump = json!({ "initial": state(&case["s"]), "events": events, "final": last });
         let _ = std::fs::write(format!("{dir}/o1-dump-{campaign}.json"), js::stringify(&dump));
     }

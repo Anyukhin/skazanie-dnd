@@ -212,7 +212,7 @@ struct DuplicateJournal {
 
 impl Journal for DuplicateJournal {
     fn load(&self, campaign_id: &str) -> StoreResult<Loaded> {
-        Ok(Loaded { campaign_id: campaign_id.into(), state_version: 41, current_state_version: 41, state: self.state.clone(), reducer_version: 1, metadata: json!({}), events_applied: 0 })
+        Ok(Loaded { campaign_id: campaign_id.into(), state_version: 41, current_state_version: 41, state: std::sync::Arc::new(self.state.clone()), reducer_version: 1, metadata: json!({}), events_applied: 0 })
     }
 
     fn commit(&self, _request: CommitRequest) -> StoreResult<CommitResult> {
@@ -225,7 +225,7 @@ impl Journal for DuplicateJournal {
             campaign_id: campaign_id.into(),
             state_version: 41,
             current_state_version: 41,
-            state: self.state.clone(),
+            state: std::sync::Arc::new(self.state.clone()),
             metadata: json!({}),
             events: vec![json!({ "event_type": "TurnEnded", "actor_id": "wolf", "payload": { "round": 1 } })],
             duplicate: true,
@@ -569,7 +569,7 @@ impl CoordinatorHost for TestHost {
             return None;
         }
         self.npc_calls.set(self.npc_calls.get() + 1);
-        Some(Box::pin(async { Ok(SchedulerResult { state: Value::Null, state_version: 0, turns: Vec::new(), events: Vec::new() }) }))
+        Some(Box::pin(async { Ok(SchedulerResult { state: std::sync::Arc::new(Value::Null), state_version: 0, turns: Vec::new(), events: Vec::new() }) }))
     }
 
     fn on_committed(&self, _campaign_id: &str, _state: &Value, events: &[Value], _turns: Option<&[Value]>) {
@@ -773,7 +773,7 @@ struct CurrentJournal {
 impl Journal for CurrentJournal {
     fn load(&self, campaign_id: &str) -> StoreResult<Loaded> {
         let (state, version) = self.current.borrow().clone();
-        Ok(Loaded { campaign_id: campaign_id.into(), state_version: version, current_state_version: version, state, reducer_version: 1, metadata: json!({}), events_applied: 0 })
+        Ok(Loaded { campaign_id: campaign_id.into(), state_version: version, current_state_version: version, state: std::sync::Arc::new(state), reducer_version: 1, metadata: json!({}), events_applied: 0 })
     }
 
     fn commit(&self, _request: CommitRequest) -> StoreResult<CommitResult> {

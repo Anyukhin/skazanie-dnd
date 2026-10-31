@@ -1,5 +1,6 @@
 //! `cargo run -p sk-corpus -- reducer <каталог корпуса> [тип команды]`
 //! `cargo run -p sk-corpus -- normalize <каталог корпуса> [предел]`
+//! `cargo run -p sk-corpus -- closure <каталог корпуса> [тип команды]`
 //! `cargo run -p sk-corpus -- resolve <каталог корпуса> <тип команды>[,<тип>…] | all`
 //! `cargo run -p sk-corpus -- summary <каталог корпуса> <файл сводок JS>`
 
@@ -16,6 +17,15 @@ fn main() {
             // Список совпавших записей — чтобы сверить «не хуже» между прогонами.
             if let Ok(path) = std::env::var("SK_CORPUS_EQUAL") {
                 std::fs::write(&path, report.equal_records.join("\n")).expect("список совпавших записей пишется");
+            }
+        }
+        "closure" => {
+            // Урок 4: итог редьюсера от нормализованного состояния — неподвижная
+            // точка нормализации. Код 1 — замкнутость нарушена.
+            let report = sk_corpus::check_closure(&corpus, filter).expect("проверка замкнутости");
+            print!("{}", report.render());
+            if !report.closed() {
+                std::process::exit(1);
             }
         }
         "normalize" => {
@@ -78,7 +88,7 @@ fn main() {
             print!("{}", report.render());
         }
         other => {
-            eprintln!("неизвестный режим {other}; есть: reducer, normalize, resolve, summary");
+            eprintln!("неизвестный режим {other}; есть: reducer, closure, normalize, resolve, summary");
             std::process::exit(2);
         }
     }

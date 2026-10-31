@@ -482,7 +482,7 @@ async fn create_body(ctx: &mut RouteCtx, creator: &Value) -> Result<axum::respon
                 if !fresh {
                     return Ok(None);
                 }
-                let mut room_state = initialized.state;
+                let mut room_state = std::sync::Arc::unwrap_or_clone(initialized.state);
                 if let Some(map) = room_state.as_object_mut() {
                     let messages = map.get("messages").filter(|value| value.is_array()).cloned().unwrap_or_else(|| json!([]));
                     map.insert("messages".into(), messages);

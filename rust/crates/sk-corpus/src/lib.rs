@@ -10,9 +10,11 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use sk_core::Event;
 
+pub mod closure;
 pub mod normalize;
 pub mod resolve;
 pub mod summary;
+pub use closure::{check_closure, ClosureReport};
 pub use normalize::{check_normalize, NormalizeReport};
 pub use resolve::{check_resolve, check_resolve_many, ResolveReport};
 pub use summary::{check_summary, SummaryReport};

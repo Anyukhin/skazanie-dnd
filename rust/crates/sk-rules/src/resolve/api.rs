@@ -34,7 +34,7 @@ use crate::dice_record::{Recording, RulesDice};
 use crate::outcome::{prompt_after, Outcome, Prompt};
 use crate::pause::{pending_execution_for, resistance_choices_from_context, Fault, Halt, Interrupt};
 use crate::reactions::REACTION_PREFERENCE_CHAIN_LIMIT;
-use crate::replay::{apply_game_event, CommandProjector};
+use crate::normalized::{EventChain, NormalizedState, StateIn};
 
 thread_local! {
     static LENIENT: Cell<bool> = const { Cell::new(false) };
@@ -59,9 +59,19 @@ pub fn validate(input: &Value, raw_state: &Value, context: &Context, uuid: Uuid<
     if !LENIENT.with(Cell::get) {
         return crate::validate::validate_command(input, raw_state, context, uuid);
     }
-    let state = crate::normalize::normalize_campaign_state(raw_state)?;
-    let command = crate::command::normalize::normalize_command(input, &state, uuid)?;
-    let mut validation = crate::validate::Validation { state: &state, command, context, actor_fate: None };
+    let state = NormalizedState::normalize(raw_state)?;
+    validate_state(input, &state, context, uuid)
+}
+
+/// [`validate`] над нормализованным состоянием.
+pub fn validate_state(input: &Value, state: &NormalizedState, context: &Context, uuid: Uuid<'_>) -> Result<Value, Halt> {
+    let ambient = state.in_ambient_mode()?;
+    let state = ambient.value();
+    if !LENIENT.with(Cell::get) {
+        return crate::validate::validate_normalized(input, state, context, uuid);
+    }
+    let command = crate::command::normalize::normalize_command(input, state, uuid)?;
+    let mut validation = crate::validate::Validation { state, command, context, actor_fate: None };
     for block in crate::validate::BLOCKS {
         match (block.check)(&mut validation) {
             Ok(()) => {}
@@ -73,17 +83,15 @@ pub fn validate(input: &Value, raw_state: &Value, context: &Context, uuid: Uuid<
 }
 
 /// `resolveCommandInternal` для обёрток: обычный или с мягкой проверкой.
-pub(crate) fn resolve_internal(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
+pub(crate) fn resolve_internal(input: &Value, normalized: &NormalizedState, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
     if !LENIENT.with(Cell::get) {
-        return super::resolve_command_internal(input, raw_state, dice, context, uuid);
+        return super::resolve_command_internal_state(input, normalized, dice, context, uuid);
     }
     let depth = context.resolve_depth().max(0);
     let context = context.with("__resolve_depth", Value::from(depth + 1));
     let recording = Recording::new(dice);
-    let mut state = crate::normalize::normalize_campaign_state(raw_state)?;
-    super::push_npc_spell_proxies(&mut state, input)?;
-    let projector = CommandProjector::new(&state);
-    let command = validate(input, &state, &context, &mut *uuid)?;
+    let super::CommandStart { state, projector, proxied } = super::command_start(normalized, input)?;
+    let command = validate_state(input, proxied.as_ref().unwrap_or(normalized), &context, &mut *uuid)?;
     let target_id = target_for(&command);
     let resistance_choices = resistance_choices_from_context(context.get("resistanceChoices"));
     let elemental_reaction_choices = super::reaction_choices(context.get("elementalDamageChoices"), "damage_key");
@@ -121,15 +129,25 @@ pub(crate) fn resolve_internal(input: &Value, raw_state: &Value, dice: &mut dyn 
 /// `resolveCommand(input, rawState, { diceService, context })` команды
 /// верхнего уровня: исполнена или ждёт решения игрока.
 pub fn resolve_command(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Outcome, Halt> {
-    let resolved = top_level(resolve_command_inner(input, raw_state, dice, context, uuid))?;
-    Ok(Outcome::with_state_before(resolved, raw_state))
+    let normalized = NormalizedState::normalize(raw_state)?;
+    let resolved = top_level(resolve_command_inner_state(input, StateIn { raw: raw_state, normalized: &normalized }, dice, context, uuid))?;
+    Ok(Outcome::with_normalized_state_before(resolved, &normalized))
+}
+
+/// [`resolve_command`] над нормализованным состоянием: без повторной
+/// нормализации и без копии входа.
+pub fn resolve_command_normalized(input: &Value, state: &NormalizedState, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Outcome, Halt> {
+    let normalized = state.in_ambient_mode()?;
+    let resolved = top_level(resolve_command_inner_state(input, StateIn::of(&normalized), dice, context, uuid))?;
+    Ok(Outcome::with_normalized_state_before(resolved, &normalized))
 }
 
 /// `resolveCommandWithPauses(input, rawState, { diceService, context })`
 /// команды верхнего уровня (без режимов реакций).
 pub fn resolve_command_with_pauses(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Outcome, Halt> {
-    let resolved = top_level(resolve_with_pauses_inner(input, raw_state, dice, context, uuid))?;
-    Ok(Outcome::with_state_before(resolved, raw_state))
+    let normalized = NormalizedState::normalize(raw_state)?;
+    let resolved = top_level(resolve_with_pauses_inner(input, StateIn { raw: raw_state, normalized: &normalized }, dice, context, uuid))?;
+    Ok(Outcome::with_normalized_state_before(resolved, &normalized))
 }
 
 /// Граница API: на верхнем уровне пауза уже стала событием окна, наружу
@@ -143,17 +161,25 @@ fn top_level<T>(result: Result<T, Interrupt>) -> Result<T, Halt> {
 }
 
 /// `resolveCommand` внутри движка: пауза вложенного разбора летит дальше.
+/// Вход — состояние как есть (итог проекции вложенного шага): нормализуется
+/// здесь один раз.
 pub(crate) fn resolve_command_inner(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
-    let result = resolve_with_pauses_inner(input, raw_state, dice, context, &mut *uuid)?;
+    let normalized = NormalizedState::normalize(raw_state)?;
+    resolve_command_inner_state(input, StateIn { raw: raw_state, normalized: &normalized }, dice, context, uuid)
+}
+
+/// [`resolve_command_inner`] над входом с готовой нормализацией.
+pub(crate) fn resolve_command_inner_state(input: &Value, state: StateIn<'_>, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
+    let result = resolve_with_pauses_inner(input, state, dice, context, &mut *uuid)?;
     if context.resolve_depth() != 0 {
         return Ok(result);
     }
-    resolve_reaction_preferences(result, raw_state, input, dice, uuid)
+    resolve_reaction_preferences(result, state, input, dice, uuid)
 }
 
 /// `resolveCommandWithPauses` внутри движка.
-pub(crate) fn resolve_with_pauses_inner(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
-    match resolve_and_close(input, raw_state, dice, context, uuid) {
+pub(crate) fn resolve_with_pauses_inner(input: &Value, state: StateIn<'_>, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
+    match resolve_and_close(input, state, dice, context, uuid) {
         Ok(resolved) => Ok(resolved),
         Err(Interrupt::Pause(mut pause)) => {
             let payload = pause.window_payload_mut();
@@ -166,7 +192,7 @@ pub(crate) fn resolve_with_pauses_inner(input: &Value, raw_state: &Value, dice: 
             let mut events = std::mem::take(&mut pause.prefix_events);
             events.push(pause.window_event.clone());
             let result = Resolved { command: pause.command.clone(), events, rolls: std::mem::take(&mut pause.prefix_rolls) };
-            Ok(super::round_time::with_combat_round_time_marker(result, raw_state, context))
+            Ok(super::round_time::with_combat_round_time_marker(result, state.raw, context))
         }
         Err(other) => Err(other),
     }
@@ -174,16 +200,16 @@ pub(crate) fn resolve_with_pauses_inner(input: &Value, raw_state: &Value, dice: 
 
 /// Тело `try` в `resolveCommandWithPauses`: удар-открытие или разбор, затем
 /// закрытие «Обессиливания», отработавших усилений и метка раунда.
-fn resolve_and_close(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
-    let opening = opening_strike::opening_strike_for(input, raw_state, context)?;
+fn resolve_and_close(input: &Value, state: StateIn<'_>, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
+    let opening = opening_strike::opening_strike_for(input, state, context)?;
     let resolved = match opening {
-        Some(opening) => opening_strike::resolve_opening_strike(input, raw_state, &opening, dice, context, uuid)?,
-        None => resolve_internal(input, raw_state, dice, context, uuid)?,
+        Some(opening) => opening_strike::resolve_opening_strike(input, state.normalized, &opening, dice, context, uuid)?,
+        None => resolve_internal(input, state.normalized, dice, context, uuid)?,
     };
-    let after_action = crate::spells::enervation::close_enervation_after_other_action(resolved, raw_state)?;
-    let after_triggers = crate::spells::enervation::close_enervation_after_triggers(after_action, raw_state)?;
-    let finished = crate::spells::enervation::close_finished_spell_buffs(after_triggers, raw_state)?;
-    Ok(super::round_time::with_combat_round_time_marker(finished, raw_state, context))
+    let after_action = crate::spells::enervation::close_enervation_after_other_action(resolved, state)?;
+    let after_triggers = crate::spells::enervation::close_enervation_after_triggers(after_action, state)?;
+    let finished = crate::spells::enervation::close_finished_spell_buffs(after_triggers, state.raw)?;
+    Ok(super::round_time::with_combat_round_time_marker(finished, state.raw, context))
 }
 
 fn event_type(event: &Value) -> &str {
@@ -193,7 +219,8 @@ fn event_type(event: &Value) -> &str {
 /// `resolveReactionPreferences(result, rawState, input, diceService)`: режимы
 /// реакций «сразу» и «никогда» отвечают на окно в той же команде обычным
 /// `UseCombatAction`. Отказ движка оставляет окно открытым.
-fn resolve_reaction_preferences(result: Resolved, raw_state: &Value, input: &Value, dice: &mut dyn RulesDice, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
+fn resolve_reaction_preferences(result: Resolved, state: StateIn<'_>, input: &Value, dice: &mut dyn RulesDice, uuid: Uuid<'_>) -> Result<Resolved, Interrupt> {
+    let raw_state = state.raw;
     let preference_events = |events: &[Value]| events.iter().any(|event| event_type(event) == "ReactionPreferenceChanged");
     let has_preferences = raw_state.get("mechanics").and_then(|mechanics| mechanics.get("reaction_preferences")).and_then(Value::as_object).is_some_and(|map| !map.is_empty());
     if !has_preferences && !preference_events(&result.events) {
@@ -203,9 +230,9 @@ fn resolve_reaction_preferences(result: Resolved, raw_state: &Value, input: &Val
     if !window_was_open && !result.events.iter().any(|event| event_type(event) == "ReactionWindowOpened") {
         return Ok(result);
     }
-    let mut after = crate::normalize::normalize_campaign_state(raw_state)?;
+    let mut chain = EventChain::new(state.normalized.clone());
     for event in &result.events {
-        after = apply_game_event(&after, event)?;
+        chain.apply(event)?;
     }
     let base_id = match crate::core::coalesce(&[result.command.get("command_id")]).or_else(|| crate::core::coalesce(&[input.get("command_id")])) {
         Some(id) => js::string(Some(id)),
@@ -213,7 +240,8 @@ fn resolve_reaction_preferences(result: Resolved, raw_state: &Value, input: &Val
     };
     let mut combined = result;
     for step in 0..REACTION_PREFERENCE_CHAIN_LIMIT {
-        let window = sk_core::game::combat(&after).get("reaction_window").filter(|value| js::truthy(Some(value))).cloned();
+        let after = chain.raw();
+        let window = sk_core::game::combat(after).get("reaction_window").filter(|value| js::truthy(Some(value))).cloned();
         let Some(window) = window else { return Ok(combined) };
         let window_actor = js::s(window.get("actor_id"));
         let is_hero = after.get("players").and_then(Value::as_array).is_some_and(|players| players.iter().any(|player| sk_core::game::actor_id(player) == window_actor));
@@ -240,7 +268,8 @@ fn resolve_reaction_preferences(result: Resolved, raw_state: &Value, input: &Val
         follow_up.insert("server_authoritative".into(), Value::Bool(true));
         follow_up.insert("expected_state_version".into(), after.get("state_version").cloned().unwrap_or(Value::Null));
         let context = Context::from_json(&json!({ "isAdmin": true, "serverAuthoritativeCombat": true }));
-        let answer = match resolve_with_pauses_inner(&Value::Object(follow_up), &after, dice, &context, &mut *uuid) {
+        let normalized = chain.normalized()?.clone();
+        let answer = match resolve_with_pauses_inner(&Value::Object(follow_up), StateIn { raw: chain.raw(), normalized: &normalized }, dice, &context, &mut *uuid) {
             Ok(answer) => answer,
             // Заглушка ещё не перенесённой ветки — не отказ движка: пусть видно.
             Err(halt) if halt.is_rule() && !halt.is_unported() => return Ok(combined),
@@ -258,8 +287,9 @@ fn resolve_reaction_preferences(result: Resolved, raw_state: &Value, input: &Val
                 event["payload"] = Value::Object(map);
             }
         }
+        drop(normalized);
         for event in &answer_events {
-            after = apply_game_event(&after, event)?;
+            chain.apply(event)?;
         }
         combined.events.extend(answer_events);
         combined.rolls.extend(answer.rolls);
@@ -282,11 +312,21 @@ pub struct ResolvedPlan {
 /// `resolveCommands(commands, initialState, options)`: команды плана одна за
 /// другой над состоянием после предыдущих; план встаёт на новом окне реакции.
 pub fn resolve_commands(commands: &[Value], initial_state: &Value, dice: &mut dyn RulesDice, context: &Context, stop_attack_after_movement: bool, uuid: Uuid<'_>) -> Result<ResolvedPlan, Halt> {
-    top_level(resolve_plan_inner(commands, initial_state, dice, context, stop_attack_after_movement, uuid))
+    let normalized = NormalizedState::normalize(initial_state)?;
+    top_level(resolve_plan_inner(commands, normalized, dice, context, stop_attack_after_movement, uuid))
 }
 
-fn resolve_plan_inner(commands: &[Value], initial_state: &Value, dice: &mut dyn RulesDice, context: &Context, stop_attack_after_movement: bool, uuid: Uuid<'_>) -> Result<ResolvedPlan, Interrupt> {
-    let mut state = crate::normalize::normalize_campaign_state(initial_state)?;
+/// [`resolve_commands`] над нормализованным состоянием.
+pub fn resolve_commands_normalized(commands: &[Value], initial_state: &NormalizedState, dice: &mut dyn RulesDice, context: &Context, stop_attack_after_movement: bool, uuid: Uuid<'_>) -> Result<ResolvedPlan, Halt> {
+    let normalized = initial_state.in_ambient_mode()?.into_owned();
+    top_level(resolve_plan_inner(commands, normalized, dice, context, stop_attack_after_movement, uuid))
+}
+
+/// Состояние плана — цепочка событий: шаги читают сырой итог событий
+/// (`state = applyGameEvent(state, event)`), разбор шага получает его
+/// нормализацию, посчитанную один раз.
+fn resolve_plan_inner(commands: &[Value], initial_state: NormalizedState, dice: &mut dyn RulesDice, context: &Context, stop_attack_after_movement: bool, uuid: Uuid<'_>) -> Result<ResolvedPlan, Interrupt> {
+    let mut chain = EventChain::new(initial_state);
     let mut all_events: Vec<Value> = Vec::new();
     let mut all_rolls: Vec<Value> = Vec::new();
     let mut validated: Vec<Value> = Vec::new();
@@ -295,7 +335,7 @@ fn resolve_plan_inner(commands: &[Value], initial_state: &Value, dice: &mut dyn 
         let expected = if index == 0 && explicit {
             crate::core::coalesce(&[item.get("expected_state_version")]).or_else(|| item.get("expectedStateVersion")).cloned().unwrap_or(Value::Null)
         } else {
-            state.get("state_version").cloned().unwrap_or(Value::Null)
+            chain.raw().get("state_version").cloned().unwrap_or(Value::Null)
         };
         let failed_swing = all_events.iter().any(|event| event_type(event) == "SwingResolved" && js::is_false(event.get("payload").and_then(|payload| payload.get("success"))));
         let item_type = item.get("command_type").and_then(Value::as_str);
@@ -304,20 +344,24 @@ fn resolve_plan_inner(commands: &[Value], initial_state: &Value, dice: &mut dyn 
         }
         let input = command_with(item, "expected_state_version", expected);
         if stop_attack_after_movement && item_type == Some("MakeAttack") && validated.iter().any(|entry| entry.get("command_type").and_then(Value::as_str) == Some("MoveActor")) {
-            match validate(&input, &state, context, &mut *uuid) {
+            let normalized = chain.normalized()?;
+            match validate_state(&input, normalized, context, &mut *uuid) {
                 Ok(_) => {}
                 Err(halt) if halt.is_rule() => break,
                 Err(halt) => return Err(halt.into()),
             }
         }
-        let window_before = js::s(sk_core::game::combat(&state).get("reaction_window").and_then(|window| window.get("id")));
+        let window_before = js::s(sk_core::game::combat(chain.raw()).get("reaction_window").and_then(|window| window.get("id")));
         let resolve_span = sk_store::perf::span("rules.resolve_command");
-        let result = resolve_command_inner(&input, &state, dice, context, &mut *uuid)?;
+        let result = {
+            let normalized = chain.normalized()?.clone();
+            resolve_command_inner_state(&input, StateIn { raw: chain.raw(), normalized: &normalized }, dice, context, &mut *uuid)?
+        };
         drop(resolve_span);
         validated.push(result.command.clone());
         for event in &result.events {
             let _apply_span = sk_store::perf::span("rules.apply_game_event");
-            state = apply_game_event(&state, event)?;
+            chain.apply(event)?;
             all_events.push(event.clone());
         }
         let created: IndexSet<String> = result
@@ -331,18 +375,18 @@ fn resolve_plan_inner(commands: &[Value], initial_state: &Value, dice: &mut dyn 
             .filter(|id| !id.is_empty())
             .collect();
         if !created.is_empty() {
-            let placement_state = crate::normalize::normalize_campaign_state(&state)?;
-            let placements: Vec<Value> = sk_npc_world::npc_positioning::plan_scene_npc_placement_events(&placement_state)
+            let placement_state = chain.normalized()?;
+            let placements: Vec<Value> = sk_npc_world::npc_positioning::plan_scene_npc_placement_events(placement_state)
                 .into_iter()
                 .filter(|draft| event_type(draft) == "NpcPlaced" && created.contains(&js::s(draft.get("payload").and_then(|payload| payload.get("npc_id")))))
                 .collect();
             for placement in crate::core::npc_world_events_from(&result.command, &Value::Array(placements)) {
-                state = apply_game_event(&state, &placement)?;
+                chain.apply(&placement)?;
                 all_events.push(placement);
             }
         }
         all_rolls.extend(result.rolls);
-        let paused = sk_core::game::combat(&state).get("reaction_window").filter(|window| js::truthy(Some(window)));
+        let paused = sk_core::game::combat(chain.raw()).get("reaction_window").filter(|window| js::truthy(Some(window)));
         if let Some(paused) = paused {
             let pending = js::truthy(paused.get("pending_command")) || js::truthy(paused.get("pending_spell_command"));
             if pending && js::s(paused.get("id")) != window_before {
@@ -350,8 +394,8 @@ fn resolve_plan_inner(commands: &[Value], initial_state: &Value, dice: &mut dyn 
             }
         }
     }
-    let pending = prompt_after(&all_events, &state);
-    Ok(ResolvedPlan { commands: validated, events: all_events, rolls: all_rolls, state, pending })
+    let pending = prompt_after(&all_events, chain.raw());
+    Ok(ResolvedPlan { commands: validated, events: all_events, rolls: all_rolls, state: chain.into_raw(), pending })
 }
 
 /// `RulesEngine`: движок с внедрёнными костями и источником UUID.
@@ -371,6 +415,12 @@ impl RulesEngine {
         crate::validate::validate_command(command, state, context, &mut *self.uuid)
     }
 
+    /// [`Self::validate`] над нормализованным состоянием.
+    pub fn validate_normalized(&mut self, command: &Value, state: &NormalizedState, context: &Context) -> Result<Value, Halt> {
+        let ambient = state.in_ambient_mode()?;
+        crate::validate::validate_normalized(command, ambient.value(), context, &mut *self.uuid)
+    }
+
     /// `resolve(command, state, context)`.
     pub fn resolve(&mut self, command: &Value, state: &Value, context: &Context) -> Result<Outcome, Halt> {
         resolve_command(command, state, &mut *self.dice, context, &mut *self.uuid)
@@ -386,9 +436,19 @@ impl RulesEngine {
         resolve_commands(&commands, state, &mut *self.dice, context, stop, &mut *self.uuid)
     }
 
+    /// [`Self::resolve_plan`] над нормализованным состоянием.
+    pub fn resolve_plan_normalized(&mut self, plan: &Value, state: &NormalizedState, context: &Context) -> Result<ResolvedPlan, Halt> {
+        let commands = match crate::core::coalesce(&[plan.get("proposed_commands")]).or_else(|| crate::core::coalesce(&[plan.get("commands")])) {
+            Some(Value::Array(items)) => items.clone(),
+            _ => Vec::new(),
+        };
+        let stop = matches!(plan.get("maneuver").and_then(Value::as_str), Some("approach_attack" | "long_jump_attack" | "swing_attack"));
+        resolve_commands_normalized(&commands, state, &mut *self.dice, context, stop, &mut *self.uuid)
+    }
+
     /// `authorizeDirectorIntent(intent, state)`.
     pub fn authorize_director_intent(&self, intent: &Value, state: &Value) -> Result<Value, Halt> {
-        let normalized = crate::normalize::normalize_campaign_state_cow(state)?;
+        let normalized = NormalizedState::normalize(state)?;
         sk_story::campaign_loop_policy::authorize_director_intent(&normalized, Some(intent), None).map_err(|error| {
             Halt::Fault(crate::pause::Fault::new(sk_world_story::autonomous_campaign::DirectorIntentError::NAME, error.message).with_code(error.code))
         })
