@@ -1,15 +1,19 @@
 # Rust-сервер в Docker
 
 Образ Rust-сервера (`Dockerfile.rust`) и его сервис (`compose.rust.yaml`)
-живут рядом с JS-сервером (`Dockerfile`, `compose.yaml`) и его не заменяют.
-Переключение — отдельный осознанный шаг владельца (ниже), откат — один
-`docker compose up`.
+живут рядом с JS-сервером (`Dockerfile`, `compose.yaml`). **С 2026-10-31 Rust —
+основной сервер владельца:** `START_DND.cmd` поднимает его на 8787 с туннелем,
+когда в `.env` `DND_SERVER=rust`; JS-сервер остаётся откатом
+(`DND_SERVER=js` или пусто). Разовый перенос хранилища — `tools/rust-cutover.ps1`
+(ниже).
 
 | | JS-сервер | Rust-сервер |
 | --- | --- | --- |
 | Сборка | `Dockerfile` | `Dockerfile.rust` |
 | Compose | `compose.yaml`, проект по каталогу | `compose.rust.yaml`, проект `skazanie-rust` |
-| Порт на хосте | `127.0.0.1:8787` | `127.0.0.1:8788` (`SKAZANIE_RUST_PORT`) |
+| Лаунчер `START_DND.cmd` | `DND_SERVER=js` или пусто | `DND_SERVER=rust` |
+| Порт на хосте | `127.0.0.1:8787` | `127.0.0.1:8788` (`SKAZANIE_RUST_PORT`; лаунчер — 8787) |
+| Туннель (профиль `public`) | `tunnel` → `skazanie:8787` | `tunnel` → `skazanie-rust:8787` |
 | Хранилище | `./storage` (bind) | том `skazanie-rust_storage` |
 | Сертификат антивируса | `compose.override.yaml`, `NODE_EXTRA_CA_CERTS` | `DND_EXTRA_CA_CERTS` в `.env`, `./local-ca` |
 
@@ -95,6 +99,25 @@ DND_EXTRA_CA_CERTS=/app/local-ca/kaspersky-root.pem
 
 ## Переключение на 8787
 
+Одной командой из папки с `.env` и `storage`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1 -DryRun   # только пробный перенос
+powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1
+```
+
+Скрипт выполняет шаги ниже: останавливает JS-сервис, собирает образ, делает
+пробный перенос (код 3 — остановка), копирует `./storage` в
+`backups/storage-before-rust-<время>`, переносит, запускает `audit-storage`
+(не 0 — остановка, JS-сервис возвращается), пишет в `.env` `DND_SERVER=rust`,
+`SKAZANIE_RUST_PORT=8787` и, если есть `local-ca/kaspersky-root.pem`,
+`DND_EXTRA_CA_CERTS`, поднимает Rust-сервис с туннелем и ждёт `/api/health`.
+Если в основной папке другая ветка, образ и `compose.rust.yaml` берутся из
+копии main: `-File <копия>\tools\rust-cutover.ps1 -SourceRoot <копия>`,
+запуск — из основной папки (`.env`, `storage`, `local-ca` — её).
+
+Вручную:
+
 1. Остановить JS-сервис: `docker compose stop skazanie` (с туннелем —
    `docker compose --profile public stop`).
 2. Снимок старого хранилища: `pnpm backup` или копия `./storage`.
@@ -135,11 +158,17 @@ DND_EXTRA_CA_CERTS=/app/local-ca/kaspersky-root.pem
 7. Проверить `docker compose -f compose.rust.yaml ps` (healthy), войти,
    открыть кампанию.
 
-Туннель (`tunnel`, профиль `public`) смотрит на `skazanie:8787` в сети
-JS-проекта; для Rust-сервиса его нужно перенастроить отдельно — в этот шаг не
-входит.
+Туннель — свой сервис `tunnel` в `compose.rust.yaml` (профиль `public`,
+`skazanie-rust:8787`); каталог состояния тот же, `storage/generated/.tunnel`,
+поэтому `STATUS_DND.cmd` показывает ссылку любого из двух серверов. Лаунчер
+перед запуском останавливает другой сервер: оба слушают 8787. `START_SITES_DND.cmd`
+при `DND_SERVER=rust` JS-сервер не поднимает — подключается к уже запущенному
+Rust-серверу или отказывает с подсказкой.
 
 ## Откат
+
+`DND_SERVER=js` в `.env` и `START_DND.cmd` — лаунчер остановит Rust-сервис и
+поднимет JS на прежнем `./storage`. Вручную:
 
 ```bash
 docker compose -f compose.rust.yaml down     # том Rust-сервиса остаётся
