@@ -75,6 +75,14 @@ fn event_mode(marker: f64, event: &Value) -> &'static str {
     }
 }
 
+/// Режим retention, в котором применяется событие (`legacy` или `current`);
+/// версия редьюсера не той формы считается нулевой.
+pub fn event_retention_mode(event: &Value) -> &'static str {
+    let raw_marker = event.get("reducer_version");
+    let marker = if js::present(raw_marker) { js::number(raw_marker) } else { 0.0 };
+    event_mode(if marker.is_finite() { marker } else { 0.0 }, event)
+}
+
 /// `applyGameEvent(rawState, event)`: событие в явном retention-контексте.
 pub fn apply_game_event(raw_state: &Value, event: &Value) -> Result<Value, Halt> {
     apply_game_event_from(StateArg::Borrowed(raw_state), event)
