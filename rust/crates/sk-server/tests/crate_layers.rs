@@ -6,8 +6,9 @@
 //! рантайм не попадают и не считаются) — без cargo и сети — и требует, чтобы
 //! ни один крейт вне слоя агентов не зависел от них ни прямо, ни транзитивно.
 //!
-//! Известное исключение записано явно и не чинится молча: если крейт из
-//! списка перестал зависеть от агентов, тест просит убрать его из списка.
+//! Исключений нет (`KNOWN_EXCEPTIONS` пуст). Если когда-нибудь появится
+//! исключение, оно записывается явно с причиной; когда крейт из списка
+//! перестаёт зависеть от агентов, тест просит убрать его из списка.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -24,13 +25,12 @@ const AGENT_LAYER: [&str; 4] = ["sk-agents", "sk-agents-base", "sk-orchestrator"
 /// мест Режиссёра, правила, ходы NPC.
 const NAMED_CORE: [&str; 6] = ["sk-scenario", "sk-story", "sk-director", "sk-rules", "sk-turns", "sk-tactics"];
 
-/// Крейты ядра, которые **сейчас** зависят от агентов, и почему.
-const KNOWN_EXCEPTIONS: [(&str, &str); 1] = [(
-    "sk-turns",
-    "npc_turn_scheduler берёт из sk_agents::npc_controller детерминированные is_morale_moment и \
-     commands_for_morale_decision и реализует свой NpcController для NpcMoraleAgent \
-     (в JS npc-turn-scheduler.mjs импортирует npc-controller.mjs); вынести их в ядро — отдельная задача",
-)];
+/// Крейты ядра, которые **сейчас** зависят от агентов, и почему. Пусто: ядро
+/// от слоя агентов не зависит совсем. Последнее исключение, `sk-turns`, снято
+/// уроком 7 — детерминированная мораль переехала в `sk_turns::morale`, а
+/// `impl NpcController for NpcMoraleAgent` — в `sk-agents`. Новое исключение —
+/// только с причиной и отдельной задачей его снять.
+const KNOWN_EXCEPTIONS: [(&str, &str); 0] = [];
 
 /// Имя пакета и его `sk-*`-зависимости из текста `Cargo.toml`.
 fn parse_manifest(text: &str) -> (String, BTreeSet<String>) {
