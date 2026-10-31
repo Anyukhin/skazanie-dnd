@@ -120,7 +120,17 @@ impl Reducer for GameReducer {
         if mode != RetentionMode::Current {
             return self.apply(state, event, mode);
         }
-        with_retention_mode(mode_name(mode), || sk_rules::normalized::NormalizedState::from_store_head(state).reduced(event))?.map_err(|error| error.to_string())
+        let mut reduced = with_retention_mode(mode_name(mode), || sk_rules::normalized::NormalizedState::from_store_head(state).reduced(event))?.map_err(|error| error.to_string())?;
+        if self.keeps_normalized(event) {
+            sk_rules::normalized::settle_closed(&mut reduced, event);
+            sk_rules::normalized::check_closed(&reduced, event);
+        }
+        Ok(reduced)
+    }
+
+    /// Ск5: замкнутые типы событий движка (`sk_rules::normalized::keeps_normalized`).
+    fn keeps_normalized(&self, event: &Value) -> bool {
+        sk_rules::normalized::keeps_normalized("current", event)
     }
 
     fn state_schema_version(&self) -> i64 {

@@ -31,6 +31,22 @@ use crate::pause::{Fault, Halt};
 use crate::turn_economy::{action_economy, normalize_loading_weapon_item_ids};
 use crate::world_clock::{duration_in_minutes_exact, normalized_clock_seconds};
 
+/// Метка начала хода (`turn_started_at`, `turn_started_event_id`) в
+/// нормализованном виде: есть значение — строка, нет — ключа нет. Ветки
+/// `TurnStarted`, `TurnEnded`, `ReactionWindowClosed` пишут её как JS
+/// (`null` без `created_at`/`event_id`), а горячий путь доводит их итог до
+/// неподвижной точки только этим шагом (Ск5, `normalized::settle_closed`).
+pub(crate) fn settle_turn_marks(combat: &mut Map<String, Value>) {
+    for key in ["turn_started_at", "turn_started_event_id"] {
+        if present(combat.get(key)) {
+            let text = js::s(combat.get(key));
+            combat.insert(key.into(), Value::String(text));
+        } else {
+            combat.shift_remove(key);
+        }
+    }
+}
+
 /// `MILESTONES_PER_LEVEL`.
 pub const MILESTONES_PER_LEVEL: i64 = 3;
 
@@ -502,14 +518,7 @@ fn combat(source: &Value) -> Value {
     } else {
         combat.shift_remove("turn_reaction_extensions");
     }
-    for key in ["turn_started_at", "turn_started_event_id"] {
-        if present(combat.get(key)) {
-            let text = js::s(combat.get(key));
-            combat.insert(key.into(), Value::String(text));
-        } else {
-            combat.shift_remove(key);
-        }
-    }
+    settle_turn_marks(&mut combat);
     let mut economies = Map::new();
     for (id, economy) in entries_of(Some(&clone_or_object(combat.get("action_economy")))) {
         let Value::Object(mut entry) = action_economy() else { continue };

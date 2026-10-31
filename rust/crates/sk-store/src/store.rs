@@ -59,6 +59,13 @@ pub trait Reducer: Send + Sync {
     fn apply_to_head(&self, state: Value, event: &Value, mode: RetentionMode) -> Result<Value, String> {
         self.apply(state, event, mode)
     }
+    /// Итог события текущего режима над нормализованным состоянием уже
+    /// нормализован (Ск5, замкнутые типы событий редьюсера движка): ни
+    /// следующее событие пакета, ни конец пакета его не нормализуют заново.
+    /// Итог тот же.
+    fn keeps_normalized(&self, _event: &Value) -> bool {
+        false
+    }
     /// Версия схемы состояния в снимке (урок 4). `0` — редьюсер схем не
     /// знает: снимок нормализуется при каждой загрузке, версия в него не
     /// пишется. Больше нуля — снимок этой версии в текущем режиме
@@ -528,13 +535,25 @@ impl EventStore {
         };
         let mut head_mode = head_reducer_version.and_then(|version| self.retention_mode(version, current).ok());
         let mut next = state;
+        // Итог последнего события уже нормализован (Ск5): вход следующего —
+        // как голова, без повторной нормализации, и конец пакета без неё же.
+        let mut normalized = false;
         for event in events {
+            let keeps = fast_path && head_mode == Some(RetentionMode::Current) && self.reducer.keeps_normalized(event);
             next = self.apply_event(next, event, forced, fast_path, head_mode.take())?;
+            normalized = keeps;
+            if keeps {
+                head_mode = Some(RetentionMode::Current);
+            }
         }
         if !fast_path {
             return Ok(next);
         }
         let last = events.last().expect("непустой пакет");
+        if normalized {
+            crate::perf::record("store.normalize.skipped", std::time::Duration::ZERO);
+            return Ok(next);
+        }
         let reducer_version = forced.unwrap_or_else(|| int_field(last, "reducer_version"));
         self.normalize_state(next, int_field(last, "state_version_after"), reducer_version)
     }
