@@ -19,6 +19,8 @@ pub mod core;
 pub mod dice_record;
 pub mod enervation_link;
 pub mod executable;
+// Урок 2: производные поля героя — вычисление с памятью, не состояние.
+pub mod derived;
 pub mod journal;
 pub mod outcome;
 pub mod pause;

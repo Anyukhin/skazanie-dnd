@@ -100,6 +100,12 @@ fn csha(value: &Value) -> String {
     sha(&canonical(value))
 }
 
+/// Состояние в форме JS: производные поля героев — значениями, а не пустыми
+/// слотами канонического состояния Rust (урок 2).
+fn js_form(state: &Value) -> Value {
+    sk_rules::derived::materialized_state(state)
+}
+
 fn outcome(result: Result<Value, Halt>) -> Value {
     match result {
         Ok(value) => json!({ "ok": value }),
@@ -252,7 +258,7 @@ fn accept(state: &Value, commands: &[Value], seed: u64) -> Value {
             "types": events.iter().map(|event| event["event_type"].clone()).collect::<Vec<_>>(),
             "events": sha(&Value::Array(events)),
             "rolls": sha(&resolved["rolls"]),
-            "state": sha(&resolved["state"]),
+            "state": sha(&js_form(&resolved["state"])),
         })
     }))
 }
@@ -486,7 +492,7 @@ impl NpcController for StubController {
             json!({ "disposition": "fight", "reaction": "Держусь", "provider": "stub" }),
             json!({ "disposition": "parley", "provider": "stub" }),
         ];
-        self.calls.lock().expect("журнал вызовов").push(json!({ "decide": enemy_id, "state": sha(state) }));
+        self.calls.lock().expect("журнал вызовов").push(json!({ "decide": enemy_id, "state": sha(&js_form(state)) }));
         let mut index = self.index.lock().expect("счётчик");
         let decision = decisions[*index % decisions.len()].clone();
         *index += 1;
@@ -557,7 +563,7 @@ fn run_case(case: &Value) -> (Value, Vec<Value>) {
             "events": result.events.iter().map(sha).collect::<Vec<_>>(),
             "types": result.events.iter().map(|event| event["event_type"].clone()).collect::<Vec<_>>(),
             "version": result.state_version,
-            "state": csha(&result.state),
+            "state": csha(&js_form(&result.state)),
         }));
         if !soak {
             break;
@@ -604,7 +610,7 @@ fn run_case(case: &Value) -> (Value, Vec<Value>) {
     let combat = &final_state.state["mechanics"]["combat"];
     let outcome = json!({
         "segments": segments,
-        "final": { "version": final_state.state_version, "state": csha(&final_state.state), "active": js::truthy(combat.get("active")), "round": combat.get("round").cloned().unwrap_or(Value::Null) },
+        "final": { "version": final_state.state_version, "state": csha(&js_form(&final_state.state)), "active": js::truthy(combat.get("active")), "round": combat.get("round").cloned().unwrap_or(Value::Null) },
     });
     let recorded = calls.lock().expect("вызовы").clone();
     (outcome, recorded)

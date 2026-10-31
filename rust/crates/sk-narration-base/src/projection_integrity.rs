@@ -115,8 +115,20 @@ pub fn projection_hash(state: &Value) -> String {
     sk_core::hash::sha256_hex(canonical_projection_json(state))
 }
 
+/// [`projection_hash`] с героями `players` вместо `state.players` (если поле
+/// `players` в состоянии есть): так хеш считается по героям в форме JS, когда
+/// в состоянии на месте производных полей — пустые слоты (урок 2).
+pub fn projection_hash_with_players(state: &Value, players: Option<&[Value]>) -> String {
+    sk_core::hash::sha256_hex(canonical_projection_json_with(state, players))
+}
+
 /// `JSON.stringify(canonicalProjection(state))` без промежуточных значений.
 pub fn canonical_projection_json(state: &Value) -> String {
+    canonical_projection_json_with(state, None)
+}
+
+/// [`canonical_projection_json`] с подменой героев (см. [`projection_hash_with_players`]).
+fn canonical_projection_json_with<'a>(state: &'a Value, override_players: Option<&'a [Value]>) -> String {
     enum Field<'a> {
         Plain(&'a Value),
         Players(&'a [Value]),
@@ -132,7 +144,7 @@ pub fn canonical_projection_json(state: &Value) -> String {
             continue;
         };
         if *field == "players" {
-            fields.push((field, Field::Players(value.as_array().map(Vec::as_slice).unwrap_or(&[]))));
+            fields.push((field, Field::Players(override_players.unwrap_or_else(|| value.as_array().map(Vec::as_slice).unwrap_or(&[])))));
         } else {
             fields.push((field, Field::Plain(value)));
         }
@@ -251,6 +263,18 @@ pub struct ProjectionComparison {
 pub fn compare_projection(authoritative_state: &Value, projected_state: &Value) -> ProjectionComparison {
     let authoritative_hash = projection_hash(authoritative_state);
     let projected_hash = if canonically_equal(authoritative_state, projected_state) { authoritative_hash.clone() } else { projection_hash(projected_state) };
+    ProjectionComparison { matched: authoritative_hash == projected_hash, authoritative_hash, projected_hash }
+}
+
+/// [`compare_projection`], где хеши считаются по героям `players_of(state)`
+/// (герои в форме JS, урок 2); совпадение решает то же сравнение состояний.
+pub fn compare_projection_with(authoritative_state: &Value, projected_state: &Value, players_of: &dyn Fn(&Value) -> Option<Vec<Value>>) -> ProjectionComparison {
+    let hash = |state: &Value| {
+        let players = players_of(state);
+        projection_hash_with_players(state, players.as_deref())
+    };
+    let authoritative_hash = hash(authoritative_state);
+    let projected_hash = if canonically_equal(authoritative_state, projected_state) { authoritative_hash.clone() } else { hash(projected_state) };
     ProjectionComparison { matched: authoritative_hash == projected_hash, authoritative_hash, projected_hash }
 }
 

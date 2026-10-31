@@ -32,7 +32,6 @@ use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
 use sk_core::js;
-use sk_narration_base::projection_integrity::compare_projection;
 use sk_store::{EventStore, LoadOptions};
 use sk_tactics::cutover_audit::{open_game_store, GameReducer, STORE_FILE};
 
@@ -189,7 +188,7 @@ fn room_entry(store: &EventStore, campaign_id: &str) -> Result<(Map<String, Valu
     let mut blockers = Vec::new();
     let Some(state) = room.state.as_ref() else { return Ok((entry, blockers)) };
     let normalized = sk_rules::normalize::normalize_campaign_state(state).map_err(|halt| crate::error::Failure::from(halt).message)?;
-    let comparison = compare_projection(&loaded.state, &normalized);
+    let comparison = sk_tactics::cutover_audit::compare_js_projection(&loaded.state, &normalized);
     let room_version = state.get("state_version").map_or(-1.0, |value| js::number(Some(value)));
     entry.insert("room_version".into(), js::num(room_version));
     entry.insert("projected_sha256".into(), Value::String(comparison.projected_hash.clone()));

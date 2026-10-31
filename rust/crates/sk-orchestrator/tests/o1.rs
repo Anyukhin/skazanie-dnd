@@ -103,6 +103,12 @@ fn csha(value: &Value) -> String {
     sha(&canonical(&mask(value)))
 }
 
+/// [`csha`] состояния в форме JS: производные поля героев — значениями, а не
+/// пустыми слотами канонического состояния Rust (урок 2).
+fn state_sha(state: &Value) -> String {
+    csha(&sk_rules::derived::materialized_state(state))
+}
+
 const DROP: [&str; 4] = ["metadata", "reducer_version", "events_applied", "current_state_version"];
 
 fn summarize(value: &Value, key: &str) -> Value {
@@ -112,7 +118,7 @@ fn summarize(value: &Value, key: &str) -> Value {
         Value::Object(map) => {
             let mut keys: Vec<&String> = map.keys().filter(|name| !DROP.contains(&name.as_str())).collect();
             keys.sort();
-            Value::Object(keys.into_iter().map(|name| (name.clone(), if name == "state" { Value::String(csha(&map[name])) } else { summarize(&map[name], name) })).collect())
+            Value::Object(keys.into_iter().map(|name| (name.clone(), if name == "state" { Value::String(state_sha(&map[name])) } else { summarize(&map[name], name) })).collect())
         }
         other => other.clone(),
     }
@@ -609,7 +615,7 @@ fn run_case(case: &Value) -> RunOutcome {
         let dump = json!({ "initial": state(&case["s"]), "events": events, "final": last });
         let _ = std::fs::write(format!("{dir}/o1-dump-{campaign}.json"), js::stringify(&dump));
     }
-    let final_state = sk_store::executor::Journal::load(journal.as_ref(), &campaign).ok().map(|loaded| json!({ "version": loaded.state_version, "state": csha(&loaded.state) }));
+    let final_state = sk_store::executor::Journal::load(journal.as_ref(), &campaign).ok().map(|loaded| json!({ "version": loaded.state_version, "state": state_sha(&loaded.state) }));
     let recorded = calls.lock().expect("вызовы").clone();
     RunOutcome { outcomes, final_state, calls: recorded, setup: None }
 }

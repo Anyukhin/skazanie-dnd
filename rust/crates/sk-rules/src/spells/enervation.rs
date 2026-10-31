@@ -296,12 +296,10 @@ pub fn refresh_enervation_action_state(state: &mut Value, actor_ids: &[String]) 
             if !requested.is_empty() && !requested.contains(id.as_str()) {
                 return actor;
             }
-            let mut actions = sk_combat_content::combat_actions::combat_actions_for(Some(&actor));
-            if let Some(continuation) = crate::enervation_link::enervation_continuation_action_for(state, Some(&Value::String(id)), None) {
-                actions.push(continuation);
-            }
+            // Действия с продолжением выводит `crate::derived` при чтении;
+            // в героя — пустой слот на месте JS (урок 2).
             let mut map = crate::core::spread_value(Some(&actor));
-            map.insert("combatActions".into(), Value::Array(actions));
+            map.insert(crate::derived::COMBAT_ACTIONS.into(), Value::Null);
             Value::Object(map)
         })
         .collect();

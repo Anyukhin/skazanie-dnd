@@ -46,7 +46,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Map, Value};
 use sk_core::js;
-use sk_narration_base::projection_integrity::projection_hash;
+use sk_narration_base::projection_integrity::{compare_projection_with, projection_hash_with_players, ProjectionComparison};
 use sk_rules::constants::GAME_STATE_PROJECTOR_VERSION;
 use sk_rules::normalize::normalize_campaign_state;
 use sk_rules::replay::{apply_game_event, with_retention_mode, RETENTION_REDUCER_VERSION};
@@ -237,6 +237,26 @@ struct CampaignAudit {
     warnings: Vec<Value>,
 }
 
+/// Герои состояния в форме JS — производные поля значениями, а не пустыми
+/// слотами канонического состояния (урок 2). По ним считается хеш проекции,
+/// чтобы отметка подтверждения совпадала с хешем JS.
+pub fn js_players(state: &Value) -> Option<Vec<Value>> {
+    match sk_rules::derived::materialized_players(state)? {
+        Value::Array(players) => Some(players),
+        _ => None,
+    }
+}
+
+/// `projectionHash(state)` по героям в форме JS ([`js_players`]).
+pub fn js_projection_hash(state: &Value) -> String {
+    projection_hash_with_players(state, js_players(state).as_deref())
+}
+
+/// `compareProjection(authoritative, projected)` с хешами по героям в форме JS.
+pub fn compare_js_projection(authoritative: &Value, projected: &Value) -> ProjectionComparison {
+    compare_projection_with(authoritative, projected, &js_players)
+}
+
 fn audit_campaign(store: &EventStore, reducer: &GameReducer, campaign_id: &str) -> Result<CampaignAudit, String> {
     let loaded = store.load(campaign_id, &LoadOptions::default()).map_err(|error| error.message)?;
     let replayed = store.load(campaign_id, &LoadOptions { use_snapshots: Some(false), ..LoadOptions::default() }).map_err(|error| error.message)?;
@@ -245,8 +265,8 @@ fn audit_campaign(store: &EventStore, reducer: &GameReducer, campaign_id: &str) 
     if let Some(failure) = reducer.take_failures().into_iter().next() {
         return Err(failure);
     }
-    let authoritative = projection_hash(&loaded.state);
-    let replay_matched = authoritative == projection_hash(&replayed.state);
+    let authoritative = js_projection_hash(&loaded.state);
+    let replay_matched = authoritative == js_projection_hash(&replayed.state);
     let checkpoint_version = metadata.get("projection_checkpoint_version");
     let checkpoint_hash = metadata.get("projection_checkpoint_hash").filter(|value| !value.is_null()).cloned().unwrap_or(Value::Null);
     let entry = json!({

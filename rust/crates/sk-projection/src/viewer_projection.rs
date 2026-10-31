@@ -2013,7 +2013,9 @@ fn admin_room(state: &Value, actor: &Value) -> R<Value> {
     room.insert("merchants".into(), Value::Array(merchants));
     room.insert("scene".into(), admin_scene_for(get(source, "scene")));
     room.insert("scene_npcs".into(), Value::Array(scene_npcs));
-    room.insert("players".into(), Value::Array(player_items_with_capabilities(get(source, "players"), "", &js::s(get(source, "ruleset_id")), source)?));
+    // Герои — с производными полями (урок 2: в состоянии — пустые слоты).
+    let players = sk_rules::derived::materialized_players(state);
+    room.insert("players".into(), Value::Array(player_items_with_capabilities(players.as_ref(), "", &js::s(get(source, "ruleset_id")), source)?));
     if js::truthy(get(source, "world_deeds")) {
         let deeds = sk_world_time::world_deeds::world_deeds_feed(state, &json!({ "limit": 40 }));
         room.insert("world_deeds".into(), json!({ "schema_version": sk_world_time::world_deeds::WORLD_DEEDS_SCHEMA_VERSION, "deeds": deeds }));
@@ -2178,8 +2180,14 @@ fn player_room(raw_state: &Value, user: Option<&Value>, actor: &Value) -> R<Valu
     // только оставшиеся поля — карты и сцена (большая часть состояния) не
     // копируются ради того, чтобы тут же их выбросить (Ск2).
     const SET_ASIDE: [&str; 4] = ["locationMaps", "scene", "worldMemory", "social"];
+    // Герои — с производными полями (урок 2: в состоянии на их месте пустые
+    // слоты): проекция видимости обходит их так же, как в JS.
     let projectable: Map<String, Value> = match source {
-        Some(Value::Object(map)) => map.iter().filter(|(key, _)| !SET_ASIDE.contains(&key.as_str())).map(|(key, value)| (key.clone(), value.clone())).collect(),
+        Some(Value::Object(map)) => map
+            .iter()
+            .filter(|(key, _)| !SET_ASIDE.contains(&key.as_str()))
+            .map(|(key, value)| (key.clone(), if key == "players" { sk_rules::derived::materialized_players(state).unwrap_or_else(|| value.clone()) } else { value.clone() }))
+            .collect(),
         other => {
             let mut projectable = spread_any(other);
             for key in SET_ASIDE {

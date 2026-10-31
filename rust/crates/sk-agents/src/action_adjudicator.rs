@@ -248,7 +248,9 @@ fn cleaned_list(value: Option<&Value>, maximum: usize) -> Vec<String> {
 fn hero_brief(state: &Value, actor_id: &str) -> Value {
     let empty = json!({});
     let hero = players(state).iter().find(|actor| js::string(prop(Some(actor), "id")) == actor_id).unwrap_or(&empty);
-    let sheet = nullish(hero.get("characterSheet"), None);
+    // Лист героя не хранится (урок 2): записанный или выведенный из каталога.
+    let sheet = sk_rules::derived::read(Some(state), hero, sk_rules::derived::CHARACTER_SHEET);
+    let sheet = nullish(sheet.as_deref(), None);
     let inventory = arr(hero.get("inventory"));
     let mut expertise = Vec::new();
     for key in ["skillExpertiseIds", "expertiseSkillIds", "skillExpertise", "expertiseSkills"] {

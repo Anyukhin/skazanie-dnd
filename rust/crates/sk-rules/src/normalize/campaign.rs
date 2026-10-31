@@ -11,7 +11,9 @@
 //! Порядок ключей — как у JS: поле, которое уже было в объекте, остаётся на
 //! своём месте (`IndexMap::insert`), новое встаёт в конец, удаление —
 //! `shift_remove`. Производные поля героя обнуляются (`null`), а не удаляются,
-//! чтобы ключ остался на прежнем месте.
+//! чтобы ключ остался на прежнем месте, и в отличие от JS не выводятся
+//! заново: в нормализованном состоянии на их месте — пустые слоты, значения
+//! считает [`crate::derived`] при чтении (урок 2).
 //!
 //! Ошибки, которые JS не ловит (`TypeError` на `null` вместо героя, отказ
 //! предыстории, карты мира, памяти сцены, груза), обрывают нормализацию
@@ -35,8 +37,8 @@ pub const MILESTONES_PER_LEVEL: i64 = 3;
 /// `ENEMY_KNOWLEDGE_FACTS`.
 pub const ENEMY_KNOWLEDGE_FACTS: [&str; 4] = ["health", "armor_class", "speed", "stat_block"];
 
-/// `DERIVED_PLAYER_FIELDS`.
-pub const DERIVED_PLAYER_FIELDS: [&str; 4] = ["combatSpells", "combatActions", "characterSheet", "inventoryLoad"];
+/// `DERIVED_PLAYER_FIELDS` (вычисление и чтение — [`crate::derived`]).
+pub use crate::derived::DERIVED_PLAYER_FIELDS;
 
 /// `READIED_TRIGGERS` (ключи).
 const READIED_TRIGGERS: [&str; 2] = ["enemy-approaches", "enemy-casts-spell"];
@@ -334,15 +336,7 @@ pub fn without_derived_player_fields(players: &Value) -> Value {
 
 /// [`without_derived_player_fields`] на месте.
 fn strip_derived_player_fields(players: &mut [Value]) {
-    for player in players {
-        if let Value::Object(fields) = player {
-            for field in DERIVED_PLAYER_FIELDS {
-                if let Some(slot) = fields.get_mut(field) {
-                    *slot = Value::Null;
-                }
-            }
-        }
-    }
+    players.iter_mut().for_each(crate::derived::strip_player);
 }
 
 /// Поле `state.mechanics?.<key>`.
@@ -611,16 +605,12 @@ fn normalize_player(state: &Value, player: &Value) -> Result<Value, Halt> {
     }
     let level = safe_int(player.get("level"), 1).clamp(1, 12);
     let proficiency = sk_character::character_lifecycle::proficiency_bonus_for_level(Some(&Value::from(level))).map_err(|failure| error(failure.message.clone()))?;
-    let options = json!({ "rulesetId": state.get("ruleset_id").cloned().unwrap_or(Value::Null) });
-    let spells = sk_combat_content::combat_spells::combat_spells_for(Some(&normalized), Some(&options));
-    let mut actions = sk_combat_content::combat_actions::combat_actions_for(Some(&normalized));
-    if let Some(continuation) = crate::enervation_link::enervation_continuation_action_for(state, normalized.get("id"), None) {
-        actions.push(continuation);
-    }
     let owner = match player.get("id") {
         None | Some(Value::Null) => "actor".to_string(),
         some => js::s(some),
     };
+    // Герой, из которого JS выводит заклинания и действия (до полей ниже).
+    let spells_input = normalized.clone();
     let mut actor = match normalized {
         Value::Object(fields) => fields,
         _ => Map::new(),
@@ -632,16 +622,26 @@ fn normalize_player(state: &Value, player: &Value) -> Result<Value, Halt> {
     actor.insert("maxHp".into(), Value::from(safe_int(nullish(player.get("maxHp"), player.get("max_hp")), 1).max(1)));
     actor.insert("currency".into(), sk_economy::merchant_economy::normalize_currency(player.get("currency")));
     actor.insert("inventory".into(), Value::Array(normalize_inventory(player.get("inventory"), &owner)));
-    actor.insert("combatSpells".into(), Value::Array(spells));
-    actor.insert("combatActions".into(), Value::Array(actions));
+    // Производные поля (урок 2): на их месте — пустые слоты в том же порядке,
+    // что у JS; значения вычисляет `crate::derived` при чтении. Отказ груза
+    // на мусорном инвентаре обрывает нормализацию, как в JS, — поэтому груз
+    // проверяется и здесь (дёшево; в память модуля не кладётся: герой на
+    // полпути нормализации ещё не тот, что ляжет в состояние).
+    actor.insert(crate::derived::COMBAT_SPELLS.into(), Value::Null);
+    actor.insert(crate::derived::COMBAT_ACTIONS.into(), Value::Null);
     let actor = Value::Object(actor);
-    let options = sk_combat_content::combat_actions::class_resource_options_for(Some(state)).to_value();
-    let sheet = sk_character::character_lifecycle::derive_character_sheet(Some(&actor), Some(&options)).unwrap_or(Value::Null);
-    let load = sk_items_life::item_lifecycle::inventory_load_for(Some(&actor)).map_err(|failure| type_error(failure.message()))?;
+    sk_items_life::item_lifecycle::inventory_load_for(Some(&actor)).map_err(|failure| type_error(failure.message()))?;
+    // Герой, из которого JS выводит лист и груз (до полей клеток).
+    let sheet_input = actor.clone();
     let Value::Object(mut with_load) = actor else { unreachable!("герой нормализации — объект") };
-    with_load.insert("inventoryLoad".into(), load);
-    with_load.insert("characterSheet".into(), sheet);
-    Ok(crate::geometry::footprint::normalize_actor_footprint_fields_owned(Value::Object(with_load)))
+    with_load.insert(crate::derived::INVENTORY_LOAD.into(), Value::Null);
+    with_load.insert(crate::derived::CHARACTER_SHEET.into(), Value::Null);
+    let mut player = crate::geometry::footprint::normalize_actor_footprint_fields_owned(Value::Object(with_load));
+    // Нормализация поменяла входы вывода — слот берёт значение JS, если
+    // итоговый герой вывел бы другое (сырой вход; у нормализованного героя
+    // слоты пустые).
+    crate::derived::settle_normalized(state, &mut player, &spells_input, &sheet_input);
+    Ok(player)
 }
 
 /// Общие поля прочих существ и противников (`hp`, `maxHp`, `alive`).

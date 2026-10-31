@@ -82,13 +82,17 @@ pub(super) fn put_defined(map: &mut Map<String, Value>, key: &str, value: Option
 /// `refreshPlayerDerivedState(state, actorIds)` (23625): лист героя
 /// выводится заново (`deriveCharacterSheet`; отказ вывода — прежний лист,
 /// как `try {} catch {}` в JS), затем заклинания, боевые действия и груз.
+/// Из листа в героя переходят `armor`, `speed`, `proficiency`; сами
+/// производные поля — пустые слоты (урок 2, [`crate::derived`]). Отличие от
+/// JS: «прежний лист» при отказе вывода — тот, что записан в герое, а в
+/// каноническом состоянии это пустой слот, поэтому `armor` и `speed` тогда
+/// не трогаются (JS взял бы их из листа до события).
 ///
 /// Груз — `inventoryLoadFor` крейта `sk-items-life`. Его `TypeError` на
 /// мусорном инвентаре (не массив) обрывает событие, как в JS: `state.players`
 /// остаётся прежним. Так же обрывает лист без `armor_class` или `speed`.
 pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[String]) -> Reduced {
     let requested: HashSet<&str> = actor_ids.iter().map(String::as_str).collect();
-    let options = ruleset_options(state);
     let sheet_options = class_resource_options(state);
     let players = match state.get("players") {
         None | Some(Value::Null) => Vec::new(),
@@ -105,18 +109,15 @@ pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[Strin
         if actor.is_null() {
             return Err(type_error("Cannot read properties of null (reading 'characterSheet')"));
         }
+        // Отказ вывода — прежний лист, записанный в героя (в каноническом
+        // состоянии там пустой слот: лист не хранится, урок 2).
         let sheet = match sk_character::character_lifecycle::derive_character_sheet(Some(&actor), Some(&sheet_options)) {
             Ok(sheet) => sheet,
             Err(_) => actor.get("characterSheet").filter(|sheet| !sheet.is_null()).cloned().unwrap_or(Value::Null),
         };
-        // Заклинания, действия и груз читают прежнего героя (до полей листа),
-        // поэтому считаются до того, как он переедет в новый объект; порядок
-        // отказов прежний: сначала поля листа, затем груз.
-        let spells = sk_combat_content::combat_spells::combat_spells_for(Some(&actor), Some(&options));
-        let mut actions = sk_combat_content::combat_actions::combat_actions_for(Some(&actor));
-        if let Some(continuation) = crate::enervation_link::enervation_continuation_action_for(state, Some(&Value::String(id.clone())), None) {
-            actions.push(continuation);
-        }
+        // Груз читает прежнего героя (до полей листа); порядок отказов
+        // прежний: сначала поля листа, затем груз. Заклинания и действия не
+        // отказывают — их значения выводит `crate::derived` при чтении.
         let load = sk_items_life::item_lifecycle::inventory_load_for(Some(&actor));
         let mut map = match actor {
             Value::Object(fields) => fields,
@@ -127,11 +128,11 @@ pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[Strin
             put_defined(&mut map, "speed", sheet_value(&sheet, "speed")?);
             put_defined(&mut map, "proficiency", sheet.get("proficiency_bonus").cloned());
         }
-        let load = load.map_err(|error| type_error(error.message()))?;
-        map.insert("characterSheet".into(), sheet);
-        map.insert("combatSpells".into(), Value::Array(spells));
-        map.insert("combatActions".into(), Value::Array(actions));
-        map.insert("inventoryLoad".into(), load);
+        load.map_err(|error| type_error(error.message()))?;
+        // Слоты в порядке JS (`{ ...actor, characterSheet, combatSpells, combatActions, inventoryLoad }`).
+        for field in [crate::derived::CHARACTER_SHEET, crate::derived::COMBAT_SPELLS, crate::derived::COMBAT_ACTIONS, crate::derived::INVENTORY_LOAD] {
+            map.insert(field.into(), Value::Null);
+        }
         next.push(Value::Object(map));
     }
     state["players"] = Value::Array(next);

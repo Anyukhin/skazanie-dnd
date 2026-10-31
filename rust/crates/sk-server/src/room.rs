@@ -289,6 +289,11 @@ pub(crate) fn compose(events: &EventStore, body: &Value) -> Result<Value, Failur
         for (field, value) in fields {
             map.insert(field.clone(), value.clone());
         }
+        // Накладка до урока 2 могла хранить героев с производными полями
+        // целиком: в каноническом состоянии на их месте пустые слоты.
+        if fields.contains_key("players") {
+            sk_rules::derived::strip_derived_fields(&mut state);
+        }
     }
     Ok(state)
 }

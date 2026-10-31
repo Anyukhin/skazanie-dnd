@@ -169,6 +169,11 @@ async fn run_lifecycle(core: Rc<GameCore>, app: Arc<AppState>, job: Lifecycle, c
         if let Some(projected_state) = projected.as_ref().and_then(|room| room.state.clone()).filter(|state| !state.is_null()) {
             map.insert("authoritative_state".into(), projected_state);
         }
+        // Ответ ведущему — состояние целиком, без проекции: в форме JS
+        // (производные поля героев значениями, урок 2).
+        if let Some(state) = map.get_mut("authoritative_state") {
+            *state = sk_rules::derived::materialized_state(state);
+        }
         let version = projected.as_ref().map_or(job.room.version, |room| room.version);
         map.insert("room_version".into(), Value::from(version));
     }

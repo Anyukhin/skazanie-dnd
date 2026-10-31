@@ -57,7 +57,9 @@ pub fn effective_armor_class(state: &Value, actor: Option<&Value>, id: &str) -> 
     let conditions = condition_ids_for(state, id);
     let item_bonus = item_effect_total(actor, "armor_class_bonus")?;
     let listed_armor = js::safe_int(nullish_chain(&[at(actor, "armor"), at(actor, "armorClass")]), 10).max(0) as f64;
-    let sheet_armor = at_path(actor, &["characterSheet", "armor_class"]);
+    // Лист героя не хранится (урок 2): записанный или выведенный из каталога.
+    let sheet = crate::derived::read_opt(Some(state), actor, crate::derived::CHARACTER_SHEET);
+    let sheet_armor = at(sheet.as_deref(), "armor_class");
     let sheet_value = js::safe_int(at(sheet_armor, "value"), 0).max(0) as f64;
     let sheet_item_bonus = js::safe_int(at(sheet_armor, "item_effect_bonus"), 0).max(0) as f64;
     let item_stamped_in_sheet = item_bonus > 0.0 && sheet_item_bonus == item_bonus;
