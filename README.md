@@ -936,6 +936,8 @@ docker compose down
 
 Приложение доступно на `http://localhost:8787`. Для обычного запуска достаточно дважды нажать `START_DND.cmd`: он сам запускает Docker Desktop, ждёт готовность движка, собирает сервер, поднимает исходящий SSH-туннель Pinggy, проверяет здоровье приложения, сохраняет ссылку в `PUBLIC_LINK.txt`, копирует её в буфер обмена и открывает игру. `STATUS_DND.cmd` показывает состояние, а `STOP_DND.cmd` останавливает игру. Бесплатный адрес Pinggy периодически меняется; не публикуйте setup-ссылку.
 
+С 2026-10-31 основной сервер — Rust: при `DND_SERVER=rust` в `.env` `START_DND.cmd` поднимает `compose.rust.yaml` (хранилище — том `skazanie-rust_storage`) вместо `compose.yaml`; при `DND_SERVER=js` или пустом значении — прежний JS-сервер на `./storage`. Разовый перенос кампаний со старого хранилища и переключение — `powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1` (`-DryRun` — только проверка). Подробно — [Rust-сервер в Docker](docs/rust-docker.md).
+
 ## Правила, лицензии и материалы
 
 В репозитории нет полного текста официального SRD: Rule Pack содержит короткие самостоятельные пересказы и не заявляет официальную полноту или одобрение. Источники, оговорки по лицензированию кода и неподтверждённые visual assets перечислены в [ATTRIBUTION.md](ATTRIBUTION.md) и [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). До публичного релиза владелец должен выбрать лицензию проекта и закрыть отмеченные release blockers.

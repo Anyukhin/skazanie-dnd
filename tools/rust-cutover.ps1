@@ -23,7 +23,6 @@ $SourceRoot = (Resolve-Path -LiteralPath $SourceRoot).Path
 Set-Location -LiteralPath $ProjectRoot
 $Storage = Join-Path $ProjectRoot 'storage'
 $EnvFile = Join-Path $ProjectRoot '.env'
-$StorageMount = ($Storage -replace '\\', '/') + ':/legacy-storage:ro'
 $Rust = @('compose', '-f', (Join-Path $SourceRoot 'compose.rust.yaml'), '--project-directory', $ProjectRoot)
 $Js = @('compose', '-f', (Join-Path $ProjectRoot 'compose.yaml'), '--project-directory', $ProjectRoot)
 
@@ -73,6 +72,21 @@ function Read-EnvValue([string]$Name) {
   return ($line -split '=', 2)[1].Trim().Trim('"').Trim("'")
 }
 
+# Копия ./storage новыми файлами (байты и время), без расширенных атрибутов:
+# в них Docker Desktop хранит владельца и режим Linux, и файлы, записанные
+# JS-контейнером (uid 1000, режим 0600), Rust-контейнер (uid 10001) не прочтёт.
+# Отметку писателя не копировать — это не данные (её пропускает и pnpm backup).
+function Copy-PlainTree([string]$From, [string]$To) {
+  New-Item -ItemType Directory -Path $To -Force | Out-Null
+  foreach ($item in Get-ChildItem -LiteralPath $From -Force) {
+    $target = Join-Path $To $item.Name
+    if ($item.PSIsContainer) { Copy-PlainTree $item.FullName $target; continue }
+    if ($item.Name -eq '.server-writer.json' -and $From -eq $Storage) { continue }
+    [IO.File]::WriteAllBytes($target, [IO.File]::ReadAllBytes($item.FullName))
+    [IO.File]::SetLastWriteTimeUtc($target, $item.LastWriteTimeUtc)
+  }
+}
+
 $jsWasRunning = $false
 $switched = $false
 try {
@@ -90,24 +104,25 @@ try {
     [void](Invoke-Docker @('build', '-f', (Join-Path $SourceRoot 'Dockerfile.rust'), '-t', 'skazanie-rust:local', $SourceRoot))
   }
 
+  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $backup = Join-Path $ProjectRoot "backups\storage-before-rust-$stamp"
+  Write-Step "Копия ./storage — $backup (перенос идёт из неё)..."
+  Copy-PlainTree $Storage $backup
+  $LegacyMount = ($backup -replace '\\', '/') + ':/legacy-storage:ro'
+
   # Пробный перенос — без тома Rust-сервиса: ничего не пишет и том не создаёт.
   Write-Step 'Пробный перенос (ничего не пишет)...'
-  $dry = Invoke-Docker @('run', '--rm', '-v', $StorageMount, 'skazanie-rust:local', 'import-legacy', '--from', '/legacy-storage', '--dry-run') @(0, 3)
+  $dry = Invoke-Docker @('run', '--rm', '-v', $LegacyMount, 'skazanie-rust:local', 'import-legacy', '--from', '/legacy-storage', '--dry-run') @(0, 3)
   if ($dry -eq 3) { throw 'Пробный перенос пропустил часть кампаний или комнат (причины выше) — разобраться до настоящего переноса.' }
   if ($DryRun) {
     if ($jsWasRunning) { [void](Invoke-Docker ($Js + @('--profile', 'public', 'start'))) }
     Write-Host 'Пробный перенос чистый. Без -DryRun скрипт перенесёт хранилище и переключит игру.' -ForegroundColor Green
+    Write-Host "Копию $backup после пробы можно удалить." -ForegroundColor DarkGray
     exit 0
   }
 
-  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-  $backup = Join-Path $ProjectRoot "backups\storage-before-rust-$stamp"
-  Write-Step "Копия ./storage — $backup ..."
-  New-Item -ItemType Directory -Path (Split-Path $backup) -Force | Out-Null
-  Copy-Item -LiteralPath $Storage -Destination $backup -Recurse
-
   Write-Step 'Перенос в том skazanie-rust_storage...'
-  [void](Invoke-Docker ($Rust + @('run', '--rm', '--no-deps', '-v', $StorageMount, 'skazanie-rust', 'import-legacy', '--from', '/legacy-storage')))
+  [void](Invoke-Docker ($Rust + @('run', '--rm', '--no-deps', '-v', $LegacyMount, 'skazanie-rust', 'import-legacy', '--from', '/legacy-storage')))
 
   Write-Step 'Аудит перенесённого хранилища (журнал против replay, проекции, комнаты)...'
   $audit = Invoke-Docker ($Rust + @('run', '--rm', '--no-deps', 'skazanie-rust', 'audit-storage')) @(0, 1)
