@@ -4,6 +4,7 @@ import { scenarioArmoryActionFromText, scenarioInformantActionFromText, scenario
 import { scenarioArmoryRules, scenarioInformantRules } from './campaign-scenario.mjs'
 import { catalogItem } from './item-catalog.mjs'
 import { announcesMovement } from './party-exit-intent.mjs'
+import { combatSpellsFor, spellCatalogNames } from './combat-spells.mjs'
 
 const CORPSE_SEARCH_VERB = '(?<![\\p{L}\\p{M}])(?:обыск\\p{L}*|провер\\p{L}*|осматр\\p{L}*|ищ\\p{L}*)'
 const CORPSE_SEARCH_NOUN = '(?<![\\p{L}\\p{M}])(?:труп(?:а|у|ом|е|ы|ов|ам|ами|ах)?|тел(?:о|а|у|ом|е|ам|ами|ах)?|остан(?:ки|ков|кам|ками|ках)|карман(?:а|у|ом|е|ы|ов|ам|ами|ах)?)(?![\\p{L}\\p{M}])'
@@ -465,6 +466,117 @@ function inferApproach(message) {
   return APPROACH_PATTERNS.find(([, pattern]) => pattern.test(message))?.[0] ?? 'unspecified'
 }
 
+/**
+ * Заклинание, названное в заявке. Плейтест 2026-10-10: «…пятится от огра за
+ * спину Борина и швыряет в чудовище Огненный снаряд» — ни «заклин», ни
+ * «колдую» в тексте нет, фраза уходила к судье свободных действий, и тот
+ * решал её проверкой навыка вместо `CastSpell`.
+ *
+ * Имя узнаётся по каталогу с падежами («Волшебную стрелу»). Многословное имя
+ * считается заклинанием, когда в заявке есть глагол сотворения или броска;
+ * однословное («Щит», «Свет», «Тьма») — только в кавычках или рядом со словом
+ * «заклинание»/«колдую», иначе «прикрываюсь щитом» стало бы заклинанием.
+ * Имя после «от» — то, от чего уклоняются, а не то, что творят.
+ */
+const SPELL_WORD_ENDINGS = Object.freeze([
+  'иями', 'ями', 'ами', 'ием', 'ого', 'его', 'ому', 'ему', 'ыми', 'ими',
+  'ую', 'юю', 'ая', 'яя', 'ой', 'ей', 'ый', 'ий', 'ое', 'ее', 'ые', 'ие', 'ых', 'их', 'ым', 'им', 'ом', 'ем',
+  'ам', 'ям', 'ах', 'ях', 'ия', 'ию', 'ии', 'ов', 'ев', 'а', 'я', 'у', 'ю', 'е', 'ы', 'и', 'о', 'ь', 'й',
+])
+const SPELL_STRONG_CUE = /(?<![\p{L}\p{M}])(?:заклин|заговор|колду|сотвор|кастую|кастует|кастуем|spell|cast)/iu
+const SPELL_USE_VERB = /(?<![\p{L}\p{M}])(?:швыр|кида|кину|кинет|кинул|броса|брошу|бросит|бросил|мета(?:ю|ет|ем)|мечу|метн|запуска|запущ|запуст|выпуска|выпущ|выпуст|посыла|насыла|стреля|выстрел|накладыва|налага|налож|обрушива|обрушу|обрушит|направля|направлю|направит|призыва|призов|примен|использ|атаку|бью|удар|жгу|сжига|сожг|поража|твор)/iu
+const SPELL_GUARD_PREPOSITIONS = new Set(['от', 'против', 'сквозь'])
+const SPELL_MOVEMENT_PATTERN = /(?<![\p{L}\p{M}])(?:пяч\p{L}*|пятит\p{L}*|пятят\p{L}*|пятясь|отступ\p{L}*|отход\p{L}*|отхож\p{L}*|отойд\p{L}*|отбега\p{L}*|отбеж\p{L}*|отскак\p{L}*|отскоч\p{L}*|отпрыг\p{L}*|перебега\p{L}*|перебеж\p{L}*|убега\p{L}*|убеж\p{L}*|подбега\p{L}*|подбеж\p{L}*|подход\p{L}*|подхож\p{L}*|подойд\p{L}*|приближа\p{L}*|приближу\p{L}*|бегу|бежит|бежим|бегом|иду|идёт|идет|идём|идем|переход\p{L}*|перехож\p{L}*|перейд\p{L}*|перемеща\p{L}*|перемещу\p{L}*|двига\p{L}*|шага\p{L}*|шагн\p{L}*|прыга\p{L}*|прыгн\p{L}*|прыж\p{L}*|запрыг\p{L}*|спрыг\p{L}*|(?:прячу|прячет|встаю|встаёт|встает|встану|встанет|становлюсь|становится)(?:сь|ся)?\s+за|за\s+спин\p{L}*)(?![\p{L}\p{M}])/iu
+const SPELL_SELF_TARGET_PATTERN = /(?<![\p{L}\p{M}])(?:себя|себе|собой)(?![\p{L}\p{M}])/iu
+
+function spellWordStem(word) {
+  const value = word.replace(/ё/gu, 'е')
+  if (!/^[а-я]+$/u.test(value)) return value
+  const ending = SPELL_WORD_ENDINGS.find((suffix) => value.endsWith(suffix) && value.length - suffix.length >= 3)
+  return ending ? value.slice(0, -ending.length) : value
+}
+
+const spellStems = (value) => wordTokens(value).map(spellWordStem)
+
+/**
+ * Заклинания каталога, названные в тексте, по порядку упоминания. Кавычки
+ * ищутся в `quotedSource`: разбор действия (`affirmativeActionText`) их
+ * вырезает вместе с содержимым как прямую речь.
+ */
+export function spellsNamedInText(value, quotedSource = value) {
+  const text = normalizedText(value)
+  const words = wordTokens(text)
+  const stems = words.map(spellWordStem)
+  if (!stems.length) return []
+  const strongCue = SPELL_STRONG_CUE.test(text)
+  const castVerb = strongCue || SPELL_USE_VERB.test(text)
+  const quoted = new Set([...normalizedText(quotedSource).matchAll(/[«"“„]([^«»"“”„]{1,80})[»"”“]/gu)].map((match) => spellStems(match[1]).join(' ')))
+  const found = []
+  for (const entry of spellCatalogNames()) {
+    for (const name of [entry.name, entry.englishName]) {
+      const nameStems = spellStems(name)
+      if (!nameStems.length) continue
+      if (!quoted.has(nameStems.join(' ')) && !(nameStems.length > 1 ? castVerb : strongCue)) continue
+      const index = stems.findIndex((_, start) => start + nameStems.length <= stems.length
+        && nameStems.every((stem, offset) => stems[start + offset] === stem)
+        && !SPELL_GUARD_PREPOSITIONS.has(words[start - 1]))
+      if (index >= 0) {
+        found.push({ id: entry.id, name: entry.name, index, length: nameStems.length })
+        break
+      }
+    }
+  }
+  // Длинное имя поглощает вложенное: «Щит веры» — не «Щит».
+  return found
+    .filter((match) => !found.some((other) => other.length > match.length
+      && other.index <= match.index && other.index + other.length >= match.index + match.length))
+    .sort((left, right) => left.index - right.index)
+}
+
+/**
+ * Заклинания героя, готовые к сотворению (то же, что панель действий), и среди
+ * них исполняемые сервером. Карточка `heuristic`/`ruling-only` движком
+ * блокируется, и её творческое применение («Волшебной рукой открываю
+ * щеколду») остаётся прежнему пути — судье свободных действий или ruling.
+ */
+function heroSpellIds(visibleState, playerId) {
+  const hero = (Array.isArray(visibleState?.players) ? visibleState.players : [])
+    .find((player) => String(player?.id ?? '') === String(playerId ?? ''))
+  const spells = !hero ? []
+    : Array.isArray(hero.combatSpells) ? hero.combatSpells : combatSpellsFor(hero, { rulesetId: visibleState?.ruleset_id })
+  const ready = spells.filter((spell) => spell?.prepared !== false)
+  return {
+    ready: new Set(ready.map((spell) => String(spell?.id ?? ''))),
+    executable: new Set(ready.filter((spell) => ['verified', 'partial'].includes(spell?.mechanicsSupport)).map((spell) => String(spell?.id ?? ''))),
+  }
+}
+
+/**
+ * Заклинание заявки для намерения `cast_spell` или `null`, если текст
+ * заклинания не называет. Перемещение ищется вне самого имени: «Прыжок» —
+ * заклинание, а не прыжок героя.
+ */
+function spellCastFromText(message, visibleState, playerId) {
+  // Отрицание снимается как у остального разбора действия, но имя в кавычках
+  // остаётся: «Колдую «Щит»» — заклинание, а не прямая речь.
+  const text = affirmativeActionText(message.replace(/[«»"“”„]/gu, ' '))
+  const named = spellsNamedInText(text, message)
+  if (!named.length) return null
+  const { ready, executable } = heroSpellIds(visibleState, playerId)
+  const spell = named.find((entry) => executable.has(entry.id)) ?? null
+  const unavailable = named.filter((entry) => !ready.has(entry.id))
+  if (!spell && !(unavailable.length && SPELL_STRONG_CUE.test(text))) return null
+  const words = wordTokens(normalizedText(text))
+  const rest = spell ? words.filter((_, index) => index < spell.index || index >= spell.index + spell.length).join(' ') : text
+  return {
+    spell_id: spell?.id ?? null,
+    ...(spell ? { spell_name: spell.name } : {}),
+    unavailable_spells: unavailable.map(({ id, name }) => ({ id, name })),
+    spell_with_movement: SPELL_MOVEMENT_PATTERN.test(rest),
+    spell_self_target: SPELL_SELF_TARGET_PATTERN.test(text),
+  }
+}
+
 export class IntentParser {
   async parse({ message, playerId, visibleState }) {
     const text = normalizedText(message)
@@ -505,12 +617,17 @@ export class IntentParser {
     // «выдаю мельника» в начале линии ушло бы в отказ вместо разговора.
     const informants = scenarioInformantRules(visibleState).filter((informant) => informant.revealed)
     const informantAction = knightAction || treatyAction || purseAction || armoryAction || !informants.length ? null : scenarioInformantActionFromText(operativeText, informants)
+    // Названное заклинание идёт раньше удара, проверки и манёвра: «стреляю
+    // Огненным снарядом в огра» — это `CastSpell`, а не атака оружием.
+    const spellCast = knightAction || treatyAction || purseAction || armoryAction || informantAction || spoken
+      ? null : spellCastFromText(text, visibleState, playerId)
     const detectedIntent = knightAction ? 'scenario_knight'
       : treatyAction ? 'scenario_treaty'
       : purseAction ? 'scenario_purse'
       : armoryAction ? 'scenario_armory'
       : informantAction ? 'scenario_informant'
       : spoken ? 'social'
+      : spellCast ? 'cast_spell'
       : freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
       : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'
       : freeActionKind === 'approach_attack' ? 'approach_attack'
@@ -557,6 +674,7 @@ export class IntentParser {
       requires_clarification: missing.length > 0,
       confidence: intent === 'improvised_action' ? 0.45 : missing.length ? 0.55 : 0.86,
       free_action_kind: freeActionKind,
+      ...(intent === 'cast_spell' ? spellCast ?? { spell_id: null, unavailable_spells: [], spell_with_movement: false, spell_self_target: false } : {}),
       ...(knightAction ? { scenario_knight: knightAction } : {}),
       ...(armoryAction ? { scenario_armory: armoryAction } : {}),
       ...(informantAction ? { scenario_informant: informantAction } : {}),

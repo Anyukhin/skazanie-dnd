@@ -12,6 +12,13 @@
       "runtimeExecutable": "C:\\Users\\anton\\AppData\\Local\\OpenAI\\Codex\\bin\\5b9024f90663758b\\node.exe",
       "runtimeArgs": ["node_modules/vite/bin/vite.js", "--port", "5173", "--strictPort"],
       "port": 5173
+    },
+    {
+      "name": "maps-stand",
+      "runtimeExecutable": "C:\\Users\\anton\\AppData\\Local\\OpenAI\\Codex\\bin\\5b9024f90663758b\\node.exe",
+      "runtimeArgs": [".agent-tasks/maps-survey-serve.mjs", "8795"],
+      "port": 8795,
+      "url": "http://127.0.0.1:8795"
     }
   ]
 }

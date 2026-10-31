@@ -50,6 +50,15 @@ const SPELLS = Object.freeze(payload.spells.map((spell) => {
   })
 }))
 const SPELLS_BY_ID = new Map(SPELLS.map((spell) => [spell.id, spell]))
+const SPELL_NAMES = Object.freeze(SPELLS.map((spell) => Object.freeze({ id: spell.id, name: spell.name, englishName: spell.englishName ?? '' })))
+
+/**
+ * Имена каталога для разбора текста игрока (`server/intent-parser.mjs`):
+ * русское и английское, без механики. Имена от редакции не зависят.
+ */
+export function spellCatalogNames() {
+  return SPELL_NAMES
+}
 
 const clone = (value) => structuredClone(value)
 const rulesetIdOf = (options) => String(typeof options === 'string' ? options : options?.rulesetId ?? options?.ruleset_id ?? 'srd_5_2_1')

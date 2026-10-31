@@ -9,6 +9,7 @@ import {
   recordQuestKnowledge,
 } from './quest-consequences.mjs'
 import { retentionMode } from './retention-context.mjs'
+import { ontologyViolation } from './world-ontology.mjs'
 
 const ENTITY_KINDS = new Set(['location', 'npc', 'faction', 'item', 'event', 'concept'])
 const QUEST_STATUSES = new Set(['hidden', 'offered', 'active', 'completed', 'failed', 'abandoned'])
@@ -797,6 +798,15 @@ function normalizeEntityInput(input) {
   return result
 }
 
+/**
+ * Запись памяти проходит, только если её предикат есть в онтологии мира
+ * (`server/world-ontology.mjs`) для этого вида записи и подлежащего.
+ */
+function assertOntology(record, predicate, subjectKind) {
+  const violation = ontologyViolation({ record, predicate, subjectKind })
+  if (violation) throw new WorldMemoryValidationError(violation.message, violation.code)
+}
+
 function normalizeFactInput(input, memory, commandId, state = {}) {
   const value = plainObject(input, 'fact')
   assertFields(value, new Set(['id', 'subject_id', 'predicate', 'object', 'summary', 'visibility', 'source_event_ids', 'supersedes_fact_id']), 'fact')
@@ -807,8 +817,10 @@ function normalizeFactInput(input, memory, commandId, state = {}) {
     supersedes_fact_id: value.supersedes_fact_id ? id(value.supersedes_fact_id, 'fact.supersedes_fact_id') : '', status: 'active',
     recorded_at_minutes: elapsedMinutes(state),
   }
-  if (!memory.entities.some((entity) => entity.id === result.subject_id)) throw new WorldMemoryValidationError('Сущность факта не найдена', 'WORLD_ENTITY_NOT_FOUND')
+  const subject = memory.entities.find((entity) => entity.id === result.subject_id)
+  if (!subject) throw new WorldMemoryValidationError('Сущность факта не найдена', 'WORLD_ENTITY_NOT_FOUND')
   if (!result.predicate || (!result.object && !result.summary)) throw new WorldMemoryValidationError('Факт должен содержать predicate и object/summary', 'WORLD_FACT_CONTENT_REQUIRED')
+  assertOntology('fact', result.predicate, subject.kind)
   if (memory.facts.some((fact) => fact.id === result.id)) throw new WorldMemoryValidationError('Факт с таким id уже существует; создайте новый факт с supersedes_fact_id', 'WORLD_FACT_ALREADY_EXISTS')
   if (result.supersedes_fact_id && !memory.facts.some((fact) => fact.id === result.supersedes_fact_id && fact.status === 'active')) throw new WorldMemoryValidationError('Заменяемый факт не найден', 'WORLD_FACT_NOT_FOUND')
   return result
@@ -901,6 +913,8 @@ function normalizeEpistemicClaimInput(input, memory, commandId, state = {}, kind
   if (!holder || holder.kind !== 'npc') throw new WorldMemoryValidationError('Убеждение или слух должен принадлежать известному NPC', 'WORLD_NPC_BELIEF_HOLDER_INVALID')
   if (result.subject_entity_id && !memory.entities.some((entity) => entity.id === result.subject_entity_id)) throw new WorldMemoryValidationError('Сущность утверждения не найдена', 'WORLD_ENTITY_NOT_FOUND')
   if (!result.claim) throw new WorldMemoryValidationError('Убеждение или слух не может быть пустым', 'WORLD_EPISTEMIC_CLAIM_REQUIRED')
+  // Предикат утверждения необязателен; названный — должен быть в словаре.
+  if (result.predicate) assertOntology('claim', result.predicate, holder.kind)
   if (memory.epistemic_claims.some((claim) => claim.id === result.id)) throw new WorldMemoryValidationError('Убеждение или слух с таким id уже существует', 'WORLD_EPISTEMIC_CLAIM_ALREADY_EXISTS')
   return result
 }

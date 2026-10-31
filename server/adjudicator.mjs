@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
-import { RULE_IDS, RulesValidationError, abilityModifier, defaultAttackItemIdFor, findActor, skillProficiencyForActor, previewApproachAttack, previewLongJumpAttack, previewSwingAttack, swingPropForText } from './rules-engine.mjs'
+import { RULE_IDS, RulesValidationError, abilityModifier, defaultAttackItemIdFor, findActor, isEnemyActor, skillProficiencyForActor, previewApproachAttack, previewLongJumpAttack, previewSwingAttack, swingPropForText } from './rules-engine.mjs'
 import { LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 import { waitTargetFromText } from './intent-parser.mjs'
 import { minutesUntilClock } from './weather.mjs'
+import { combatSpellFor } from './combat-spells.mjs'
 
 export const DIFFICULTY_CLASSES = Object.freeze({ easy: 10, medium: 15, hard: 20 })
 export const DIFFICULTY_CATEGORIES = Object.freeze(Object.keys(DIFFICULTY_CLASSES))
@@ -61,6 +62,68 @@ export function difficultyCategoryFor(intent, state = {}) {
 
 export function difficultyClassFor(category) {
   return DIFFICULTY_CLASSES[DIFFICULTY_CATEGORIES.includes(category) ? category : 'medium']
+}
+
+/**
+ * Заклинание из текста заявки — та же команда `CastSpell`, что у плитки
+ * заклинания и у тактики союзников (`server/party-tactics.mjs`): цели сразу в
+ * `target_id` и `target_ids`, `server_authoritative`, а дальность, ячейку,
+ * экономику хода и поддержку механики проверяет Rules Engine. Точку на карте и
+ * вариант заклинания текст не выбирает, перемещение не исполняет — тогда ответ
+ * уточнением, и ничего не тратится. `null` — заклинание не названо: заявка
+ * идёт прежним путём ruling.
+ */
+function castSpellPlan({ base, intent, state, actor, ruleIdsFor }) {
+  const clarify = (message) => ({ ...base, clarification_required: true, clarification_message: `${message} Попытка ничего не расходует.` })
+  const heroName = String(actor?.character ?? actor?.name ?? 'Герой')
+  const spell = intent.spell_id ? combatSpellFor(actor, intent.spell_id, { rulesetId: state?.ruleset_id }) : null
+  if (!spell) {
+    const names = [...new Set([
+      ...(intent.spell_id && intent.spell_name ? [String(intent.spell_name)] : []),
+      ...(Array.isArray(intent.unavailable_spells) ? intent.unavailable_spells : []).map((entry) => String(entry?.name ?? '')),
+    ].filter(Boolean))]
+    return names.length
+      ? clarify(`${heroName} не может сотворить ${names.map((name) => `«${name}»`).join(', ')}: среди заклинаний, готовых к сотворению, такого нет.`)
+      : null
+  }
+  if (intent.spell_with_movement) {
+    return clarify(`Здесь два шага: перемещение и «${spell.name}». Сначала переведите героя по карте — отход от противника вплотную может вызвать его атаку, — затем заявите заклинание отдельно.`)
+  }
+  if (spell.target === 'point') return clarify(`«${spell.name}» направляется в точку: выберите её на карте плиткой заклинания на панели действий.`)
+  if (Array.isArray(spell.spellOptions) && spell.spellOptions.length) {
+    return clarify(`У «${spell.name}» есть выбор при сотворении: сделайте его плиткой заклинания на панели действий.`)
+  }
+  const selfId = String(intent.actor_id ?? '')
+  const mentioned = (Array.isArray(intent.targets) ? intent.targets : []).map(String)
+    .filter((id) => id !== selfId && findActor(state, id))
+  const self = intent.spell_self_target ? [selfId] : []
+  const targets = spell.target === 'self' ? [selfId]
+    : spell.target === 'enemy' ? mentioned.filter((id) => isEnemyActor(state, id))
+      : spell.target === 'ally' ? [...self, ...mentioned.filter((id) => !isEnemyActor(state, id))]
+        : [...self, ...mentioned]
+  const limit = Math.max(1, Number(spell.maxTargets) || 1)
+  if (!targets.length) return clarify(`${spell.target === 'enemy' ? 'В кого' : 'На кого'} направить «${spell.name}»? Назовите цель по имени.`)
+  if (targets.length > limit) {
+    return clarify(limit === 1
+      ? `«${spell.name}» действует на одну цель, а названо несколько. Назовите одну.`
+      : `«${spell.name}» действует не больше чем на ${limit} целей. Назовите не больше ${limit}.`)
+  }
+  // Область вокруг заклинателя (как у тактики союзников) цели не принимает.
+  const aroundCaster = spell.target === 'self' && ['area-save', 'area-damage'].includes(String(spell.kind))
+  const ruleIds = ruleIdsFor([RULE_IDS.actions])
+  return {
+    ...base,
+    rule_ids: ruleIds,
+    proposed_commands: [{
+      command_type: 'CastSpell',
+      actor_id: intent.actor_id,
+      spell_id: spell.id,
+      server_authoritative: true,
+      ...(aroundCaster ? {} : { target_id: targets[0], target_ids: targets }),
+      source_rule_ids: ruleIds,
+    }],
+    confidence: 0.86,
+  }
 }
 
 export class Adjudicator {
@@ -203,6 +266,11 @@ export class Adjudicator {
           roll_requests: [{ expression: '1d20', purpose: 'saving_throw', actor_id: intent.actor_id }],
           confidence: 0.72,
         }
+      }
+      case 'cast_spell': {
+        const plan = castSpellPlan({ base, intent, state, actor, ruleIdsFor })
+        if (plan) return plan
+        break
       }
       case 'healing':
         // Свободный текст не доказывает источник лечения или расход ресурса.
