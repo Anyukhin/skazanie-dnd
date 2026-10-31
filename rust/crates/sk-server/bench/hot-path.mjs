@@ -111,7 +111,14 @@ async function main() {
       perfLines = []
       if (label) {
         const sums = {}
-        for (const line of lines) for (const [name, [, ms]] of Object.entries(line.spans)) sums[name] = (sums[name] ?? 0) + ms
+        // `этап#n` — сколько раз этап прошёл за запрос (урок 4: счёт
+        // нормализаций и копий состояния).
+        for (const line of lines) {
+          for (const [name, [count, ms]] of Object.entries(line.spans)) {
+            sums[name] = (sums[name] ?? 0) + ms
+            sums[`${name}#n`] = (sums[`${name}#n`] ?? 0) + count
+          }
+        }
         if (!spanStats.has(label)) spanStats.set(label, [])
         spanStats.get(label).push(sums)
       }
