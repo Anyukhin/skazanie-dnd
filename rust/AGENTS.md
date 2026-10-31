@@ -102,8 +102,12 @@
   запросов (`content_check::verify_before_listen`), ошибка — отказ старта с
   файлом и записью. Новый каталог — в `content_check::catalogs()` и в описи
   `docs/rust-content-catalogs.md`. Ядро (сценарий, сюжет, Режиссёр без модели,
-  правила) не зависит от `sk-agents`: сторож `sk-server/tests/crate_layers.rs`,
-  известное исключение `sk-turns` записано там с причиной.
+  правила, ходы NPC) не зависит от `sk-agents` и `sk-agents-base` ни прямо,
+  ни транзитивно: сторож `sk-server/tests/crate_layers.rs`, исключений нет.
+  Детерминированная часть роли — в ядре (мораль NPC — `sk_turns::morale`), а
+  роль модели реализует трейт ядра у себя (`impl NpcController for
+  NpcMoraleAgent` — в `sk-agents`); тестам ядра агенты — только
+  `[dev-dependencies]`.
 - **Быстродействие.** Мемо нормализации (`sk-rules` `normalize::fixed_point`)
   держится на том, что нормализация — чистая функция входа и режима
   хранения. Новое скрытое состояние в нормализаторе это ломает. Бюджеты
