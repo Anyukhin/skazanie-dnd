@@ -36,6 +36,8 @@ sk-store = { path = "../sk-store" }
 sk-story = { path = "../sk-story" }
 sk-tactical = { path = "../sk-tactical" }
 sk-tactics = { path = "../sk-tactics" }
+# Детерминированная мораль (`sk_turns::morale`) и трейт `NpcController`.
+sk-turns = { path = "../sk-turns" }
 sk-themes = { path = "../sk-themes" }
 sk-world-life = { path = "../sk-world-life" }
 sk-world-story = { path = "../sk-world-story" }

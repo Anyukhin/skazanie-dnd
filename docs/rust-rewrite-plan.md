@@ -551,7 +551,22 @@ GCC из пакетов MSYS2 в `~/.cargo/mingw64-root` (подробно — `
 - **Слой агентов.** `sk-server/tests/crate_layers.rs` по `Cargo.toml`
   требует, чтобы ядро не зависело от `sk-agents`. Известное исключение —
   `sk-turns` (планировщик ходов NPC берёт мораль из `sk_agents::npc_controller`,
-  как в JS) — записано с причиной и не чинилось.
+  как в JS) — записано с причиной и не чинилось. Снято 2026-10-31, см. ниже.
+### 2026-10-31: урок 7 — ядро без слоя агентов (ветка `rs/morale-core`)
+
+- **Что сделано.** Детерминированные `is_morale_moment`,
+  `commands_for_morale_decision` и их помощники переехали из
+  `sk_agents::npc_controller` в `sk_turns::morale`; `npc_controller`
+  реэкспортирует их, API и тесты `sk-agents` прежние. `impl NpcController for
+  NpcMoraleAgent` — в `sk-agents` (теперь `sk-agents → sk-turns`). У
+  `sk-turns` `sk-agents` и `sk-agents-base` остались только
+  dev-зависимостями `tests/n1.rs`; в рантайм-зависимости добавлен
+  `sk-ruleset` (поиск актора, как и прежде). `crate_layers.rs`:
+  `KNOWN_EXCEPTIONS` пуст — ядро от агентов не зависит совсем. Поведение не
+  менялось: эталоны `a2`, `n1` не перегенерировались; тесты `sk-turns`,
+  `sk-agents`, `sk-server`, `sk-orchestrator` зелёные, корпус v2 (`reducer`
+  и `resolve … all`) побайтно совпал с базой `32d72343`, контракт HTTP в
+  режиме Rust — 195 из 195.
 ### 2026-10-30: урок 11 — что сделано (ветка `rs/perf-10k`)
 
 Цель урока — коммит хода < 50 мс и загрузка < 1 с на журнале 10 тыс.
