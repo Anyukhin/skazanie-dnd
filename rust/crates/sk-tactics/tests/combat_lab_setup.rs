@@ -68,7 +68,8 @@ fn run_case(case: &Value) -> Value {
     let options_value = case.get("options").cloned().unwrap_or_else(|| json!({}));
     let options = EncounterOptions { difficulty: options_value.get("difficulty"), seed: options_value.get("seed"), theme: options_value.get("theme"), sources };
     let result = match case["kind"].as_str() {
-        Some("build") => build_combat_lab_state(input, &sources),
+        // Эталон снят с состояния JS, где производные поля героя заполнены (урок 2).
+        Some("build") => build_combat_lab_state(input, &sources).map(|state| sk_rules::derived::materialized_state(&state)),
         Some("generate") => generate_combat_lab_encounter(input, &options),
         Some("assess") => assess_combat_lab_encounter(input, &options),
         Some("heroes") => combat_lab_heroes(&sources).map(Value::Array),
