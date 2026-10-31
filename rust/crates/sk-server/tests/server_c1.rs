@@ -102,7 +102,9 @@ fn hash_of(value: &Value) -> String {
 
 fn view(room: &Room) -> Value {
     let Some(state) = room.state.as_ref() else { return json!({ "version": room.version, "hash": null, "fields": null }) };
-    let mut state = state.clone();
+    // Комната JS хранит производные поля героев значениями, Rust — пустыми
+    // слотами (урок 2): сверяется комната в форме JS.
+    let mut state = sk_rules::derived::materialized_state(state);
     if let Some(Value::Array(messages)) = state.get_mut("messages") {
         for message in messages {
             if let Some(map) = message.as_object_mut() {
