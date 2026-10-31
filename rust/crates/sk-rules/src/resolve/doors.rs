@@ -26,7 +26,7 @@ pub(crate) fn map_fault(error: TacticalMapError) -> Interrupt {
 
 /// `ensureSceneTacticalMap(state)`: пишет карту в состояние разбора, как JS.
 pub(crate) fn ensure_map(r: &mut Resolve<'_>) -> Result<Option<TacticalMap>, Interrupt> {
-    crate::scene_map_sync::ensure_scene_tactical_map(&mut r.state).map_err(map_fault)
+    crate::scene_map_sync::ensure_scene_tactical_map_shared(&mut r.state).map_err(map_fault)
 }
 
 /// `[command.actor_id]`.

@@ -171,7 +171,7 @@ pub(super) fn knock(r: &mut Resolve<'_>, cast: &mut Cast) -> Flow {
     let command = cast.command.clone();
     let actor_id = cast.actor_id.clone();
     // `ensureSceneTacticalMap(state)` в JS пишет собранную карту в `state.scene.map`.
-    let map = crate::scene_map_sync::ensure_scene_tactical_map(&mut r.state).map_err(crate::scene::placement::map_error)?;
+    let map = crate::scene_map_sync::ensure_scene_tactical_map_shared(&mut r.state).map_err(crate::scene::placement::map_error)?;
     let state = r.state.clone();
     let to = command.get("to");
     let at_point = sk_geometry::Point::from_value(to);

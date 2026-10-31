@@ -367,7 +367,7 @@ pub fn world_time_consequences(state: &Value, source_command: &Value, amount: Op
     let normalized = crate::normalized::NormalizedState::normalize(state)?;
     let mut uuid = crate::context::sequence_uuids("world-time");
     let projector = crate::replay::CommandProjector::over(&normalized);
-    let state = normalized.to_value();
+    let state = normalized.shared();
     let truce_before_command = sk_society::parley::truce_for(&state);
     let mut r = Resolve {
         state,

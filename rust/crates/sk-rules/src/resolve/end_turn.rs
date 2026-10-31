@@ -9,6 +9,7 @@
 //! жизни», спасбросок от смерти, области, ужас проклятого рыцаря, урон и
 //! спасбросок «в начале хода», «Героизм», перезарядка и легендарные действия.
 
+use std::sync::Arc;
 use serde_json::{json, Map, Value};
 use sk_core::js;
 
@@ -85,8 +86,8 @@ fn concentration_of<'a>(state: &'a Value, id: &str) -> Option<&'a Value> {
 }
 
 /// Ход раздела: применить событие к рабочему состоянию.
-fn push_applied(r: &mut Resolve<'_>, working: &mut Value, event: Value) -> Flow {
-    *working = apply_game_event(working, &event)?;
+fn push_applied_shared(r: &mut Resolve<'_>, working: &mut Arc<Value>, event: Value) -> Flow {
+    *working = Arc::new(apply_game_event(working, &event)?);
     r.events.push(event);
     Ok(())
 }
@@ -154,7 +155,7 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
         let auto_failed = auto_failed_save_condition_for(&repeat_state, &actor_id, Some(&Value::String(ability.clone())));
         let modifier_result = if auto_failed.is_some() { super::kernel::SaveModifier::default() } else { r.area_save_modifier_for(&repeat_state.clone(), command.get("actor_id"))? };
         for event in modifier_result.events {
-            push_applied(r, &mut repeat_state, event)?;
+            push_applied_shared(r, &mut repeat_state, event)?;
         }
         modifier += modifier_result.modifier;
         let silvery = if auto_failed.is_none() && !silvery_consumed { silvery_fortune_for(&repeat_state, &actor_id) } else { None };
@@ -178,10 +179,10 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
             vec![("spell_id", spell_id.clone()), ("ability", Some(Value::String(ability.clone()))), ("difficulty", Some(Value::from(difficulty))), ("saved", Some(Value::Bool(saved))), ("trigger", Some(Value::String("turn-end-repeat".into())))],
         );
         let event = event_from(&command_with_rules(&command, &[rule_ids::SAVING_THROW]), "SpellSavingThrowResolved", Some(payload), Some(&actor_targets));
-        push_applied(r, &mut repeat_state, event)?;
+        push_applied_shared(r, &mut repeat_state, event)?;
         if silvery.is_some() {
             let removed = remove_silvery_fortune_event(&command, &repeat_state, &actor_id, Some("turn-end-repeat"));
-            push_applied(r, &mut repeat_state, removed)?;
+            push_applied_shared(r, &mut repeat_state, removed)?;
             silvery_consumed = true;
         }
         // Счёт спасбросков («Окаменение» 2014): три успеха снимают эффект, три
@@ -202,8 +203,8 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
                     ("trigger", Some(Value::String("save-tally".into()))),
                 ]);
                 let source = command_with_rules(&command, &[rule_ids::CONDITIONS]);
-                push_applied(r, &mut repeat_state, event_from(&source, "ConditionRemoved", Some(removed), Some(&actor_targets)))?;
-                push_applied(r, &mut repeat_state, event_from(&source, "ConditionAdded", Some(added), Some(&actor_targets)))?;
+                push_applied_shared(r, &mut repeat_state, event_from(&source, "ConditionRemoved", Some(removed), Some(&actor_targets)))?;
+                push_applied_shared(r, &mut repeat_state, event_from(&source, "ConditionAdded", Some(added), Some(&actor_targets)))?;
                 continue;
             }
             if !saved || successes < tally {
@@ -233,7 +234,7 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
                     fields.push(("tally_failure_condition", Some(failure)));
                 }
                 let counted = event_from(&command_with_rules(&command, &[rule_ids::CONDITIONS]), "ConditionAdded", Some(object(fields)), Some(&actor_targets));
-                push_applied(r, &mut repeat_state, counted)?;
+                push_applied_shared(r, &mut repeat_state, counted)?;
                 continue;
             }
         }
@@ -252,11 +253,11 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
                 Some(json!({ "reason": "repeat-save", "effect_id": effect.cloned().unwrap_or(Value::Null) })),
                 Some(&json!([source_id])),
             );
-            push_applied(r, &mut repeat_state, ended)?;
+            push_applied_shared(r, &mut repeat_state, ended)?;
             continue;
         }
         let removed = event_from(&command_with_rules(&command, &[rule_ids::CONDITIONS]), "ConditionRemoved", Some(object(vec![("condition", condition.get("id").cloned()), ("effect_id", effect_field(&condition))])), Some(&actor_targets));
-        push_applied(r, &mut repeat_state, removed)?;
+        push_applied_shared(r, &mut repeat_state, removed)?;
         if !ends_concentration {
             if let Some(effect) = effect {
                 let effect_id = js::string(Some(effect));
@@ -275,7 +276,7 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
                         Some(json!({ "reason": "repeat-save", "effect_id": effect_id })),
                         Some(&json!([source_id])),
                     );
-                    push_applied(r, &mut repeat_state, ended)?;
+                    push_applied_shared(r, &mut repeat_state, ended)?;
                 }
             }
         }
@@ -303,16 +304,16 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
             Some(spread_defined(&payload, vec![("spell_id", spell_id.clone()), ("recurring", Some(Value::Bool(true))), ("trigger", Some(Value::String("turn-end".into())))])),
             Some(&actor_targets),
         );
-        push_applied(r, &mut delayed_state, event)?;
+        push_applied_shared(r, &mut delayed_state, event)?;
         if payload.get("hp_after").and_then(Value::as_f64) == Some(0.0) {
             let consequences = zero_hit_point_damage_consequences(&delayed_state, &command, &actor_id, &payload, false);
             for event in consequences {
-                push_applied(r, &mut delayed_state, event)?;
+                push_applied_shared(r, &mut delayed_state, event)?;
             }
         }
         if js::is_true(condition.get("recurring_once")) {
             let spent = object(vec![("condition", condition.get("id").cloned()), ("effect_id", effect_field(&condition)), ("spell_id", spell_id), ("trigger", Some(Value::String("delayed-damage-spent".into())))]);
-            push_applied(r, &mut delayed_state, event_from(&command_with_rules(&command, &[rule_ids::CONDITIONS]), "ConditionRemoved", Some(spent), Some(&actor_targets)))?;
+            push_applied_shared(r, &mut delayed_state, event_from(&command_with_rules(&command, &[rule_ids::CONDITIONS]), "ConditionRemoved", Some(spent), Some(&actor_targets)))?;
         }
     }
     let commanded = sk_core::game::conditions(&state, &actor_id).iter().find(|condition| condition_name(condition).starts_with("command:")).cloned();
@@ -377,7 +378,7 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
             }
         }
         if !expired.is_empty() {
-            let after = r.project_events()?;
+            let after = r.project_events_shared()?;
             let after_initiative: Vec<Value> = sk_core::game::combat(&after).get("initiative").and_then(Value::as_array).cloned().unwrap_or_default();
             let old_next = next_index;
             for offset in 0..initiative.len() {
@@ -408,7 +409,7 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
         ]);
         r.events.push(event_from(&command_with_rules(&command, &[rule_ids::TURNS]), "ReadiedActionExpired", Some(payload), Some(&next_targets)));
     }
-    let mut start_state = r.project_events()?;
+    let mut start_state = r.project_events_shared()?;
     let aura = active_aura_of_life_source(&start_state, &next_key);
     let aura_target = sk_core::game::find_actor(&start_state, &next_key).cloned();
     if let Some(aura) = aura.filter(|_| hp(aura_target.as_ref()) == 0 && !is_dead_hero(&start_state, &next_key)) {
@@ -417,15 +418,15 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
             "hp_after": crate::core::actor_max_hp(aura_target.as_ref()).min(1), "trigger": "turn-start", "aura_of_life_source": aura.source_id,
         });
         let event = event_from(&command_with_rules(&command_with(&command, "actor_id", Value::String(aura.source_id.clone())), &[rule_ids::HEALING]), "HealingApplied", Some(payload), Some(&next_targets));
-        push_applied(r, &mut start_state, event)?;
+        push_applied_shared(r, &mut start_state, event)?;
     }
     let death = crate::death::death_saving_throw_at_turn_start(&start_state, &command, &next_key, &mut r.dice)?;
     r.events.extend(death.events);
     r.rolls.extend(death.rolls);
-    start_state = r.project_events()?;
+    start_state = r.project_events_shared()?;
     let area_start = r.area_turn_consequences(&start_state.clone(), Some(&next_id), Some("turn-start"))?;
     r.events.extend(area_start);
-    start_state = r.project_events()?;
+    start_state = r.project_events_shared()?;
     // Ужас проклятого рыцаря: герой в его радиусе бросает спасбросок в начале
     // своего хода, пока голова не возвращена.
     let knight_id = sk_world_story::scenario_knight::scenario_knight_state(&start_state).and_then(|knight| knight.get("npc_id").cloned()).filter(|value| js::truthy(Some(value)));
@@ -466,7 +467,7 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
             let payload = json!({ "condition": "frightened", "duration": "until-own-turn-end", "source_actor": source_id, "source": source_name });
             r.events.push(event_from(&command_with_rules(&source_command, &[rule_ids::CONDITIONS]), "ConditionAdded", Some(payload), Some(&next_targets)));
         }
-        start_state = r.project_events()?;
+        start_state = r.project_events_shared()?;
     }
     let starting_actor = sk_core::game::find_actor(&start_state, &next_key).cloned();
     let recurring: Vec<Value> = conditions_list(&start_state, &next_key)?
@@ -498,10 +499,10 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
                 &save,
                 vec![("spell_id", spell_id.clone()), ("ability", Some(Value::String(ability.clone()))), ("difficulty", Some(Value::from(difficulty))), ("saved", Some(Value::Bool(saved))), ("trigger", Some(Value::String("turn-start".into())))],
             );
-            push_applied(r, &mut start_state, event_from(&command_with_rules(&command, &[rule_ids::SAVING_THROW]), "SpellSavingThrowResolved", Some(payload), Some(&next_targets)))?;
+            push_applied_shared(r, &mut start_state, event_from(&command_with_rules(&command, &[rule_ids::SAVING_THROW]), "SpellSavingThrowResolved", Some(payload), Some(&next_targets)))?;
             if silvery.is_some() {
                 let removed = remove_silvery_fortune_event(&command, &start_state, &next_key, Some("turn-start"));
-                push_applied(r, &mut start_state, removed)?;
+                push_applied_shared(r, &mut start_state, removed)?;
             }
             if saved {
                 continues = false;
@@ -519,7 +520,7 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
                     let payload = object(vec![("condition", condition.get("id").cloned()), ("effect_id", effect_field(&condition)), ("trigger", Some(Value::String("turn-start-save".into()))), ("spell_id", spell_id.clone())]);
                     event_from(&command_with_rules(&command, &[rule_ids::CONDITIONS]), "ConditionRemoved", Some(payload), Some(&next_targets))
                 };
-                push_applied(r, &mut start_state, ended)?;
+                push_applied_shared(r, &mut start_state, ended)?;
             }
         }
         if !continues || !living(sk_core::game::find_actor(&start_state, &next_key)) {
@@ -544,17 +545,17 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
             Some(spread_defined(&payload, vec![("spell_id", spell_id.clone()), ("recurring", Some(Value::Bool(true))), ("trigger", Some(Value::String("turn-start".into())))])),
             Some(&next_targets),
         );
-        push_applied(r, &mut start_state, event)?;
+        push_applied_shared(r, &mut start_state, event)?;
         if payload.get("hp_after").and_then(Value::as_f64) == Some(0.0) {
             let consequences = zero_hit_point_damage_consequences(&start_state, &command, &next_key, &payload, false);
             for event in consequences {
-                push_applied(r, &mut start_state, event)?;
+                push_applied_shared(r, &mut start_state, event)?;
             }
         }
         // Отложенный урон срабатывает ровно один раз и сходит сам.
         if js::is_true(condition.get("recurring_once")) {
             let spent = object(vec![("condition", condition.get("id").cloned()), ("effect_id", effect_field(&condition)), ("spell_id", spell_id), ("trigger", Some(Value::String("delayed-damage-spent".into())))]);
-            push_applied(r, &mut start_state, event_from(&command_with_rules(&command, &[rule_ids::CONDITIONS]), "ConditionRemoved", Some(spent), Some(&next_targets)))?;
+            push_applied_shared(r, &mut start_state, event_from(&command_with_rules(&command, &[rule_ids::CONDITIONS]), "ConditionRemoved", Some(spent), Some(&next_targets)))?;
         }
     }
     let heroism = sk_core::game::conditions(&start_state, &next_key).iter().find(|condition| condition.get("id").and_then(Value::as_str) == Some("heroism")).cloned();

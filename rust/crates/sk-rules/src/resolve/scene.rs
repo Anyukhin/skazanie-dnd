@@ -7,6 +7,7 @@
 //! крейт импортёра сам зависит от `sk-rules`. Без зарегистрированного
 //! импортёра `ImportLocationMap` отвечает ошибкой `TaleSpireImporterMissing`.
 
+use std::sync::Arc;
 use serde_json::{json, Map, Value};
 use sk_core::indexmap::{IndexMap, IndexSet};
 use sk_core::js;
@@ -82,14 +83,14 @@ fn expired_summon_events(r: &mut Resolve<'_>) -> IndexSet<String> {
 
 /// `UseLevelTransition` (19731–19804).
 pub fn use_level_transition(r: &mut Resolve<'_>) -> Flow {
-    let Some(mut map) = crate::scene_map_sync::ensure_scene_tactical_map(&mut r.state).map_err(map_halt)? else {
+    let Some(mut map) = crate::scene_map_sync::ensure_scene_tactical_map_shared(&mut r.state).map_err(map_halt)? else {
         return Err(rule("Для перехода между этажами нужна тактическая карта", "TACTICAL_MAP_REQUIRED"));
     };
     let prop_id = r.command.get("prop_id").cloned().unwrap_or(Value::Null);
     let find = |map: &TacticalMap| map.props.iter().position(|candidate| prop_id.as_str() == Some(candidate.id.as_str()));
     let mut index = find(&map);
     if index.and_then(|index| map.props[index].transition.as_ref()).is_none() && restore_scene_level_transitions(&r.state, &mut map) {
-        crate::scene_map_sync::write_scene_tactical_map(&mut r.state, &map).map_err(map_halt)?;
+        crate::scene_map_sync::write_scene_tactical_map(Arc::make_mut(&mut r.state), &map).map_err(map_halt)?;
         index = find(&map);
     }
     let Some(prop) = index.map(|index| map.props[index].clone()).filter(|prop| prop.transition.is_some()) else {
@@ -157,7 +158,7 @@ pub fn use_level_transition(r: &mut Resolve<'_>) -> Flow {
         return Err(rule("На целевом этаже нет обратного перехода", "LEVEL_ARRIVAL_MISSING"));
     };
     let expired = expired_summon_events(r);
-    let transition_state = if expired.is_empty() { r.state.clone() } else { r.project_events()? };
+    let transition_state = if expired.is_empty() { r.state.clone() } else { Arc::new(r.project_events()?) };
     let positions = level_arrival_positions(&transition_state, &target, Some(&arrival)).map_err(Interrupt::Rule)?;
     let mut payload = Map::new();
     payload.insert("location_id".into(), json!(location_id));

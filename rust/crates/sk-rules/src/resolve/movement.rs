@@ -11,6 +11,7 @@
 //! Уход врага от героя открывает окно реакции герою, подход — заготовленную
 //! атаку.
 
+use std::sync::Arc;
 use serde_json::{json, Map, Value};
 use sk_combat_content::scene_hazards::SCENE_SWING_POLICY_ID;
 use sk_core::js;
@@ -282,7 +283,7 @@ pub fn move_actor(r: &mut Resolve<'_>) -> Flow {
             used.insert("target_id".into(), command.get("actor_id").cloned().unwrap_or(Value::Null));
             let action_event = event_from(&reaction_command, "CombatActionUsed", Some(Value::Object(used)), Some(&json!([actor_id])));
             r.events.push(action_event.clone());
-            reaction_state = crate::replay::apply_game_event(&reaction_state, &action_event)?;
+            reaction_state = Arc::new(crate::replay::apply_game_event(&reaction_state, &action_event)?);
             pristine = false;
             if let Some(map) = reaction_command.as_object_mut() {
                 match reaction_state.get("state_version") {
@@ -316,7 +317,7 @@ pub fn move_actor(r: &mut Resolve<'_>) -> Flow {
             };
             r.events.extend(result.events.iter().cloned());
             r.rolls.extend(result.rolls);
-            reaction_state = reduce_events(&reaction_state, &result.events)?;
+            reaction_state = Arc::new(reduce_events(&reaction_state, &result.events)?);
         }
     }
     if !living(sk_core::game::find_actor(&reaction_state, &actor_id)) {
@@ -355,8 +356,8 @@ pub fn move_actor(r: &mut Resolve<'_>) -> Flow {
     // переходом сцены и открытой дверью, и отряд запирался в стартовом пятне.
     if !is_enemy {
         let mut scouting = r.state.clone();
-        let scouted_map = crate::scene_map_sync::ensure_scene_tactical_map(&mut scouting).map_err(|error| Interrupt::Fault(Fault::new(error.name, error.message).with_code(error.code)))?;
-        if scouting != r.state {
+        let scouted_map = crate::scene_map_sync::ensure_scene_tactical_map_shared(&mut scouting).map_err(|error| Interrupt::Fault(Fault::new(error.name, error.message).with_code(error.code)))?;
+        if !Arc::ptr_eq(&scouting, &r.state) && scouting != r.state {
             r.state = scouting;
             r.projector = crate::replay::CommandProjector::new(&r.state);
         }
@@ -371,7 +372,7 @@ pub fn move_actor(r: &mut Resolve<'_>) -> Flow {
             }
         }
     }
-    let entered = r.project_events()?;
+    let entered = r.project_events_shared()?;
     let from_value = from_json.clone().unwrap_or(Value::Null);
     let consequences = r.area_entry_consequences(&entered, &actor_id, Some(&from_value), Some(&to_json), None)?;
     r.events.extend(consequences);

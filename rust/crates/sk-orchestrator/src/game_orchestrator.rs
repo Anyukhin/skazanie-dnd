@@ -4489,7 +4489,9 @@ impl GameOrchestrator {
         };
         let mut committed_events = preceding_events.clone();
         committed_events.extend(main_events);
-        let committed_state = committed.get("state").cloned().unwrap_or(Value::Null);
+        // Состояние коммита дальше читается только отсюда: забирается из
+        // итога без копии (Ск5).
+        let mut committed_state = committed.get_mut("state").map(std::mem::take).unwrap_or(Value::Null);
         let shared = shared_narration_events(&committed_events, &committed_state);
         let public_events: Vec<Value> = mechanics_for_viewer(Some(&Value::Array(shared)), Some(&user), Some(&str_value(player_id.clone())), Some(&committed_state)).map_err(projection_error)?.and_then(|value| value.as_array().cloned()).unwrap_or_default();
         let mut all_commands = preceding_commands.clone();
@@ -4612,7 +4614,7 @@ impl GameOrchestrator {
             ("state_version", committed.get("state_version").cloned()),
             ("mechanics", Some(Value::Array(committed_events.clone()))),
             ("visible_state_changes", Some(visible)),
-            ("authoritative_state", Some(committed_state.clone())),
+            ("authoritative_state", Some(std::mem::take(&mut committed_state))),
             ("verification", narration.get("verification").cloned()),
             ("ruling", Some(nullish(plan.get("ruling_draft"), None).cloned().unwrap_or(Value::Null))),
         ];
@@ -4630,7 +4632,7 @@ impl GameOrchestrator {
             set(&mut response, "turn_consumed", Value::Bool(true));
             set(&mut response, "action_kind", str_value("social"));
         }
-        let mut trace_engine = engine_result.clone();
+        let mut trace_engine = std::mem::take(&mut engine_result);
         set(&mut trace_engine, "events", Value::Array(committed_events.clone()));
         let trace_narration = with(&narration, json!({ "visibility": if private_social { "specific_player" } else { "party" } }));
         let aliases = TraceAliases {

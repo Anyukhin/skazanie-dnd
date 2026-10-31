@@ -64,6 +64,19 @@ pub fn ensure_scene_tactical_map(state: &mut Value) -> MapResult<Option<Tactical
     sk_tactical::combat_bounds::ensure_scene_tactical_map(state)
 }
 
+/// [`ensure_scene_tactical_map`] над общим состоянием: карта уже есть —
+/// состояние не копируется (её чтение ничего не пишет); копия — только
+/// когда карту надо собрать и записать.
+pub fn ensure_scene_tactical_map_shared(state: &mut std::sync::Arc<Value>) -> MapResult<Option<TacticalMap>> {
+    if !scene_object(state) {
+        return Ok(None);
+    }
+    if let Some(existing) = scene_tactical_map(state) {
+        return Ok(Some(existing));
+    }
+    ensure_scene_tactical_map(std::sync::Arc::make_mut(state))
+}
+
 /// `rebuildSceneTacticalMap(state)`: карта по `scene.cells`, записанная в
 /// `scene.map`; без клеток — `None`.
 pub fn rebuild_scene_tactical_map(state: &mut Value) -> MapResult<Option<TacticalMap>> {
