@@ -410,10 +410,14 @@ export function sceneObjectOperationFromText(text) {
   // слова «взломать» в реплике: инструмент и плечо — разные способы, и
   // серверная ветка у них тоже разная.
   const approach = !lockpick && /(?:разбить|сломать|взломать|выломать|ударить|топор)/u.test(normalized) ? 'force' : 'hand'
+  // Если названа дверь или рычаг, предмет после указания места служит
+  // ориентиром: «открыть дверь рядом с сундуком» относится к двери.
+  const [beforeLandmark] = normalized.split(/\s+(?:у|возле|около|рядом\s+с)\s+/u, 1)
+  const targetText = NON_PROP_TARGET.test(beforeLandmark) ? beforeLandmark : normalized
   const aliases = Object.entries(ASSET_ALIASES_RU)
-    .filter(([, words]) => words.some((word) => normalized.includes(word)))
+    .filter(([, words]) => words.some((word) => targetText.includes(word)))
     .map(([alias]) => alias)
-  return { intent, approach, aliases, ...(!aliases.length && NON_PROP_TARGET.test(normalized) ? { namesOtherTarget: true } : {}) }
+  return { intent, approach, aliases, ...(!aliases.length && NON_PROP_TARGET.test(targetText) ? { namesOtherTarget: true } : {}) }
 }
 
 /**
