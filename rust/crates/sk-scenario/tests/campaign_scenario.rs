@@ -238,6 +238,23 @@ fn cards_rules_and_constants_match_js() {
 }
 
 #[test]
+fn scenario_card_preserves_onward_objective_until_arrival() {
+    use sk_scenario::party_exit_intent::{onward_route_objective, pending_onward_target};
+
+    let data = fixture();
+    let state = &data["bases"][0];
+    let objective = onward_route_objective("Штормберг", "Редстоуновка");
+    let stop = scenario_scene_args(state, &json!({ "location_id": "astohan-stormberg", "objective": objective }));
+    assert_eq!(stop["objective"], objective);
+    assert_eq!(pending_onward_target(Some(&stop)), "Редстоуновка");
+    assert_ne!(stop["hook"], objective);
+
+    let arrival = scenario_scene_args(state, &json!({ "location_id": "astohan-redstone", "objective": objective }));
+    assert_ne!(arrival["objective"], objective);
+    assert!(pending_onward_target(Some(&arrival)).is_empty());
+}
+
+#[test]
 fn catalog_is_the_data_file() {
     let raw: Value = serde_json::from_str(include_str!("../../../../data/campaign-scenarios-v1.json")).expect("каталог");
     assert_eq!(list_campaign_scenarios(), raw["scenarios"].as_array().expect("сценарии").as_slice());
