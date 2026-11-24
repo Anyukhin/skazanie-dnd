@@ -9,7 +9,7 @@ import { writeFileSync } from 'node:fs'
 
 const S = await import('../../../../server/llm-json-schemas.mjs')
 
-const names = ['DIRECTOR_SCENE_RESOLUTIONS', 'DIRECTOR_INTENT_JSON_SCHEMA', 'NPC_SOCIAL_STANCES', 'NPC_PROMISE_DIRECTIONS', 'NPC_SOCIAL_RESPONSE_JSON_SCHEMA', 'CAMPAIGN_CREATION_JSON_SCHEMA', 'HERO_HOOKS_JSON_SCHEMA']
+const names = ['DIRECTOR_SCENE_RESOLUTIONS', 'DIRECTOR_INTENT_JSON_SCHEMA', 'NPC_SOCIAL_STANCES', 'NPC_PROMISE_DIRECTIONS', 'NPC_SOCIAL_RESPONSE_JSON_SCHEMA', 'CAMPAIGN_CREATION_JSON_SCHEMA', 'SCENE_ARCHITECT_JSON_SCHEMA', 'ACTION_ADJUDICATOR_JSON_SCHEMA', 'HERO_HOOKS_JSON_SCHEMA']
 const missing = Object.keys(S).filter((name) => !names.includes(name))
 if (missing.length) throw new Error(`новые экспорты без эталона: ${missing.join(', ')}`)
 const fixture = Object.fromEntries(names.map((name) => [name, JSON.stringify(S[name])]))

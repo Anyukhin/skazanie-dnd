@@ -31,6 +31,7 @@ import { campaignStateForViewer } from './viewer-projection.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
 import { footprintDistanceFeet } from './actor-footprint.mjs'
 import { agentContextMetadata, boundedSelectionMetadata, sceneCanonFor } from './agent-context.mjs'
+import { ACTION_ADJUDICATOR_JSON_SCHEMA } from './llm-json-schemas.mjs'
 
 /**
  * Арбитр свободного действия. Единственная роль модели здесь — **понять
@@ -514,6 +515,8 @@ export class ActionAdjudicator {
         // Два поля-детали (v10) удлинили ответ: при 700 строгий JSON мог обрезаться,
         // и заявка падала в запасное «Чего герой хочет добиться».
         maxTokens: 1000,
+        role: 'action_adjudicator',
+        jsonSchema: ACTION_ADJUDICATOR_JSON_SCHEMA,
       }, { timeoutMs: this.timeoutMs })
       if (!structurallyValidFreeActionResponse(result)) throw new Error('ACTION_ADJUDICATOR_RESPONSE_INVALID_SHAPE')
       const participantIds = new Set(brief.participants.map((entry) => entry.id))

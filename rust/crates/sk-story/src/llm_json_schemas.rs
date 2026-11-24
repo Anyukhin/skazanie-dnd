@@ -88,6 +88,26 @@ fn named(name: &str, schema: Value) -> Value {
 }
 
 const DANGERS: [&str; 3] = ["низкая", "средняя", "высокая"];
+const SCENE_LANDMARK_KINDS: [&str; 30] = [
+    "shelter", "platform", "threshold_stone", "crate", "chest", "campfire", "hearth", "well", "statue", "altar",
+    "shrine", "cart", "market_stall", "haystack", "trough", "fence", "barrels", "signpost", "milestone", "lantern",
+    "grave", "table", "bench", "brazier", "cauldron", "oak", "notice_board", "forge", "mooring", "rowboat",
+];
+const LANDMARK_ROLES: [&str; 5] = ["focus", "npc_post", "clue", "entry", "dressing"];
+const SHOP_SETTLEMENT_TYPES: [&str; 5] = ["village", "town", "city", "outpost", "traveling"];
+const SHOP_THEMES: [&str; 4] = ["general", "provisions", "arms", "healing"];
+const GM_SECRET_SKILLS: [&str; 9] = ["investigation", "perception", "survival", "insight", "history", "arcana", "religion", "nature", "medicine"];
+const FREE_ACTION_ACTIVITY_KINDS: [&str; 6] = ["routine", "stunt", "environmental", "stealth", "social", "knowledge"];
+const FREE_ACTION_DURATION_CLASSES: [&str; 5] = ["instant", "brief", "minutes", "extended", "prolonged"];
+const FREE_ACTION_SKILLS: [&str; 18] = [
+    "acrobatics", "animal-handling", "arcana", "athletics", "deception", "history", "insight", "intimidation", "investigation",
+    "medicine", "nature", "perception", "performance", "persuasion", "religion", "sleight-of-hand", "stealth", "survival",
+];
+const PLAUSIBILITY_LEVELS: [&str; 4] = ["trivial", "plausible", "strenuous", "impossible_without_means"];
+const RISK_LEVELS: [&str; 4] = ["none", "minor", "serious", "deadly"];
+const FREE_ACTION_PROFICIENCY_LEVELS: [&str; 3] = ["none", "proficient", "expertise"];
+const FREE_ACTION_CONSEQUENCE_TYPES: [&str; 5] = ["time", "noise", "exposure", "lost_opportunity", "injury"];
+const IMPROVISED_EFFECT_IDS: [&str; 9] = ["none", "prone", "help_ally", "distract", "blind", "restrain", "hazard_damage", "topple_prop", "ignite_prop"];
 
 /// DirectorIntent: поля валидатора без `version`, механических полей нет.
 pub static DIRECTOR_INTENT_JSON_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
@@ -194,6 +214,15 @@ pub static CAMPAIGN_CREATION_JSON_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
                 ("architecture", string_enum(&["wood", "stone", "sand", "metal", "marble", "ice"])),
                 ("density", string_enum(&["sparse", "mixed", "dense"])),
                 ("building_use", string_enum(&["dwelling", "tavern", "shop", "manor"])),
+                    (
+                        "landmarks",
+                        array_of(strict_object(vec![
+                            ("kind", string_enum(&SCENE_LANDMARK_KINDS)),
+                            ("role", string_enum(&LANDMARK_ROLES)),
+                            ("count", integer()),
+                            ("npc", nullable(text())),
+                        ])),
+                    ),
             ]),
         ),
     ]);
@@ -229,7 +258,123 @@ pub static CAMPAIGN_CREATION_JSON_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
                     ("beliefs", array_of(text())),
                 ])),
             ),
+            (
+                "secrets",
+                array_of(strict_object(vec![
+                    ("clue", text()),
+                    ("topic", text()),
+                    ("skills", array_of(string_enum(&GM_SECRET_SKILLS))),
+                    ("holder", text()),
+                ])),
+            ),
+            ("canon", array_of(text())),
             ("hook", text()),
+        ]),
+    )
+});
+
+/// План новой сцены (`prompts/map_architect/v8.txt`).
+pub static SCENE_ARCHITECT_JSON_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
+    let landmarks = strict_object(vec![
+        ("kind", string_enum(&SCENE_LANDMARK_KINDS)),
+        ("role", string_enum(&LANDMARK_ROLES)),
+        ("count", integer()),
+        ("npc", nullable(text())),
+    ]);
+    let design = strict_object(vec![
+        ("topology", string_enum(&["organic", "linear", "crossroads", "market", "courtyard", "harbor", "river", "terraced", "gate"])),
+        ("climate", string_enum(&["temperate", "arid", "cold", "wetland"])),
+        ("architecture", string_enum(&["wood", "stone", "sand", "metal", "marble", "ice"])),
+        ("density", string_enum(&["sparse", "mixed", "dense"])),
+        ("building_use", string_enum(&["dwelling", "tavern", "shop", "manor", "smithy", "barracks", "mill"])),
+        ("landmarks", array_of(landmarks)),
+    ]);
+    let map = strict_object(vec![
+        ("layout", string_enum(&["rooms", "streets", "open", "winding", "cavern", "ruins", "radial"])),
+        ("scale", string_enum(&["room", "site", "stronghold", "region"])),
+        ("pattern", string_enum(&["small-room", "great-hall", "keep", "courtyard", "crypt", "cave-cluster", "village", "bridge", "natural"])),
+        ("material", string_enum(&["stone", "wood", "earth", "grass", "sand", "metal", "marble", "ice"])),
+        ("width", integer()),
+        ("height", integer()),
+        ("openness", number()),
+        ("water", number()),
+        ("featureCount", integer()),
+        ("design", design),
+    ]);
+    let shop_intent = json!({
+        "type": ["object", "null"],
+        "additionalProperties": false,
+        "required": ["action", "settlement_type", "theme", "budget_cp", "reason"],
+        "properties": {
+            "action": string_enum(&["create", "none"]),
+            "settlement_type": string_enum(&SHOP_SETTLEMENT_TYPES),
+            "theme": string_enum(&SHOP_THEMES),
+            "budget_cp": integer(),
+            "reason": text(),
+        },
+    });
+    named(
+        "scene_architect",
+        strict_object(vec![
+            ("title", text()),
+            ("location", text()),
+            ("mood", text()),
+            ("objective", text()),
+            ("transition", text()),
+            ("arrival", text()),
+            ("hook", text()),
+            ("theme", text()),
+            ("danger", string_enum(&DANGERS)),
+            ("outcome", text()),
+            ("objective_status", string_enum(&["completed", "unresolved", "abandoned"])),
+            ("carry_unresolved", boolean()),
+            ("map", map),
+            ("levels", array_of(strict_object(vec![("offset", integer()), ("hint", text())]))),
+            ("shop_intent", shop_intent),
+            (
+                "secrets",
+                array_of(strict_object(vec![
+                    ("clue", text()),
+                    ("topic", text()),
+                    ("skills", array_of(string_enum(&GM_SECRET_SKILLS))),
+                ])),
+            ),
+        ]),
+    )
+});
+
+const ACTION_HAZARDS: [&str; 7] = ["", "fall", "fire", "scalding", "crush", "caustic", "shards"];
+
+/// Разбор свободного действия (`prompts/action_adjudicator/v10.txt`).
+pub static ACTION_ADJUDICATOR_JSON_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
+    named(
+        "action_adjudicator",
+        strict_object(vec![
+            ("route", string_enum(&["check", "travel", "talk", "clarify"])),
+            ("destination", text()),
+            ("npc_hint", text()),
+            ("goal_summary", text()),
+            ("approach_summary", text()),
+            ("obstacle", text()),
+            ("activity_kind", string_enum(&FREE_ACTION_ACTIVITY_KINDS)),
+            ("duration_class", string_enum(&FREE_ACTION_DURATION_CLASSES)),
+            ("ability", string_enum(&["str", "dex", "con", "int", "wis", "cha"])),
+            ("skill", string_enum(&FREE_ACTION_SKILLS)),
+            ("plausibility", string_enum(&PLAUSIBILITY_LEVELS)),
+            ("risk", string_enum(&RISK_LEVELS)),
+            ("required_means", array_of(text())),
+            ("action_cost", string_enum(&["action", "bonus_action", "free"])),
+            ("effect", string_enum(&IMPROVISED_EFFECT_IDS)),
+            ("effect_target", text()),
+            ("hazard", string_enum(&ACTION_HAZARDS)),
+            ("prop_id", text()),
+            ("target_id", text()),
+            ("item_id", text()),
+            ("proficiency", string_enum(&FREE_ACTION_PROFICIENCY_LEVELS)),
+            ("consequence_type", string_enum(&FREE_ACTION_CONSEQUENCE_TYPES)),
+            ("success_detail", text()),
+            ("surface_detail", text()),
+            ("failure_detail", text()),
         ]),
     )
 });

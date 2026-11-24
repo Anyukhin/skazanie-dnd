@@ -24,6 +24,7 @@ import { normalizeWorldOfficesState } from './world-offices.mjs'
 import { isLiveTheme, resolveSceneTheme, SCENE_THEME_IDS } from './scene-themes.mjs'
 import { normalizeSceneMapDesign, worldLocationDesignContext } from './scene-map-design.mjs'
 import { campaignStartCanon, requestedOpeningCanon } from './scene-canon.mjs'
+import { CAMPAIGN_CREATION_JSON_SCHEMA } from './llm-json-schemas.mjs'
 import { materializeCatalogItem } from './item-catalog.mjs'
 import { sceneMapRequirementsFor } from './scene-requirements.mjs'
 
@@ -731,6 +732,8 @@ export class CampaignBootstrapper {
           // С каноном сцены мир занимает около 2900 токенов: при 3200 ответ
           // Luna обрывался битым JSON, и мир писала резервная модель (замер 27).
           maxTokens: 4800,
+          role: 'campaign_creator',
+          jsonSchema: CAMPAIGN_CREATION_JSON_SCHEMA,
       }
       // Провайдер лёг на минуту — ещё одна попытка, пока срок не вышел:
       // шаблонный «Ривермарк» вместо мира по вводным — худший исход создания
