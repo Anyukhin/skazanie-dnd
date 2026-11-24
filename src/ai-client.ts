@@ -1,5 +1,14 @@
 import type { AiHealth, AiTurnResult, CharacterCreationCatalog, DiceRollEvent, GameState, PendingCheck, PlayerRequestKind, RollResult, RulesetProfileDescriptor } from './types'
 
+const MEMORY_TRANSPORT_HEADER = 'X-Memory-Transport'
+const MEMORY_TRANSPORT_VERSION = 'v2'
+
+function memoryTransportRequestInit(init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers)
+  headers.set(MEMORY_TRANSPORT_HEADER, MEMORY_TRANSPORT_VERSION)
+  return { ...init, headers }
+}
+
 type SharedDiceRollResponse = {
   roll: DiceRollEvent
   version: number
@@ -93,7 +102,7 @@ export async function fetchWithTimeout(
     controller.abort()
   }, Math.max(1, timeoutMs))
   try {
-    return await fetch(input, { ...init, signal: controller.signal })
+    return await fetch(input, memoryTransportRequestInit({ ...init, signal: controller.signal }))
   } catch (error) {
     if (timedOut) throw new RequestTimeoutError(timeoutMessage)
     throw error

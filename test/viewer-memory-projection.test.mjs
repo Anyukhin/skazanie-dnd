@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { npcSocialForViewer } from '../server/npc-social.mjs'
+import { withMemoryTransportCapability } from '../server/memory-transport.mjs'
 import { worldMemoryForViewer } from '../server/world-memory.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
@@ -107,4 +108,17 @@ test('проекция кампании использует специализ�
   assert.equal(informed.scene.objective, 'Найти печать')
   assert.equal(uninformed.scene.objective, 'Осмотреть архив')
   assert.deepEqual(state, before, 'projection must not mutate authoritative memory or history')
+})
+
+test('memory transport v2 убирает alias только после viewer-фильтрации, v1 и admin не меняются', () => {
+  const state = memoryProjectionState()
+  const v1 = campaignStateForViewer(state, viewerFor('hero'), 'hero')
+  const v2 = campaignStateForViewer(state, withMemoryTransportCapability(viewerFor('hero'), 2), 'hero')
+  const admin = campaignStateForViewer(state, withMemoryTransportCapability({ role: 'admin' }, 2), '')
+
+  assert.ok(Array.isArray(v1.worldMemory.knowledge_revealed))
+  assert.equal(Object.hasOwn(v2.worldMemory, 'knowledge_revealed'), false)
+  assert.deepEqual(v2.worldMemory.knowledge_ledger, v1.worldMemory.knowledge_ledger)
+  assert.equal(v2.worldMemory.facts.some((fact) => fact.id === 'fact:keeper-dead'), true, 'собственное раскрытие сохраняется')
+  assert.equal(Object.hasOwn(admin.worldMemory, 'knowledge_revealed'), true)
 })
