@@ -42,6 +42,7 @@
     "server/map-library.mjs",
     "server/map-quality.mjs",
     "server/map-store.mjs",
+    "server/memory-transport.mjs",
     "server/npc-portraits.mjs",
     "server/party-exit-intent.mjs",
     "server/prop-placement.mjs",

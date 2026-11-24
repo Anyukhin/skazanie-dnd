@@ -3,7 +3,7 @@ import type { AiHealth, AiTurnResult, CharacterCreationCatalog, DiceRollEvent, G
 const MEMORY_TRANSPORT_HEADER = 'X-Memory-Transport'
 const MEMORY_TRANSPORT_VERSION = 'v2'
 
-function memoryTransportRequestInit(init: RequestInit = {}): RequestInit {
+export function memoryTransportRequestInit(init: RequestInit = {}): RequestInit {
   const headers = new Headers(init.headers)
   headers.set(MEMORY_TRANSPORT_HEADER, MEMORY_TRANSPORT_VERSION)
   return { ...init, headers }
@@ -286,11 +286,11 @@ export async function rollDice(check: Pick<PendingCheck, 'check_id' | 'playerId'
   // проверки. Без `check_id` сервер ответит отказом, поэтому запрос не уходит
   // вовсе; подпись, модификатор и СЛ сервер берёт из карточки, а не отсюда.
   if (!check.check_id) throw new Error('Карточка проверки устарела. Объявите действие заново.')
-  const response = await fetch('/api/roll', {
+  const response = await fetch('/api/roll', memoryTransportRequestInit({
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ checkId: check.check_id, playerId: check.playerId, campaignId }),
-  })
+  }))
   if (!response.ok) {
     const details = await response.json().catch(() => ({})) as { error?: string; code?: string }
     throw new ApiRequestError(details.error || 'Кость укатилась со стола', response.status, details.code)
@@ -299,11 +299,11 @@ export async function rollDice(check: Pick<PendingCheck, 'check_id' | 'playerId'
 }
 
 export async function rollSharedDie(sessionCode: string, playerId: string, sides = 20): Promise<SharedDiceRollResponse> {
-  const response = await fetch(`/api/rooms/${encodeURIComponent(sessionCode)}/dice`, {
+  const response = await fetch(`/api/rooms/${encodeURIComponent(sessionCode)}/dice`, memoryTransportRequestInit({
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ playerId, sides }),
-  })
+  }))
   if (!response.ok) {
     const details = await response.json().catch(() => ({})) as { error?: string; code?: string }
     throw new ApiRequestError(details.error || 'Кость укатилась со стола', response.status, details.code)
@@ -312,11 +312,11 @@ export async function rollSharedDie(sessionCode: string, playerId: string, sides
 }
 
 export async function generateItemImage(prompt: string, landscape = false): Promise<{ url: string; model: string; cost?: number }> {
-  const response = await fetch('/api/items/generate-image', {
+  const response = await fetch('/api/items/generate-image', memoryTransportRequestInit({
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, aspectRatio: landscape ? '16:9' : '1:1' }),
-  })
+  }))
   if (!response.ok) {
     const details = await response.json().catch(() => ({})) as { error?: string }
     throw new Error(details.error || 'Не удалось создать изображение предмета')
