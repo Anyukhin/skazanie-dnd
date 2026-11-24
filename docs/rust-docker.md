@@ -15,7 +15,7 @@
 | Порт на хосте | `127.0.0.1:8787` | `127.0.0.1:8788` (`SKAZANIE_RUST_PORT`; лаунчер — 8787) |
 | Туннель (профиль `public`) | `tunnel` → `skazanie:8787` | `tunnel` → `skazanie-rust:8787` |
 | Хранилище | `./storage` (bind) | том `skazanie-rust_storage` |
-| Сертификат антивируса | `compose.override.yaml`, `NODE_EXTRA_CA_CERTS` | `DND_EXTRA_CA_CERTS` в `.env`, `./local-ca` |
+| Сертификат антивируса | `compose.override.yaml`, `NODE_EXTRA_CA_CERTS`, `NODE_USE_SYSTEM_CA=1` | `DND_EXTRA_CA_CERTS` в `.env`, `./local-ca` |
 
 ## Что в образе
 
@@ -83,6 +83,11 @@ docker rm -f skazanie-rust-check && docker volume rm skazanie-rust-check
 ```
 
 ### Kaspersky и другие антивирусы с подменой HTTPS
+
+Лаунчер передаёт `NODE_USE_SYSTEM_CA=1` в контейнер JS-сервера через
+`compose.yaml`. При ручном запуске Compose использует то же значение по
+умолчанию. Node читает доверенные CA из хранилища операционной системы, в
+которой запущен процесс. Эта настройка поддерживается с Node 22.19 и 24.6.
 
 `compose.override.yaml` подхватывается только с `compose.yaml`, к
 `compose.rust.yaml` он не относится. Rust-сервер (rustls) доверяет системному
