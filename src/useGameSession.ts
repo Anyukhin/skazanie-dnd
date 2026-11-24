@@ -6,6 +6,8 @@ import {
   fetchWithTimeout,
   generateItemImage,
   isStateVersionConflictError,
+  MEMORY_TRANSPORT_VERSION,
+  memoryTransportRequestInit,
   narrateWithAgent,
   newIdempotencyKey,
   publishNarrationPreview,
@@ -280,19 +282,6 @@ function roomWithSceneMap(room: RoomSnapshot): RoomSnapshot | null {
 function roomUrl(sessionCode: string, mapHash = '') {
   const base = `/api/rooms/${encodeURIComponent(sessionCode)}`
   return mapHash ? `${base}?map_hash=${encodeURIComponent(mapHash)}` : base
-}
-
-const MEMORY_TRANSPORT_HEADER = 'X-Memory-Transport'
-const MEMORY_TRANSPORT_VERSION = 'v2'
-
-function memoryTransportRequestInit(init: RequestInit = {}): RequestInit {
-  const headers = new Headers(init.headers)
-  headers.set(MEMORY_TRANSPORT_HEADER, MEMORY_TRANSPORT_VERSION)
-  return { ...init, headers }
-}
-
-function memoryTransportQuery(url: string): string {
-  return `${url}${url.includes('?') ? '&' : '?'}memory_transport=${MEMORY_TRANSPORT_VERSION}`
 }
 
 function transportFetch(input: RequestInfo | URL, init: RequestInit = {}) {
@@ -687,7 +676,7 @@ export function useGameSession(options: {
     function connect() {
       if (!active) return
       setConnectionState('connecting')
-      const nextSource = new EventSource(memoryTransportQuery(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/stream`))
+      const nextSource = new EventSource(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/stream?memory_transport=${MEMORY_TRANSPORT_VERSION}`)
       source = nextSource
       nextSource.addEventListener('room', receive as EventListener)
       nextSource.addEventListener('presence', receivePresence as EventListener)

@@ -13,10 +13,9 @@ export const MEMORY_TRANSPORT_CAPABILITY = Symbol('skazanie:memory-transport-v2'
  */
 export function withMemoryTransportCapability(user, version) {
   if (!user || typeof user !== 'object' || Array.isArray(user)) return user
+  if (version !== MEMORY_TRANSPORT_VERSION || user.role === 'admin') return user
   const copy = { ...user }
-  if (Number(version) === MEMORY_TRANSPORT_VERSION && copy.role !== 'admin') {
-    Object.defineProperty(copy, MEMORY_TRANSPORT_CAPABILITY, { value: MEMORY_TRANSPORT_VERSION })
-  }
+  Object.defineProperty(copy, MEMORY_TRANSPORT_CAPABILITY, { value: MEMORY_TRANSPORT_VERSION })
   return copy
 }
 
