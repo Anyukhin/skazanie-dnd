@@ -5,7 +5,7 @@ import { PHB_STARTING_WEALTH, startingPurchaseCatalog } from './character-creati
 import { DiceService, parseDiceExpression } from './dice-service.mjs'
 import { corpusRecordingEnabled, recordCorpusCommand } from './rules-corpus.mjs'
 import { monsterActionAvailable, monsterActionSpentMarker, monsterActionUsageKey, monsterAreaAction, monsterAttackTargetAllowed, monsterOnHitTargetAllowed, monsterRechargeMinimum, monsterMultiattackSequences, monsterMultiattackSequenceFor } from './monster-actions.mjs'
-import { BG3_OPENING_STRIKE_HOUSE_RULE_ID, BG3_SPELL_HANDS_HOUSE_RULE_ID, DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, rulesetRuleId } from './ruleset-config.mjs'
+import { BG3_OPENING_STRIKE_HOUSE_RULE_ID, BG3_SPELL_HANDS_HOUSE_RULE_ID, DND_2014_RULESET_ID, GROUP_INITIATIVE_HOUSE_RULE_ID, INSTALLED_RULESET_IDS, rulesetRuleId } from './ruleset-config.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
 import {
   createSceneTransition,
@@ -19993,7 +19993,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           : surprisedParticipants(state, { party: [...partyIds, ...summonIds], enemies: enemyIds })
       // Групповая инициатива включается только явно — командой или настройкой
       // кампании. Умолчание остаётся индивидуальным, как в редакции.
-      const groupInitiative = command.group_initiative === true || state.campaign?.rules?.group_initiative === true
+      const groupInitiative = command.group_initiative === true
+        || state.campaign?.rules?.group_initiative === true
+        || (Array.isArray(state.enabled_house_rules) && state.enabled_house_rules.includes(GROUP_INITIATIVE_HOUSE_RULE_ID))
       const combatStartedEventId = `combat-started:${String(command.command_id).slice(0, 100)}`
       const combatInstanceId = `combat-instance:${createHash('sha256').update(String(command.command_id)).digest('hex')}`
       // Бой открыт нападением из исследования (`resolveOpeningStrike`): кто

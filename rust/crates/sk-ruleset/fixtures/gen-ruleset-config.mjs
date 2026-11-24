@@ -9,7 +9,7 @@ import { product, recorder } from './record.mjs'
   const r = recorder('ruleset-config')
   for (const name of [
     'DND_2014_RULESET_ID', 'LEGACY_DEFAULT_RULESET_ID', 'NEW_WORLD_DEFAULT_RULESET_ID', 'CLASS_RESOURCES_2024_POLICY_ID',
-    'BG3_OPENING_STRIKE_HOUSE_RULE_ID', 'BG3_SPELL_HANDS_HOUSE_RULE_ID', 'DEFAULT_ON_HOUSE_RULE_IDS', 'TOGGLEABLE_HOUSE_RULES',
+    'BG3_OPENING_STRIKE_HOUSE_RULE_ID', 'BG3_SPELL_HANDS_HOUSE_RULE_ID', 'GROUP_INITIATIVE_HOUSE_RULE_ID', 'DEFAULT_ON_HOUSE_RULE_IDS', 'TOGGLEABLE_HOUSE_RULES',
     'RULESET_PROFILES', 'INSTALLED_RULESET_IDS',
   ]) r.constant(name, config[name])
   r.call('publicRulesetProfiles', config.publicRulesetProfiles)

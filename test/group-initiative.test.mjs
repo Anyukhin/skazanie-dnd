@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
+import { GROUP_INITIATIVE_HOUSE_RULE_ID } from '../server/ruleset-config.mjs'
 
 function dice(values = []) {
   let id = 0
@@ -14,12 +15,13 @@ const options = (diceService) => ({ diceService, context: { serverAuthoritativeC
 const SWORD = { id: 'sword', name: 'Длинный меч', type: 'weapon', quantity: 1, equipped: true, combat: { kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', normalRange: 5 } }
 
 /** Два героя подряд в очереди, затем два врага: ровно две фазы. */
-function field({ group = false } = {}) {
+function field({ group = false, houseRule = false } = {}) {
   const cells = Array.from({ length: 96 }, (_, index) => ({ x: index % 16, y: Math.floor(index / 16), type: 'floor', revealed: true }))
   const hero = (id, x) => ({ id, character: id, characterClass: 'fighter', level: 5, hp: 40, maxHp: 40, armor: 16, speed: 30, proficiency: 3, abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 12, cha: 10 }, inventory: [SWORD], x, y: 2 })
   const foe = (id, x) => ({ id, name: id, creature_type: 'humanoid', hp: 60, maxHp: 60, armor: 12, speed: 30, abilities: { str: 14, dex: 10, con: 12, int: 8, wis: 8, cha: 8 }, x, y: 2, alive: true, inventory: [SWORD] })
   return normalizeCampaignState({
     sessionCode: 'GRP-1',
+    enabled_house_rules: houseRule ? [GROUP_INITIATIVE_HOUSE_RULE_ID] : [],
     partyMemberIds: ['ann', 'bob'],
     players: [hero('ann', 1), hero('bob', 2)],
     enemies: [foe('orc', 5), foe('gob', 6)],
@@ -106,6 +108,21 @@ test('StartCombat включает режим только по явному ф�
   )
   assert.equal(replayEvents(base, start({}).events).mechanics.combat.group_initiative, false)
   assert.equal(replayEvents(base, start({ group_initiative: true }).events).mechanics.combat.group_initiative, true)
+})
+
+test('StartCombat включает групповую инициативу по домашнему правилу кампании', () => {
+  const template = field({ houseRule: true })
+  const base = normalizeCampaignState({
+    ...template,
+    mechanics: {
+      ...template.mechanics,
+      combat: { active: false, round: 0, initiative: [], active_index: -1, action_economy: {}, group_initiative: false },
+    },
+  })
+  const started = resolveCommand(authoritative({ command_type: 'StartCombat', actor_id: 'ann' }), base, options(dice([15, 14, 10, 9])))
+  const after = replayEvents(base, started.events)
+  assert.equal(after.mechanics.combat.group_initiative, true)
+  assert.equal(started.events.find((event) => event.event_type === 'CombatStarted')?.payload.group_initiative, true)
 })
 
 test('StartCombat в versioned group phase выдаёт Haste каждому участнику и Bob тратит extra action', () => {

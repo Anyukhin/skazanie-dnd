@@ -11,7 +11,7 @@ const states = [
   {},
   { ruleset_id: 'srd_5_2_1', ruleset_version: '5.2.1', enabled_rule_packs: ['srd_5_2_1'], enabled_house_rules: ['skazanie:class-resources-2024-v1'] },
   { ruleset_id: 'dnd_5e_2014', ruleset_version: '2014.1.0', enabled_rule_packs: ['dnd_5e_2014'], enabled_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1', 'house:bg3-opening-strike'] },
-  { ruleset_id: 'dnd_5e_2014', enabled_house_rules: ['house:bg3-opening-strike', 'house:bg3-spell-hands', 'house:custom'] },
+  { ruleset_id: 'dnd_5e_2014', enabled_house_rules: ['house:bg3-opening-strike', 'house:bg3-spell-hands', 'house:group-initiative', 'house:custom'] },
   { ruleset_id: '', ruleset_version: 0, enabled_house_rules: [null, 5, 'house:bg3-spell-hands'] },
   { ruleset_id: null, ruleset_version: 7, enabled_rule_packs: 'srd', enabled_house_rules: 'house:bg3-opening-strike' },
   { ruleset_id: 'srd_5_2_1', ruleset_selection_locked: true },
@@ -44,7 +44,7 @@ for (const [state, events, canManage] of product(states, eventLists.slice(0, 6),
 }
 for (const state of states) r.call('campaignHouseRuleSettings', m.campaignHouseRuleSettings, state)
 
-const houseRules = ['house:bg3-opening-strike', 'house:bg3-spell-hands', 'skazanie:2014-preview-legacy-catalogs-v1', '', null, undefined, 'house:unknown']
+const houseRules = ['house:bg3-opening-strike', 'house:bg3-spell-hands', 'house:group-initiative', 'skazanie:2014-preview-legacy-catalogs-v1', '', null, undefined, 'house:unknown']
 const enabledValues = [true, false, 'yes', null, undefined, 1]
 for (const [rule, enabled, state, actorId] of product(houseRules, enabledValues, states, [undefined, 'owner'])) {
   const options = { now: NOW }
