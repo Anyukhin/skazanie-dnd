@@ -106,7 +106,7 @@ import {
 } from './campaign-ruleset.mjs'
 import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
-import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
+import { CombatTurnCoordinator, publicTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation, isMechanicalTrace } from './trace-store.mjs'
 import { claimStorageWriter } from './backup-service.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
@@ -2622,7 +2622,6 @@ function stateWithLivePresence(state, campaignId) {
   const connections = streamConnections(campaignId)
   const onlineHeroIds = connectedHeroIdsForCampaign(campaignId)
   const typingActorIds = typingActorIdsForCampaign(campaignId)
-  const turnClock = combatTurnClockForState(state, combatTurnCoordinator.clockFor(campaignId))
   if ([...connections.values()].some((connection) => connection.controlsParty)) {
     for (const player of state.players ?? []) onlineHeroIds.add(String(player.id))
   }
@@ -2639,7 +2638,7 @@ function stateWithLivePresence(state, campaignId) {
       online_hero_ids: [...onlineHeroIds].sort(),
       typing_actor_ids: typingActorIds,
     },
-    turn_clock: turnClock,
+    turn_clock: publicTurnClockForState(state, combatTurnCoordinator.clockFor(campaignId)),
   }
 }
 

@@ -1,4 +1,4 @@
-export function canIssueUiTacticalCommand(combat, command, currentActorId) {
+export function canIssueUiTacticalCommand(combat, command, currentActorId, activeActorIds = [currentActorId]) {
   if (!combat?.active) return true
   if (command?.command_type === 'AttackNpc') return false
   if (['StartCombat', 'ResolveHeroDeath'].includes(command?.command_type)) return true
@@ -9,7 +9,7 @@ export function canIssueUiTacticalCommand(combat, command, currentActorId) {
   // инициативы: перемирие эту очередь уже заморозило. Сервер проверяет то же
   // самое — здесь только не мешаем нажать кнопку карточки условий.
   if (command?.command_type === 'SettleParley') return Boolean(combat.truce)
-  if (command?.actor_id === currentActorId) return true
+  if (activeActorIds.map(String).includes(String(command?.actor_id ?? ''))) return true
   if (command?.command_type !== 'UseCombatAction') return false
 
   const reactionWindow = combat.reaction_window

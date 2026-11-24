@@ -14,6 +14,7 @@ import {
 } from './ai-client'
 import { playerMessage } from './game-engine'
 import {
+  currentTurnActorIds,
   currentTurnActorId,
   latestRoomVersion,
   mergeAuthoritativeState,
@@ -414,7 +415,17 @@ export function useGameSession(options: {
     const keepsCampaign = stateRef.current.sessionCode === recovered.sessionCode
     const pendingAction = pendingActionForSnapshot(stateRef.current, recovered)
     if (keepsCampaign && stateRef.current.pendingAction && !pendingAction) setTacticalError('Обстановка изменилась. Отправьте заявку заново, чтобы согласовать маршрут.')
-    const local = { ...recovered, pendingCheck: keepsCampaign ? stateRef.current.pendingCheck : null, pendingAction }
+    const local = {
+      ...recovered,
+      // В групповой фазе снимок канонически указывает на первого участника,
+      // но соседний клиент должен сохранить выбранного им союзника, если тот
+      // ещё не завершил свою фазу.
+      activePlayerId: keepsCampaign && currentTurnActorIds(recovered).includes(String(stateRef.current.activePlayerId ?? ''))
+        ? stateRef.current.activePlayerId
+        : currentTurnActorId(recovered),
+      pendingCheck: keepsCampaign ? stateRef.current.pendingCheck : null,
+      pendingAction,
+    }
     stateRef.current = local
     setState(local)
     persistLocal(recovered)
@@ -1374,7 +1385,7 @@ export function useGameSession(options: {
       return { ok: false, error: 'Не найдено действие для безопасного повтора.', uncertain: true }
     }
     const combatActorId = currentTurnActorId(current)
-    if (!options.allowUncertainRetry && !canIssueUiTacticalCommand(current.mechanics?.combat, command, combatActorId)) {
+    if (!options.allowUncertainRetry && !canIssueUiTacticalCommand(current.mechanics?.combat, command, combatActorId, currentTurnActorIds(current))) {
       setTacticalError('Сейчас ход другого участника боя.')
       return { ok: false, error: 'Сейчас ход другого участника боя.' }
     }
@@ -1927,9 +1938,12 @@ export function useGameSession(options: {
     }, 'Использовать выбранное боевое действие', {}, { playerNote: note })
   }, [executeTacticalCommand])
 
-  const finishMapTurn = useCallback(() => {
+  const finishMapTurn = useCallback((actorId?: string) => {
     const current = stateRef.current
-    return executeTacticalCommand({ command_type: 'EndTurn', actor_id: currentTurnActorId(current) }, 'Завершить ход')
+    const actor = actorId && currentTurnActorIds(current).includes(actorId)
+      ? actorId
+      : currentTurnActorIds(current)[0] ?? currentTurnActorId(current)
+    return executeTacticalCommand({ command_type: 'EndTurn', actor_id: actor }, 'Завершить ход')
   }, [executeTacticalCommand])
 
   const resolveHeroDeath = useCallback((playerId: string, resolution: 'resurrect' | 'replace', replacementName?: string) => {

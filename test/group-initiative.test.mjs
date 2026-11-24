@@ -61,6 +61,7 @@ test('фаза закрывается, только когда отходили 
   const afterAnn = replayEvents(state, endTurn(state, 'ann').events)
   assert.equal(afterAnn.mechanics.combat.active_index, 0, 'указатель стоит: в фазе остался второй')
   assert.deepEqual(afterAnn.mechanics.combat.turn_completed, ['ann'])
+  assert.ok(walk(afterAnn, 'bob', { x: 2, y: 3 }).events.some((event) => event.event_type === 'ActorMoved'), 'второй герой может действовать после завершения первого')
   assert.equal(endTurn(state, 'ann').events.some((event) => event.event_type === 'TurnStarted'), false, 'чужого хода никто не начинал')
 
   // Отходивший второй раз не ходит.

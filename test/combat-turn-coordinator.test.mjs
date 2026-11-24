@@ -10,6 +10,7 @@ import {
   activeTurnActorIds,
   combatTurnClock,
   combatTurnClockForState,
+  publicTurnClockForState,
   turnActivityKey,
 } from '../server/combat-turn-coordinator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
@@ -632,6 +633,23 @@ test('SSE не публикует clock прошлого участника по
     },
   })
   assert.equal(combatTurnClockForState(enemyTurn, clock), null)
+})
+
+test('публичные часы групповой фазы перечисляют всех оставшихся союзников', () => {
+  const state = fixture({ group: true })
+  state.partyMemberIds.push('bard')
+  state.players.push({ ...state.players[0], id: 'bard', character: 'Бард' })
+  state.mechanics.combat.initiative.splice(1, 0, { actor_id: 'bard', total: 15 })
+  state.mechanics.combat.action_economy.bard = {
+    action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0,
+  }
+  const clock = combatTurnClock(state, [{
+    event_type: 'TurnStarted', event_id: 'group-turn', created_at: '2026-07-30T12:00:00.000Z', target_ids: ['hero'],
+  }], { timeoutMs: 90_000, now: Date.parse('2026-07-30T12:00:10.000Z') })
+  assert.deepEqual(clock?.actor_ids, ['hero'])
+  assert.deepEqual(publicTurnClockForState(state, clock)?.actor_ids, ['hero', 'bard'])
+  state.mechanics.combat.turn_completed = ['hero']
+  assert.deepEqual(publicTurnClockForState(state, { ...clock, actor_ids: ['bard'] })?.actor_ids, ['bard'])
 })
 
 test('окно реакции продлевает ход считанное число раз, а не бесконечно', () => {

@@ -21,7 +21,7 @@ use sk_rules::replay::{apply_game_event, with_retention_mode, RETENTION_REDUCER_
 use sk_rules::resolve::api::RulesEngine;
 use sk_store::executor::Journal;
 use sk_store::{CommitRequest, CommitResult, EventStore, InitializeRequest, Loaded, Reducer, RetentionMode, StoreError, StoreOptions, StoreResult};
-use sk_turns::combat_turn_coordinator::{combat_turn_clock, turn_activity_key, ClockOptions, CombatTurnCoordinator, CoordinatorHost, CoordinatorSettings, HostFuture, TimerAction, ACTIVE_TURN_LIMIT_FACTOR};
+use sk_turns::combat_turn_coordinator::{combat_turn_clock, public_turn_clock_for_state, turn_activity_key, ClockOptions, CombatTurnCoordinator, CoordinatorHost, CoordinatorSettings, HostFuture, TimerAction, ACTIVE_TURN_LIMIT_FACTOR};
 use sk_turns::npc_turn_scheduler::{npc_behavior_policies, plan_npc_turn, run_npc_turn_scheduler, DecisionFuture, NpcController, NpcRulesEngine, NpcTurnJournal, SchedulerError, SchedulerOptions, SchedulerResult};
 
 // --- окружение ---------------------------------------------------------------------------
@@ -751,6 +751,25 @@ fn owner_activity_extends_the_deadline_up_to_the_ceiling() {
     assert!(at(None).get("activity_at").is_none(), "без действия часы прежние");
     assert_eq!(at(Some("2026-07-30T12:00:50.000Z"))["deadline_at"], json!("2026-07-30T12:01:50.000Z"));
     assert_eq!(at(Some("2026-07-30T12:02:30.000Z"))["deadline_at"], json!("2026-07-30T12:03:00.000Z"), "потолок — {ACTIVE_TURN_LIMIT_FACTOR} срока");
+}
+
+#[test]
+fn public_group_clock_lists_remaining_allies() {
+    let mut state = clock_fixture("hero", true);
+    state["partyMemberIds"] = json!(["hero", "bard"]);
+    state["players"].as_array_mut().unwrap().push(json!({
+        "id": "bard", "character": "Бард", "hp": 20, "maxHp": 20, "armor": 14,
+        "speed": 30, "abilities": { "str": 12, "dex": 14, "con": 12, "int": 10, "wis": 10, "cha": 14 },
+    }));
+    state["mechanics"]["combat"]["initiative"].as_array_mut().unwrap().insert(1, json!({ "actor_id": "bard", "total": 15 }));
+    state["mechanics"]["combat"]["action_economy"]["bard"] = json!({ "action": true, "bonus_action": true, "reaction": true, "movement": true, "movement_spent": 0 });
+    let clock = combat_turn_clock(&state, &[], &ClockOptions { timeout_ms: json!(90_000), now: ms("2026-07-30T12:00:10.000Z") as f64, ..ClockOptions::default() })
+        .unwrap().unwrap();
+    assert_eq!(clock["actor_ids"], json!(["hero"]));
+    assert_eq!(public_turn_clock_for_state(&state, Some(&clock)).unwrap().unwrap()["actor_ids"], json!(["hero", "bard"]));
+    state["mechanics"]["combat"]["turn_completed"] = json!(["hero"]);
+    let next_clock = json!({ "actor_ids": ["bard"], "round": 1, "active_index": 0, "turn_id": clock["turn_id"], "started_at": clock["started_at"], "deadline_at": clock["deadline_at"], "duration_ms": 90_000 });
+    assert_eq!(public_turn_clock_for_state(&state, Some(&next_clock)).unwrap().unwrap()["actor_ids"], json!(["bard"]));
 }
 
 #[test]

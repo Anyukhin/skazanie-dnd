@@ -88,13 +88,38 @@ export function activeInitiativeIndex(combat) {
 }
 
 /**
+ * Участники, которым сервер разрешил действовать в текущей фазе. В групповой
+ * инициативе это несколько героев, а после завершения одного участника список
+ * приходит уже без него. Старые ответы без `turn_clock` остаются совместимы и
+ * показывают только указатель очереди.
+ */
+export function currentTurnActorIds(state) {
+  const combat = state.mechanics?.combat
+  if (!combat?.active || !combat.initiative?.length) return state.activePlayerId ? [state.activePlayerId] : []
+  const initiativeIds = new Set(combat.initiative.map((entry) => String(entry?.actor_id ?? '')).filter(Boolean))
+  const projected = state.turn_clock?.actor_ids
+  if (Array.isArray(projected) && projected.length) {
+    const ids = projected.map(String).filter((id) => initiativeIds.has(id))
+    if (ids.length) return ids
+  }
+  const current = combat.initiative[activeInitiativeIndex(combat)]?.actor_id
+  return current == null ? [] : [String(current)]
+}
+
+/**
  * Чей ход: участник инициативы в бою, иначе выбранный герой. Единственное
  * место этого правила на клиенте — его читают хук сессии и стол.
  */
 export function currentTurnActorId(state) {
-  const combat = state.mechanics?.combat
-  if (!combat?.active || !combat.initiative?.length) return state.activePlayerId
-  return combat.initiative[activeInitiativeIndex(combat)]?.actor_id ?? state.activePlayerId
+  return currentTurnActorIds(state)[0] ?? state.activePlayerId
+}
+
+function activePlayerIdForRemote(current, next) {
+  const previous = String(current.activePlayerId ?? '')
+  const actorIds = currentTurnActorIds(next)
+  return actorIds.includes(previous) && next.players?.some((player) => String(player.id) === previous)
+    ? previous
+    : currentTurnActorId(next)
 }
 
 /**
@@ -142,7 +167,7 @@ export function mergeTacticalCommandState(current, authoritative, result, reques
     agentInteraction: authoritative.agentInteraction ?? null,
     isNarrating: false,
   }
-  return { ...next, activePlayerId: currentTurnActorId(next) }
+  return { ...next, activePlayerId: activePlayerIdForRemote(current, next) }
 }
 
 /**

@@ -828,9 +828,9 @@ fn live_presence(core: &GameCore, state: &Value, campaign_id: &str, normalized: 
     let typing = live.map(|live| live.typing_actor_ids(campaign_id)).unwrap_or_default();
     let clock = live.and_then(|live| live.turn_clock_for(campaign_id));
     let turn_clock = if normalized {
-        sk_turns::combat_turn_coordinator::combat_turn_clock_for_normalized_state(state, clock.as_ref())
+        sk_turns::combat_turn_coordinator::public_turn_clock_for_normalized_state(state, clock.as_ref())
     } else {
-        sk_turns::combat_turn_coordinator::combat_turn_clock_for_state(state, clock.as_ref())?
+        sk_turns::combat_turn_coordinator::public_turn_clock_for_state(state, clock.as_ref())?
     };
     let players = state.get("players").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
     if connections.iter().any(|connection| connection.view().controls_party) {
