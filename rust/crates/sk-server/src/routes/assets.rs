@@ -113,6 +113,7 @@ impl ItemImages {
             estimated_tokens: (image_prompt.len() + ITEM_IMAGE_ESTIMATED_OUTPUT_TOKENS) as f64,
             scope: Some("item-image".into()),
             model: Some(self.model.clone()),
+            role: None,
         })?;
         let request_id = js::s(reservation.get("request_id"));
         let generator = if aspect_ratio == "16:9" { &self.wide } else { &self.square };

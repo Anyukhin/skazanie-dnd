@@ -569,6 +569,7 @@ pub(crate) async fn generate_metered(request: GenerationRequest<'_>) -> Result<G
                     estimated_tokens: estimated as f64,
                     scope: Some(request.scope.into()),
                     model: Some(request.model.into()),
+                    role: None,
                 })
                 .map_err(ImageServiceError::Ledger)?,
         ),

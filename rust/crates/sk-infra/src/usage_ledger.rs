@@ -172,6 +172,7 @@ pub struct ReserveRequest {
     pub estimated_tokens: f64,
     pub scope: Option<String>,
     pub model: Option<String>,
+    pub role: Option<String>,
 }
 
 /// `DurableUsageLedger`.
@@ -302,6 +303,7 @@ impl DurableUsageLedger {
         // всегда давал USAGE_IDEMPOTENCY_CONFLICT).
         let scope = Some(clean_str(request.scope.as_deref().unwrap_or("global"), 120)).filter(|scope| !scope.is_empty()).unwrap_or_else(|| "global".into());
         let model = Some(clean_str(request.model.as_deref().unwrap_or("unknown"), 160)).filter(|model| !model.is_empty()).unwrap_or_else(|| "unknown".into());
+        let role = request.role.as_deref().map(|role| clean_str(role, 120)).filter(|role| !role.is_empty());
         let now = self.now();
         let mut ledger = self.read()?;
         self.prune(&mut ledger, now)?;
@@ -318,7 +320,7 @@ impl DurableUsageLedger {
         if used + requested > self.daily_token_limit {
             return Err(UsageLedgerError::QuotaExceeded { limit: self.daily_token_limit, used, requested });
         }
-        let entry = json!({
+        let mut entry = json!({
             "request_id": id,
             "day": day_key(now),
             "scope": scope,
@@ -335,6 +337,11 @@ impl DurableUsageLedger {
             "finished_at_ms": null,
             "error_code": null,
         });
+        if let Some(role) = role {
+            if let Some(map) = entry.as_object_mut() {
+                map.insert("role".into(), Value::String(role));
+            }
+        }
         if let Some(requests) = ledger["requests"].as_object_mut() {
             requests.insert(id, entry.clone());
         }
@@ -642,6 +649,7 @@ impl<C: LlmClient> MeteredLLMClient<C> {
             request_id = sk_core::hash::uuid_v4();
         }
         let scope = nullish(option("usageScope"), from_request("usageScope")).map(|value| js::s(Some(value))).unwrap_or_else(|| "global".into());
+        let role = nullish(nullish(option("usageRole"), option("role")), nullish(from_request("usageRole"), from_request("role"))).map(|value| js::s(Some(value))).filter(|role| !role.is_empty());
         let model = match nullish(option("model"), from_request("model")) {
             Some(value) => Some(js::s(Some(value))),
             None => self.client.model(),
@@ -651,6 +659,7 @@ impl<C: LlmClient> MeteredLLMClient<C> {
             estimated_tokens: (estimated_input_tokens(input) + maximum_output) as f64,
             scope: Some(scope),
             model,
+            role,
         })?;
         let reservation_id = js::s(reservation.get("request_id"));
         let outcome = match self.client.complete(input, options).await {

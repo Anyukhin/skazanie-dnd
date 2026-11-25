@@ -55,7 +55,7 @@ export class LoreAuthor {
         // Метка записи в usage-ledger (аудит PR #131, AI-02): расход летописца
         // виден отдельно от горячего пути. Поставщику поле не уходит.
         usageScope: 'lore',
-      })
+      }, { usageRole: 'lore_author' })
       return boundedText(result?.content ?? result?.text ?? '', 12_000)
     } catch {
       // Пролог и хроника — украшение, а не механика: кампания играется и без них.

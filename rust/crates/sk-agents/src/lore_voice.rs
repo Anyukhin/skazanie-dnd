@@ -258,7 +258,7 @@ impl LoreVoice {
             "maxTokens": 600,
             "role": "lore_keeper",
         });
-        let options = json!({ "timeoutMs": self.timeout_ms });
+        let options = json!({ "timeoutMs": self.timeout_ms, "usageRole": "lore_keeper" });
         let result = (**client).complete_json(&request, &options).await.ok()?;
         let answer = text::squash_spaces(&js::s(prop(Some(&result), "answer")));
         let context = json!({ "location": location, "hero": hero });

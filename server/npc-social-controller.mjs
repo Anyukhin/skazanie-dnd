@@ -1115,7 +1115,7 @@ export class NpcSocialController {
       role: 'npc',
       // Форма ответа на стороне провайдера; structurallyValidSocialResponse всё равно проверяет.
       jsonSchema: NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
-    }, { timeoutMs: 20_000 })
+    }, { timeoutMs: 20_000, usageRole: 'npc_social' })
     try {
       let result = await complete()
       if (!structurallyValidSocialResponse(result)) throw new Error('NPC_SOCIAL_RESPONSE_INVALID_SHAPE')

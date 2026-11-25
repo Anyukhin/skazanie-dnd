@@ -108,6 +108,28 @@ test('metered client rejects over-budget requests before provider invocation', a
   assert.equal(calls, 1)
 })
 
+test('metered client persists the request role without replacing an explicit scope', async (t) => {
+  const { root, ledger } = fixture(t)
+  const provider = {
+    model: 'fake',
+    maxTokens: 20,
+    async complete() {
+      return { content: '{}', usage: { input_tokens: 5, output_tokens: 5, total_tokens: 10 } }
+    },
+    health: () => [],
+    probe: async () => [],
+  }
+  await new MeteredLLMClient({ client: provider, ledger }).complete({
+    messages: [{ role: 'user', content: 'role check' }],
+    role: 'narrator',
+    usageScope: 'lore',
+    maxTokens: 20,
+  })
+  const entry = Object.values(JSON.parse(readFileSync(join(root, 'usage.json'), 'utf8')).requests)[0]
+  assert.equal(entry.role, 'narrator')
+  assert.equal(entry.scope, 'lore')
+})
+
 // Аудит PR #131, COST-01: настоящий RouterAIClient и настоящий ledger, подменён
 // только транспорт. Сети нет: `fetchImpl` отвечает из сценария.
 const ACCOUNTING_MESSAGES = [{ role: 'user', content: 'usage check' }]

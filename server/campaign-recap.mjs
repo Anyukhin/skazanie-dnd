@@ -212,7 +212,7 @@ export class CampaignRecapService {
         ],
         temperature: 0.5,
         maxTokens: 400,
-      })
+      }, { usageRole: 'recap' })
       const text = clean(result?.recap, 1_500)
       return text || null
     } catch {
