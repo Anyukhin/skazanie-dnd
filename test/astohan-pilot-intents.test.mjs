@@ -7,6 +7,7 @@ import { IntentParser } from '../server/intent-parser.mjs'
 import { scenarioTreatyActionFromText } from '../server/scenario-attention.mjs'
 import { detectPartyExitRequest, onwardRouteExitRequest, onwardRouteObjective } from '../server/party-exit-intent.mjs'
 import { sceneObjectOperationFromText } from '../server/scene-interactions.mjs'
+import { proposeAgentInteraction } from '../server/player-request-router.mjs'
 
 const HERO = { id: 'pilot-hero', character: 'Испытатель', level: 7, hp: 60, maxHp: 60, armor: 18, speed: 30 }
 
@@ -97,4 +98,17 @@ test('Асстохан: 15 живых формулировок держатся 
   for (const message of ['Предлагаю Саргату договор', 'Давайте договоримся с драконом', 'Покажем Саргату признание и попросим мира']) {
     assert.deepEqual(scenarioTreatyActionFromText(message, finalState), { action: 'treaty' }, message)
   }
+})
+
+test('Открытие уже найденного прохода с перевала предлагает голосование по ID', () => {
+  const state = {
+    scene: { location_id: 'astohan-obsidian-pass', location: 'Обсидиановый перевал' },
+    worldMap: { locations: [{ id: 'astohan-vulkanis-brazier', name: 'Жаровня Вулканиса', known: true }] },
+  }
+  const phrase = 'Открыть проход к Жаровне Вулканиса.'
+  const interaction = proposeAgentInteraction(phrase, state)
+  assert.equal(interaction?.type, 'vote')
+  assert.equal(interaction?.destinationLocationId, 'astohan-vulkanis-brazier')
+  state.worldMap.locations[0].known = false
+  assert.equal(proposeAgentInteraction(phrase, state), null)
 })

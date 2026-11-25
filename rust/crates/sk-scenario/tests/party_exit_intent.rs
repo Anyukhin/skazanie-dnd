@@ -9,6 +9,21 @@ use sk_scenario::party_exit_intent::*;
 
 const FIXTURE: &str = include_str!("../fixtures/party-exit-intent.json");
 
+#[test]
+fn astohan_pass_uses_the_unlocked_world_map_route() {
+    let mut state = json!({
+        "scene": { "location_id": "astohan-obsidian-pass" },
+        "worldMap": { "locations": [
+            { "id": "astohan-vulkanis-brazier", "name": "Жаровня Вулканиса", "known": true }
+        ] }
+    });
+    let phrase = "Открыть проход к Жаровне Вулканиса.";
+    let request = onward_route_exit_request(phrase, &state).expect("открытый маршрут");
+    assert_eq!(request.destination_location_id.as_deref(), Some("astohan-vulkanis-brazier"));
+    state["worldMap"]["locations"][0]["known"] = json!(false);
+    assert_eq!(onward_route_exit_request(phrase, &state), None);
+}
+
 fn fixture() -> Value {
     serde_json::from_str(FIXTURE).expect("эталон — JSON")
 }
