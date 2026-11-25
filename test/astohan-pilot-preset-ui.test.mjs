@@ -10,11 +10,17 @@ const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const session = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 test('готовый пилотный лист доступен только для свежего Асстохана уровня 7', () => {
   assert.match(app, /world_template_id.*astohan-plains/u)
-  assert.match(app, /character_start_level === 7/u)
+  assert.match(app, /character_start_level === astohanPilotTargetLevel/u)
   assert.match(app, /characterSetupRequired === true/u)
   assert.match(wizard, /Готовый лист для первой партии/u)
   assert.match(wizard, /onApplyPilotBuild/u)
   assert.match(wizard, /pilotCreationChoicesFor/u)
+})
+
+test('итог готового листа показывает целевой уровень без промежуточных характеристик', () => {
+  const review = wizard.slice(wizard.indexOf('className="creation-review-sheet"'))
+  assert.match(review, /selectedPilotBuild[\s\S]*?\$\{astohanPilotTargetLevel\}-й уровень/u)
+  assert.match(review, /!selectedPilotBuild && <dl className="creation-review-vitals"/u)
 })
 test('выбор пилотного листа проходит через staged character build commands', () => {
   assert.match(session, /stagedCommandsForPilotBuild/u)

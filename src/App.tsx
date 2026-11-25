@@ -27,7 +27,7 @@ import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
 import { CharacterCreationWizard } from './CharacterCreationWizard'
-import { astohanPilotBuildCatalog } from './astohan-pilot-builds'
+import { astohanPilotBuildCatalog, astohanPilotTargetLevel } from './astohan-pilot-builds'
 import { DiceTray } from './DiceTray'
 import { DiceRollScene, type DiceRollResult } from './DiceRollScene'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
@@ -2006,7 +2006,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         rulesetId={state.ruleset_id}
         campaignCode={state.sessionCode}
         pilotEnabled={Boolean(
-          state.character_start_level === 7
+          state.character_start_level === astohanPilotTargetLevel
           && String((state.campaignConcept as { world_template_id?: string } | undefined)?.world_template_id ?? '') === 'astohan-plains'
           && state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired === true
           && (state.players.find((player) => player.id === creatingPlayerId)?.level ?? 1) === 1,
