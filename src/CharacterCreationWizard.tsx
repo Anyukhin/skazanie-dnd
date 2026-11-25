@@ -17,6 +17,7 @@ import type { PhbCharacterOptionsValue } from './PhbCharacterOptions'
 import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
 import { validateClassChoices } from '../server/character-creation-class-options.mjs'
 import type { AstohanPilotBuild } from './astohan-pilot-builds'
+import { pilotImportAlreadyStarted } from './pilot-import-state.mjs'
 import {
   abilityPreview,
   addStartingPurchase,
@@ -430,7 +431,7 @@ export function CharacterCreationWizard({
   onApplyPilotBuild?: (build: AstohanPilotBuild) => Promise<void>
   required?: boolean
   onClose: () => void
-  onImport: (source: string) => Promise<void>
+  onImport: (source: string, options?: { deferDevelopment?: boolean }) => Promise<void>
   onRollAbilities?: (rollIndex: number) => Promise<void>
   onRollWealth?: (classId: string) => Promise<void>
 }) {
@@ -606,7 +607,14 @@ export function CharacterCreationWizard({
     const starterEquipmentChoices = Object.fromEntries((classEntry?.starter_equipment?.choice_groups ?? []).map((group) => [group.id, [recipeStarter[group.id]].filter(Boolean)]))
     const backgroundEquipmentChoices = defaultChoiceRecord(backgroundEquipment?.choice_groups)
     const backgroundTools = (background?.toolChoice?.options ?? []).slice(0, background?.toolChoice?.count ?? 0).map((entry) => entry.id)
-    const backgroundLanguages = (catalog.backgrounds?.language_options ?? []).slice(0, background?.languageChoiceCount ?? 0).map((entry) => entry.id)
+    const speciesLanguageIds = new Set([
+      ...(species?.languages ?? []),
+      ...species?.choice_groups?.filter((group) => group.kind === 'language').flatMap((group) => group.options.slice(0, group.count).map((entry) => entry.id)) ?? [],
+    ])
+    const backgroundLanguages = (catalog.backgrounds?.language_options ?? [])
+      .filter((entry) => !speciesLanguageIds.has(entry.id))
+      .slice(0, background?.languageChoiceCount ?? 0)
+      .map((entry) => entry.id)
     const classChoices = recipe.class === 'monk' ? { tool_or_instrument: { kind: 'artisan_tool', id: 'smiths_tools' } } : {}
     setDraft((current) => ({
       ...current,
@@ -634,7 +642,7 @@ export function CharacterCreationWizard({
       knownSpellIds: [],
       preparedSpellIds: [],
       phb: { schema_version: 1, classChoices },
-      character: current.character || '',
+      character: /^Место героя \d+$/u.test(String(current.character ?? '').trim()) ? '' : current.character || '',
     }))
     setSelectedPilotBuild(recipe)
     setStep('identity')
@@ -1220,14 +1228,12 @@ export function CharacterCreationWizard({
     setBusy(true)
     setError('')
     try {
-      const importedPilot = Boolean(
-        selectedPilotBuild
-        && player.characterSetupRequired
-        && player.characterClass === selectedPilotBuild.class
-        && String(player.character ?? '').trim(),
-      )
+      const importedPilot = selectedPilotBuild ? pilotImportAlreadyStarted(player, selectedPilotBuild) : false
       const resumePilot = Boolean(selectedPilotBuild && importedPilot)
-      if (!resumePilot) await onImport(JSON.stringify(document))
+      if (!resumePilot) {
+        if (selectedPilotBuild) await onImport(JSON.stringify(document), { deferDevelopment: true })
+        else await onImport(JSON.stringify(document))
+      }
       if (!selectedPilotBuild || !onApplyPilotBuild) {
         clearCreationDraft(draftStorage, draftKey)
         onClose()

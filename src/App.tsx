@@ -2022,11 +2022,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         }}
         required={Boolean(state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired)}
         onClose={() => { setCreatingPlayerId(null); setHeroWizardDismissed(true) }}
-        onImport={async (source) => {
+        onImport={async (source, options) => {
           await importCharacter(creatingPlayerId, source)
           // При повышенном старте импорт фиксирует только первый уровень;
           // дальше тот же игрок продолжает подготовку в мастере развития.
-          if ((state.character_start_level ?? 1) > 1) {
+          if ((state.character_start_level ?? 1) > 1 && !options?.deferDevelopment) {
             setEditorInitialTab('advancement')
             setEditorRequestLevelUp(false)
             setEditingPlayerId(creatingPlayerId)
