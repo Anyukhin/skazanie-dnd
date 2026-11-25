@@ -601,7 +601,7 @@ pub fn scene_object_operation_from_text(text_value: Option<&Value>) -> Option<Sc
     };
     let approach = if !lockpick && text::test(re!(r"(?:разбить|сломать|взломать|выломать|ударить|топор)", "u"), &normalized) { "force" } else { "hand" };
     // После указания места может идти ориентир уже названной двери или рычага.
-    let before_landmark = re!(r"\s+(?:у|возле|около|рядом\s+с)\s+", "u")
+    let before_landmark = re!(r"\s+(?:у|возле|около|рядом\s+с|к|ко|в|во|на|до)\s+", "u")
         .find(&normalized).ok().flatten().map_or(normalized.as_str(), |marker| &normalized[..marker.start()]);
     let target_text = if text::test(re!(NON_PROP_TARGET, "u"), before_landmark) { before_landmark } else { &normalized };
     let aliases: Vec<&'static str> =

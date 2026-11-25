@@ -412,7 +412,7 @@ export function sceneObjectOperationFromText(text) {
   const approach = !lockpick && /(?:разбить|сломать|взломать|выломать|ударить|топор)/u.test(normalized) ? 'force' : 'hand'
   // Если названа дверь или рычаг, предмет после указания места служит
   // ориентиром: «открыть дверь рядом с сундуком» относится к двери.
-  const [beforeLandmark] = normalized.split(/\s+(?:у|возле|около|рядом\s+с)\s+/u, 1)
+  const [beforeLandmark] = normalized.split(/\s+(?:у|возле|около|рядом\s+с|к|ко|в|во|на|до)\s+/u, 1)
   const targetText = NON_PROP_TARGET.test(beforeLandmark) ? beforeLandmark : normalized
   const aliases = Object.entries(ASSET_ALIASES_RU)
     .filter(([, words]) => words.some((word) => targetText.includes(word)))
