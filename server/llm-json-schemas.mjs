@@ -4,7 +4,7 @@
  * Схема — дополнительная гарантия формы на стороне провайдера, а не замена
  * проверки: ответ по-прежнему проходит собственный валидатор роли
  * (`normalizeDirectorIntent`, `structurallyValidSocialResponse`,
- * `normalizeOpening`). Поэтому схема описывает только то, что валидатор и так
+ * `normalizeOpening`, `normalizePlan`, `normalizeFreeActionReading`). Поэтому схема описывает только то, что валидатор и так
  * требует или терпит, и ничего не ослабляет.
  *
  * Ограничения strict-режима, общие для проверенных провайдеров RouterAI
@@ -21,9 +21,24 @@
  */
 import { DIRECTOR_INTENT_TYPES } from './autonomous-campaign.mjs'
 import { ENCOUNTER_DIFFICULTIES, ENCOUNTER_THEMES } from './encounter-assembler.mjs'
+import {
+  FREE_ACTION_ACTIVITY_KINDS,
+  FREE_ACTION_CONSEQUENCE_TYPES,
+  FREE_ACTION_DURATION_CLASSES,
+  FREE_ACTION_PROFICIENCY_LEVELS,
+  FREE_ACTION_SKILLS,
+  PLAUSIBILITY_LEVELS,
+  RISK_LEVELS,
+} from './free-action-adjudication.mjs'
+import { ENVIRONMENT_HAZARD_IDS, IMPROVISED_EFFECT_IDS } from './improvised-effects.mjs'
+import { SCENE_REQUIREMENT_KINDS, LANDMARK_ROLES } from './scene-requirements.mjs'
+import { SHOP_SETTLEMENT_TYPES, SHOP_THEMES } from './shop-assembler.mjs'
+import { GM_SECRET_SKILLS } from './world-memory.mjs'
 
 const nullable = (schema) => ({ ...schema, type: [schema.type, 'null'] })
 const nullableEnum = (values) => ({ type: ['string', 'null'], enum: [...values, null] })
+const stringEnum = (values) => ({ type: 'string', enum: [...values] })
+const arrayOf = (items) => ({ type: 'array', items })
 const text = { type: 'string' }
 const strictObject = (properties) => ({
   type: 'object',
@@ -100,12 +115,13 @@ export const NPC_SOCIAL_RESPONSE_JSON_SCHEMA = deepFreeze({
   }),
 })
 
+const SCENE_LANDMARK_KINDS = Object.freeze(SCENE_REQUIREMENT_KINDS.map((entry) => entry.id))
+
 /**
- * Создание кампании (`prompts/campaign_creator/v5.txt`). Перечисления взяты из
+ * Создание кампании (`prompts/campaign_creator/v8.txt`). Перечисления взяты из
  * формата промпта и совпадают с allowlist `normalizeOpening`; значения вне них
- * сервер и раньше заменял запасными. В бою схема пока не подключена:
- * `server/campaign-bootstrap.mjs` ведёт другой трек, и схема передаётся только
- * из замера (`eval/json-roles-bootstrap-eval-2026-10-01.mjs --json-schema`).
+ * сервер и раньше заменял запасными. Схема передаётся и в production-вызов
+ * `server/campaign-bootstrap.mjs`, а серверный нормализатор остаётся обязательным.
  */
 export const CAMPAIGN_CREATION_JSON_SCHEMA = deepFreeze({
   name: 'campaign_creation',
@@ -167,6 +183,12 @@ export const CAMPAIGN_CREATION_JSON_SCHEMA = deepFreeze({
           architecture: { type: 'string', enum: ['wood', 'stone', 'sand', 'metal', 'marble', 'ice'] },
           density: { type: 'string', enum: ['sparse', 'mixed', 'dense'] },
           building_use: { type: 'string', enum: ['dwelling', 'tavern', 'shop', 'manor'] },
+          landmarks: arrayOf(strictObject({
+            kind: stringEnum(SCENE_LANDMARK_KINDS),
+            role: stringEnum(LANDMARK_ROLES),
+            count: { type: 'integer' },
+            npc: nullable(text),
+          })),
         }),
       }),
     }),
@@ -178,7 +200,117 @@ export const CAMPAIGN_CREATION_JSON_SCHEMA = deepFreeze({
       goals: { type: 'array', items: text },
       beliefs: { type: 'array', items: text },
     }) },
+    secrets: arrayOf(strictObject({
+      clue: text,
+      topic: text,
+      skills: arrayOf(stringEnum(GM_SECRET_SKILLS)),
+      holder: text,
+    })),
+    canon: arrayOf(text),
     hook: text,
+  }),
+})
+
+/**
+ * План новой сцены (`prompts/map_architect/v8.txt`). Числа карты и торговый
+ * бюджет всё равно ограничивает серверный нормализатор, но форма и закрытые
+ * словари проверяются провайдером до того, как ответ попадёт в него.
+ */
+export const SCENE_ARCHITECT_JSON_SCHEMA = deepFreeze({
+  name: 'scene_architect',
+  strict: true,
+  schema: strictObject({
+    title: text,
+    location: text,
+    mood: text,
+    objective: text,
+    transition: text,
+    arrival: text,
+    hook: text,
+    theme: text,
+    danger: stringEnum(['низкая', 'средняя', 'высокая']),
+    outcome: text,
+    objective_status: stringEnum(['completed', 'unresolved', 'abandoned']),
+    carry_unresolved: { type: 'boolean' },
+    map: strictObject({
+      layout: stringEnum(['rooms', 'streets', 'open', 'winding', 'cavern', 'ruins', 'radial']),
+      scale: stringEnum(['room', 'site', 'stronghold', 'region']),
+      pattern: stringEnum(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural']),
+      material: stringEnum(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice']),
+      width: { type: 'integer' },
+      height: { type: 'integer' },
+      openness: { type: 'number' },
+      water: { type: 'number' },
+      featureCount: { type: 'integer' },
+      design: strictObject({
+        topology: stringEnum(['organic', 'linear', 'crossroads', 'market', 'courtyard', 'harbor', 'river', 'terraced', 'gate']),
+        climate: stringEnum(['temperate', 'arid', 'cold', 'wetland']),
+        architecture: stringEnum(['wood', 'stone', 'sand', 'metal', 'marble', 'ice']),
+        density: stringEnum(['sparse', 'mixed', 'dense']),
+        building_use: stringEnum(['dwelling', 'tavern', 'shop', 'manor', 'smithy', 'barracks', 'mill']),
+        landmarks: arrayOf(strictObject({
+          kind: stringEnum(SCENE_LANDMARK_KINDS),
+          role: stringEnum(LANDMARK_ROLES),
+          count: { type: 'integer' },
+          npc: nullable(text),
+        })),
+      }),
+    }),
+    levels: arrayOf(strictObject({ offset: { type: 'integer' }, hint: text })),
+    shop_intent: {
+      type: ['object', 'null'],
+      additionalProperties: false,
+      required: ['action', 'settlement_type', 'theme', 'budget_cp', 'reason'],
+      properties: {
+        action: stringEnum(['create', 'none']),
+        settlement_type: stringEnum(SHOP_SETTLEMENT_TYPES),
+        theme: stringEnum(SHOP_THEMES),
+        budget_cp: { type: 'integer' },
+        reason: text,
+      },
+    },
+    secrets: arrayOf(strictObject({
+      clue: text,
+      topic: text,
+      skills: arrayOf(stringEnum(GM_SECRET_SKILLS)),
+    })),
+  }),
+})
+
+/**
+ * Разбор свободного действия (`prompts/action_adjudicator/v10.txt`). Пустые
+ * строки в ссылках и деталях — канонический способ сообщить «не применимо».
+ * Сервер всё равно повторно проверяет ссылки, стоимость и эффект.
+ */
+export const ACTION_ADJUDICATOR_JSON_SCHEMA = deepFreeze({
+  name: 'action_adjudicator',
+  strict: true,
+  schema: strictObject({
+    route: stringEnum(['check', 'travel', 'talk', 'clarify']),
+    destination: text,
+    npc_hint: text,
+    goal_summary: text,
+    approach_summary: text,
+    obstacle: text,
+    activity_kind: stringEnum(FREE_ACTION_ACTIVITY_KINDS),
+    duration_class: stringEnum(FREE_ACTION_DURATION_CLASSES),
+    ability: stringEnum(['str', 'dex', 'con', 'int', 'wis', 'cha']),
+    skill: stringEnum(FREE_ACTION_SKILLS),
+    plausibility: stringEnum(PLAUSIBILITY_LEVELS),
+    risk: stringEnum(RISK_LEVELS),
+    required_means: arrayOf(text),
+    action_cost: stringEnum(['action', 'bonus_action', 'free']),
+    effect: stringEnum(IMPROVISED_EFFECT_IDS),
+    effect_target: text,
+    hazard: stringEnum(['', ...ENVIRONMENT_HAZARD_IDS]),
+    prop_id: text,
+    target_id: text,
+    item_id: text,
+    proficiency: stringEnum(FREE_ACTION_PROFICIENCY_LEVELS),
+    consequence_type: stringEnum(FREE_ACTION_CONSEQUENCE_TYPES),
+    success_detail: text,
+    surface_detail: text,
+    failure_detail: text,
   }),
 })
 
