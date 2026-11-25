@@ -35,7 +35,7 @@ function merchantSession() {
     merchantBusyRef: { current: false },
     merchantView: { merchant: { id: 'shop' }, actor_id: 'hero', expected_state_version: 1 },
     roomVersion: { current: 1 },
-    fetch: () => response,
+    transportFetch: () => response,
     latestRoomVersion: Math.max,
     mergeTacticalCommandState: (_current, authoritative) => authoritative,
     commandId: () => 'request',
