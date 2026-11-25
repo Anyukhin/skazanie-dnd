@@ -457,6 +457,42 @@ test('Гедрик признаётся только разговором; с п
   assert.deepEqual(replayEvents(run.initial, run.events).scenario_attention, run.state.scenario_attention)
 })
 
+test('провал разговора с Гедриком оставляет местный путь к улике', async () => {
+  const run = await astohan()
+  const gedrik = 'astohan-gedrik'
+  const written = 'sealed-deposition'
+  sayTo(run, 'astohan-oren', 'journal', { diceService: fixedDice(20) })
+  assert.ok(scenarioFoundClueIds(run.state).has('stormberg-journal-page'))
+
+  await travel(run, 'astohan-ash-watch')
+  await travel(run, 'astohan-quiet-watch-camp')
+  assert.ok(!offeredBy(run, gedrik).includes(written))
+  const failed = sayTo(run, gedrik, 'confess-journal', { diceService: fixedDice(1) })
+  assert.equal(chosenOf(failed).check.success, false)
+  assert.ok(!scenarioFoundClueIds(run.state).has('camp-gedrik'))
+  assert.ok(offeredBy(run, gedrik).includes(written), 'игрок видит запасной путь в том же лагере')
+
+  const deposition = sayTo(run, gedrik, written)
+  assert.ok(types(deposition).includes('KnowledgeRevealed'))
+  assert.ok(!types(deposition).includes('AbilityCheckResolved'))
+  assert.ok(scenarioFoundClueIds(run.state).has('camp-gedrik'))
+  assert.ok(!offeredBy(run, gedrik).includes(written), 'свидетельство не выдаётся повторно')
+  const replayed = replayEvents(run.initial, run.events)
+  assert.ok(scenarioFoundClueIds(replayed).has('camp-gedrik'))
+  assert.equal(scenarioLocationId(replayed), 'astohan-quiet-watch-camp')
+
+  const lair = 'astohan-vulkanis-brazier'
+  const lairVisible = () => run.state.worldMap.locations.find((location) => location.id === lair).known
+  assert.equal(lairVisible(), false)
+  await travel(run, 'astohan-obsidian-pass')
+  assert.equal(lairVisible(), true)
+  assert.ok(!scenarioFoundClueIds(run.state).has('pass-lair-signs'), 'осмотр перевала дополняет сведения о Саргате')
+  await travel(run, lair)
+  assert.ok(offeredBy(run, 'astohan-sargat').includes('treaty'))
+  const treaty = sayTo(run, 'astohan-sargat', 'treaty', { diceService: maxDice() })
+  assert.ok(types(treaty).includes('ScenarioTreatyConcluded'))
+})
+
 test('договор не предлагают, пока правда о походе не раскрыта', async () => {
   const run = await astohan()
   await travel(run, 'astohan-vulkanis-brazier')
