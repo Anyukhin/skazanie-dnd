@@ -272,6 +272,11 @@ const SECRET_KEYS = /(?:^|_)(?:api_key|secret|client_secret|password|passphrase|
 const ENV_KEYS = /^(?:env|environment|full_environment|system_environment|process_env|process_environment)$/i
 const PII_KEYS = /^(?:email|e_mail|phone|phone_number|ip|ip_address|real_name|user_name|username|player_name|display_name|postal_address)$/i
 const RAW_CONTENT_KEYS = /^(?:prompt|raw_prompt|system_prompt|user_prompt|messages|content|raw_input|user_message|message|action|private_notes)$/i
+const TOKEN_USAGE_KEYS = new Set([
+  'input_tokens', 'output_tokens', 'prompt_tokens', 'completion_tokens', 'total_tokens',
+  'reasoning_tokens', 'cached_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens',
+  'cost', 'total_cost', 'provider_cost',
+])
 
 function normalizedTraceKey(key) {
   return String(key).replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/[-\s]+/g, '_').toLowerCase()
@@ -287,12 +292,25 @@ function redactString(value, sensitiveValues = []) {
   return redacted
 }
 
+function redactTokenUsage(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const output = {}
+  for (const [key, child] of Object.entries(value)) {
+    const normalizedKey = normalizedTraceKey(key)
+    if (!TOKEN_USAGE_KEYS.has(normalizedKey)) continue
+    if (typeof child !== 'number' || !Number.isFinite(child) || child < 0) continue
+    output[key] = child
+  }
+  return output
+}
+
 export function redactTrace(trace, { sensitiveValues = [] } = {}) {
   const explicitSecrets = strings(sensitiveValues)
   const seen = new WeakMap()
   const redact = (value, key = '') => {
     const normalizedKey = normalizedTraceKey(key)
-    if (normalizedKey !== 'token_usage' && SECRET_KEYS.test(normalizedKey)) return '[REDACTED]'
+    if (normalizedKey === 'token_usage') return redactTokenUsage(value)
+    if (SECRET_KEYS.test(normalizedKey)) return '[REDACTED]'
     if (ENV_KEYS.test(normalizedKey)) return '[OMITTED_ENVIRONMENT]'
     if (PII_KEYS.test(normalizedKey)) return '[REDACTED_PII]'
     if (RAW_CONTENT_KEYS.test(normalizedKey) && normalizedKey !== 'prompt_versions') return '[OMITTED_CONTENT]'

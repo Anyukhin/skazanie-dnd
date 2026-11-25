@@ -650,12 +650,35 @@ fn redact_string(value: &str, sensitive: &[String]) -> String {
     redacted
 }
 
+const TOKEN_USAGE_KEYS: [&str; 12] = [
+    "input_tokens", "output_tokens", "prompt_tokens", "completion_tokens", "total_tokens",
+    "reasoning_tokens", "cached_tokens", "cache_read_input_tokens", "cache_creation_input_tokens",
+    "cost", "total_cost", "provider_cost",
+];
+
+fn redact_token_usage(value: &Value) -> Value {
+    let Value::Object(map) = value else { return Value::Object(Map::new()) };
+    let mut output = Map::new();
+    for (key, child) in js::entries(map) {
+        let normalized = normalized_trace_key(key);
+        if !TOKEN_USAGE_KEYS.contains(&normalized.as_str()) {
+            continue;
+        }
+        let Some(number) = child.as_f64() else { continue };
+        if number.is_finite() && number >= 0.0 {
+            output.insert(key.clone(), child.clone());
+        }
+    }
+    Value::Object(output)
+}
+
 fn redact_value(value: &Value, key: &str, secrets: &[String]) -> Value {
     let normalized = normalized_trace_key(key);
+    if normalized == "token_usage" {
+        return redact_token_usage(value);
+    }
     // Ключ уже в нижнем регистре: флаг `i` без `u` здесь ничего не добавляет.
-    if normalized != "token_usage"
-        && text::test(re!(r"(?:^|_)(?:api_key|secret|client_secret|password|passphrase|authorization|auth_header|cookie|set_cookie|access_token|refresh_token|session_token|setup_token|admin_setup_token)$"), &normalized)
-    {
+    if text::test(re!(r"(?:^|_)(?:api_key|secret|client_secret|password|passphrase|authorization|auth_header|cookie|set_cookie|access_token|refresh_token|session_token|setup_token|admin_setup_token)$"), &normalized) {
         return Value::String("[REDACTED]".into());
     }
     if text::test(re!(r"^(?:env|environment|full_environment|system_environment|process_env|process_environment)$"), &normalized) {

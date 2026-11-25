@@ -86,7 +86,12 @@ fn head16(value: &str, units: usize) -> String {
 
 fn redact_node(value: &Value, key: &str) -> Value {
     let value = if key.is_empty() { sk_tactics::security::redact_trace(Some(value), None).unwrap_or(Value::Null) } else { value.clone() };
-    if secret_key(key) {
+    let split = text::replace_all(re!(r"([a-z0-9])([A-Z])", "g"), key, "${1}_${2}");
+    let normalized_key = text::lower(&text::replace_all(re!(r"[-\s]+", "g"), &split, "_"));
+    if normalized_key == "token_usage" {
+        return value;
+    }
+    if secret_key(&normalized_key) {
         return Value::String("[REDACTED]".into());
     }
     match &value {
