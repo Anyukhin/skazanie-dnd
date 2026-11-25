@@ -104,7 +104,8 @@ fn authored_scenario_search_stays_in_current_location() {
             { "id": "fact:secret:ivara-report", "subject_id": "location:stormberg", "predicate": "gm_secret", "visibility": "gm_only", "status": "active",
               "object": "{\"topic\":\"донесение сожженная застава\",\"skills\":[\"perception\"],\"holder\":\"Маршал Ивара Тейн\"}",
               "summary": "В донесении о Пепельной заставе сказано, что ворота открыли изнутри, а следы когтей начинаются уже за стенами." }
-        ] }))
+        ], "quests": [{ "id": "quest-foreign", "title": "Найти повреждения на старых воротах в Штормберге",
+            "status": "active", "visibility": "party", "entity_ids": ["location:stormberg"] }] }))
     });
     let found = free_action_discovery_commands(&state, &json!({
         "checkEvent": check("perception", "lada-gate-check"), "skill": "perception",
@@ -117,6 +118,11 @@ fn authored_scenario_search_stays_in_current_location() {
         "actionText": "Осматриваю обгоревший сундук", "goalSummary": "Разглядеть следы на воротах"
     }));
     assert!(unrelated.is_empty(), "цель модели не подменяет объект осмотра");
+    let foreign = free_action_discovery_commands(&state, &json!({
+        "checkEvent": check("perception", "lada-hinges-check"), "skill": "perception",
+        "actionText": "Проверяю заклёпки на петлях, повреждены ли они?"
+    }));
+    assert!(foreign.is_empty(), "совпадение с названием чужого поручения не создаёт улику");
 }
 
 /// Кампания заготовок из `test/gm-secrets.test.mjs`, сведённая к памяти.

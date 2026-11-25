@@ -397,14 +397,18 @@ struct Candidate<'a> {
     personal: bool,
 }
 
+fn uses_authored_scene_search(state: &Value) -> bool {
+    let concept = state.get("campaignConcept");
+    is_str(get(get(concept, "arc"), "version"), "skazanie:scenario-arc-v1") && !is_str(get(concept, "campaign_mode"), "persistent")
+}
+
 /// Какой секрет открывает удачная проверка (`secretRevealCommand`). Сначала —
 /// по теме заявки и подходящему навыку; общий поиск без темы даёт ближайший
 /// секрет того же навыка в этой локации. Секрет заменяется фактом отряда.
 fn secret_reveal_command(state: &Value, source_event_id: &str, skill: Option<&Value>, action_text: &str, goal_summary: &str, topical_only: bool) -> Option<Value> {
     let memory = get(Some(state), "worldMemory");
     let normalized_skill = dashed(skill);
-    let arc = get(get(Some(state), "campaignConcept"), "arc");
-    let authored_scenario = is_str(get(arc, "version"), "skazanie:scenario-arc-v1");
+    let authored_scenario = uses_authored_scene_search(state);
     let inquiry = if authored_scenario { action_text.to_string() } else { format!("{action_text} {goal_summary}") };
     let location = scene_location(state);
     let here_ids: HashSet<String> = array(get(memory, "entities"))
@@ -873,7 +877,8 @@ fn discovery_commands_for(state: &Value, input: &Value) -> Vec<Value> {
     if detail.is_some() || secret.is_some() {
         return detail.into_iter().chain(secret).collect();
     }
-    if unrolled {
+    // Совпадение слов с названием поручения не открывает авторскую улику.
+    if unrolled || uses_authored_scene_search(state) {
         return Vec::new();
     }
     // Проницательность читает человека напротив, а не другого жителя.

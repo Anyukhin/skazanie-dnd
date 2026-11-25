@@ -151,6 +151,11 @@ const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмо�
 
 const SEARCH_SKILLS = new Set(['perception', 'investigation', 'survival'])
 
+function usesAuthoredSceneSearch(state) {
+  const concept = state.campaignConcept
+  return concept?.arc?.version === 'skazanie:scenario-arc-v1' && concept.campaign_mode !== 'persistent'
+}
+
 const TESTIMONY_VERB = /(?<![\p{L}\p{M}])(?:видел\p{L}*|слышал\p{L}*|знает|знал\p{L}*|помнит|помнил\p{L}*|заметил\p{L}*|рассказ\p{L}*|клянётся|клянется)(?![\p{L}\p{M}])/iu
 
 function testimonyOfHolder(entry) {
@@ -219,7 +224,7 @@ function secretAlreadyTold(state, fact) {
 function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actionText = '', goalSummary = '', topicalOnly = false } = {}) {
   const memory = state.worldMemory ?? {}
   const normalizedSkill = String(skill ?? '').replace(/_/gu, '-')
-  const authoredScenario = state.campaignConcept?.arc?.version === 'skazanie:scenario-arc-v1'
+  const authoredScenario = usesAuthoredSceneSearch(state)
   const inquiry = authoredScenario ? actionText : `${actionText} ${goalSummary}`
   const location = text(state.scene?.location, 160).toLocaleLowerCase('ru')
   const hereIds = new Set((memory.entities ?? [])
@@ -612,7 +617,8 @@ function discoveryCommandsFor(state = {}, { checkEvent = null, skill = '', actio
   const detail = successDetailCommand(state, { sourceEventId, successDetail })
   const secret = unrolled ? null : secretRevealCommand(state, { sourceEventId, skill, actionText, goalSummary })
   if (detail || secret) return [detail, secret].filter(Boolean)
-  if (unrolled) return []
+  // Совпадение слов с названием поручения не открывает авторскую улику.
+  if (unrolled || usesAuthoredSceneSearch(state)) return []
   // Проницательность читает человека напротив: «X явно знает больше» о другом
   // жителе на месте реакции того, за кем следили, звучало мимо (замер
   // 2026-10-10: слежка за Эдой — «Тавен явно знает больше»).

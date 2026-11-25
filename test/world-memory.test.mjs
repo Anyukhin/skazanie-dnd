@@ -43,6 +43,8 @@ test('авторская улика поиска остаётся в текущ�
           object: '{"topic":"донесение сожженная застава","skills":["perception"],"holder":"Маршал Ивара Тейн"}',
           summary: 'В донесении о Пепельной заставе сказано, что ворота открыли изнутри, а следы когтей начинаются уже за стенами.' },
       ],
+      quests: [{ id: 'quest-foreign', title: 'Найти повреждения на старых воротах в Штормберге',
+        status: 'active', visibility: 'party', entity_ids: ['location:stormberg'] }],
     }),
   }
   const check = {
@@ -61,6 +63,9 @@ test('авторская улика поиска остаётся в текущ�
   assert.deepEqual(freeActionDiscoveryCommands(state, { ...check,
     actionText: 'Осматриваю донесение о сожжённой заставе',
   }), [], 'донесение из Штормберга недоступно для осмотра на заставе')
+  assert.deepEqual(freeActionDiscoveryCommands(state, { ...check,
+    actionText: 'Проверяю заклёпки на петлях, повреждены ли они?',
+  }), [], 'совпадение с названием чужого поручения не создаёт улику')
 })
 
 test('модельная деталь провала discovery-проверки не попадает рассказчику', () => {
