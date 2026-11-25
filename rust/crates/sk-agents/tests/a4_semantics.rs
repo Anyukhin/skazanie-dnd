@@ -51,14 +51,12 @@ impl LlmClient for Scripted {
     fn model(&self) -> Option<String> {
         None
     }
-    fn complete<'a>(&'a self, _input: &'a Value, _options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
-        Box::pin(async { Err(LlmError::new("UNEXPECTED", "complete")) })
-    }
-    fn complete_json<'a>(&'a self, input: &'a Value, _options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
+    fn complete<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
+        assert_eq!(options["json"], true, "социальная роль ожидает JSON и usage");
         self.calls.lock().unwrap().push(input.clone());
         let mut replies = self.replies.lock().unwrap();
         let reply = if replies.is_empty() { Err(LlmError::new("LLM_UNEXPECTED_CALL", "лишний вызов")) } else { replies.remove(0) };
-        Box::pin(async move { reply })
+        Box::pin(async move { reply.map(|value| json!({ "json": value })) })
     }
     fn probe(&self) -> LlmFuture<'_, Result<Value, LlmError>> {
         Box::pin(async { Ok(json!([])) })
