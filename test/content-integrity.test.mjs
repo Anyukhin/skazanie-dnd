@@ -119,7 +119,9 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + модель дракона Cethiel/Drummyfish (Саргат) и её NOTICE.
   // + 5 зверей Quaternius Easy Enemies (крыса, паук, оса, лягушка, змея),
   //   их NOTICE и LICENSE.
-  assert.equal(report.integrity.assets, 2171 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles() + declaredGraphicsStyleFiles())
+  // + HD-модель Саргата и её NOTICE, а также портрет Гедрика для пилота
+  //   Асстохана.
+  assert.equal(report.integrity.assets, 2174 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles() + declaredGraphicsStyleFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 
