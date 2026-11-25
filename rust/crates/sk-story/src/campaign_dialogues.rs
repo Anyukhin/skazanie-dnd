@@ -81,6 +81,7 @@ pub struct DialogueAction {
     pub catalog_id: Option<String>,
     pub informant_id: Option<String>,
     pub choice: Option<String>,
+    pub proof: Option<String>,
 }
 
 impl DialogueAction {
@@ -93,6 +94,9 @@ impl DialogueAction {
         if let Some(informant_id) = &self.informant_id {
             map.insert("informant_id".into(), Value::String(informant_id.clone()));
             map.insert("choice".into(), Value::String(self.choice.clone().unwrap_or_default()));
+        }
+        if let Some(proof) = &self.proof {
+            map.insert("proof".into(), Value::String(proof.clone()));
         }
         Value::Object(map)
     }
@@ -160,7 +164,7 @@ impl Dialogue {
 /// бросок. Упокоение рыцаря, договор и перевербовка осведомителя.
 pub fn dialogue_action_checks(action: &DialogueAction) -> bool {
     action.command_type == "ReleaseCursedKnight"
-        || action.command_type == "NegotiateScenarioTreaty"
+        || (action.command_type == "NegotiateScenarioTreaty" && action.proof.as_deref() != Some("ares-signed-confession"))
         || (action.command_type == "ResolveScenarioInformant" && action.choice.as_deref() == Some("turn"))
 }
 
@@ -280,11 +284,19 @@ fn option(raw: Option<&Value>, place: &str) -> Result<DialogueOption, String> {
         if informant && (!id_ok(&informant_id) || !INFORMANT_CHOICES.contains(&choice.as_str())) {
             return invalid(format!("{place}.{id}: осведомитель «{informant_id}» и решение «{choice}»"));
         }
+        let proof = if command_type == "NegotiateScenarioTreaty" {
+            let proof = clean(field(action_raw, "proof"), 80);
+            if !proof.is_empty() && proof != "ares-signed-confession" {
+                return invalid(format!("{place}.{id}: доказательство «{proof}»"));
+            }
+            (!proof.is_empty()).then_some(proof)
+        } else { None };
         let built = DialogueAction {
             command_type: command_type.clone(),
             catalog_id: (!catalog_id.is_empty()).then_some(catalog_id),
             choice: (!informant_id.is_empty()).then_some(choice),
             informant_id: (!informant_id.is_empty()).then_some(informant_id),
+            proof,
         };
         if dialogue_action_checks(&built) && check.is_none() {
             return invalid(format!("{place}.{id}: команда «{command_type}» бросает проверку — нужен check с навыком"));

@@ -256,7 +256,10 @@ pub fn check_scenario_treaty(v: &mut Validation<'_>) -> Step {
     if js::is_false(at(v.state.get("npc_world"), &["vitals", &boss_id, "alive"])) {
         return Err(rule("Договариваться больше не с кем", "SCENARIO_TREATY_BOSS_GONE"));
     }
-    if string_list(at(v.state.get("scenario_attention"), &["treaty", "attempts"])).contains(&actor_key(v)) {
+    let signed_confession = sk_story::campaign_dialogues::dialogue_flags(v.state).contains("ares-signed-confession")
+        && !sk_core::game::combat_active(v.state)
+        && sk_scenario::campaign_scenario::scenario_found_clue_ids(v.state).contains("ares-confession");
+    if string_list(at(v.state.get("scenario_attention"), &["treaty", "attempts"])).contains(&actor_key(v)) && !signed_confession {
         return Err(rule("Этого героя дракон уже выслушал и не поверил", "SCENARIO_TREATY_ATTEMPT_SPENT"));
     }
     if sk_core::game::combat_active(v.state) {
@@ -267,6 +270,11 @@ pub fn check_scenario_treaty(v: &mut Validation<'_>) -> Step {
         if ratio > js::number(rules.get("wounded_ratio")) {
             return Err(rule("Пока дракон не ранен всерьёз, он не станет торговаться", "SCENARIO_TREATY_BOSS_UNHURT"));
         }
+    }
+    if signed_confession {
+        set_field(&mut v.command, "treaty_proof", json!("ares-confession"));
+    } else if let Some(command) = v.command.as_object_mut() {
+        command.remove("treaty_proof");
     }
     set_field(&mut v.command, "skill", rules.get("skill").cloned().unwrap_or(Value::Null));
     set_field(&mut v.command, "difficulty", rules.get("dc").cloned().unwrap_or(Value::Null));
