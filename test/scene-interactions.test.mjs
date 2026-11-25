@@ -518,6 +518,19 @@ test('HTTP sanitizer сохраняет владельца героя и не п
   })
   assert.equal(assigned.status, 200, assigned.text)
 
+  const landmark = await request(baseUrl, '/api/narrate', {
+    method: 'POST',
+    cookie: registered.cookie,
+    body: {
+      campaignId: 'SCENE-HTTP',
+      action: 'Открыть дверь рядом с сундуком',
+      actor_id: 'hero',
+      idempotency_key: 'scene-http-landmark',
+    },
+  })
+  assert.equal(landmark.status, 200, landmark.text)
+  assert.equal(landmark.body.mechanics.some((event) => event.event_type.startsWith('SceneObject')), false, landmark.text)
+
   const forgedForce = await request(baseUrl, '/api/campaigns/SCENE-HTTP/commands', {
     method: 'POST',
     cookie: registered.cookie,
