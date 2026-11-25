@@ -4,10 +4,10 @@ import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import { ITEM_CATALOG } from '../server/item-catalog.mjs'
 
-async function request(baseUrl, path, { method = 'GET', cookie, body } = {}) {
+async function request(baseUrl, path, { method = 'GET', cookie, body, headers = {} } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(cookie ? { Cookie: cookie } : {}) },
+    headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(cookie ? { Cookie: cookie } : {}), ...headers },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   const text = await response.text()
@@ -62,6 +62,13 @@ test('non-admin room and Director response cannot expose private world memory', 
       id: 'visibility-vote', type: 'vote', status: 'resolved', resolvedOptionId: 'city', votes: { hero: 'city' },
       options: [{ id: 'city', label: 'Уходим из склепа и идём в большой город Норвин' }],
     },
+    worldMemory: {
+      entities: [], facts: [{ id: 'fact:public-memory', subject_id: 'hero', predicate: 'knows', object: 'печать', visibility: 'public', status: 'active', source_event_ids: [] }],
+      relationships: [], quests: [], threads: [], epistemic_claims: [], summaries: [],
+      knowledge: { hero: ['fact:public-memory'] },
+      knowledge_ledger: [{ id: 'knowledge:public-memory', hero_id: 'hero', fact_id: 'fact:public-memory' }],
+      knowledge_revealed: [{ id: 'knowledge:public-memory', hero_id: 'hero', fact_id: 'fact:public-memory' }],
+    },
   }
   const created = await request(baseUrl, '/api/campaigns', {
     method: 'POST', cookie: adminCookie, body: { code: 'VIEWER-API', state: initialState },
@@ -70,6 +77,13 @@ test('non-admin room and Director response cannot expose private world memory', 
 
   const playerRoom = await request(baseUrl, '/api/rooms/VIEWER-API', { cookie: playerCookie })
   assert.equal(playerRoom.status, 200, server.output())
+  assert.ok(Object.hasOwn(playerRoom.body.state.worldMemory, 'knowledge_revealed'), 'v1 должен сохранить legacy alias')
+  const compactRoom = await request(baseUrl, '/api/rooms/VIEWER-API', {
+    cookie: playerCookie, headers: { 'X-Memory-Transport': 'v2' },
+  })
+  assert.equal(compactRoom.status, 200, server.output())
+  assert.equal(Object.hasOwn(compactRoom.body.state.worldMemory, 'knowledge_revealed'), false)
+  assert.deepEqual(compactRoom.body.state.worldMemory.knowledge_ledger, playerRoom.body.state.worldMemory.knowledge_ledger)
   assert.doesNotMatch(JSON.stringify(playerRoom.body), new RegExp(privateMarker, 'u'))
   assert.equal(playerRoom.body.state.scene.cells[0].feature, undefined)
   assert.equal(playerRoom.body.state.merchants[0].bargains, undefined)
@@ -79,12 +93,13 @@ test('non-admin room and Director response cannot expose private world memory', 
   assert.equal(keepsake.capabilities.catalog_description, ITEM_CATALOG['srd_5_2_1:torch'].description)
 
   const transitioned = await request(baseUrl, '/api/narrate', {
-    method: 'POST', cookie: playerCookie,
+    method: 'POST', cookie: playerCookie, headers: { 'X-Memory-Transport': 'v2' },
     body: { campaignId: 'VIEWER-API', idempotency_key: 'viewer-city-transition', action: '[РЕШЕНИЕ ГРУППЫ] Уходим из склепа и идём в большой город Норвин' },
   })
   assert.equal(transitioned.status, 200, `${JSON.stringify(transitioned.body)}\n${server.output()}`)
   assert.doesNotMatch(JSON.stringify(transitioned.body), new RegExp(privateMarker, 'u'))
   assert.ok(transitioned.body.authoritative_state, JSON.stringify(transitioned.body))
+  assert.equal(Object.hasOwn(transitioned.body.authoritative_state.worldMemory, 'knowledge_revealed'), false)
   assert.equal(transitioned.body.authoritative_state.scene.location, 'Большой город Норвин')
   assert.equal(transitioned.body.authoritative_state.messages.some((message) => message.id === transitioned.body.narration_message_id), true)
   assert.equal(transitioned.body.mechanics.some((event) => event.event_type === 'SceneAdvanced'), true)

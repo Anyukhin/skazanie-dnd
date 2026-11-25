@@ -488,7 +488,7 @@ async fn static_client_on_any_method() {
     assert_eq!(since.status, 304, "If-Modified-Since — как Date.parse");
     let preflight = client.send(Req::new("OPTIONS", "/api/anything")).await;
     assert_eq!(preflight.status, 204);
-    assert_eq!(preflight.header("access-control-allow-headers"), Some("Content-Type, X-Idempotency-Key"));
+    assert_eq!(preflight.header("access-control-allow-headers"), Some("Content-Type, X-Idempotency-Key, X-Memory-Transport"));
 
     let bare = TestServer::start_with(Options { dist: false, ..Options::default() }).await;
     let response = bare.client().get("/").await;

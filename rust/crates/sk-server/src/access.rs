@@ -52,7 +52,15 @@ pub async fn current_user(ctx: &RouteCtx) -> ApiResult<Option<Value>> {
 
 /// `requireUser(req, res)`: 401 `Нужно войти в аккаунт`.
 pub async fn require_user(ctx: &RouteCtx) -> ApiResult<Value> {
-    current_user(ctx).await?.ok_or_else(|| ApiError::new(axum::http::StatusCode::UNAUTHORIZED, "Нужно войти в аккаунт"))
+    let user = current_user(ctx).await?.ok_or_else(|| ApiError::new(axum::http::StatusCode::UNAUTHORIZED, "Нужно войти в аккаунт"))?;
+    let query_v2 = ctx.search_param("memory_transport").as_deref() == Some("v2");
+    let header_v2 = ctx.header("x-memory-transport").eq_ignore_ascii_case("v2");
+    if (query_v2 || header_v2) && !is_admin(&user) {
+        let mut scoped = user.as_object().cloned().unwrap_or_default();
+        scoped.insert("memory_transport_version".into(), Value::from(2));
+        return Ok(Value::Object(scoped));
+    }
+    Ok(user)
 }
 
 /// `requireAdmin(req, res)`: 401 без входа, 403 `Требуются права администратора`.

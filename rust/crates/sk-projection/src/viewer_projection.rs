@@ -186,6 +186,26 @@ fn is_admin(user: Option<&Value>) -> bool {
     is_str(get(user, "role"), "admin")
 }
 
+/// Явная capability клиента для компактной публичной памяти. Поле добавляется
+/// только на серверной копии пользователя и не входит в JSON-проекцию.
+fn memory_transport_v2(user: Option<&Value>) -> bool {
+    !is_admin(user) && get(user, "memory_transport_version").and_then(Value::as_i64) == Some(2)
+}
+
+/// Убирает только дублирующий alias после фильтрации `world_memory_for_viewer`.
+fn compact_public_memory(memory: Value, user: Option<&Value>) -> Value {
+    if !memory_transport_v2(user) {
+        return memory;
+    }
+    let Value::Object(mut object) = memory else { return memory };
+    if object.get("knowledge_ledger").and_then(Value::as_array).is_some()
+        && object.get("knowledge_revealed").and_then(Value::as_array).is_some()
+    {
+        object.remove("knowledge_revealed");
+    }
+    Value::Object(object)
+}
+
 /// Строгое `a === b` для полей JSON: разные объекты не равны.
 fn strict_eq(a: Option<&Value>, b: Option<&Value>) -> bool {
     match (a, b) {
@@ -2271,7 +2291,8 @@ fn player_room(raw_state: &Value, user: Option<&Value>, actor: &Value) -> R<Valu
     room.insert("adventure".into(), public_adventure_for(get(visible_ref, "adventure"))?);
     room.insert("worldMap".into(), public_world_map_for(coalesce(get(visible_ref, "worldMap"), get(source, "worldMap")))?);
     let viewer_card = json!({ "playerId": actor_s, "isAdmin": false, "isPartyMember": true });
-    room.insert("worldMemory".into(), sk_memory::world_memory::world_memory_for_viewer(get(source, "worldMemory").unwrap_or(&Value::Null), &viewer_card));
+    let memory = sk_memory::world_memory::world_memory_for_viewer(get(source, "worldMemory").unwrap_or(&Value::Null), &viewer_card);
+    room.insert("worldMemory".into(), compact_public_memory(memory, user));
     // Карточка зрителя со `state` — без копии состояния в неё (Ск4).
     room.insert("social".into(), sk_social::npc_social::npc_social_for_viewer_in(get(source, "social").unwrap_or(&Value::Null), &viewer_card, state));
     room.insert("scene_npcs".into(), Value::Array(scene_npcs));

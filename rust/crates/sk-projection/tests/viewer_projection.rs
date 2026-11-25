@@ -38,6 +38,26 @@ fn text(value: &Value) -> String {
     js::stringify(value)
 }
 
+#[test]
+fn compact_memory_transport_removes_only_public_alias_for_opted_in_player() {
+    let mut state = private_state();
+    state["worldMemory"] = json!({
+        "schema_version": 2,
+        "entities": [], "facts": [], "relationships": [], "quests": [], "threads": [],
+        "epistemic_claims": [], "summaries": [], "knowledge": { "hero": ["fact:known"] },
+        "knowledge_ledger": [{ "id": "known", "hero_id": "hero", "fact_id": "fact:known" }],
+        "knowledge_revealed": [{ "id": "known", "hero_id": "hero", "fact_id": "fact:known" }],
+    });
+    let legacy = room(&state, &user(), "hero");
+    let opted_user = json!({ "role": "player", "heroIds": ["hero"], "memory_transport_version": 2 });
+    let compact = room(&state, &opted_user, "hero");
+    assert!(legacy["worldMemory"].get("knowledge_revealed").is_some());
+    assert!(compact["worldMemory"].get("knowledge_revealed").is_none());
+    assert_eq!(compact["worldMemory"]["knowledge_ledger"], legacy["worldMemory"]["knowledge_ledger"]);
+    let admin_view = room(&state, &admin(), "");
+    assert!(admin_view["worldMemory"].get("knowledge_revealed").is_some());
+}
+
 fn private_state() -> Value {
     json!({
         "sessionCode": "VISIBLE", "partyMemberIds": ["hero"],

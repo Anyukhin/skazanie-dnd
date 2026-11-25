@@ -6,6 +6,8 @@ import {
   fetchWithTimeout,
   generateItemImage,
   isStateVersionConflictError,
+  MEMORY_TRANSPORT_VERSION,
+  memoryTransportRequestInit,
   narrateWithAgent,
   newIdempotencyKey,
   publishNarrationPreview,
@@ -282,6 +284,10 @@ function roomUrl(sessionCode: string, mapHash = '') {
   return mapHash ? `${base}?map_hash=${encodeURIComponent(mapHash)}` : base
 }
 
+function transportFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  return fetch(input, memoryTransportRequestInit(init))
+}
+
 function loadState(): GameState {
   const requested = new URLSearchParams(window.location.search).get('room')?.toUpperCase()
   const selected = requested || localStorage.getItem(ACTIVE_CAMPAIGN_KEY)?.toUpperCase()
@@ -456,7 +462,7 @@ export function useGameSession(options: {
     if (fullRoomRequest.current?.campaignId === campaignId) return fullRoomRequest.current.request
     const request = (async () => {
       try {
-        const response = await fetch(roomUrl(campaignId))
+        const response = await transportFetch(roomUrl(campaignId))
         if (!response.ok) return false
         const room = roomWithSceneMap(await response.json() as RoomSnapshot & { version?: number })
         if (!room?.state) return false
@@ -615,7 +621,7 @@ export function useGameSession(options: {
     let failedConnects = 0
     const stopIfRoomMissing = async (finalState: ConnectionState = 'offline') => {
       try {
-        const response = await fetch(`/api/rooms/${encodeURIComponent(state.sessionCode)}`)
+        const response = await transportFetch(`/api/rooms/${encodeURIComponent(state.sessionCode)}`)
         const room = await response.json().catch(() => null) as { state?: unknown } | null
         if (response.ok && room?.state) return false
       } catch { return false }
@@ -670,7 +676,7 @@ export function useGameSession(options: {
     function connect() {
       if (!active) return
       setConnectionState('connecting')
-      const nextSource = new EventSource(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/stream`)
+      const nextSource = new EventSource(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/stream?memory_transport=${MEMORY_TRANSPORT_VERSION}`)
       source = nextSource
       nextSource.addEventListener('room', receive as EventListener)
       nextSource.addEventListener('presence', receivePresence as EventListener)
@@ -713,7 +719,7 @@ export function useGameSession(options: {
       try {
         // Сервер узнаёт, какая карта уже есть, и молчит о ней, если она не
         // менялась. Хеш недоверенный и на сервере — только ключ кэша.
-        const response = await fetch(roomUrl(campaignId, latestSceneMapHash()))
+        const response = await transportFetch(roomUrl(campaignId, latestSceneMapHash()))
         if (!response.ok) return
         const received = await response.json() as RoomSnapshot & { version: number }
         // Аудит PR #131, REC-04: кампания проверяется до сравнения версий.
@@ -1039,7 +1045,7 @@ export function useGameSession(options: {
     const campaignId = pending.campaign_id
     try {
       const signal = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(10_000) : undefined
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/dialogue?actor_id=${encodeURIComponent(pending.actor_id)}`, {
+      const response = await transportFetch(`/api/campaigns/${encodeURIComponent(campaignId)}/dialogue?actor_id=${encodeURIComponent(pending.actor_id)}`, {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clarification_id: pending.id }),
         ...(signal ? { signal } : {}),
@@ -1274,7 +1280,7 @@ export function useGameSession(options: {
     if (!recovery || !request) throw new Error(failure)
     writePendingPartyDecision(storage, key, recovery)
     try {
-      const response = await fetch(request.path, request.init)
+      const response = await transportFetch(request.path, request.init)
       const result = await response.json().catch(() => null) as T | null
       if (!response.ok) throw await responseCommandError(response, result, failure)
       if (!result || !complete(result)) throw new Error(incomplete)
@@ -1614,7 +1620,7 @@ export function useGameSession(options: {
       && stateRef.current.sessionCode === current.sessionCode
     setTacticalError(null)
     try {
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, {
+      const response = await transportFetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
         body: JSON.stringify({
@@ -2066,7 +2072,7 @@ export function useGameSession(options: {
     setMerchantError(null)
     setMerchantNarration(null)
     try {
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/merchants/${encodeURIComponent(merchantId)}?actor_id=${encodeURIComponent(actorId)}`)
+      const response = await transportFetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/merchants/${encodeURIComponent(merchantId)}?actor_id=${encodeURIComponent(actorId)}`)
       const result = await response.json().catch(() => null) as MerchantCommandResult | MerchantView | null
       if (epoch !== merchantEpoch.current || current.sessionCode !== stateRef.current.sessionCode) return
       const wrapped = result && 'merchant_view' in result ? result as MerchantCommandResult : null
@@ -2105,7 +2111,7 @@ export function useGameSession(options: {
     setMerchantError(null)
     setMerchantNarration(null)
     try {
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/merchants/${encodeURIComponent(merchantId)}/commands`, {
+      const response = await transportFetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/merchants/${encodeURIComponent(merchantId)}/commands`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idempotency_key: requestId, command: { ...command, expected_state_version: expectedStateVersion } }),
@@ -2156,7 +2162,7 @@ export function useGameSession(options: {
   const executeMerchantLifecycleCommand = useCallback(async (command: MerchantLifecycleCommand) => {
     const current = stateRef.current
     const requestId = commandId()
-    const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/merchants/commands`, {
+    const response = await transportFetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/merchants/commands`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
       body: JSON.stringify({ command: { ...command, expected_state_version: current.state_version ?? 0 } }),
@@ -2171,7 +2177,7 @@ export function useGameSession(options: {
   const assembleMerchant = useCallback(async ({ settlementType, theme, budgetCp }: ShopAssemblyOptions) => {
     const current = stateRef.current
     const requestId = commandId()
-    const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/merchants/assemble`, {
+    const response = await transportFetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/merchants/assemble`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
       body: JSON.stringify({
@@ -2194,7 +2200,7 @@ export function useGameSession(options: {
     const current = stateRef.current
     if (current.mechanics?.combat?.active) throw new Error('Нельзя собирать новое столкновение, пока текущий бой не завершён.')
     const requestId = commandId()
-    const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/encounters/assemble`, {
+    const response = await transportFetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/encounters/assemble`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
       body: JSON.stringify({
@@ -2334,7 +2340,7 @@ export function useGameSession(options: {
     const actorId = state.activePlayerId
     if (!campaignId || !actorId) return
     let cancelled = false
-    void fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/dialogue`)
+    void transportFetch(`/api/campaigns/${encodeURIComponent(campaignId)}/dialogue`)
       .then(async response => response.ok ? await response.json() as {
         clarification?: ActionClarification | null
         actor_id?: string
