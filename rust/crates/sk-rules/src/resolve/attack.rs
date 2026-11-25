@@ -225,9 +225,7 @@ pub fn make_attack(r: &mut Resolve<'_>) -> Flow {
         if distance < 5.0 || distance > range {
             return Err(rule("Цель находится вне дальности атаки", "TARGET_OUT_OF_RANGE"));
         }
-        if range > 5.0 {
-            crate::geometry::forced::assert_clear_actor_trajectory(&state, &actor_id, &target_id, actor_at, target_at, blind_allowed)?;
-        }
+        crate::geometry::forced::assert_clear_actor_trajectory(&state, &actor_id, &target_id, actor_at, target_at, blind_allowed)?;
     }
     let mut modifier = match profile_ref {
         Some(profile) => js::number(profile.get("modifier")),

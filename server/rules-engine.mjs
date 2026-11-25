@@ -4229,7 +4229,7 @@ export function attackForecast(state, attackerIdValue, targetIdValue, { actionId
   // Цель вне досягаемости движок отвергает до броска, поэтому и прогноз обязан
   // сказать «не достать», а не считать шанс с надуманной помехой за дальность.
   const inRange = distanceFeet != null && distanceFeet >= 5 && distanceFeet <= rangeFeet
-  const blockedTrajectory = inRange && rangeFeet > 5 && !hasClearActorTrajectory(state, attackerIdValue, targetIdValue, actorAt, targetAt)
+  const blockedTrajectory = inRange && !hasClearActorTrajectory(state, attackerIdValue, targetIdValue, actorAt, targetAt)
   const swing = attackSwingShape(state, attackerIdValue, targetIdValue, profile, { actorAt, targetAt, distanceFeet })
   const hitChance = d20HitChance(armorClass - modifier, swing)
   // Крит по обездвиженной цели в упор гарантирован правилами, а не костью.
@@ -13953,9 +13953,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         if (!actorAt || !targetAt) throw new RulesValidationError('Участники боя должны находиться на карте', 'MAP_POSITION_REQUIRED')
         distanceFeet = distanceBetweenActorPositions(state, command.actor_id, actorAt, targetId, targetAt)
         if (distanceFeet < 5 || distanceFeet > profile.range_feet) throw new RulesValidationError('Цель находится вне дальности атаки', 'TARGET_OUT_OF_RANGE')
-         if (profile.range_feet > 5) assertClearActorTrajectory(state, command.actor_id, targetId, actorAt, targetAt, {
-           allowHiddenTarget: blindTargetAllowed(command, context, state),
-         })
+        assertClearActorTrajectory(state, command.actor_id, targetId, actorAt, targetAt, {
+          allowHiddenTarget: blindTargetAllowed(command, context, state),
+        })
       }
       let modifier = profile?.modifier ?? safeInteger(command.attack_modifier, 0)
       const enemyAdjacent = profile?.kind === 'ranged' && listActors(state).some((candidate) => isEnemyActor(state, actorId(candidate)) !== isEnemyActor(state, command.actor_id) && isLivingActor(candidate) && (() => {

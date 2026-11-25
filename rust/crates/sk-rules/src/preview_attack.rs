@@ -234,7 +234,7 @@ pub fn attack_forecast(state: &Value, attacker_id: &str, target_id: &str, option
     let modifier = js::safe_int(profile.get("modifier"), 0) + condition_numeric_bonus(state, attacker_id, "attackBonus");
     let range_feet = js::safe_int(profile.get("range_feet"), 5);
     let in_range = distance_feet.is_some_and(|distance| distance >= 5.0 && distance <= range_feet as f64);
-    let blocked_trajectory = in_range && range_feet > 5 && !has_clear_actor_trajectory(state, attacker_id, target_id, actor_at, target_at, false);
+    let blocked_trajectory = in_range && !has_clear_actor_trajectory(state, attacker_id, target_id, actor_at, target_at, false);
     let swing = attack_swing_shape(state, attacker_id, target_id, Some(&profile), SwingOptions { actor_at, target_at, distance_feet, ..SwingOptions::default() });
     let hit_chance = d20_hit_chance(armor_class - modifier as f64, swing.advantage, swing.disadvantage);
     let melee = profile.get("kind").and_then(Value::as_str) == Some("melee");
