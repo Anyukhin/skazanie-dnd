@@ -8,7 +8,7 @@
  *  - заводит владельца и игроков по приглашениям — по аккаунту на героя;
  *  - создаёт кампанию из авторского мира `astohan-plains` так же, как мастер
  *    создания на сайте (редакция 2014, стартовый уровень 7);
- *  - создаёт героев (по умолчанию воин, жрица, маг, плут) импортом и
+ *  - создаёт героев (по умолчанию воин, варвар, монах, паладин) импортом и
  *    поэтапным повышением до 7-го уровня, выборы уровня — из серверного каталога;
  *  - играет сценарий: поручение Ареса, принятие задания голосованием, торговля,
  *    улики из заготовок ведущего, реальные фразы игроков из
@@ -22,7 +22,7 @@
  *
  *   node eval/astohan-playthrough.mjs                 # без модели, 3–15 мин до развязки
  *   node eval/astohan-playthrough.mjs --seed 7        # повторяемые кости
- *   node eval/astohan-playthrough.mjs --party fighter,cleric   # быстрый прогон вдвоём
+ *   node eval/astohan-playthrough.mjs --party fighter,paladin  # быстрый прогон вдвоём
  *   node eval/astohan-playthrough.mjs --tactics bot            # прежняя простая тактика бота
  *   node eval/astohan-playthrough.mjs --live          # с моделью из .env, бюджет и темп
  *   node eval/astohan-playthrough.mjs --live --judge  # плюс оценка текста моделью-судьёй
@@ -43,6 +43,7 @@ import { fileURLToPath } from 'node:url'
 
 import { abilityScoreChoiceLevelsFor, classSkillRuleFor, featureChoiceGroupsFor, normalizedClassSkillProficiencies } from '../server/character-progression.mjs'
 import { characterCreationChoicesComplete } from '../server/character-lifecycle.mjs'
+import { astohanPilotBuildCatalog, stagedCommandsForPilotBuild } from '../server/astohan-pilot-builds.mjs'
 import { combatClassCatalogInfo, combatSubclassOptionsFor, normalizedCombatSubclassFor } from '../server/combat-actions.mjs'
 import { combatSpellsFor, spellSelectionRulesFor } from '../server/combat-spells.mjs'
 import { movementForActor, movementStepCostFor, normalizeCampaignState, previewApproachAttack } from '../server/rules-engine.mjs'
@@ -50,6 +51,7 @@ import { occupiedPositions, shortestTacticalPath } from '../server/rules/tactica
 import { footprintCellsFor } from '../server/actor-footprint.mjs'
 import { planHeroCombatCommand } from '../server/party-tactics.mjs'
 import { isDirectorPartyDecision } from '../src/director-continuation.mjs'
+import { pilotImportDocument } from '../test/kit/astohan-pilot.mjs'
 import { findNarratorCliches } from '../server/narrator-craft-quality.mjs'
 import { measureNarratorCraft } from './narrator-craft-metrics.mjs'
 import { freePort, rustCutoverAudit, spawnRustStand, standImpl } from './stand-server.mjs'
@@ -69,7 +71,8 @@ const VISIT = option('visit', '').split(',').map((entry) => entry.trim()).filter
 const KEEP = flag('keep') || VISIT.length > 0
 // Судья тратит вызовы модели, поэтому включается только явно.
 const JUDGE = flag('judge')
-const PARTY = option('party', 'fighter,cleric,wizard,rogue').split(',').map((entry) => entry.trim()).filter(Boolean)
+const PILOT_BUILDS = astohanPilotBuildCatalog()
+const PARTY = option('party', PILOT_BUILDS.builds.map((recipe) => recipe.id).join(',')).split(',').map((entry) => entry.trim()).filter(Boolean)
 // Тактика героев в бою: `server` — серверная автотактика (`planHeroCombatCommand`,
 // та же, что у автономных героев и стенда боёв 7-го уровня: ячейки всех
 // кругов, умения классов, реакции), `bot` — прежняя простая лестница бота
@@ -90,7 +93,7 @@ const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP
 const CODE = 'ASTOHAN-RUN'
 const TEMPLATE_ID = 'astohan-plains'
 const RULESET_ID = 'dnd_5e_2014'
-const START_LEVEL = 7
+const START_LEVEL = PILOT_BUILDS.target_level
 const DEADLINE = Date.now() + MINUTES * 60_000
 const startedAt = Date.now()
 const base = `http://127.0.0.1:${PORT}`
@@ -336,28 +339,6 @@ async function command(actorId, commandValue, label = commandValue.command_type,
 // Создание героев: импорт первого уровня и поэтапное повышение до седьмого
 
 const HERO_PLANS = {
-  fighter: {
-    name: 'Торвальд', characterClass: 'fighter', role: 'Воин · ур. 1', species: 'Холмовой дварф',
-    document: {
-      character: 'Торвальд', name: 'Владелец', role: 'Воин · ур. 1', characterClass: 'fighter', species: 'Холмовой дварф',
-      background: 'Солдат', backgroundId: 'soldier', backgroundChoices: { tools: ['dice_set'], languages: [] },
-      speciesChoices: { 'artisan-tool': ['smiths_tools'] },
-      starterEquipmentChoices: { armor: ['chain-mail'], 'melee-loadout': ['longsword-shield'], secondary: ['light-crossbow'], pack: ['explorers-pack'] },
-      level: 1, experience: 0,
-      abilities: { str: 15, dex: 14, con: 15, int: 12, wis: 11, cha: 8 },
-      abilityGeneration: {
-        policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2, method: 'standard_array',
-        baseScores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
-        originBonusProfileId: 'dwarf-hill', originBonuses: { str: 0, dex: 0, con: 2, int: 0, wis: 1, cha: 0 }, speciesOptionId: 'dwarf-hill',
-      },
-      baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['athletics', 'perception'],
-      selectedFeatureIds: ['fighting-style-defense'], knownSpellIds: [], preparedSpellIds: [],
-    },
-    skills: ['athletics', 'perception', 'survival', 'intimidation', 'insight'],
-    subclass: ['Чемпион'],
-    asi: ['str', 'con'],
-    cantrips: [], spells: [],
-  },
   cleric: {
     name: 'Ильва', characterClass: 'cleric', role: 'Жрец · ур. 1', species: 'Холмовой дварф',
     document: {
@@ -398,6 +379,7 @@ const HERO_PLANS = {
       baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['insight', 'investigation'], selectedFeatureIds: [],
       knownSpellIds: ['fire-bolt', 'mage-hand', 'ray-of-frost', 'magic-missile', 'shield', 'mage-armor', 'sleep', 'thunderwave', 'burning-hands'],
       preparedSpellIds: ['magic-missile', 'shield', 'mage-armor', 'sleep'],
+      phbCreation: { schema_version: 1, classChoices: {} },
     },
     skills: ['insight', 'investigation', 'arcana', 'history'],
     subclass: ['Школа Воплощения'],
@@ -409,7 +391,7 @@ const HERO_PLANS = {
     name: 'Шорох', characterClass: 'rogue', role: 'Плут · ур. 1', species: 'Легконогий полурослик',
     document: {
       character: 'Шорох', name: 'Четвёртый игрок', role: 'Плут · ур. 1', characterClass: 'rogue', species: 'Легконогий полурослик',
-      background: 'Преступник', backgroundId: 'criminal', backgroundChoices: { tools: ['dice_set'], languages: [] },
+      background: 'Преступник', backgroundId: 'criminal', backgroundChoices: { tools: ['dice_set'], languages: [], replacementTools: ['smiths_tools'] },
       starterEquipmentChoices: { primary: ['rapier'], secondary: ['shortbow'], pack: ['burglars-pack'] },
       level: 1, experience: 0,
       abilities: { str: 8, dex: 17, con: 14, int: 12, wis: 13, cha: 11 },
@@ -420,6 +402,7 @@ const HERO_PLANS = {
       },
       baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['acrobatics', 'perception', 'sleight_of_hand', 'investigation'],
       selectedFeatureIds: [], knownSpellIds: [], preparedSpellIds: [],
+      phbCreation: { schema_version: 1, classChoices: { expertise: ['acrobatics', 'perception'] } },
     },
     skills: ['acrobatics', 'perception', 'sleight_of_hand', 'investigation'],
     subclass: ['Вор'],
@@ -427,6 +410,9 @@ const HERO_PLANS = {
     cantrips: [], spells: [],
   },
 }
+
+const PILOT_NAMES = { fighter: 'Торвальд', barbarian: 'Лада', monk: 'Мирра', paladin: 'Рейна' }
+for (const recipe of PILOT_BUILDS.builds) HERO_PLANS[recipe.id] = { name: PILOT_NAMES[recipe.id], recipe }
 
 /** Недостающие выборы текущего уровня — тем же каталогом, что и проверка сервера. */
 function pendingChoices(actor, plan, rulesetId) {
@@ -477,14 +463,24 @@ function pendingChoices(actor, plan, rulesetId) {
   return commands
 }
 
-async function buildHero(account, plan) {
+async function buildHero(account, plan, catalog) {
   const actorId = account.heroId
-  const imported = await command(actorId, { command_type: 'ImportCharacter', document: { schema: 'skazanie.character', schema_version: 1, character: plan.document } }, `Импорт: ${plan.name}`)
+  const document = plan.recipe ? pilotImportDocument(catalog, plan.recipe, plan.name)
+    : { schema: 'skazanie.character', schema_version: 1, character: plan.document }
+  const imported = await command(actorId, { command_type: 'ImportCharacter', document }, `Импорт: ${plan.name}`)
   if (imported.status !== 200) {
     finding('blocker', 'character-import', `${plan.name}: импорт отклонён ${imported.body?.code ?? imported.status} — ${short(imported.body?.error ?? imported.text, 300)}`)
     return false
   }
-  for (let guard = 0; guard < 40; guard += 1) {
+  for (const step of plan.recipe ? stagedCommandsForPilotBuild(plan.recipe, actorId) : []) {
+    const result = await command(actorId, step, `${plan.name}: ${step.command_type}`)
+    if (result.status !== 200) {
+      finding('blocker', 'pilot-build', `${plan.name}: ${step.command_type} отклонён ${result.body?.code ?? result.status} — ${short(result.body?.error ?? result.text, 240)}`)
+      return false
+    }
+    if (step.command_type === 'LevelUp') stats.levelUps += 1
+  }
+  for (let guard = 0; !plan.recipe && guard < 40; guard += 1) {
     const state = await room(account)
     const actor = heroOf(state, actorId)
     if (!actor.characterSetupRequired && Number(actor.level) >= START_LEVEL) break
@@ -2025,8 +2021,10 @@ async function main() {
   await checkGuestProjection('до первой реплики')
 
   stage('Создание героев 7-го уровня')
+  const catalog = await request(`/api/rulesets/${RULESET_ID}/character-creation`, { account: accounts.owner })
+  if (catalog.status !== 200) throw new Error(`Каталог создания героя: ${catalog.status}`)
   const built = []
-  for (const account of accounts.players) built.push(await buildHero(account, account.plan))
+  for (const account of accounts.players) built.push(await buildHero(account, account.plan, catalog.body))
   if (!built.every(Boolean)) throw new Error('Герои не созданы — дальше прогон не имеет смысла')
 
   await openingScene()

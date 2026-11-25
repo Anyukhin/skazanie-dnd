@@ -3786,6 +3786,10 @@ function assertClearActorToPoint(state, actorId, from, to) {
   return clear.trajectory
 }
 
+function isStrengthMeleeAttack(profile) {
+  return profile?.kind === 'melee' && (profile.ability ?? 'str') === 'str'
+}
+
 /**
  * Единственный владелец вопроса «с преимуществом или с помехой бьёт этот удар».
  * Им пользуется и сам бросок в `MakeAttack`, и прогноз попадания для интерфейса,
@@ -3826,7 +3830,7 @@ function attackSwingShape(state, attackerIdValue, targetIdValue, profile, {
   if (profile?.advantage) advantageSources.push('свойство атаки')
   if (attackerConditions.has('helped')) advantageSources.push('помощь союзника')
   if (attackerConditions.has('hidden')) advantageSources.push('атака из укрытия')
-  if (attackerConditions.has('reckless')) advantageSources.push('безрассудная атака')
+  if (attackerConditions.has('reckless') && (!usesDnd2014(state) || isStrengthMeleeAttack(profile))) advantageSources.push('безрассудная атака')
   if (attackerConditions.has('steady-aim')) advantageSources.push('точный прицел')
   if (activeTrueStrikeFor(state, attackerIdValue, targetIdValue)) advantageSources.push('верный удар')
   if (attackerConditions.has('silvery-fortune')) advantageSources.push('серебряная удача')
@@ -14476,7 +14480,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           }, []))
           return { rider, roll }
         })
-        const rageBonus = actorConditions.has('raging') && (profile?.range_feet ?? 5) <= 5 ? (safeInteger(actor?.level, 1) >= 9 ? 3 : 2) : 0
+        const rageAttack = usesDnd2014(state) ? isStrengthMeleeAttack(profile) : (profile?.range_feet ?? 5) <= 5
+        const rageBonus = actorConditions.has('raging') && rageAttack ? (safeInteger(actor?.level, 1) >= 9 ? 3 : 2) : 0
         // Лишние кости от зачарований. Как и у Божественного благоволения, на
         // критическом попадании кость удваивается, а тип берётся от оружия.
         let enchantmentDamage = conditionNumericBonus(state, command.actor_id, 'weaponDamageBonus')

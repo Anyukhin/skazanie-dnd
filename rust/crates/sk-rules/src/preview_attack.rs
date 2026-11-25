@@ -105,6 +105,10 @@ pub fn swing_condition_modifiers(state: &Value, attacker_id: &str, target_id: &s
     )
 }
 
+pub(crate) fn is_strength_melee_attack(profile: Option<&Value>) -> bool {
+    at(profile, "kind").and_then(Value::as_str) == Some("melee") && at(profile, "ability").and_then(Value::as_str).unwrap_or("str") == "str"
+}
+
 /// `attackSwingShape(state, attackerId, targetId, profile, options)`:
 /// преимущество, помеха и их причины.
 pub fn attack_swing_shape(state: &Value, attacker_id: &str, target_id: &str, profile: Option<&Value>, options: SwingOptions) -> SwingShape {
@@ -144,7 +148,7 @@ pub fn attack_swing_shape(state: &Value, attacker_id: &str, target_id: &str, pro
     add(&mut advantage_sources, js::truthy(at(profile, "advantage")), "свойство атаки");
     add(&mut advantage_sources, attacker_conditions.contains("helped"), "помощь союзника");
     add(&mut advantage_sources, attacker_conditions.contains("hidden"), "атака из укрытия");
-    add(&mut advantage_sources, attacker_conditions.contains("reckless"), "безрассудная атака");
+    add(&mut advantage_sources, attacker_conditions.contains("reckless") && (!game::uses_2014(state) || is_strength_melee_attack(profile)), "безрассудная атака");
     add(&mut advantage_sources, attacker_conditions.contains("steady-aim"), "точный прицел");
     add(&mut advantage_sources, active_true_strike_for(state, attacker_id, target_id), "верный удар");
     add(&mut advantage_sources, attacker_conditions.contains("silvery-fortune"), "серебряная удача");
