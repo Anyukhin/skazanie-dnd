@@ -253,7 +253,7 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
-import { applyScenarioMapReveals, campaignScenario, scenarioArmoryRules, scenarioClueFactId, scenarioFoundClueIds, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { applyScenarioMapReveals, campaignScenario, scenarioArmoryRules, scenarioClueFactId, scenarioClueQuestProgress, scenarioFoundClueIds, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
 import { wildShapeFormFor } from './wild-shape.mjs'
 import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueActionChecks, dialogueFlags, dialogueFor, dialogueGrantedFactIds, dialogueOptionsFor, dialogueRevealFactId, normalizeDialogueState } from './campaign-dialogues.mjs'
 import {
@@ -22852,6 +22852,18 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       // герою отряда; повторная находка той же тайны предмета не удваивает.
       const found = command.command_type === 'RecordWorldFact' && command.fact?.predicate === 'discovery'
         ? String(command.fact?.supersedes_fact_id ?? '') : ''
+      const clueProgress = found ? scenarioClueQuestProgress(state, command.fact) : null
+      if (clueProgress) {
+        const { objective, chapterQuest, questIds } = clueProgress
+        events.push(eventFrom(command, 'ObjectiveUpdated', { objective }, []))
+        if (chapterQuest) events.push(eventFrom(command, 'QuestUpserted', { schema_version: 2, quest: {
+          ...chapterQuest, title: objective, summary: command.fact.summary, objectives: [objective],
+        } }, []))
+        for (const questId of questIds) events.push(eventFrom(command, 'QuestClockAdvanced', {
+          schema_version: 2, quest_id: questId, amount: 1,
+          proof_fact_ids: [command.fact.id], proof_source_event_ids: command.fact.source_event_ids,
+        }, []))
+      }
       const rewardId = found ? scenarioClueRewardCatalogId(state, found) : null
       // Награду за ту же тайну уже мог выдать разговор («Мы поможем вам» у Ломара).
       const alreadyFound = rewardId && ((state.worldMemory?.facts ?? []).some((fact) => fact?.predicate === 'discovery' && String(fact.supersedes_fact_id ?? '') === found)

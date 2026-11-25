@@ -225,6 +225,9 @@ function validateScenario(scenario) {
       if (secret.grants_catalog_id != null && !SCENARIO_ITEM_ID.test(String(secret.grants_catalog_id))) {
         invalid(`${scenario.id}/${secretId}: находка выдаёт предмет каталога сценария`)
       }
+      if (secret.next_objective != null && (typeof secret.next_objective !== 'string' || !clean(secret.next_objective, 121) || clean(secret.next_objective, 121).length > 120)) {
+        invalid(`${scenario.id}/${secretId}: следующая цель — текст до 120 символов`)
+      }
     }
   }
   const beats = Array.isArray(scenario.beats) ? scenario.beats : invalid(`${scenario.id}: beats`)
@@ -534,6 +537,30 @@ export function scenarioClueRewardCatalogId(state, clueFactId) {
     }
   }
   return null
+}
+
+/** Продвижение, заданное автором для находки в её собственной сцене. */
+export function scenarioClueQuestProgress(/** @type {any} */ state, /** @type {any} */ fact) {
+  if (fact?.predicate !== 'discovery' || fact.visibility !== 'party' || !fact.source_event_ids?.length) return null
+  const scenario = campaignScenario(state)
+  const card = scenario && locationCard(scenario, currentLocationId(state))
+  const clue = card?.secrets?.find((/** @type {any} */ entry) => entry.next_objective && scenarioClueFactId(scenario, entry.id) === fact.supersedes_fact_id)
+  if (!clue || foundClueFactIds(state).has(fact.supersedes_fact_id)) return null
+  const secret = state.worldMemory?.facts?.find((/** @type {any} */ entry) => entry.id === fact.supersedes_fact_id && entry.subject_id === fact.subject_id)
+  if (!secret) return null
+
+  const chapterId = `quest:chapter:${state.adventure?.chapter}`
+  const quests = (state.worldMemory?.quests ?? []).filter((/** @type {any} */ quest) => quest.status === 'active' && quest.visibility === 'party')
+  const chapterQuest = quests.find((/** @type {any} */ quest) => quest.id === chapterId && quest.entity_ids?.includes(secret.subject_id))
+  // У стартового расследования ключ `quest-` + 12 символов сида кампании.
+  const investigation = quests.find((/** @type {any} */ quest) => /^quest-[0-9a-f]{12}$/u.test(quest.id))
+  return {
+    objective: clean(clue.next_objective, 120),
+    chapterQuest,
+    questIds: [chapterQuest, investigation].filter((/** @type {any} */ quest) => quest?.clock?.current < quest?.clock?.max
+      && !fact.source_event_ids.some((/** @type {string} */ id) => quest.progress_source_event_ids?.includes(id)))
+      .map((/** @type {any} */ quest) => quest.id),
+  }
 }
 
 /**
