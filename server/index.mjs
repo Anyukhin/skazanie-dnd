@@ -227,12 +227,13 @@ const textBaseUrl = openRouterKey ? openRouterBaseUrl : baseUrl
 const ollamaModel = String(process.env.DND_AI_OLLAMA_MODEL ?? '').trim()
 const ollamaBaseUrl = String(process.env.DND_AI_OLLAMA_BASE_URL ?? '').trim() || 'http://127.0.0.1:11434/v1'
 const textModelConfigured = Boolean(textApiKey || ollamaModel)
+const constrainedModels = openRouterKey ? freeModels : !apiKey && ollamaModel ? [ollamaModel] : null
 // Умолчание — по перебору 2026-10-01 (`docs/model-reasoning-sweep-2026-10-01.md`).
-const model = freeModels[0] || process.env.DND_AI_MODEL || 'openai/gpt-6-luna'
-const fallbackModels = openRouterKey ? freeModels.slice(1) : [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'google/gemini-2.5-flash-lite,z-ai/glm-5.3-flash,deepseek/deepseek-v4-flash,openai/gpt-4.1-nano')
+const model = constrainedModels?.[0] || process.env.DND_AI_MODEL || 'openai/gpt-6-luna'
+const fallbackModels = constrainedModels ? constrainedModels.slice(1) : [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'google/gemini-2.5-flash-lite,z-ai/glm-5.3-flash,deepseek/deepseek-v4-flash,openai/gpt-4.1-nano')
   .split(',').map((value) => value.trim()).filter((value) => value && value !== model))].slice(0, 5)
 const automaticAiModels = [model, ...fallbackModels]
-const allowedAiModels = Object.freeze(openRouterKey ? automaticAiModels : [...new Set([...automaticAiModels, ...SELECTABLE_EXTRA_MODELS])])
+const allowedAiModels = Object.freeze(constrainedModels ?? [...new Set([...automaticAiModels, ...SELECTABLE_EXTRA_MODELS])])
 const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
 const modelTimeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS || 9_000)
 const modelProbeTimeoutMs = Number(process.env.DND_AI_PROBE_TIMEOUT_MS || 15_000)

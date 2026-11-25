@@ -42,6 +42,11 @@ for (const cloudConfigured of [true, false]) {
       code: 'OLLAMA-API',
       bootstrap: { slotCount: 2, world: { preset: 'Классическое фэнтези' }, rulesetId: 'dnd_5e_2014' },
     })
+    if (!cloudConfigured) {
+      const settings = expectStatus(await player.get('/api/campaigns/OLLAMA-API/settings'))
+      assert.deepEqual(settings.availableModels, [model])
+      assert.equal(settings.settings.model, model)
+    }
 
     assert.ok(local.requests.some((request) => request.body?.response_format?.type === 'json_schema'), 'схема создателя доходит до Ollama')
     assert.ok(local.requests.some((request) => !request.body?.response_format), 'летописец использует тот же резерв')

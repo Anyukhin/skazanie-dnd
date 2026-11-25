@@ -175,16 +175,24 @@ impl Config {
 
     /// То же с подставным окружением (тесты паритета `Number(env)`).
     pub fn from_env_with(root: &Path, cwd: &Path, env: &dyn Fn(&str) -> Option<String>) -> Self {
+        let api_key = non_empty(env("ROUTERAI_API_KEY")).unwrap_or_default();
         let openrouter_api_key = openrouter_api_key(env);
-        let free_models = (!openrouter_api_key.is_empty()).then(|| openrouter_models_from(env("DND_AI_OPENROUTER_MODELS")));
-        let model = free_models.as_ref().map(|models| models[0].clone())
+        let ollama_model = non_empty(env("DND_AI_OLLAMA_MODEL"));
+        let constrained_models = if !openrouter_api_key.is_empty() {
+            Some(openrouter_models_from(env("DND_AI_OPENROUTER_MODELS")))
+        } else if api_key.is_empty() {
+            ollama_model.clone().map(|model| vec![model])
+        } else {
+            None
+        };
+        let model = constrained_models.as_ref().map(|models| models[0].clone())
             .or_else(|| non_empty(env("DND_AI_MODEL"))).unwrap_or_else(|| DEFAULT_MODEL.to_string());
-        let fallback_models = free_models.as_ref().map_or_else(
+        let fallback_models = constrained_models.as_ref().map_or_else(
             || fallback_models_from(env("DND_AI_FALLBACK_MODELS"), &model),
             |models| models[1..].to_vec(),
         );
         let automatic_ai_models: Vec<String> = std::iter::once(model.clone()).chain(fallback_models.iter().cloned()).collect();
-        let allowed_ai_models = free_models.unwrap_or_else(|| {
+        let allowed_ai_models = constrained_models.unwrap_or_else(|| {
             unique(automatic_ai_models.iter().cloned().chain(SELECTABLE_EXTRA_MODELS.iter().map(|model| model.to_string())))
         });
         let base_url = non_empty(env("ROUTERAI_BASE_URL")).unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
@@ -199,7 +207,7 @@ impl Config {
             dist_dir: root.join("dist"),
             admin_setup_token: non_empty(env("ADMIN_SETUP_TOKEN")).unwrap_or_default(),
             cookie_secure: env("COOKIE_SECURE").as_deref() == Some("true"),
-            api_key: non_empty(env("ROUTERAI_API_KEY")).unwrap_or_default(),
+            api_key,
             base_url,
             model,
             fallback_models,
@@ -211,7 +219,7 @@ impl Config {
             ai_failure_cooldown_ms: env_number(env, "DND_AI_FAILURE_COOLDOWN_MS", 120_000.0),
             ai_daily_token_limit: env_number(env, "DND_AI_DAILY_TOKEN_LIMIT", 2_000_000.0),
             lore_model: non_empty(env("DND_AI_LORE_MODEL")).unwrap_or_else(|| DEFAULT_LORE_MODEL.to_string()),
-            ollama_model: non_empty(env("DND_AI_OLLAMA_MODEL")),
+            ollama_model,
             ollama_base_url,
             openrouter_api_key,
             openrouter_base_url: openrouter_test_url(env).unwrap_or_else(|| DEFAULT_OPENROUTER_BASE_URL.to_string()),

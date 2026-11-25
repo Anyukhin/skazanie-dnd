@@ -65,6 +65,9 @@ for (const rateLimited of [false, true]) {
       code: 'OPENROUTER-API',
       bootstrap: { slotCount: 2, world: { preset: 'Классическое фэнтези' }, rulesetId: 'dnd_5e_2014' },
     })
+    const settings = expectStatus(await player.get('/api/campaigns/OPENROUTER-API/settings'))
+    assert.deepEqual(settings.availableModels, cloudModels)
+    assert.equal(settings.settings.model, freeModels[0])
 
     assert.equal(routerAi.requests.length, 0, 'платный текстовый маршрут и стартовые пробы отключены')
     assert.ok(cloud.requests.every(({ body, headers }) => cloudModels.includes(body?.model) && headers.authorization === 'Bearer kit-openrouter-key'))
