@@ -5844,12 +5844,31 @@ async function handleHttpRequest(req, res) {
         const subsequentEvents = latest.state_version > originalVersion
           ? await eventStore.getEvents(commandMatch[1], { after_version: originalVersion, up_to_version: latest.state_version })
           : []
-        const mechanics = [...(result.mechanics ?? []), ...subsequentEvents]
+        let responseEvents = subsequentEvents
+        let completedState = latest.state
+        let completedVersion = latest.state_version
+        if (latest.state?.mechanics?.combat?.active !== true && latest.state?.mechanics?.encounter?.status === 'ended') {
+          const completionRun = await postCommitCoordinator.run({
+            campaignId: commandMatch[1],
+            state: latest.state,
+            events: subsequentEvents,
+            commitKey: idempotencyKey,
+            stages: ['encounter-completion'],
+          })
+          if (Array.isArray(completionRun.results?.['encounter-completion']?.events)
+            && completionRun.results['encounter-completion'].events.length) {
+            const completed = await eventStore.load(commandMatch[1])
+            completedState = completed.state
+            completedVersion = completed.state_version
+            responseEvents = await eventStore.getEvents(commandMatch[1], { after_version: originalVersion, up_to_version: completed.state_version })
+          }
+        }
+        const mechanics = [...(result.mechanics ?? []), ...responseEvents]
           .filter((event, index, all) => all.findIndex((candidate) => String(candidate.event_id ?? `${candidate.state_version_after}:${candidate.event_type}`) === String(event.event_id ?? `${event.state_version_after}:${event.event_type}`)) === index)
         result = {
           ...result,
-          state_version: latest.state_version,
-          authoritative_state: latest.state,
+          state_version: completedVersion,
+          authoritative_state: completedState,
           mechanics,
           npc_turns: scheduler.turns,
         }

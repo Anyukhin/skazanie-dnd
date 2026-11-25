@@ -686,14 +686,14 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
     }
     if js::truthy(result.get("authoritative_state")) {
         let _span = sk_store::perf::span("cmd.settle_after_commit");
-        settle_after_commit(core, campaign_id, &mut result, &types, resolves_reaction).await?;
+        settle_after_commit(core, campaign_id, &mut result, &types, resolves_reaction, &admitted.idempotency_key).await?;
     }
     let _span = sk_store::perf::span("cmd.respond");
     respond(core, &set, admitted, &actor, command_actor.as_ref(), &types, &merchant_commands, pending.hold.take(), result).await
 }
 
 /// Продолжение боя и свежая голова журнала (5781–5807).
-async fn settle_after_commit(core: &Rc<GameCore>, campaign_id: &str, result: &mut Value, types: &IndexSet<String>, resolves_reaction: bool) -> Result<(), Stop> {
+async fn settle_after_commit(core: &Rc<GameCore>, campaign_id: &str, result: &mut Value, types: &IndexSet<String>, resolves_reaction: bool, idempotency_key: &str) -> Result<(), Stop> {
     let authoritative = result.get("authoritative_state").cloned().unwrap_or(Value::Null);
     let original = nullish(result.get("state_version"), get(Some(&authoritative), "state_version")).cloned().unwrap_or(Value::from(0));
     let original_version = js::number(Some(&original));
@@ -713,8 +713,30 @@ async fn settle_after_commit(core: &Rc<GameCore>, campaign_id: &str, result: &mu
     } else {
         Vec::new()
     };
-    let latest = core.events.load(campaign_id, &LoadOptions::default())?;
-    let subsequent = if (latest.state_version as f64) > original_version { core.events.get_events(campaign_id, original_version as i64, Some(latest.state_version))? } else { Vec::new() };
+    let mut latest = core.events.load(campaign_id, &LoadOptions::default())?;
+    let mut subsequent = if (latest.state_version as f64) > original_version { core.events.get_events(campaign_id, original_version as i64, Some(latest.state_version))? } else { Vec::new() };
+    if get(get(get(Some(&latest.state), "mechanics"), "encounter"), "status").and_then(Value::as_str) == Some("ended")
+        && !js::truthy(get(get(Some(&latest.state), "mechanics"), "combat").and_then(|combat| combat.get("active")))
+    {
+        let stages: [&str; 1] = ["encounter-completion"];
+        let key = format!("combat-completion:{campaign_id}:{idempotency_key}");
+        let run = crate::clocks::run_post_commit(core, crate::clocks::PostCommitRequest {
+            campaign_id,
+            state: &latest.state,
+            events: &subsequent,
+            commit_key: &key,
+            stages: Some(&stages),
+            context: serde_json::Map::new(),
+        }).await;
+        if run.results.get("encounter-completion").and_then(|value| value.as_ref()).is_some() {
+            latest = core.events.load(campaign_id, &LoadOptions::default())?;
+            subsequent = if (latest.state_version as f64) > original_version {
+                core.events.get_events(campaign_id, original_version as i64, Some(latest.state_version))?
+            } else {
+                Vec::new()
+            };
+        }
+    }
     let identity = |event: &Value| match get(Some(event), "event_id") {
         Some(id) if !id.is_null() => js::string(Some(id)),
         _ => format!("{}:{}", js::string(get(Some(event), "state_version_after")), js::string(get(Some(event), "event_type"))),
