@@ -151,6 +151,11 @@ const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмо�
 
 const SEARCH_SKILLS = new Set(['perception', 'investigation', 'survival'])
 
+function usesAuthoredSceneSearch(state) {
+  const concept = state.campaignConcept
+  return concept?.arc?.version === 'skazanie:scenario-arc-v1' && concept.campaign_mode !== 'persistent'
+}
+
 const TESTIMONY_VERB = /(?<![\p{L}\p{M}])(?:видел\p{L}*|слышал\p{L}*|знает|знал\p{L}*|помнит|помнил\p{L}*|заметил\p{L}*|рассказ\p{L}*|клянётся|клянется)(?![\p{L}\p{M}])/iu
 
 function testimonyOfHolder(entry) {
@@ -216,21 +221,24 @@ function secretAlreadyTold(state, fact) {
  * (`discovery` с `supersedes_fact_id`): тайна становится общим знанием одним
  * событием, а повтор того же хода не открывает её дважды.
  */
-function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actionText = '', topicalOnly = false } = {}) {
+function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actionText = '', goalSummary = '', topicalOnly = false, unambiguousAuthored = false } = {}) {
   const memory = state.worldMemory ?? {}
   const normalizedSkill = String(skill ?? '').replace(/_/gu, '-')
+  const authoredScenario = usesAuthoredSceneSearch(state)
+  const inquiry = authoredScenario ? actionText : `${actionText} ${goalSummary}`
   const location = text(state.scene?.location, 160).toLocaleLowerCase('ru')
   const hereIds = new Set((memory.entities ?? [])
-    .filter((entity) => location && text(entity?.name, 160).toLocaleLowerCase('ru') === location)
+    .filter((entity) => location && (!authoredScenario || entity?.kind === 'location') && text(entity?.name, 160).toLocaleLowerCase('ru') === location)
     .map((entity) => String(entity.id)))
-  const spoken = secretStems(actionText)
+  const spoken = secretStems(inquiry)
+  if (authoredScenario) for (const stem of secretStems(location)) spoken.delete(stem)
   const candidates = (memory.facts ?? [])
     .filter((fact) => fact && GM_SECRET_PREDICATES.has(fact.predicate))
     .filter((fact) => fact.status === 'active')
     .filter((fact) => !secretAlreadyTold(state, fact))
     .map((fact) => ({ fact, meta: parseGmSecretObject(fact.object) }))
     .map((entry) => {
-      const topic = secretStems(`${entry.meta.topic} ${entry.fact.summary}`)
+      const topic = secretStems(authoredScenario ? entry.meta.topic : `${entry.meta.topic} ${entry.fact.summary}`)
       return {
         ...entry,
         exact: entry.meta.skills.includes(normalizedSkill),
@@ -242,7 +250,7 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
         personal: Boolean(entry.meta.hero_id),
       }
     })
-    .filter((entry) => entry.exact || entry.related)
+    .filter((entry) => (entry.exact || entry.related) && (!authoredScenario || entry.here))
   // Одна общая основа слова — ещё не тема: «ищу метку на корме» и секрет о
   // «царапинах на борту» сходились по «борт», и вместо ответа на вопрос герой
   // получал чужую находку (плейтест 2026-10-10). Тема — две общие основы или
@@ -252,16 +260,22 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
   // к самому хранителю: следил за реакцией Эды — не узнал, что видел Орен.
   const asksHolder = (entry) => {
     const holder = String(entry.meta.holder ?? '').trim().split(/\s+/u)[0] ?? ''
-    return holder.length >= 3 && String(actionText ?? '').toLocaleLowerCase('ru').includes(holder.toLocaleLowerCase('ru').slice(0, Math.max(3, holder.length - 1)))
+    return holder.length >= 3 && String(inquiry ?? '').toLocaleLowerCase('ru').includes(holder.toLocaleLowerCase('ru').slice(0, Math.max(3, holder.length - 1)))
   }
   // Обыск руками и глазами свидетельства не находит, даже если хранитель
   // назван в той же заявке: «благодарит Эдну и идёт осмотреть баркас» с
   // удачным Восприятием открыло «Эдна видела, как Таррен мазал смолой борт»
   // (замер 21, оба прогона). Свидетельство — разговор или Проницательность.
   const physicalSearch = SEARCH_SKILLS.has(normalizedSkill)
-  const topical = candidates.filter((entry) => !testimonyOfHolder(entry) || (!physicalSearch && asksHolder(entry)))
+  const topicalMatches = candidates.filter((entry) => !testimonyOfHolder(entry) || (!physicalSearch && asksHolder(entry)))
     .filter((entry) => entry.score >= 2 || (entry.score >= 1 && (entry.here || entry.personal)))
-    .sort((left, right) => right.score - left.score || Number(right.here) - Number(left.here))[0]
+    .sort((left, right) => right.score - left.score || Number(right.here) - Number(left.here))
+  const [topical] = topicalMatches
+  if (unambiguousAuthored) {
+    const scenarioId = state.campaignConcept?.arc?.scenario_id
+    if (!scenarioId || topicalMatches.length !== 1 || !topical.exact || topical.score < 2
+      || !String(topical.fact.id).startsWith(`fact:secret:scenario:${scenarioId}:`)) return null
+  }
   // Общий поиск открывает тайну этого места сперва своим навыком, затем
   // родственным: тайна лагеря ждала Анализа, и удачная Внимательность у
   // обелиска не давала ничего (прогон Асстохана 2026-10-07).
@@ -270,7 +284,9 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
   // с хранителем, оставившая след («её почерк на последних строках другой»),
   // по-прежнему находится руками.
   const searchable = candidates.filter((entry) => !testimonyOfHolder(entry))
-  const general = !topical && !topicalOnly && GENERAL_SEARCH_PATTERN.test(String(actionText ?? ''))
+  // В авторской сцене находку привязывает заявленная тема, а общая эвристика
+  // не подменяет объект осмотра даже при удачном броске.
+  const general = !authoredScenario && !topical && !topicalOnly && GENERAL_SEARCH_PATTERN.test(String(inquiry ?? ''))
     ? searchable.find((entry) => entry.here && entry.exact) ?? searchable.find((entry) => entry.here && entry.related) ?? null
     : null
   const chosen = topical ?? general
@@ -288,6 +304,13 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
       supersedes_fact_id: chosen.fact.id,
     },
   }
+}
+
+/** Проверяет тему поиска без раскрытия тайны, броска или записи в журнал. */
+export function hasUnambiguousAuthoredClue(state, { skill, actionText }) {
+  return usesAuthoredSceneSearch(state) && state.mechanics?.combat?.active !== true
+    && SEARCH_SKILLS.has(skill) && GENERAL_SEARCH_PATTERN.test(actionText)
+    && Boolean(secretRevealCommand(state, { skill, actionText, topicalOnly: true, unambiguousAuthored: true }))
 }
 
 /**
@@ -597,7 +620,7 @@ function discoveryCommandsFor(state = {}, { checkEvent = null, skill = '', actio
   }
   // Секрет мастера важнее безликой «зацепки»: удачный поиск открывает то, что
   // в мире действительно спрятано, и рассказчик называет найденное словами.
-  const topicalSecret = secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}`, topicalOnly: true })
+  const topicalSecret = secretRevealCommand(state, { sourceEventId, skill, actionText, goalSummary, topicalOnly: true })
   if (topicalSecret) return [topicalSecret]
   // Игрок спросил о конкретной мелочи («какая метка на корме?»), а заготовки на
   // эту тему нет: ответ на его вопрос, названный арбитром до броска, становится
@@ -605,9 +628,10 @@ function discoveryCommandsFor(state = {}, { checkEvent = null, skill = '', actio
   // вместо него соседнюю тайну. Общий поиск при этом всё ещё может найти тайну
   // места — тогда игрок получает и ответ, и улику.
   const detail = successDetailCommand(state, { sourceEventId, successDetail })
-  const secret = unrolled ? null : secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}` })
+  const secret = unrolled ? null : secretRevealCommand(state, { sourceEventId, skill, actionText, goalSummary })
   if (detail || secret) return [detail, secret].filter(Boolean)
-  if (unrolled) return []
+  // Совпадение слов с названием поручения не открывает авторскую улику.
+  if (unrolled || usesAuthoredSceneSearch(state)) return []
   // Проницательность читает человека напротив: «X явно знает больше» о другом
   // жителе на месте реакции того, за кем следили, звучало мимо (замер
   // 2026-10-10: слежка за Эдой — «Тавен явно знает больше»).

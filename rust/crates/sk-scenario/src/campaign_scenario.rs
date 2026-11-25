@@ -396,6 +396,10 @@ fn validate_scenario(scenario: &Value) -> Result<(), String> {
             if js::present(grants) && !scenario_item_id(&js::s(grants)) {
                 return invalid(format!("{sid}/{secret_id}: находка выдаёт предмет каталога сценария"));
             }
+            let objective = field(secret, "next_objective");
+            if js::present(objective) && (!matches!(objective, Some(Value::String(_))) || !(1..=120).contains(&clean_len(objective, 121))) {
+                return invalid(format!("{sid}/{secret_id}: следующая цель — текст до 120 символов"));
+            }
         }
     }
     let Some(Value::Array(beats)) = field(entry, "beats") else {
@@ -841,6 +845,44 @@ pub fn scenario_clue_reward_catalog_id(state: &Value, clue_fact_id: &str) -> Opt
         }
     }
     None
+}
+
+pub struct ScenarioClueQuestProgress<'a> {
+    pub objective: String,
+    pub chapter_quest: Option<&'a Value>,
+    pub quest_ids: Vec<&'a str>,
+}
+
+/// Продвижение, заданное автором для находки в её собственной сцене.
+pub fn scenario_clue_quest_progress<'a>(state: &'a Value, fact: &Value) -> Option<ScenarioClueQuestProgress<'a>> {
+    let sources = array(fact.get("source_event_ids"));
+    if !is_str(fact.get("predicate"), "discovery") || !is_str(fact.get("visibility"), "party") || sources.is_empty() {
+        return None;
+    }
+    let scenario = campaign_scenario(state)?;
+    let card = location_card(scenario, &scenario_location_id(state))?;
+    let superseded = fact.get("supersedes_fact_id")?.as_str()?;
+    let clue = array(card.get("secrets")).iter().find(|clue| {
+        js::truthy(clue.get("next_objective")) && clue_fact_id_of(scenario, clue.get("id")) == superseded
+    })?;
+    if found_clue_fact_ids(state).contains(superseded) {
+        return None;
+    }
+    let memory = state.get("worldMemory");
+    let subject = fact.get("subject_id")?;
+    if !array(field(memory, "facts")).iter().any(|secret| is_str(secret.get("id"), superseded) && secret.get("subject_id") == Some(subject)) {
+        return None;
+    }
+    let chapter_id = format!("quest:chapter:{}", js::string(field(state.get("adventure"), "chapter")));
+    let active = || array(field(memory, "quests")).iter().filter(|quest| is_str(quest.get("status"), "active") && is_str(quest.get("visibility"), "party"));
+    let chapter_quest = active().find(|quest| is_str(quest.get("id"), &chapter_id) && array(quest.get("entity_ids")).contains(subject));
+    let investigation = active().find(|quest| text::test(re!(r"^quest-[0-9a-f]{12}$", "u"), &js::s(quest.get("id"))));
+    let quest_ids = [chapter_quest, investigation].into_iter().flatten().filter(|quest| {
+        let clock = quest.get("clock");
+        num(field(clock, "current")) < num(field(clock, "max"))
+            && !sources.iter().any(|id| array(quest.get("progress_source_event_ids")).contains(id))
+    }).filter_map(|quest| quest.get("id").and_then(Value::as_str)).collect();
+    Some(ScenarioClueQuestProgress { objective: clean(clue.get("next_objective"), 120), chapter_quest, quest_ids })
 }
 
 /// Тайны сценария, которые знает NPC (`holders` в карточке места): их id

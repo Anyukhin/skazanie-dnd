@@ -528,6 +528,10 @@ impl From<UsageLedgerError> for LlmError {
 pub trait LlmClient: Send + Sync {
     /// `client.model`.
     fn model(&self) -> Option<String>;
+    /// Имя провайдера для диагностики, без его адреса или настроек.
+    fn trace_provider(&self) -> Option<&str> {
+        None
+    }
     /// `client.models` (список моделей каскада), если есть.
     fn models(&self) -> Option<Value> {
         None
@@ -571,6 +575,10 @@ pub trait LlmClient: Send + Sync {
 impl<T: LlmClient + ?Sized> LlmClient for Arc<T> {
     fn model(&self) -> Option<String> {
         (**self).model()
+    }
+
+    fn trace_provider(&self) -> Option<&str> {
+        (**self).trace_provider()
     }
 
     fn models(&self) -> Option<Value> {
@@ -696,6 +704,10 @@ impl<C: LlmClient> MeteredLLMClient<C> {
 impl<C: LlmClient> LlmClient for MeteredLLMClient<C> {
     fn model(&self) -> Option<String> {
         self.client.model()
+    }
+
+    fn trace_provider(&self) -> Option<&str> {
+        self.client.trace_provider()
     }
 
     fn models(&self) -> Option<Value> {

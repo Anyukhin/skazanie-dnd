@@ -15,6 +15,7 @@ use sk_narration_base::jsx::stringify;
 use sk_narration_base::model_style_profiles::{reasoning_profile_for, supports_json_schema, STRUCTURED_OUTPUT_MODELS};
 
 use super::test_server::{Reply, TestServer};
+use super::attempt_trace::with_model_attempt_trace_budget;
 use super::*;
 
 static FIXTURE: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(include_str!("../../fixtures/llm-client.json")).expect("эталон"));
@@ -906,10 +907,40 @@ async fn fallback_uses_provider_reserve_after_router_auth_failure() {
         provider_fallback: Some(FallbackMember::new(local).as_provider_fallback()),
         ..FallbackLlmClientConfig::default()
     }).expect("каскад");
-    let result = chain.complete(&input(), &json!({})).await.expect("локальный ответ");
+    let (result, trace) = with_model_attempt_trace(async {
+        let options = json!({ "usageRole": "action_adjudicator", "jsonSchema": { "schema": { "description": "private prompt" } } });
+        let result = chain.complete(&input(), &options).await.expect("локальный ответ");
+        (result, current_model_attempt_trace())
+    }).await;
     assert_eq!(result["model"], "qwen3:14b");
     assert_eq!(taken(&log), ["router", "qwen3:14b"]);
     assert_eq!(result["fallback_used"], true);
+    assert_eq!(trace.len(), 2);
+    assert_eq!(trace[0]["role"], "action_adjudicator");
+    assert_eq!(trace[0]["schema_requested"], true);
+    assert_eq!(trace[0]["error_code"], "LLM_PROVIDER_ERROR");
+    assert_eq!(trace[0]["http_status"], 402);
+    assert_eq!(trace[1]["resolved_model"], "qwen3:14b");
+    assert_eq!(trace[1]["fallback_reason"], "account_refused");
+    assert!(trace.iter().all(|attempt| attempt["duration_ms"].as_u64().is_some()));
+    assert!(!json!(trace).to_string().contains("private prompt"));
+    assert!(current_model_attempt_trace().is_empty());
+}
+
+#[tokio::test]
+async fn model_attempt_trace_keeps_attempt_interrupted_by_outer_deadline() {
+    let log = calls();
+    let hanging = scripted("hanging", &log, |_, _, _| std::future::pending::<Result<Value, LlmError>>());
+    let chain = cascade(vec![hanging]);
+    with_model_attempt_trace(async {
+        let result = tokio::time::timeout(Duration::from_millis(20), chain.complete(&input(), &json!({ "role": "narrator" }))).await;
+        assert!(result.is_err());
+        let trace = current_model_attempt_trace();
+        assert_eq!(trace.len(), 1);
+        assert_eq!(trace[0]["role"], "narrator");
+        assert_eq!(trace[0]["error_code"], "LLM_ATTEMPT_INTERRUPTED");
+        assert!(trace[0]["duration_ms"].as_u64().is_some());
+    }).await;
 }
 
 #[tokio::test]
@@ -930,6 +961,50 @@ async fn fallback_uses_provider_reserve_after_last_cloud_retryable_failure() {
     let result = chain.complete(&input(), &json!({})).await.expect("локальный ответ");
     assert_eq!(result["model"], "qwen3:14b");
     assert_eq!(taken(&log), ["router", "paid-reserve", "qwen3:14b"]);
+}
+
+#[tokio::test]
+async fn shared_turn_deadline_leaves_the_last_five_seconds_for_provider_reserve() {
+    let log = calls();
+    let primary = scripted("cloud", &log, |_, options, _| async move {
+        assert!(options["timeoutMs"].as_f64().unwrap_or_default() <= 75.0);
+        Err(LlmError::llm("bad JSON", "LLM_RESPONSE_INVALID"))
+    });
+    let local = scripted("qwen3:14b", &log, |_, options, _| async move {
+        assert!(options["timeoutMs"].as_f64().unwrap_or_default() <= 120.0);
+        answer("локальный ответ", "qwen3:14b")
+    });
+    let chain = FallbackLlmClient::new(FallbackLlmClientConfig {
+        clients: vec![FallbackMember::new(primary)],
+        provider_fallback: Some(FallbackMember::new(local).as_provider_fallback()),
+        ..FallbackLlmClientConfig::default()
+    }).expect("каскад");
+    with_model_attempt_trace_budget(120.0, 50.0, async {
+        let result = chain.complete(&input(), &json!({ "timeoutMs": 200.0, "usageRole": "narrator" })).await.expect("резерв");
+        assert_eq!(result["model"], "qwen3:14b");
+        assert_eq!(taken(&log), ["cloud", "qwen3:14b"]);
+    }).await;
+}
+
+#[tokio::test]
+async fn late_role_uses_only_local_and_cannot_reset_the_deadline() {
+    let log = calls();
+    let primary = scripted("cloud", &log, |_, _, _| async { answer("облако", "cloud") });
+    let local = scripted("local", &log, |_, _, _| async { answer("локальный ответ", "local") });
+    let chain = FallbackLlmClient::new(FallbackLlmClientConfig {
+        clients: vec![FallbackMember::new(primary)],
+        provider_fallback: Some(FallbackMember::new(local).as_provider_fallback()),
+        ..FallbackLlmClientConfig::default()
+    }).expect("каскад");
+    with_model_attempt_trace_budget(300.0, 200.0, async {
+        chain.complete(&input(), &json!({ "role": "action_adjudicator" })).await.expect("облако");
+        tokio::time::sleep(Duration::from_millis(110)).await;
+        chain.complete(&input(), &json!({ "role": "narrator" })).await.expect("резерв");
+        assert_eq!(taken(&log), ["cloud", "local"]);
+        tokio::time::sleep(Duration::from_millis(210)).await;
+        let error = chain.complete(&input(), &json!({ "role": "narrator" })).await.expect_err("срок хода закончился");
+        assert_eq!(error.code.as_deref(), Some("LLM_TURN_DEADLINE"));
+    }).await;
 }
 
 #[tokio::test]

@@ -3,6 +3,7 @@ import { Compass, Map, MapPin, Navigation, Sparkles, X } from 'lucide-react'
 import type { GameState, WorldMapLocation } from './types'
 import { KIND_LABELS, currentWorldLocation, neighboringDestinations, travelProposalText, type TravelDestination } from './world-travel'
 import { CombatIcon } from './CombatIcon'
+import { sceneChapter } from './scene-chapter'
 
 /**
  * Две карточки перехода между локациями поверх доски.
@@ -125,9 +126,10 @@ export function SceneTransitionBanner({ notice, onClose }: { notice: SceneTransi
   // сказано строкой выше, и повторять нечего. Авторский заголовок («Развилка
   // под зелёными знаками») — другое дело, его показываем.
   const subtitle = notice.title.replace(/^глава\s+\d+\s*[·:—-]\s*/iu, '').trim()
+  const { number: chapter } = sceneChapter(notice.title, notice.chapter)
   return <section className={`scene-transition-banner${leaving ? ' leaving' : ''}`} role="status" aria-live="polite" onClick={onClose}>
     <button type="button" className="scene-transition-close" aria-label="Закрыть объявление о новой локации" onClick={onClose}><X size={14} /></button>
-    <small>{notice.chapter > 0 ? `Глава ${notice.chapter} · ` : ''}Новая локация{notice.kind ? ` · ${KIND_LABELS[notice.kind]}` : ''}</small>
+    <small>{chapter > 0 ? `Глава ${chapter} · ` : ''}Новая локация{notice.kind ? ` · ${KIND_LABELS[notice.kind]}` : ''}</small>
     <strong>{notice.location}</strong>
     {subtitle && subtitle !== notice.location && <em>{subtitle}</em>}
     <span><MapPin size={13} />из «{notice.from}»</span>

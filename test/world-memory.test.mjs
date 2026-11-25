@@ -15,7 +15,9 @@ import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import {
   applyWorldMemoryEvent,
   diagnoseWorldMemory,
+  freeActionDiscoveryCommands,
   hasFailedDiscoveryCheck,
+  hasUnambiguousAuthoredClue,
   narratorFailureDetailFor,
   normalizeWorldMemory,
   retrieveKnownWorldMemory,
@@ -24,6 +26,51 @@ import {
   worldMemoryEvent,
   worldMemoryForViewer,
 } from '../server/world-memory.mjs'
+
+test('авторская улика поиска остаётся в текущей локации при совпадающей заготовке другой сцены', () => {
+  const state = {
+    campaignConcept: { arc: { version: 'skazanie:scenario-arc-v1', scenario_id: 'astohan-dragon-hunt' } },
+    scene: { location: 'Пепельная застава', location_id: 'astohan-ash-watch' },
+    worldMemory: normalizeWorldMemory({
+      entities: [
+        { id: 'location:ash-watch', kind: 'location', name: 'Пепельная застава', visibility: 'public' },
+        { id: 'location:stormberg', kind: 'location', name: 'Штормберг', visibility: 'public' },
+      ],
+      facts: [
+        { id: 'fact:secret:scenario:astohan-dragon-hunt:ash-gate', subject_id: 'location:ash-watch', predicate: 'gm_secret', visibility: 'gm_only', status: 'active',
+          object: '{"topic":"ворота заставы следы когтей","skills":["perception"],"holder":""}',
+          summary: 'Засов ворот снят изнутри, а следы когтей начинаются уже за стенами.' },
+        { id: 'fact:secret:ivara-report', subject_id: 'location:stormberg', predicate: 'gm_secret', visibility: 'gm_only', status: 'active',
+          object: '{"topic":"донесение сожженная застава","skills":["perception"],"holder":"Маршал Ивара Тейн"}',
+          summary: 'В донесении о Пепельной заставе сказано, что ворота открыли изнутри, а следы когтей начинаются уже за стенами.' },
+      ],
+      quests: [{ id: 'quest-foreign', title: 'Найти повреждения на старых воротах в Штормберге',
+        status: 'active', visibility: 'party', entity_ids: ['location:stormberg'] }],
+    }),
+  }
+  const check = {
+    checkEvent: { event_id: 'lada-gate-check', payload: { success: true, skill: 'perception' } },
+    skill: 'perception',
+  }
+  const actionText = 'Лада осматривает распахнутые ворота и выжженную землю у входа. Ищу следы, по которым можно понять, кто открыл ворота перед пожаром.'
+  const [command] = freeActionDiscoveryCommands(state, { ...check, actionText })
+  assert.equal(command?.fact?.supersedes_fact_id, 'fact:secret:scenario:astohan-dragon-hunt:ash-gate')
+  assert.equal(command?.fact?.subject_id, 'location:ash-watch')
+  assert.equal(hasUnambiguousAuthoredClue(state, { skill: 'perception', actionText }), true)
+  assert.equal(hasUnambiguousAuthoredClue(state, { skill: 'perception', actionText: 'Осматриваю ворота' }), false)
+  const competing = structuredClone(state)
+  competing.worldMemory.facts.push({ ...competing.worldMemory.facts[0], id: 'fact:secret:scenario:astohan-dragon-hunt:another-gate-clue' })
+  assert.equal(hasUnambiguousAuthoredClue(competing, { skill: 'perception', actionText }), false)
+  assert.deepEqual(freeActionDiscoveryCommands(state, { ...check,
+    actionText: 'Осматриваю обгоревший сундук', goalSummary: 'Разглядеть следы на воротах',
+  }), [], 'цель, сформулированная моделью, не подменяет объект осмотра')
+  assert.deepEqual(freeActionDiscoveryCommands(state, { ...check,
+    actionText: 'Осматриваю донесение о сожжённой заставе',
+  }), [], 'донесение из Штормберга недоступно для осмотра на заставе')
+  assert.deepEqual(freeActionDiscoveryCommands(state, { ...check,
+    actionText: 'Проверяю заклёпки на петлях, повреждены ли они?',
+  }), [], 'совпадение с названием чужого поручения не создаёт улику')
+})
 
 test('модельная деталь провала discovery-проверки не попадает рассказчику', () => {
   const secret = 'Засов ворот снят изнутри, а не выбит; следы когтей начинаются уже за стенами. Дракона впустил кто-то из своих.'

@@ -82,6 +82,7 @@ export class FileTraceStore {
       verification_result: input.verification_result ?? {},
       latency_ms: Number(input.latency_ms ?? 0),
       token_usage: input.token_usage ?? {},
+      ...(Array.isArray(input.model_attempts) && input.model_attempts.length ? { model_attempts: input.model_attempts.slice(0, 32) } : {}),
       narration_result: input.narration_result ?? null,
       ruling: input.ruling ?? null,
       // Аудит PR #131, SEC-03: пометка трассы, собранной заново по уже

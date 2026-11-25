@@ -17,6 +17,7 @@ import { chronicleFollowAfterScroll, chronicleMatchesFilter, chronicleMessageTex
 import type { NarrationVoiceMode } from './narration-tts.mjs'
 import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
 import { journalQuestFocus } from './journal-quests.mjs'
+import { journalChapterNumber } from './scene-chapter'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
   Account, AgentInteraction, AiHealth, AssetPreparationReport, BeastChronicleCard,
@@ -763,8 +764,8 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
       </section>}
       <div className="journal-layout">
         <aside className="chapter-list"><span>ГЛАВЫ</span>
-          {completedChapters.map((chapter) => <button key={`${chapter.chapter}-${chapter.location}`}><i>{String(chapter.chapter).padStart(2, '0')}</i><b>{chapter.title}</b><small>{chapter.outcome || chapter.location}</small></button>)}
-          <button className="active"><i>{String(currentChapter).padStart(2, '0')}</i><b>{state.scene.title}</b><small>{state.scene.location}</small></button>
+          {completedChapters.map((chapter) => <button key={`${chapter.chapter}-${chapter.location}`}><i>{journalChapterNumber(chapter.title, chapter.chapter)}</i><b>{chapter.title}</b><small>{chapter.outcome || chapter.location}</small></button>)}
+          <button className="active"><i>{journalChapterNumber(state.scene.title, currentChapter)}</i><b>{state.scene.title}</b><small>{state.scene.location}</small></button>
         </aside>
         <div className="journal-feed">
           {state.messages.map((message, index) => (

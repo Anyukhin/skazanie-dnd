@@ -42,6 +42,7 @@ use sk_agents::lore_voice::LoreVoice;
 use sk_agents::narrator::{deterministic_narration, narrator_response_plan, verify_narrator_craft, Narrator, NarratorError, ProgressCallback, RenderOptions, NARRATOR_PROMPT_VERSION, NARRATOR_RECENT_TEXT_LIMIT};
 use sk_agents::npc_social_controller::NpcSocialController;
 use sk_agents::player_request_router::{answer_known_lore, answer_table_question, KnownLoreOptions};
+use sk_agents_base::llm_client::{current_model_attempt_trace, with_model_attempt_trace};
 use sk_core::fancy_regex;
 use sk_core::indexmap::IndexMap;
 use sk_core::{hash, js, re, text, RuleError};
@@ -50,7 +51,7 @@ use sk_economy::merchant_economy::currency_to_copper;
 use sk_encounters::agent_context::{agent_context_metadata, campaign_concept_for_agent, hero_card_for_agent, npc_known_by_name, scene_context_for_agent, AgentContextOptions};
 use sk_infra::roll_registry::RollRegistry;
 use sk_items::pickpocket::{pickpocket_difficulty_for, PICKPOCKET_ABILITY, PICKPOCKET_POLICY_ID, PICKPOCKET_SKILL};
-use sk_memory::world_memory::{free_action_discovery_commands, free_action_surface_commands, has_failed_discovery_check, narrator_failure_detail_for, retrieve_world_memory, thorough_search_outcome, DISCOVERY_SKILLS};
+use sk_memory::world_memory::{free_action_discovery_commands, free_action_surface_commands, has_failed_discovery_check, has_unambiguous_authored_clue, narrator_failure_detail_for, retrieve_world_memory, thorough_search_outcome, DISCOVERY_SKILLS};
 use sk_narration::combat_narration::{combat_narration, damage_type_label, COMBAT_NARRATOR};
 use sk_narration_base::clarification_registry::{ClarificationRegistry, ClarificationRegistryOptions};
 use sk_narration_base::deterministic_narration::{deterministic_narrator_for, render_deterministic_narration, DeterministicNarrator};
@@ -3469,7 +3470,7 @@ impl GameOrchestrator {
     /// ответом человека после заклинания и шагами плана; одинаковые
     /// параллельные запросы делят один итог.
     pub fn handle(&self, input: HandleInput) -> AgentFuture<'_, OrchestratorResult<Value>> {
-        Box::pin(async move { self.handle_coalesced(input).await })
+        Box::pin(with_model_attempt_trace(self.handle_coalesced(input)))
     }
 
     async fn handle_coalesced(&self, input: HandleInput) -> OrchestratorResult<Value> {
@@ -4778,7 +4779,11 @@ impl GameOrchestrator {
         let committed_state = committed.get("state").cloned().unwrap_or(Value::Null);
         let mut base_state = committed_state.clone();
         let mut base_version = committed.get("state_version").cloned();
-        let details = if discovery_commit.is_some() { CheckDetails::default() } else { self.check_details_for(&committed_state, check_command.get("actor_id"), message, &skill).await };
+        let details = if discovery_commit.is_some() || has_unambiguous_authored_clue(&committed_state, &skill, message) {
+            CheckDetails::default()
+        } else {
+            self.check_details_for(&committed_state, check_command.get("actor_id"), message, &skill).await
+        };
         let search_input = |state_event: &Value| json!({ "checkEvent": state_event, "skill": skill, "actionText": message });
         let thorough = if succeeded { None } else { thorough_search_outcome(&committed_state, &search_input(&check_event)) };
         let hero_name = {
@@ -4949,6 +4954,10 @@ impl GameOrchestrator {
             ("ruling", Some(trace.ruling.clone().unwrap_or(Value::Null))),
         ]);
         mark_shared_references(&mut input, &trace);
+        let attempts = current_model_attempt_trace();
+        if !attempts.is_empty() {
+            set(&mut input, "model_attempts", Value::Array(attempts));
+        }
         if let Some(recovery) = trace.recovery.filter(|value| js::truthy(Some(value))) {
             set(&mut input, "recovery", recovery);
         }

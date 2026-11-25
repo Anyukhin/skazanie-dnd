@@ -3,6 +3,7 @@ import catalog from '../data/astohan-pilot-builds-v1.json'
 export type AstohanPilotBuild = (typeof catalog.builds)[number]
 
 export const astohanPilotBuildCatalog = catalog.builds as AstohanPilotBuild[]
+export const astohanPilotTargetLevel = catalog.target_level
 
 export function stagedCommandsForPilotBuild(recipe: AstohanPilotBuild, actorId: string) {
   const commands: Array<Record<string, unknown>> = [{
@@ -13,7 +14,7 @@ export function stagedCommandsForPilotBuild(recipe: AstohanPilotBuild, actorId: 
     selected_feature_ids: recipe.id === 'fighter' ? recipe.features : [],
   }]
   const subclass = { ...commands[0], subclass: recipe.subclass, selected_feature_ids: recipe.features }
-  for (let level = 1; level < catalog.target_level; level += 1) {
+  for (let level = 1; level < astohanPilotTargetLevel; level += 1) {
     commands.push({ command_type: 'LevelUp', actor_id: actorId, expected_level: level })
     const nextLevel = level + 1
     if (nextLevel === 2 && recipe.id === 'paladin') commands.push({ ...commands[0], selected_feature_ids: recipe.features })

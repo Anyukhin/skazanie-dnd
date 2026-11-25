@@ -217,6 +217,9 @@ impl FileTraceStore {
         trace.insert("engine_mode".into(), Value::String("enforce".into()));
         trace.insert("prompt_versions".into(), or_default(get(source, "prompt_versions"), Value::Object(Map::new())));
         trace.insert("model_identifiers".into(), or_default(get(source, "model_identifiers"), Value::Object(Map::new())));
+        if let Some(attempts @ Value::Array(_)) = get(source, "model_attempts") {
+            trace.insert("model_attempts".into(), attempts.clone());
+        }
         if let Some(contexts @ Value::Array(_)) = get(source, "agent_contexts") {
             trace.insert("agent_contexts".into(), contexts.clone());
         }

@@ -921,7 +921,7 @@ X-Idempotency-Key: turn-damage-42
 - `storage/auth.json` — аккаунты и сессии;
 - `storage/rooms/*.json` — временная server-owned compatibility read-модель; публичная полная запись запрещена;
 - `storage/engine/` — immutable event batches, metadata и snapshots;
-- `storage/turn-traces/` — редактированные traces авторитетных ходов;
+- `storage/turn-traces/` — трассы авторитетных ходов, включая время и исход попыток каскада моделей;
 - `storage/generated/items/` — runtime-generated изображения предметов;
 - `storage/generated/npcs/` — hashed persistent cache портретов важных NPC. Во время игры картинки **не генерируются**: флаг `DND_RUNTIME_IMAGE_GENERATION` выключен по умолчанию, готовое из кеша отдаётся как обычно, а вместо отсутствующего показывается ролевая заглушка. Готовятся портреты заранее, режимом подготовки ассетов в админской зоне (`/api/campaigns/:id/asset-preparation`, доступ администратору и владельцу кампании, до 20 позиций за запуск общим счётом на все виды картинок, расход идёт в usage-леджер);
 - `storage/generated/locations/` — hashed persistent cache иллюстраций локаций. Готовятся тем же режимом подготовки; в игре (`GET /api/campaigns/:id/locations/:locationId/illustration`) картинка берётся **только из кеша** — модель оттуда не зовётся ни при каком флаге, а видимость локации решает проекция зрителя. Шапка сцены показывает готовую иллюстрацию, если она есть, и остаётся с библиотечной подложкой, если нет;

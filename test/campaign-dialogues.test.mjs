@@ -15,6 +15,7 @@ import { normalizeCampaignState, replayEvents, resolveCommands } from '../server
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import { scenarioKnightState } from '../server/scenario-knight.mjs'
 import { minutesUntilClock } from '../server/weather.mjs'
+import { NpcSocialController } from '../server/npc-social-controller.mjs'
 import { fixedDice, maxDice, minDice } from './kit/dice.mjs'
 
 const scenarios = JSON.parse(readFileSync(new URL('../data/campaign-scenarios-v1.json', import.meta.url), 'utf8')).scenarios
@@ -58,7 +59,14 @@ test('каждый диалог ссылается на настоящих со�
       if (option.action?.command_type === 'NegotiateScenarioTreaty') {
         const finale = scenario.beats.find((beat) => beat.kind === 'finale')
         assert.equal(dialogue.npc_id, finale.boss.npc_id, `${dialogue.id}.${option.id}: договор — с главным противником`)
-        assert.deepEqual(option.check, { skill: finale.treaty.skill, dc: finale.treaty.dc })
+        if (option.action.proof === 'ares-signed-confession') {
+          // Подписанное признание — серверное доказательство договора без
+          // повторной проверки Убеждения. Ветка с обычными уликами по-прежнему
+          // обязана содержать проверку из карточки финала.
+          assert.equal(option.check, null, `${dialogue.id}.${option.id}: подписанное признание не бросает проверку`)
+        } else {
+          assert.deepEqual(option.check, { skill: finale.treaty.skill, dc: finale.treaty.dc })
+        }
       }
     }
     assert.ok(dialogue.options.some((option) => option.ends), `${dialogue.id}: разговор можно закончить`)
@@ -232,6 +240,24 @@ test('Штормберг: Ивара, Орен и Мира — свои тайн
   assert.ok(known('исчезнувший сборщик налогов у Митглайда'))
   assert.ok(!ids('astohan-mira').includes('tax-collector'), 'второй путь к той же тайне закрыт')
   assert.deepEqual(replayEvents(run.initial, run.events).dialogues, run.state.dialogues)
+})
+
+test('свободная просьба к Иваре о донесении получает авторский ответ без модельного отказа', async () => {
+  const state = normalizeCampaignState(await new CampaignBootstrapper().create({ code: 'IVARA-FREE', worldTemplateId: 'astohan-plains', players: heroes }))
+  const controller = new NpcSocialController({ llmClient: { completeJson: async () => assert.fail('донесение Ивары не требует модели') } })
+  const result = await controller.respond({
+    state,
+    playerId: heroes[0].id,
+    npcId: 'astohan-ivara',
+    message: 'Маршал, покажите донесение о Пепельной заставе. Что известно о пожаре и выживших?',
+    turnId: 'ivara-free-turn',
+  })
+  assert.equal(result.provider, 'deterministic-authored-dialogue')
+  assert.match(result.reply, /засов снят изнутри/u)
+  const reportFact = state.worldMemory.facts.find((fact) => fact.predicate === 'gm_secret' && fact.object.includes('донесение о сожжённой Пепельной заставе'))
+  assert.ok(reportFact)
+  assert.deepEqual(result.disclosed_fact_ids, [reportFact.id])
+  assert.doesNotMatch(result.reply, /просто так такое не рассказывают/u)
 })
 
 // --- Линия А: Ломар, Трент, Великое Древо ------------------------------------

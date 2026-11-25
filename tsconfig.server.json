@@ -18,6 +18,7 @@
   },
   "include": [
     "server/asset-registry.mjs",
+    "server/astohan-pilot-builds.mjs",
     "server/wild-shape.mjs",
     "server/rules-corpus.mjs",
     "server/authored-location-maps.mjs",

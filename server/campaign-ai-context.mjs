@@ -69,6 +69,10 @@ export const NARRATOR_GENERATION_PARAMETERS = Object.freeze({
 })
 
 const campaignAiContext = new AsyncLocalStorage()
+const modelAttemptContext = new AsyncLocalStorage()
+
+const MODEL_TURN_TIMEOUT_MS = 12_000
+const MODEL_TURN_OLLAMA_RESERVE_MS = 5_000
 
 export function normalizeNarratorStyle(value) {
   const id = String(value ?? '').trim().toLowerCase()
@@ -95,6 +99,62 @@ export function runWithCampaignAiSettings(settings, operation) {
       }
     : null
   return campaignAiContext.run(value, operation)
+}
+
+/** Начать запрос с отдельным журналом попыток провайдера. */
+export function runWithModelAttemptCollector(operation, timeoutMs = MODEL_TURN_TIMEOUT_MS, reserveMs = MODEL_TURN_OLLAMA_RESERVE_MS) {
+  if (modelAttemptContext.getStore()) return operation()
+  return modelAttemptContext.run({ attempts: [], deadline: performance.now() + timeoutMs, timeoutMs, reserveMs }, operation)
+}
+
+export function currentModelTurnBudget(requestedTimeout, hasProviderFallback) {
+  const context = modelAttemptContext.getStore()
+  if (!context) return null
+  const now = performance.now()
+  const remainingMs = Math.max(0, context.deadline - now)
+  const timeoutMs = Math.min(requestedTimeout ?? Infinity, remainingMs)
+  const localReserve = timeoutMs * context.reserveMs / context.timeoutMs
+  const cloudDeadline = hasProviderFallback ? Math.min(context.deadline - context.reserveMs, now + timeoutMs - localReserve) : null
+  return { timeoutMs, cloudDeadline }
+}
+
+function modelAttemptIdentifier(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_.:/-]{1,128}$/u.test(value) && !value.includes('://') ? value : ''
+}
+
+/** Попытка видна и тогда, когда внешний таймер не дал дождаться ответа. */
+export function startModelAttempt({ role, provider, model, schemaRequested, fallbackReason }) {
+  const collector = modelAttemptContext.getStore()?.attempts
+  if (!collector || collector.length >= 32) return null
+  const attempt = { started: performance.now(), fields: {
+    role: modelAttemptIdentifier(role) || 'unknown',
+    provider: modelAttemptIdentifier(provider) || 'unknown',
+    model: modelAttemptIdentifier(model) || 'unknown',
+    schema_requested: schemaRequested,
+    ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
+  }, result: null }
+  collector.push(attempt)
+  return attempt
+}
+
+export function finishModelAttempt(attempt, { response, error, failed = false }) {
+  if (!attempt) return
+  const resolved = modelAttemptIdentifier(response?.model)
+  const status = error?.status
+  attempt.result = {
+    duration_ms: Math.floor(performance.now() - attempt.started),
+    outcome: failed ? 'error' : 'success',
+    ...(resolved && !failed ? { resolved_model: resolved } : {}),
+    ...(failed ? { error_code: modelAttemptIdentifier(error?.code ?? error?.name) || 'LLM_ERROR' } : {}),
+    ...(Number.isInteger(status) && status >= 100 && status < 600 ? { http_status: status } : {}),
+  }
+}
+
+export function currentModelAttempts() {
+  return (modelAttemptContext.getStore()?.attempts ?? []).map((attempt) => ({ ...attempt.fields, ...(attempt.result ?? {
+    duration_ms: Math.floor(performance.now() - attempt.started),
+    outcome: 'error', error_code: 'LLM_ATTEMPT_INTERRUPTED',
+  }) }))
 }
 
 /**

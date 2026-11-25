@@ -72,6 +72,23 @@ pub fn world_memory(r: &mut Resolve<'_>) -> Flow {
     } else {
         String::new()
     };
+    if let Some((fact, progress)) = fact.filter(|_| !found.is_empty()).and_then(|fact| {
+        sk_scenario::campaign_scenario::scenario_clue_quest_progress(&r.state, fact).map(|progress| (fact, progress))
+    }) {
+        r.events.push(event_from(&r.command, "ObjectiveUpdated", Some(json!({ "objective": progress.objective })), None));
+        if let Some(mut quest) = progress.chapter_quest.and_then(Value::as_object).cloned() {
+            quest.insert("title".into(), json!(progress.objective));
+            quest.insert("summary".into(), field(fact, "summary"));
+            quest.insert("objectives".into(), json!([progress.objective]));
+            r.events.push(event_from(&r.command, "QuestUpserted", Some(json!({ "schema_version": 2, "quest": quest })), None));
+        }
+        for quest_id in progress.quest_ids {
+            r.events.push(event_from(&r.command, "QuestClockAdvanced", Some(json!({
+                "schema_version": 2, "quest_id": quest_id, "amount": 1,
+                "proof_fact_ids": [field(fact, "id")], "proof_source_event_ids": field(fact, "source_event_ids"),
+            })), None));
+        }
+    }
     let reward_id = if found.is_empty() { None } else { sk_scenario::campaign_scenario::scenario_clue_reward_catalog_id(&r.state, &found) };
     let Some(reward_id) = reward_id.filter(|id| !id.is_empty()) else { return Ok(()) };
     let facts = r.state.get("worldMemory").and_then(|memory| memory.get("facts")).and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);

@@ -89,7 +89,7 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
-import { DISCOVERY_SKILLS, corpseClueCommand, freeActionDiscoveryCommands, freeActionSurfaceCommands, narratorFailureDetailFor, thoroughSearchOutcome } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, corpseClueCommand, freeActionDiscoveryCommands, freeActionSurfaceCommands, hasUnambiguousAuthoredClue, narratorFailureDetailFor, thoroughSearchOutcome } from './world-memory.mjs'
 import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { sceneHazardNarration } from './scene-hazard-narration.mjs'
@@ -1405,7 +1405,10 @@ export class AutonomousCampaignOrchestrator {
     if (verifiedRoll) assertFreeActionConfirmation(verifiedRoll.context, text, loaded.state_version)
     const harmlessReading = harmlessFreeActionReading(loaded.state, actorId, text)
       ?? (intent?.roleplay_speech === true ? roleplaySpeechReading(loaded.state, text) : null)
-    const proposedReading = storedReading ?? harmlessReading
+    const authoredReading = deterministicReading.source === 'deterministic-pattern'
+      && hasUnambiguousAuthoredClue(loaded.state, { skill: deterministicReading.skill, actionText: text }) ? deterministicReading : null
+    const localReading = storedReading ?? harmlessReading ?? authoredReading
+    const proposedReading = localReading
       ?? (this.actionAdjudicator
         ? await this.actionAdjudicator.read(loaded.state, actorId, text, deterministicReading)
         : deterministicReading)
@@ -1413,7 +1416,7 @@ export class AutonomousCampaignOrchestrator {
     // применяем прочтение к уже изменившейся сцене: это защищает цель, средства
     // и цену хода даже тогда, когда следующий commit сам смог бы принять новые
     // команды без конфликта версии.
-    const adjudicationMayAwait = !storedReading && !harmlessReading && Boolean(this.actionAdjudicator?.llmClient?.completeJson)
+    const adjudicationMayAwait = !localReading && Boolean(this.actionAdjudicator?.llmClient?.completeJson)
     const afterAdjudication = adjudicationMayAwait ? await this.load(campaignId) : loaded
     // Фоновая запись памяти — зацепки из предысторий, нити, профиль собеседника
     // — сцену, героя и цену хода не меняет. Прежде любая такая запись во время
@@ -1444,7 +1447,7 @@ export class AutonomousCampaignOrchestrator {
     // группы (`server/index.mjs`, по `takeRouteHint`).
     // Повтор уже исполненной заявки маршрут не пересчитывает: исход записан, и
     // другой ответ модели не должен подменить его уточнением.
-    const routed = storedReading || harmlessReading || previousCommit?.events?.length ? null : this.routedFreeAction({
+    const routed = localReading || previousCommit?.events?.length ? null : this.routedFreeAction({
       loaded, actorId, text, reading: proposedReading, idempotencyKey, campaignId,
     })
     if (routed) return { context_metadata: actionContextMetadata, ...routed }

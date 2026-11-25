@@ -16,7 +16,7 @@ import { PhbCharacterOptions } from './PhbCharacterOptions'
 import type { PhbCharacterOptionsValue } from './PhbCharacterOptions'
 import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
 import { validateClassChoices } from '../server/character-creation-class-options.mjs'
-import type { AstohanPilotBuild } from './astohan-pilot-builds'
+import { astohanPilotTargetLevel, type AstohanPilotBuild } from './astohan-pilot-builds'
 import { pilotCreationChoicesFor } from './pilot-build-choices.mjs'
 import { pilotImportAlreadyStarted } from './pilot-import-state.mjs'
 import {
@@ -1299,7 +1299,7 @@ export function CharacterCreationWizard({
           </aside>
           {/* Английский `entry.id` здесь раньше печатался игроку как есть. */}
           {currentStep === 'class' && pilotEnabled && pilotBuilds.length > 0 && player.characterSetupRequired && <section className="pilot-build-picker" aria-label="Готовые листы первой партии">
-            <header><b>Готовый лист для первой партии</b><span>Асстохан · 7-й уровень · только проверенные действия</span></header>
+            <header><b>Готовый лист для первой партии</b><span>Асстохан · {astohanPilotTargetLevel}-й уровень · только проверенные действия</span></header>
             <div>{pilotBuilds.map((recipe) => <button
               key={recipe.id}
               type="button"
@@ -1689,22 +1689,27 @@ export function CharacterCreationWizard({
             <section className="creation-review-sheet" aria-label="Лист героя">
               <header>
                 <b>{draft.character.trim() || 'Безымянный герой'}</b>
-                <span>{[`${classOption?.label ?? ''} 1 уровня${draft.subclass ? ` (${draft.subclass})` : ''}`, selectedSpecies, selectedBackground?.name].filter(Boolean).join(' · ')}</span>
+                <span>{[selectedPilotBuild
+                  ? `${classOption?.label ?? ''} · ${astohanPilotTargetLevel}-й уровень · ${selectedPilotBuild.subclass}`
+                  : `${classOption?.label ?? ''} 1 уровня${draft.subclass ? ` (${draft.subclass})` : ''}`,
+                selectedSpecies, selectedBackground?.name].filter(Boolean).join(' · ')}</span>
               </header>
-              <dl className="creation-review-vitals">
+              {!selectedPilotBuild && <dl className="creation-review-vitals">
                 {levelOnePreview.hitPoints != null && <div><dt>Хиты</dt><dd>{levelOnePreview.hitPoints}</dd></div>}
                 <div><dt>Инициатива</dt><dd>{signed(levelOnePreview.initiative)}</dd></div>
                 {speciesOption?.base_speed && <div><dt>Скорость</dt><dd>{speciesOption.base_speed} фт.</dd></div>}
                 <div><dt>Мастерство</dt><dd>{signed(levelOnePreview.proficiency)}</dd></div>
                 {levelOnePreview.spell && <div><dt>СЛ заклинаний</dt><dd>{levelOnePreview.spell.saveDc}</dd></div>}
-              </dl>
-              <div className="creation-review-scores">{abilityIds.map((ability) => <div key={ability}><span>{abilityShortLabels[ability]}</span><b>{finalAbilities[ability] || '—'}</b><small>{finalAbilities[ability] ? signed(abilityModifier(finalAbilities[ability])) : ''}</small></div>)}</div>
+              </dl>}
+              {!selectedPilotBuild && <div className="creation-review-scores">{abilityIds.map((ability) => <div key={ability}><span>{abilityShortLabels[ability]}</span><b>{finalAbilities[ability] || '—'}</b><small>{finalAbilities[ability] ? signed(abilityModifier(finalAbilities[ability])) : ''}</small></div>)}</div>}
               <dl className="creation-review-lists">
-                <div><dt>Навыки</dt><dd>{reviewSkills.join(' · ') || '—'}</dd></div>
+                {!selectedPilotBuild && <div><dt>Навыки</dt><dd>{reviewSkills.join(' · ') || '—'}</dd></div>}
                 <div><dt>Снаряжение</dt><dd>{reviewEquipment.join(', ') || 'набор определит сервер'}</dd></div>
                 {reviewSpells.length > 0 && <div><dt>Заклинания</dt><dd>{reviewSpells.join(', ')}</dd></div>}
               </dl>
-              <p><ShieldCheck size={14} />Предварительно: хиты, КД и бонусы при создании пересчитает сервер по этому листу.</p>
+              <p><ShieldCheck size={14} />{selectedPilotBuild
+                ? 'Итоговые характеристики и бонусы появятся в листе героя после создания.'
+                : 'Предварительно: хиты, КД и бонусы при создании пересчитает сервер по этому листу.'}</p>
             </section>
             <label>Мировоззрение<select value={draft.alignment} onChange={(event) => patch('alignment', event.target.value)}><option value="">Не определено</option>{['Законопослушный добрый', 'Нейтральный добрый', 'Хаотичный добрый', 'Законопослушный нейтральный', 'Истинно нейтральный', 'Хаотичный нейтральный', 'Законопослушный злой', 'Нейтральный злой', 'Хаотичный злой'].map((value) => <option key={value}>{value}</option>)}</select></label>
             <label>Идеал<textarea value={draft.ideals} onChange={(event) => patch('ideals', event.target.value)} maxLength={2000} /></label>

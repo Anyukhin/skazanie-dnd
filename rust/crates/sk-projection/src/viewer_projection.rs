@@ -2168,7 +2168,8 @@ fn campaign_state_for_viewer_uncached(state: &Value, user: Option<&Value>, actor
 mod viewer_memo_tests {
     use serde_json::{json, Value};
 
-    use super::{campaign_state_for_viewer, campaign_state_for_viewer_uncached};
+    use super::{arr, campaign_state_for_viewer, campaign_state_for_viewer_uncached, get};
+    use sk_core::js;
 
     /// Память отдаёт то же, что проекция без неё, на повторе, после смены
     /// состояния и между зрителями одного состояния.
@@ -2187,6 +2188,94 @@ mod viewer_memo_tests {
                     assert_eq!(campaign_state_for_viewer(Some(&state(hp)), Some(user), Some(&actor)).expect("проекция"), expected, "{round} {hp} {user}");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn astohan_camp_objective_is_viewer_scoped() {
+        let user = json!({ "id": "user-a", "role": "player" });
+        let actor = Value::String("hero".into());
+        let camp_fact = "fact:secret:scenario:astohan-dragon-hunt:camp-gedrik";
+        let page_fact = "fact:secret:scenario:astohan-dragon-hunt:stormberg-journal-page";
+        let fact = |id: &str, subject: &str| json!({
+            "id": id, "subject_id": subject, "predicate": "gm_secret", "visibility": "gm_only", "status": "active",
+            "object": "{\"topic\":\"поход на Вулканиса\",\"skills\":[\"insight\"]}", "summary": id,
+        });
+        let state = json!({
+            "sessionCode": "ASTOHAN-CAMP-TEST", "partyMemberIds": ["hero", "ally"], "players": [{"id":"hero"}, {"id":"ally"}],
+            "campaignConcept": { "arc": { "version": "skazanie:scenario-arc-v1", "scenario_id": "astohan-dragon-hunt", "scenario_version": 1 } },
+            "adventure": { "chapter": 2 },
+            "scene": { "location_id": "astohan-quiet-watch-camp", "location": "Лагерь Тихой Стражи", "objective": "Выяснить, почему дракон ищет коменданта Гедрика Сола" },
+            "dialogues": {},
+            "worldMemory": {
+                "entities": [
+                    { "id": "astohan-quiet-watch-camp", "kind": "location", "name": "Лагерь Тихой Стражи", "visibility": "party" },
+                    { "id": "astohan-stormberg", "kind": "location", "name": "Штормберг", "visibility": "party" },
+                ],
+                "facts": [fact(camp_fact, "astohan-quiet-watch-camp"), fact(page_fact, "astohan-stormberg")],
+                "knowledge_revealed": [{ "id": "known-camp", "hero_id": "hero", "fact_id": camp_fact, "recorded_at_minutes": 1 }],
+                "quests": [{ "id": "quest:chapter:2", "status": "active", "visibility": "party", "objectives": ["Выяснить, почему дракон ищет коменданта Гедрика Сола"], "clock": { "current": 0, "max": 2 } }],
+            },
+        });
+        let camp_only = campaign_state_for_viewer_uncached(&state, Some(&user), Some(&actor)).unwrap().unwrap();
+        assert_eq!(get(get(Some(&camp_only), "scene"), "objective").and_then(Value::as_str), Some("Найти страницу журнала похода у Орена Фаля в Архиве Сломанного Клыка"));
+        let mut both = state.clone();
+        both.get_mut("worldMemory").and_then(Value::as_object_mut).and_then(|memory| memory.get_mut("knowledge_revealed")).and_then(Value::as_array_mut).unwrap().push(json!({ "id": "known-page", "hero_id": "hero", "fact_id": page_fact, "recorded_at_minutes": 1 }));
+        let both = campaign_state_for_viewer_uncached(&both, Some(&user), Some(&actor)).unwrap().unwrap();
+        let objectives = arr(get(get(get(Some(&both), "worldMemory"), "quests").and_then(Value::as_array).and_then(|items| items.first()), "objectives"));
+        assert!(objectives.iter().any(|objective| js::s(Some(objective)).contains("попросить Ареса подписать")));
+    }
+}
+
+/// Следующий шаг выводится из уже открытой зрителю памяти.
+fn apply_astohan_journal_guidance(state: &Value, scene: &mut Value, memory: &mut Value) {
+    let concept = state.get("campaignConcept");
+    let arc = get(concept, "arc");
+    if !is_str(get(arc, "scenario_id"), "astohan-dragon-hunt") || !is_str(get(arc, "version"), "skazanie:scenario-arc-v1")
+        || get(arc, "scenario_version").and_then(Value::as_u64) != Some(1) || is_str(get(concept, "campaign_mode"), "persistent") {
+        return;
+    }
+    let knows = |clue: &str| {
+        let id = format!("fact:secret:scenario:astohan-dragon-hunt:{clue}");
+        arr(memory.get("facts")).iter().any(|fact| is_str(fact.get("predicate"), "discovery") && is_str(fact.get("supersedes_fact_id"), &id))
+            || arr(memory.get("knowledge_revealed")).iter().any(|entry| is_str(entry.get("fact_id"), &id))
+    };
+    if !knows("camp-gedrik") {
+        return;
+    }
+    let both = knows("stormberg-journal-page");
+    let signed = plain(state.get("dialogues")).is_some_and(|dialogues| dialogues.values().any(|entry| {
+        arr(entry.get("flags")).iter().any(|flag| is_str(Some(flag), "ares-signed-confession"))
+    }));
+    let wants_signature = both && !signed;
+    let current_id = format!("quest:chapter:{}", js::s(get(state.get("adventure"), "chapter")));
+    let at_camp = is_str(scene.get("location_id"), "astohan-quiet-watch-camp")
+        && is_str(scene.get("objective"), "Выяснить, почему дракон ищет коменданта Гедрика Сола");
+    let objective = if wants_signature { "Вернуться в Штормберг за подписанным признанием Ареса" }
+        else if both { "Предъявить подписанное признание Саргату в Жаровне Вулканиса" }
+        else { "Найти страницу журнала похода у Орена Фаля в Архиве Сломанного Клыка" };
+    if at_camp {
+        if let Some(scene) = scene.as_object_mut() {
+            scene.insert("objective".into(), json!(objective));
+        }
+    }
+
+    let Some(quests) = memory.get_mut("quests").and_then(Value::as_array_mut) else { return };
+    let active = |quest: &Value| is_str(quest.get("status"), "active");
+    let current = quests.iter().position(|quest| active(quest) && is_str(quest.get("id"), &current_id));
+    if at_camp {
+        if let Some(quest) = current.and_then(|index| quests[index].as_object_mut()) {
+            quest.insert("title".into(), json!(objective));
+            quest.insert("objectives".into(), json!([objective]));
+        }
+    }
+    let investigation = quests.iter().position(|quest| active(quest) && quest.get("id").and_then(Value::as_str)
+        .and_then(|id| id.strip_prefix("quest-")).is_some_and(|seed| seed.len() == 12 && seed.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))));
+    if wants_signature {
+        if let Some(quest) = investigation.or(current).and_then(|index| quests[index].as_object_mut()) {
+            let mut objectives = arr(quest.get("objectives")).to_vec();
+            objectives.insert(0, json!("Собранные улики позволяют попросить Ареса подписать признание для мирного договора с Саргатом"));
+            quest.insert("objectives".into(), Value::Array(objectives));
         }
     }
 }
@@ -2293,7 +2382,10 @@ fn player_room(raw_state: &Value, user: Option<&Value>, actor: &Value) -> R<Valu
     room.insert("adventure".into(), public_adventure_for(get(visible_ref, "adventure"))?);
     room.insert("worldMap".into(), public_world_map_for(coalesce(get(visible_ref, "worldMap"), get(source, "worldMap")))?);
     let viewer_card = json!({ "playerId": actor_s, "isAdmin": false, "isPartyMember": true });
-    let memory = sk_memory::world_memory::world_memory_for_viewer(get(source, "worldMemory").unwrap_or(&Value::Null), &viewer_card);
+    let mut memory = sk_memory::world_memory::world_memory_for_viewer(get(source, "worldMemory").unwrap_or(&Value::Null), &viewer_card);
+    if let Some(scene) = room.get_mut("scene") {
+        apply_astohan_journal_guidance(state, scene, &mut memory);
+    }
     room.insert("worldMemory".into(), compact_public_memory(memory, user));
     // Карточка зрителя со `state` — без копии состояния в неё (Ск4).
     room.insert("social".into(), sk_social::npc_social::npc_social_for_viewer_in(get(source, "social").unwrap_or(&Value::Null), &viewer_card, state));

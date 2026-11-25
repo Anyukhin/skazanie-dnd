@@ -9,7 +9,8 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { setTimeout as sleep } from 'node:timers/promises'
 
-import { FakeLLM, FallbackLLMClient, RouterAIClient } from '../server/llm-client.mjs'
+import { FakeLLM, FallbackLLMClient, LLMResponseError, RouterAIClient } from '../server/llm-client.mjs'
+import { runWithModelAttemptCollector } from '../server/campaign-ai-context.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from '../server/usage-ledger.mjs'
 
 const MESSAGES = [{ role: 'user', content: 'проверка сроков' }]
@@ -156,4 +157,65 @@ test('срок больше 2^31−1 мс не превращается в та�
   const cascade = new FallbackLLMClient({ clients: [new FakeLLM({ responses: ['ответ каскада'], delayMs: 30 })] })
   const cascaded = await cascade.complete({ messages: MESSAGES, timeoutMs: BEYOND_NODE_TIMER_MS + 5 })
   assert.equal(cascaded.content, 'ответ каскада')
+})
+
+test('общий бюджет хода оставляет облачный каскад семь секунд до резерва Ollama', async () => {
+  const cloudBudgets = []
+  const reserveBudgets = []
+  let calls = 0
+  const cloud = {
+    model: 'openrouter/free',
+    providerLabel: 'OpenRouter',
+    async complete(_input, options) {
+      cloudBudgets.push(options.timeoutMs)
+      calls += 1
+      if (calls === 1) await sleep(120)
+      throw new LLMResponseError('invalid JSON', 'LLM_JSON_INVALID')
+    },
+  }
+  const reserve = {
+    model: 'qwen3:14b',
+    providerLabel: 'Ollama',
+    async complete(_input, options) {
+      reserveBudgets.push(options.timeoutMs)
+      return { content: 'ok', model: 'qwen3:14b', provider: 'Ollama' }
+    },
+  }
+  await runWithModelAttemptCollector(async () => {
+    const cascade = new FallbackLLMClient({ clients: [cloud], providerFallback: reserve })
+    const input = { messages: MESSAGES, role: 'action_adjudicator', json: true }
+    await cascade.complete(input)
+    await cascade.complete({ ...input, role: 'narrator' })
+  })
+  assert.equal(cloudBudgets.length, 2)
+  assert.equal(reserveBudgets.length, 2)
+  assert.ok(cloudBudgets.every((budget) => budget > 6_000 && budget <= 7_100), JSON.stringify(cloudBudgets))
+  assert.ok(reserveBudgets.every((budget) => budget > 10_000 && budget <= 12_000), JSON.stringify(reserveBudgets))
+  assert.ok(cloudBudgets[1] < cloudBudgets[0], JSON.stringify(cloudBudgets))
+})
+
+test('поздняя роль идёт сразу в Ollama и не получает новый срок', async () => {
+  const local = { model: 'local', providerLabel: 'Ollama', async complete() { return { content: 'ok' } } }
+  let calls = 0
+  const cascade = new FallbackLLMClient({ clients: [{ model: 'cloud', async complete() { calls += 1; return { content: 'ok' } } }], providerFallback: local })
+  await runWithModelAttemptCollector(async () => {
+    await cascade.complete({ messages: MESSAGES, role: 'action_adjudicator' })
+    await sleep(110)
+    await cascade.complete({ messages: MESSAGES, role: 'narrator' })
+    assert.equal(calls, 1)
+    await sleep(210)
+    await assert.rejects(cascade.complete({ messages: MESSAGES, role: 'narrator' }), { code: 'LLM_TURN_DEADLINE' })
+  }, 300, 200)
+})
+
+test('без настроенного резерва облачный каскад получает весь общий бюджет', async () => {
+  let budget = 0
+  await runWithModelAttemptCollector(async () => {
+    const cascade = new FallbackLLMClient({ clients: [{
+      model: 'openrouter/free',
+      async complete(_input, options) { budget = options.timeoutMs; return { content: 'ok' } },
+    }] })
+    await cascade.complete({ messages: MESSAGES, role: 'narrator' })
+  })
+  assert.ok(budget > 11_000 && budget <= 12_000, String(budget))
 })

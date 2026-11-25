@@ -6,16 +6,19 @@ import { combatActionsFor } from './combat-actions.mjs'
 import { characterCreationCatalog } from './character-lifecycle.mjs'
 import { normalizedClassSkillProficiencies, normalizedSelectedFeatureIds } from './character-progression.mjs'
 
+/** @type {typeof import('../data/astohan-pilot-builds-v1.json')} */
 const catalog = JSON.parse(readFileSync(new URL('../data/astohan-pilot-builds-v1.json', import.meta.url), 'utf8'))
 const RULESET_ID = 'dnd_5e_2014'
 const TARGET_LEVEL = 7
 
+/** @template T @param {T} value */
 const clone = (value) => structuredClone(value)
 
 export function astohanPilotBuildCatalog() {
   return clone(catalog)
 }
 
+/** @param {string} id */
 export function astohanPilotBuildFor(id) {
   const build = catalog.builds.find((entry) => entry.id === String(id))
   return build ? clone(build) : null
@@ -40,24 +43,25 @@ export function validateAstohanPilotBuild(recipe) {
     selectedFeatureIds: Array.isArray(build?.features) ? build.features : [],
   }
   const creation = characterCreationCatalog(RULESET_ID)
-  const classEntry = creation.classes.find((entry) => entry.id === classKey)
-  const species = creation.ability_policy.species_options.find((entry) => entry.id === build?.species)
-  const background = creation.backgrounds.options.find((entry) => entry.id === build?.background)
+  const classEntry = creation.classes.find(/** @param {{ id: string }} entry */ (entry) => entry.id === classKey)
+  const species = creation.ability_policy.species_options.find(/** @param {{ id: string }} entry */ (entry) => entry.id === build?.species)
+  const background = creation.backgrounds.options.find(/** @param {{ id: string }} entry */ (entry) => entry.id === build?.background)
   if (!classEntry) errors.push('unknown class ' + classKey)
   if (!species) errors.push('unknown species ' + build?.species)
   if (!background) errors.push('unknown background ' + build?.background)
-  if (classEntry && !classEntry.subclasses.some((entry) => entry.name === actor.subclass)) errors.push('unknown subclass ' + actor.subclass)
+  if (classEntry && !classEntry.subclasses.some(/** @param {{ name: string }} entry */ (entry) => entry.name === actor.subclass)) errors.push('unknown subclass ' + actor.subclass)
   if (!sameIds(actor.classSkillProficiencies, normalizedClassSkillProficiencies(actor))) errors.push('class skills are not a valid class choice')
   if (!sameIds(actor.selectedFeatureIds, normalizedSelectedFeatureIds(actor))) errors.push('feature choices are not valid')
   if (classEntry) {
     for (const group of classEntry.starter_equipment?.choice_groups ?? []) {
       const selected = build?.starter_equipment?.[group.id]
-      if (!selected || !group.options.some((option) => option.id === selected)) errors.push('invalid starter equipment choice ' + group.id)
+      if (!selected || !group.options.some(/** @param {{ id: string }} option */ (option) => option.id === selected)) errors.push('invalid starter equipment choice ' + group.id)
     }
   }
   if ((build?.known_spells ?? []).length || (build?.prepared_spells ?? []).length) errors.push('pilot builds must not request spell cards')
   const actions = combatActionsFor(actor)
   const actionById = new Map(actions.map((entry) => [entry.id, entry]))
+  /** @type {string[]} */
   const exposed = Array.isArray(build?.exposed_actions) ? build.exposed_actions : []
   for (const id of exposed) {
     const action = actionById.get(id)
@@ -100,6 +104,7 @@ export function stagedCommandsForPilotBuild(recipe, actorId = 'pilot-' + recipe.
   return commands
 }
 
+/** @param {unknown[]} left @param {unknown[]} right */
 function sameIds(left, right) {
   return left.length === right.length && left.every((value) => right.includes(value))
 }
