@@ -110,7 +110,7 @@ test('trace redaction removes secrets, raw prompts, environment and PII without 
     nested: { password: 'hunter2', authorization: 'Bearer abcdefghijklmnop', email: 'hero@example.org' },
     environment: { PATH: 'secret path', OTHER: 'value' },
     messages: [{ role: 'user', content: 'private diary' }],
-    token_usage: { input_tokens: 10, output_tokens: 20 },
+    token_usage: { input_tokens: 10, output_tokens: 20, total_tokens: 30, cost: 0.25, authorization: 'Bearer usage-secret', extra: 'drop-me' },
   }
   const redacted = redactTrace(trace, { sensitiveValues: ['generic-provider-secret'] })
   const encoded = JSON.stringify(redacted)
@@ -120,7 +120,7 @@ test('trace redaction removes secrets, raw prompts, environment and PII without 
   assert.equal(redacted.nested.email, '[REDACTED_PII]')
   assert.equal(redacted.environment, '[OMITTED_ENVIRONMENT]')
   assert.equal(redacted.messages, '[OMITTED_CONTENT]')
-  assert.deepEqual(redacted.token_usage, { input_tokens: 10, output_tokens: 20 })
+  assert.deepEqual(redacted.token_usage, { input_tokens: 10, output_tokens: 20, total_tokens: 30, cost: 0.25 })
   assert.doesNotMatch(encoded, /hunter2|hero@example|secret path|abcdefghijk/)
   assert.equal(trace.nested.password, 'hunter2')
   assert.equal(redactTrace({ details: 'failed with generic-provider-secret' }, { sensitiveValues: ['generic-provider-secret'] }).details, 'failed with [REDACTED]')

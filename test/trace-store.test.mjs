@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -27,6 +27,28 @@ test('секреты редактируются до записи трассир
   assert.equal(redacted.apiKey, '[REDACTED]')
   assert.equal(redacted.nested.authorization, '[REDACTED]')
   assert.equal(redacted.nested.text, 'ok')
+})
+
+test('сохранённая трасса оставляет только числовой token usage', () => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-trace-usage-'))
+  try {
+    const store = new FileTraceStore({ rootDir: root })
+    const saved = store.save({
+      turn_id: 'turn-usage', campaign_id: 'ROOM-USAGE',
+      token_usage: {
+        prompt_tokens: 2473, completion_tokens: 85, total_tokens: 2558, cost: 0,
+        authorization: 'Bearer usage-secret', extra: 'drop-me', output_tokens: '85',
+      },
+    })
+    const expected = { prompt_tokens: 2473, completion_tokens: 85, total_tokens: 2558, cost: 0 }
+    assert.deepEqual(saved.token_usage, expected)
+    assert.deepEqual(store.get('ROOM-USAGE', 'turn-usage').token_usage, expected)
+    const persisted = JSON.parse(readFileSync(join(root, 'ROOM-USAGE', 'turn-usage.json'), 'utf8'))
+    assert.deepEqual(persisted.token_usage, expected)
+    assert.doesNotMatch(JSON.stringify(persisted), /usage-secret|drop-me/u)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('recent возвращает ограниченное окно последних трасс для антиповтора', () => {
