@@ -385,6 +385,7 @@ const sceneArgsOdd = ['строка', [1, 2], null, 5].map((args) => ({ args, re
 const source = readFileSync(modulePath, 'utf8')
 const catalogUrl = new URL('data/campaign-scenarios-v1.json', root).href
 let patched = source.replace("new URL('../data/campaign-scenarios-v1.json', import.meta.url)", `new URL(${JSON.stringify(catalogUrl)})`)
+patched = patched.replace("'./party-exit-intent.mjs'", JSON.stringify(new URL('server/party-exit-intent.mjs', root).href))
 // Рабочая копия может хранить исходник с CRLF.
 patched = patched.replace(
   /function loadScenarios\(\) \{\r?\n {2}const raw = JSON\.parse\(readFileSync\(SCENARIO_CATALOG_URL, 'utf8'\)\)/u,
