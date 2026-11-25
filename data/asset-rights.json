@@ -3638,7 +3638,8 @@
     ["models/equipment/equipment-502ed32043691b15f9ad1258/shawm.glb", "d561648f71576401c579481cc779fa7073d4f13cc99894cd9b9a9cf9abd9237d", 24676],
     ["models/equipment/equipment-502ed32043691b15f9ad1258/viol.glb", "cede53eb1b4feba740f3b053331591d2ea2fd7932e14e7137fdb93fb2dc73a0e", 20408],
     ["models/cethiel/dragon-hd-7177312bcc7c9183dd3e/dragon.glb", "7177312bcc7c9183dd3ea461a2501077fdf8bd0081e944e6cad08721ae3971f2", 1567088],
-    ["models/cethiel/dragon-hd-7177312bcc7c9183dd3e/NOTICE.json", "fcf75176ac90a6881cf04b880e289ce029c66b2d93b24d3422b3a8d6e775ab3f", 1469]
+    ["models/cethiel/dragon-hd-7177312bcc7c9183dd3e/NOTICE.json", "fcf75176ac90a6881cf04b880e289ce029c66b2d93b24d3422b3a8d6e775ab3f", 1469],
+    ["npcs/astohan/astohan-gedrik-v1.png", "d046061a7b9babaf956b04bfe4259a1193b8b47e647c8ea4058bb80ec7ec862d", 408862]
   ],
   "rights_status": "review_required",
   "distribution": "blocked",

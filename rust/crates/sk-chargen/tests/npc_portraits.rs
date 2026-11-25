@@ -193,7 +193,7 @@ async fn prepared_npc_gets_authored_portrait_without_runtime_generation() {
     let directory = tempfile::tempdir().expect("каталог");
     let generator = Scripted::new("ok");
     let service = service(directory.path(), "test/image", "configured", Arc::clone(&generator), None);
-    assert_eq!(m::NPC_PORTRAIT_CHARACTER_ASSETS.len(), 8);
+    assert_eq!(m::NPC_PORTRAIT_CHARACTER_ASSETS.len(), 9);
     for (id, url) in m::NPC_PORTRAIT_CHARACTER_ASSETS {
         let authored = m::public_npc_portrait_profile(Some(&json!({ "id": id, "name": id, "role": "named NPC", "public_summary": "Авторский персонаж.", "tags": [] }))).expect("профиль");
         assert_eq!(authored["portrait_url"], url, "{id}");
@@ -433,7 +433,7 @@ fn role_portraits_are_complete_square_unique_and_registered() {
 fn astohan_portraits_are_complete_square_unique_and_registered() {
     let mut ids: Vec<&str> = m::NPC_PORTRAIT_CHARACTER_ASSETS.iter().map(|(id, _)| *id).collect();
     ids.sort_unstable();
-    assert_eq!(ids, ["astohan-ares", "astohan-eldrin", "astohan-ivara", "astohan-kaelan", "astohan-lomar", "astohan-mira", "astohan-oren", "astohan-sargat"]);
+    assert_eq!(ids, ["astohan-ares", "astohan-eldrin", "astohan-gedrik", "astohan-ivara", "astohan-kaelan", "astohan-lomar", "astohan-mira", "astohan-oren", "astohan-sargat"]);
     check_assets(&m::NPC_PORTRAIT_CHARACTER_ASSETS, 512, |id| format!("/assets/npcs/astohan/{id}-v1.png"));
 }
 
