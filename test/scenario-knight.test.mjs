@@ -16,6 +16,8 @@ import { scenarioKnightPresencePlan, scenarioKnightState } from '../server/scena
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { clockMinuteOf, minutesUntilClock } from '../server/weather.mjs'
 import { fixedDice, maxDice, minDice } from './kit/dice.mjs'
+import { addPlayer, createCampaign, expectStatus, sendCommand, setupAdmin, startTestServer } from './kit/http.mjs'
+import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const KAELAN = 'astohan-kaelan'
 const CLIFFS = 'astohan-forgotten-cliffs'
@@ -290,6 +292,36 @@ test('фразы игрока: «ставлю голову перед рыцар
     assert.equal(plan.proposed_commands[0].command_type, expected.command_type, message)
     if (expected.skill) assert.equal(plan.proposed_commands[0].skill, expected.skill, message)
   }
+})
+
+test('мирный путь Каэлана доступен игроку через HTTP и переживает перезапуск', { timeout: runnerTimeout(120_000) }, async (t) => {
+  const run = await midnightAtCastle()
+  discoverChapel(run)
+  standNextToKnight(run)
+  const code = 'KNIGHT-HTTP'
+  const server = await startTestServer(t, { dice: { format: 'skazanie.test-dice/1', rules: [{ value: 'max' }] } })
+  const { client: admin } = await setupAdmin(server)
+  const { campaignConcept, players, mechanics, worldMap, worldMemory, adventure, scene, npc_world, social, scenario_knight } = run.state
+  await createCampaign(admin, { code, state: {
+    campaignConcept, players, mechanics, worldMap, worldMemory, adventure, npc_world, social, scenario_knight,
+    partyMemberIds: [hero.id], activePlayerId: hero.id, scene: { ...scene, cells: [] },
+  } })
+  const { client: player } = await addPlayer(server, admin, code, { heroIds: [hero.id] })
+  const getState = async () => expectStatus(await player.get(`/api/rooms/${code}`)).state
+  const choose = (id) => sendCommand(player, code, `knight-${id}`, {
+    command_type: 'ChooseDialogueOption', actor_id: hero.id, npc_id: KAELAN, option_id: id,
+  })
+  assert.ok((await getState()).scene_dialogues?.[KAELAN]?.options.some((option) => option.id === 'head'))
+  assert.ok(expectStatus(await choose('head')).mechanics.some((event) => event.event_type === 'ScenarioKnightHeadReturned'))
+  assert.ok((await getState()).scene_dialogues?.[KAELAN]?.options.some((option) => option.id === 'release-prayer'))
+  const released = expectStatus(await choose('release-prayer'))
+  assert.ok(released.mechanics.some((event) => event.event_type === 'ScenarioKnightReleased'))
+  await server.restart()
+  const repeated = expectStatus(await choose('release-prayer'))
+  assert.equal(repeated.idempotent_replay, true)
+  const state = await getState()
+  assert.equal(state.scene_dialogues?.[KAELAN], undefined)
+  assert.equal(state.players[0].inventory.filter((item) => item.name === 'Слеза Проклятого Рыцаря').length, 1)
 })
 
 test('Слеза лежит в латах рыцаря: павший в бою Каэлан оставляет её в своём контейнере', async () => {

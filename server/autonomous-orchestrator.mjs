@@ -775,22 +775,25 @@ export class AutonomousCampaignOrchestrator {
     }
     const existingIntentCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:intent`)
     let loaded = await this.load(campaignId)
-    // Восстановление после остановки между договором и шагом Директора:
-    // сначала закрываем авторское приключение, затем читаем новое намерение.
-    if (loaded.state?.mechanics?.campaign_lifecycle?.status === 'active'
-      && treatyEndsAdventure(loaded.state)) {
-      const completion = await this.settleAcceptedTreaty(campaignId, key, loaded.state)
-      if (completion) {
-        loaded = await this.load(campaignId)
-        return {
-          intent: proposed,
-          authorization: { policy: 'director-intent-policy-v1', reason: 'campaign_completion_recovery', replaced: false },
-          results: [completion],
-          state: loaded.state,
-          state_version: loaded.state_version,
-          admin_commands: 0,
-          recovered_completion: true,
-        }
+    // Закрываем подтверждённый авторский финал до нового шага Директора.
+    const lifecycle = loaded.state?.mechanics?.campaign_lifecycle
+    let recovered = null
+    if (lifecycle?.status === 'active') {
+      if (treatyEndsAdventure(loaded.state)) recovered = await this.settleAcceptedTreaty(campaignId, key, loaded.state)
+      else if (!existingIntentCommit && scenarioEnding(loaded.state)) recovered = await this.completeCampaignIfReady(campaignId, key)
+    }
+    // Координатор последствий уже мог записать эпилог, прежде чем управление
+    // дошло до этого шага. В этом случае новое намерение тоже не требуется.
+    if (recovered || (!existingIntentCommit && lifecycle?.status === 'completed' && lifecycle.ending)) {
+      if (recovered) loaded = await this.load(campaignId)
+      return {
+        intent: proposed,
+        authorization: { policy: 'director-intent-policy-v1', reason: 'campaign_completion_recovery', replaced: false },
+        results: recovered ? [recovered] : [],
+        state: loaded.state,
+        state_version: loaded.state_version,
+        admin_commands: 0,
+        recovered_completion: true,
       }
     }
     const existingIntentRecord = existingIntentCommit?.events?.find((entry) => entry.event_type === 'DirectorIntentRecorded')?.payload

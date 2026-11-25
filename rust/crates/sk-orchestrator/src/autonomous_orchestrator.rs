@@ -1620,24 +1620,30 @@ impl AutonomousCampaignOrchestrator {
         }
         let existing_intent_commit = self.by_key_json(campaign_id, &format!("{key}:intent"))?;
         let mut loaded = self.load(campaign_id)?;
-        // Восстановление после остановки между договором и шагом Директора.
-        // Терминальный сценарий закрывается до записи нового намерения, чтобы
-        // stale active save не успел создать следующую встречу.
-        if is_str(at(Some(&loaded.state), &["mechanics", "campaign_lifecycle", "status"]), "active")
-            && treaty_ends_adventure(&loaded.state)
-        {
-            if let Some(completion) = self.settle_accepted_treaty(campaign_id, &key, &loaded.state).await? {
+        // Закрываем подтверждённый авторский финал до нового шага Директора.
+        let lifecycle = at(Some(&loaded.state), &["mechanics", "campaign_lifecycle"]);
+        let active = is_str(get(lifecycle, "status"), "active");
+        let recovered = if active && treaty_ends_adventure(&loaded.state) {
+            self.settle_accepted_treaty(campaign_id, &key, &loaded.state).await?
+        } else if active && existing_intent_commit.is_none() && scenario_ending(&loaded.state).is_some() {
+            self.complete_campaign_if_ready(campaign_id, &key).await?
+        } else {
+            None
+        };
+        // Такой же возврат, если эпилог уже записал координатор последствий.
+        if recovered.is_some() || (existing_intent_commit.is_none() && is_str(get(lifecycle, "status"), "completed") && js::truthy(get(lifecycle, "ending"))) {
+            if recovered.is_some() {
                 loaded = self.load(campaign_id)?;
-                return Ok(json!({
-                    "intent": proposed,
-                    "authorization": { "policy": "director-intent-policy-v1", "reason": "campaign_completion_recovery", "replaced": false },
-                    "results": [completion],
-                    "state": loaded.state,
-                    "state_version": loaded.state_version,
-                    "admin_commands": 0,
-                    "recovered_completion": true,
-                }));
             }
+            return Ok(json!({
+                "intent": proposed,
+                "authorization": { "policy": "director-intent-policy-v1", "reason": "campaign_completion_recovery", "replaced": false },
+                "results": recovered.into_iter().collect::<Vec<_>>(),
+                "state": loaded.state,
+                "state_version": loaded.state_version,
+                "admin_commands": 0,
+                "recovered_completion": true,
+            }));
         }
         let existing_intent_record = existing_intent_commit.as_ref().and_then(|commit| list(commit.get("events")).iter().find(|entry| type_is(entry, "DirectorIntentRecorded"))).and_then(|entry| entry.get("payload")).cloned();
         let existing_intent = get(existing_intent_record.as_ref(), "intent").filter(|value| js::truthy(Some(value))).cloned();

@@ -198,4 +198,6 @@ test/openrouter-free-api.test.mjs # бесплатный каскад, стро�
 test/astohan-player-party-inability-api.test.mjs # поражение оставляет отряду выход из боя и сохраняется после перезапуска
 test/astohan-ash-gate-api.test.mjs # улика с заставы и два счётчика после повтора броска и перезапуска
 test/melee-obstruction-api.test.mjs # ближний удар и прогноз через стену или дверь, повтор после перезапуска
+test/astohan-pilot-progression-api.test.mjs # импорт четырёх листов, повышение до 10-го и боевые действия варвара
 test/scenario-treaty-completion-api.test.mjs # договор до и во время боя, восстановление незавершённого эпилога
+test/scenario-knight.test.mjs # ночное появление Каэлана, бой и мирный путь через команды игрока
