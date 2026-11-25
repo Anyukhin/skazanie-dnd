@@ -18,6 +18,7 @@ fn call(name: &str, args: &Args) -> Option<Outcome> {
                 catalog_id: None,
                 informant_id: None,
                 choice: action.get("choice").and_then(Value::as_str).map(str::to_string),
+                proof: action.get("proof").and_then(Value::as_str).map(str::to_string),
             };
             ok(json!(dialogue_action_checks(&built)))
         }

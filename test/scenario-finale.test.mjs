@@ -6,12 +6,14 @@ import test from 'node:test'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
 import { campaignScenario, scenarioClueFactId, scenarioEncounterEndReason, scenarioEnding, scenarioLocationId } from '../server/campaign-scenario.mjs'
+import { dialogueOptionsFor } from '../server/campaign-dialogues.mjs'
 import { freezeEncounterOutcomePlan } from '../server/encounter-rewards.mjs'
 import { IntentParser } from '../server/intent-parser.mjs'
 import { NpcMoraleAgent, commandsForMoraleDecision, isMoraleMoment } from '../server/npc-controller.mjs'
 import { normalizeCampaignState, resolveCommands } from '../server/rules-engine.mjs'
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import { fixedDice, maxDice, minDice } from './kit/dice.mjs'
+import { applyAll } from './kit/engine.mjs'
 
 const SARGAT = 'astohan-sargat'
 const hero = {
@@ -139,6 +141,55 @@ test('«Договор» до боя: дракон уходит с равнин,
   assert.ok(concluded.events.some((event) => event.event_type === 'ScenarioTreatyConcluded'))
   assert.equal(run.state.social.npcs.find((npc) => npc.id === SARGAT).available, false, 'дракона в логове больше нет')
   assert.equal(scenarioEnding(run.state)?.id, 'treaty')
+})
+
+test('подписанное признание Ареса открывает договор без броска и переживает replay', async () => {
+  const run = await campaign()
+  run.discover('stormberg-journal-page')
+  await run.travel('astohan-quiet-watch-camp')
+  run.discover('camp-gedrik')
+  await run.travel('astohan-stormberg')
+  const dialogue = dialogueOptionsFor(run.state, 'astohan-ares', hero.id)
+  const confession = dialogue?.options.find((option) => option.id === 'signed-confession')
+  assert.ok(confession, 'вариант подписанного признания появляется только после двух улик')
+
+  const chosen = run.apply({ command_type: 'ChooseDialogueOption', actor_id: hero.id, npc_id: 'astohan-ares', option_id: 'signed-confession' }, player, minDice())
+  assert.ok(chosen.events.some((event) => event.event_type === 'DialogueOptionChosen'))
+  assert.ok(!chosen.events.some((event) => event.event_type === 'DieRolled'), 'письменное признание не бросает кубик')
+  const aresFactId = scenarioClueFactId(campaignScenario(run.state), 'ares-confession')
+  assert.ok(run.state.worldMemory.knowledge_revealed.some((entry) => entry.fact_id === aresFactId))
+
+  await run.toLair()
+  const sargatDialogue = dialogueOptionsFor(run.state, SARGAT, hero.id)
+  const signedTreaty = sargatDialogue?.options.find((option) => option.id === 'signed-treaty')
+  assert.ok(signedTreaty, 'Саргат получает отдельный вариант для подписанного признания')
+  assert.equal(signedTreaty.check, undefined, 'подписанный договор не показывает плашку СЛ 20')
+  const intent = await new IntentParser().parse({ message: 'Предлагаю Саргату договор', playerId: hero.id, visibleState: run.state })
+  assert.equal(intent.intent, 'scenario_treaty')
+  const concluded = run.apply({ command_type: 'NegotiateScenarioTreaty', actor_id: hero.id }, player, minDice())
+  assert.ok(concluded.events.some((event) => event.event_type === 'ScenarioTreatyConcluded'))
+  assert.ok(!concluded.events.some((event) => event.event_type === 'AbilityCheckResolved' || event.event_type === 'DieRolled'), 'подписанное признание заменяет только предбоевой бросок')
+
+  const replayed = normalizeCampaignState(applyAll(run.initial, run.events))
+  assert.equal(replayed.scenario_attention.treaty.concluded, true)
+  assert.ok(replayed.worldMemory.knowledge_revealed.some((entry) => entry.fact_id === aresFactId))
+})
+
+test('подписанное признание после неудачной попытки возвращает герою право на договор', async () => {
+  const run = await campaign()
+  run.discover('stormberg-journal-page')
+  await run.travel('astohan-quiet-watch-camp')
+  run.discover('camp-gedrik')
+  await run.travel('astohan-stormberg')
+  await run.toLair()
+  const refused = run.apply({ command_type: 'NegotiateScenarioTreaty', actor_id: hero.id }, player, minDice())
+  assert.ok(refused.events.some((event) => event.event_type === 'ScenarioTreatyRefused'))
+
+  await run.travel('astohan-stormberg')
+  run.apply({ command_type: 'ChooseDialogueOption', actor_id: hero.id, npc_id: 'astohan-ares', option_id: 'signed-confession' }, player, minDice())
+  await run.toLair()
+  const concluded = run.apply({ command_type: 'NegotiateScenarioTreaty', actor_id: hero.id }, player, minDice())
+  assert.ok(concluded.events.some((event) => event.event_type === 'ScenarioTreatyConcluded'))
 })
 
 test('«Договор» в бою — только когда дракон ранен; враги уходят, бой кончается договором', async () => {
