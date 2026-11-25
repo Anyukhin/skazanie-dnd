@@ -12,7 +12,7 @@ export interface UiTacticalGuardCommand {
   action_id?: string
 }
 
-export function canIssueUiTacticalCommand(combat: UiCombatGuardState | null | undefined, command: UiTacticalGuardCommand, currentActorId: string | undefined): boolean
+export function canIssueUiTacticalCommand(combat: UiCombatGuardState | null | undefined, command: UiTacticalGuardCommand, currentActorId: string | undefined, activeActorIds?: string[]): boolean
 
 export const ENERVATION_TARGET_REASON: string
 

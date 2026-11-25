@@ -1805,6 +1805,8 @@ export type GameState = {
     online_hero_ids: string[]
     typing_actor_ids?: string[]
   }
+  /** Игровые участники, которые ещё могут действовать в общей фазе. */
+  turn_phase_actor_ids?: string[]
   /** Серверный дедлайн текущей фазы боя; клиент только отображает его. */
   turn_clock?: {
     actor_ids: string[]

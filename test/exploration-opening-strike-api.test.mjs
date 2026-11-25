@@ -85,7 +85,7 @@ test('удар из исследования открывает бой по HTTP
     adventure: { chapter: 1, history: [], visitedLocations: ['Привал'] },
     engine_mode: 'enforce',
   }
-  for (const code of ['OPEN-STRIKE', 'OPEN-BG3']) {
+  for (const code of ['OPEN-STRIKE', 'OPEN-BG3', 'OPEN-GROUP']) {
     assertStatus(await request(baseUrl, '/api/campaigns', {
       method: 'POST', cookie: adminCookie, body: { code, name: state.campaign, state: { ...state, sessionCode: code } },
     }), 201, log)
@@ -102,8 +102,12 @@ test('удар из исследования открывает бой по HTTP
     body: { idempotency_key: key, message: 'Атаковать выбранную цель', command: { command_type: 'MakeAttack', actor_id: 'hero', target_id: targetId } },
   })
   const bg3Rule = (body) => body?.ruleset?.houseRules?.find((rule) => rule.id === 'house:bg3-opening-strike')
+  const groupRule = (body) => body?.ruleset?.houseRules?.find((rule) => rule.id === 'house:group-initiative')
   const setBg3 = (cookie, key, enabled, code = 'OPEN-STRIKE') => request(baseUrl, `/api/campaigns/${code}/settings`, {
     method: 'PATCH', cookie, body: { idempotency_key: key, houseRules: { 'house:bg3-opening-strike': enabled } },
+  })
+  const setGroup = (cookie, key, enabled, code = 'OPEN-GROUP') => request(baseUrl, `/api/campaigns/${code}/settings`, {
+    method: 'PATCH', cookie, body: { idempotency_key: key, houseRules: { 'house:group-initiative': enabled } },
   })
 
   // Новая кампания получает правило BG3 по умолчанию; переключает его только
@@ -111,7 +115,12 @@ test('удар из исследования открывает бой по HTTP
   const settings = await request(baseUrl, '/api/campaigns/OPEN-STRIKE/settings', { cookie: adminCookie })
   assertStatus(settings, 200, log)
   assert.equal(bg3Rule(settings.body)?.enabled, true, 'новая кампания играет с ударом как в BG3')
+  assert.equal(groupRule(settings.body)?.enabled, false, 'групповая инициатива включается ведущим явно')
   assert.equal((await setBg3(playerCookie, 'bg3-off-player', false)).status, 403, 'игрок правило не переключает')
+  assert.equal((await setGroup(playerCookie, 'group-on-player', true)).status, 403, 'игрок не переключает групповую инициативу')
+  const groupEnabled = await setGroup(adminCookie, 'group-on', true)
+  assertStatus(groupEnabled, 200, log)
+  assert.equal(groupRule(groupEnabled.body)?.enabled, true)
   const disabled = await setBg3(adminCookie, 'bg3-off', false)
   assertStatus(disabled, 200, log)
   assert.equal(bg3Rule(disabled.body)?.enabled, false)
@@ -171,6 +180,14 @@ test('удар из исследования открывает бой по HTTP
   assert.equal(freeAttack.house_rule_id, 'house:bg3-opening-strike')
   assert.equal(currentActor(free.body.authoritative_state), 'hero', 'ход возвращается герою')
   assert.notEqual(free.body.authoritative_state.mechanics.combat.action_economy.hero?.action, false, 'и он целый')
+
+  // Та же команда открытия боя получает групповую фазу из настройки кампании,
+  // без недоверенного флага в теле запроса.
+  const groupStart = await strike('group-strike-1', 'sentinel', 'OPEN-GROUP')
+  assertStatus(groupStart, 200, log)
+  assert.equal(eventOf(groupStart.body, 'CombatStarted')?.payload.group_initiative, true)
+  assert.deepEqual(groupStart.body.authoritative_state.turn_phase_actor_ids, [currentActor(groupStart.body.authoritative_state)],
+    'ответ команды сразу возвращает участников групповой фазы')
 
   // Нейтральный NPC: та же команда атаки игрока, цель — король из авторской
   // сцены. HTTP пропускает NPC сцены как цель, остальное решает движок.

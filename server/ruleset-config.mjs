@@ -28,6 +28,13 @@ export const BG3_OPENING_STRIKE_HOUSE_RULE_ID = 'house:bg3-opening-strike'
 export const BG3_SPELL_HANDS_HOUSE_RULE_ID = 'house:bg3-spell-hands'
 
 /**
+ * Кооперативный вариант инициативы: союзники с соседними результатами ходят
+ * одной фазой и выбирают порядок сами. Включается ведущим явно, чтобы старые
+ * кампании сохраняли индивидуальную очередь.
+ */
+export const GROUP_INITIATIVE_HOUSE_RULE_ID = 'house:group-initiative'
+
+/**
  * Правила, которые сервер сам включает и уже идущим кампаниям — при старте,
  * событием `CampaignHouseRuleChanged` (`defaultHouseRuleEvent`). Решение
  * владельца от 2026-10-04: удар как в BG3 включён у всех, пока ведущий его
@@ -50,6 +57,11 @@ export const TOGGLEABLE_HOUSE_RULES = Object.freeze([
     id: BG3_SPELL_HANDS_HOUSE_RULE_ID,
     label: 'Заклинания как в BG3',
     description: 'Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»',
+  }),
+  Object.freeze({
+    id: GROUP_INITIATIVE_HOUSE_RULE_ID,
+    label: 'Групповая инициатива',
+    description: 'Идущие подряд союзники ходят одной фазой и выбирают порядок действий между собой. Выключено — у каждого участника своя очередь.',
   }),
 ])
 

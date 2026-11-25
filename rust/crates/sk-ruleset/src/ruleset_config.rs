@@ -30,6 +30,11 @@ pub const BG3_OPENING_STRIKE_HOUSE_RULE_ID: &str = "house:bg3-opening-strike";
 /// умолчанию, ведущий выключает в настройках.
 pub const BG3_SPELL_HANDS_HOUSE_RULE_ID: &str = "house:bg3-spell-hands";
 
+/// Кооперативный вариант инициативы: союзники одной фазы выбирают порядок
+/// действий между собой. Включается ведущим явно, чтобы старые кампании
+/// сохраняли индивидуальную очередь.
+pub const GROUP_INITIATIVE_HOUSE_RULE_ID: &str = "house:group-initiative";
+
 /// Правила, которые сервер сам включает и уже идущим кампаниям — при старте,
 /// событием `CampaignHouseRuleChanged` (`default_house_rule_event`).
 pub const DEFAULT_ON_HOUSE_RULE_IDS: [&str; 2] = [BG3_OPENING_STRIKE_HOUSE_RULE_ID, BG3_SPELL_HANDS_HOUSE_RULE_ID];
@@ -52,7 +57,7 @@ impl ToggleableHouseRule {
 /// Домашние правила, которые ведущий переключает в настройках идущей кампании.
 /// Сюда попадает только правило, решающее исход в момент команды: его итог
 /// записан событиями, поэтому смена правила не меняет replay прошлого.
-pub const TOGGLEABLE_HOUSE_RULES: [ToggleableHouseRule; 2] = [
+pub const TOGGLEABLE_HOUSE_RULES: [ToggleableHouseRule; 3] = [
     ToggleableHouseRule {
         id: BG3_OPENING_STRIKE_HOUSE_RULE_ID,
         label: "Нападение как в BG3",
@@ -62,6 +67,11 @@ pub const TOGGLEABLE_HOUSE_RULES: [ToggleableHouseRule; 2] = [
         id: BG3_SPELL_HANDS_HOUSE_RULE_ID,
         label: "Заклинания как в BG3",
         description: "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+    },
+    ToggleableHouseRule {
+        id: GROUP_INITIATIVE_HOUSE_RULE_ID,
+        label: "Групповая инициатива",
+        description: "Идущие подряд союзники ходят одной фазой и выбирают порядок действий между собой. Выключено — у каждого участника своя очередь.",
     },
 ];
 

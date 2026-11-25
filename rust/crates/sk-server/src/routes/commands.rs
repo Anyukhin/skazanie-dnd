@@ -926,7 +926,8 @@ async fn respond(
     };
     if let Some(map) = result.as_object_mut() {
         match response_state {
-            Some(state) => {
+            Some(mut state) => {
+                crate::streams::attach_group_turn_phase(&mut state)?;
                 map.insert("authoritative_state".into(), state);
             }
             None => {

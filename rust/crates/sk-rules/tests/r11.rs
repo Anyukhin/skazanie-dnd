@@ -148,3 +148,23 @@ fn sorted_initiative_matches_js() {
     }
     report(&failures, cases.len());
 }
+
+#[test]
+fn group_initiative_house_rule_is_replayable_start_event() {
+    let case = DATA["cases"].as_array().expect("разборы").iter().find(|case| {
+        case["input"]["command_type"].as_str() == Some("StartCombat") && case["o"]["ok"].is_object()
+    }).expect("в эталоне есть успешный StartCombat");
+    let state_index = case["s"].as_u64().expect("состояние") as usize;
+    let mut state = DATA["states"][state_index].clone();
+    state["enabled_house_rules"] = json!(["house:group-initiative"]);
+    let input = &case["input"];
+    let context = Context::from_json(&case["context"]);
+    let mut dice = sequence(&case["v"]);
+    let mut uuid = sequence_uuids("uuid");
+    let resolved = api::with_lenient_validation(|| api::resolve_command(input, &state, &mut dice, &context, &mut uuid))
+        .expect("правило не должно менять допустимость старта")
+        .into_resolved();
+    assert!(resolved.events.iter().any(|event| {
+        event["event_type"] == "CombatStarted" && event["payload"]["group_initiative"] == true
+    }), "CombatStarted должен записать включённую групповую фазу");
+}

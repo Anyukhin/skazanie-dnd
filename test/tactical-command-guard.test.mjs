@@ -47,6 +47,15 @@ test('UI turn guard continues to reject ordinary off-turn commands', () => {
   }, 'hero-active'), true)
 })
 
+test('UI turn guard allows each server-projected member of a group phase', () => {
+  const grouped = { active: true, reaction_window: null }
+  assert.equal(canIssueUiTacticalCommand(grouped, { command_type: 'MoveActor', actor_id: 'hero-a', to: { x: 1, y: 1 } }, 'hero-a', ['hero-a', 'hero-b']), true)
+  assert.equal(canIssueUiTacticalCommand(grouped, { command_type: 'MoveActor', actor_id: 'hero-b', to: { x: 1, y: 1 } }, 'hero-a', ['hero-a', 'hero-b']), true)
+  assert.equal(canIssueUiTacticalCommand(grouped, { command_type: 'MoveActor', actor_id: 'hero-c', to: { x: 1, y: 1 } }, 'hero-a', ['hero-a', 'hero-b']), false)
+  assert.equal(canIssueUiTacticalCommand(grouped, { command_type: 'EndTurn', actor_id: 'hero-b' }, 'hero-a', ['hero-b']), true)
+  assert.equal(canIssueUiTacticalCommand(grouped, { command_type: 'EndTurn', actor_id: 'hero-a' }, 'hero-a', ['hero-b']), false)
+})
+
 test('enervation continuation accepts only its server-owned source target', () => {
   const continuation = { id: 'enervation-repeat', effect: { kind: 'enervation-continuation', target_id: 'enemy-source' } }
   assert.deepEqual(combatActionTargetGuard(continuation, 'enemy-source'), { allowed: true, reason: null })

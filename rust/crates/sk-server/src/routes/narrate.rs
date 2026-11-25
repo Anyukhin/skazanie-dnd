@@ -642,7 +642,8 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
         patch.insert("narration_message_id".into(), Value::String(id.clone()));
     }
     if let Some(engine_state) = &authoritative {
-        let canonical = journaled.as_ref().and_then(|room| room.state.clone()).or_else(|| projected.as_ref().and_then(|room| room.state.clone())).unwrap_or_else(|| engine_state.clone());
+        let mut canonical = journaled.as_ref().and_then(|room| room.state.clone()).or_else(|| projected.as_ref().and_then(|room| room.state.clone())).unwrap_or_else(|| engine_state.clone());
+        crate::streams::attach_group_turn_phase(&mut canonical)?;
         patch.insert("authoritative_state".into(), canonical);
     }
     // Рассказ может пережить чужую запись комнаты: версия при начале запроса

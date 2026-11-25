@@ -94,6 +94,22 @@ test('ведущий переключает домашнее правило BG3 
   assert.ok(!off.enabled_house_rules.includes('house:bg3-opening-strike'))
 })
 
+test('групповая инициатива появляется в настройках и меняется владельцем событием', () => {
+  const before = normalizeCampaignState(state())
+  const listed = campaignHouseRuleSettings(before).find((rule) => rule.id === 'house:group-initiative')
+  assert.deepEqual(listed, {
+    id: 'house:group-initiative',
+    label: 'Групповая инициатива',
+    description: 'Идущие подряд союзники ходят одной фазой и выбирают порядок действий между собой. Выключено — у каждого участника своя очередь.',
+    enabled: false,
+  })
+  const event = campaignHouseRuleChangeEvent('house:group-initiative', true, before, { actorId: 'owner', now: '2026-10-04T12:00:00.000Z' })
+  const after = applyGameEvent(before, event)
+  assert.deepEqual(replayEvents(before, [event]), after)
+  assert.equal(campaignHouseRuleSettings(after).find((rule) => rule.id === 'house:group-initiative')?.enabled, true)
+  assert.equal(event.actor_id, 'owner', 'событие сохраняет владельца, который изменил настройку')
+})
+
 test('переключить можно только объявленное правило и не посреди боя', () => {
   const base = normalizeCampaignState(state())
   assert.throws(() => campaignHouseRuleChangeEvent('skazanie:2014-preview-legacy-catalogs-v1', false, base), { code: 'HOUSE_RULE_NOT_TOGGLEABLE' })

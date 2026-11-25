@@ -33,6 +33,7 @@ fn ruleset_config_matches_js() {
             "const:CLASS_RESOURCES_2024_POLICY_ID" => ok(json!(config::CLASS_RESOURCES_2024_POLICY_ID)),
             "const:BG3_OPENING_STRIKE_HOUSE_RULE_ID" => ok(json!(config::BG3_OPENING_STRIKE_HOUSE_RULE_ID)),
             "const:BG3_SPELL_HANDS_HOUSE_RULE_ID" => ok(json!(config::BG3_SPELL_HANDS_HOUSE_RULE_ID)),
+            "const:GROUP_INITIATIVE_HOUSE_RULE_ID" => ok(json!(config::GROUP_INITIATIVE_HOUSE_RULE_ID)),
             "const:DEFAULT_ON_HOUSE_RULE_IDS" => ok(json!(config::DEFAULT_ON_HOUSE_RULE_IDS)),
             "const:TOGGLEABLE_HOUSE_RULES" => ok(config::toggleable_house_rules_json()),
             "const:RULESET_PROFILES" => ok(config::ruleset_profiles_json()),

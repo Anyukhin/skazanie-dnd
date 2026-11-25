@@ -18,7 +18,7 @@ import {
   REPUTATION_TIER_LABELS, UI_SCALE_PRESETS, battleEventText, canonicalLocationKey, clampUiScale, damageTypeLabel,
   hasHeroPortrait, heroFaceMode, heroFaceStyle, locationsMatch, useDialogEscape,
 } from './app-shared'
-import { combatTurnActive, currentTurnActorId } from './game-session-state.mjs'
+import { combatTurnActive, currentTurnActorId, currentTurnActorIds } from './game-session-state.mjs'
 import { AdminView, AgentInteractionCard, CampaignModal, ChatPanel, JournalView, SettingsView } from './AppViews'
 import { CombatTurnClock, DungeonMap, heroStatusFor, heroStatusSummary, type HeroStatus } from './DungeonMap'
 import { RailGrip, useBoardFrame } from './hud-parts'
@@ -1089,6 +1089,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [merchantSelection, selectedMerchant])
   // Чей ход и идёт ли бой — считаются один раз: их читают и сигнал хода, и стол ниже.
   const turnActorId = currentTurnActorId(state)
+  const turnActorIds = currentTurnActorIds(state)
   const combatActive = combatTurnActive(state)
   const alertActorName = partyPlayers.find((player) => player.id === turnActorId)?.character ?? 'герой'
   const turnAlertCursor = useRef({ sessionCode: state.sessionCode, actorId: turnActorId })
@@ -1608,7 +1609,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const turnEnemy = state.enemies?.find((enemy) => enemy.id === turnActorId)
   const turnSummon = state.actors?.find((actor) => actor.id === turnActorId && actor.alive)
   const turnActorName = turnPlayer?.character ?? turnSummon?.name ?? turnEnemy?.name ?? 'участник боя'
-  const mapActorId = combatActive ? turnActorId : activePlayer.id
+  const mapActorId = combatActive
+    ? turnActorIds.includes(activePlayer.id) ? activePlayer.id : turnActorId
+    : activePlayer.id
   // Формулировка не случайная: её разбирает тот же словарь ухода
   // (`server/party-exit-intent.mjs`), которым сервер решает, открывать ли
   // голосование. Кнопка отправляет ровно то намерение, которое игрок мог бы
@@ -1824,7 +1827,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onLeaveLocation={proposeLeaveLocation}
             leaveLocationDisabled={travelBlocked}
             onOpenMerchant={openMerchant}
-            onFinishTurn={finishMapTurn}
+            onFinishTurn={() => finishMapTurn(mapActorId)}
             onFreeAction={(text, kind) => isAdventureContinuation(text, { requestKind: kind ?? 'action' }) && awaitsDecisionContinuation(state.agentInteraction)
               ? continueSceneInteraction()
               // «Продолжим» на промежуточной точке маршрута — обычная заявка:
@@ -1896,7 +1899,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           appearance={state.actor_appearances?.[activePlayer.id]}
           enemyTargets={(state.enemies ?? []).filter((candidate) => candidate.alive && (candidate.hp == null || candidate.hp > 0)).map((candidate) => ({ id: candidate.id, label: candidate.name }))}
            combatActive={combatActive}
-           combatItemTurnAvailable={canAct && turnActorId === activePlayer.id}
+           combatItemTurnAvailable={canAct && (!combatActive || turnActorIds.includes(activePlayer.id))}
            combatActionAvailable={state.mechanics?.combat?.action_economy?.[activePlayer.id]?.action !== false}
            combatObjectInteractionAvailable={state.mechanics?.combat?.action_economy?.[activePlayer.id]?.object_interaction !== false}
            combatBonusActionAvailable={state.mechanics?.combat?.action_economy?.[activePlayer.id]?.bonus_action !== false}

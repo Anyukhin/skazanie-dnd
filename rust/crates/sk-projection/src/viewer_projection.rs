@@ -1807,7 +1807,7 @@ fn public_autonomy_for(autonomy: Option<&Value>) -> Option<Value> {
 /// `PROJECTED_STATE_KEYS`: ключи состояния, по которым у проекции есть
 /// осознанное решение (своя публичная форма или «отдаём как есть»). Это
 /// белый список комнаты игрока: ключа нет в списке — игроку он не уходит.
-pub const PROJECTED_STATE_KEYS: [&str; 64] = [
+pub const PROJECTED_STATE_KEYS: [&str; 65] = [
     "scene",
     "adventure",
     "worldMap",
@@ -1871,6 +1871,7 @@ pub const PROJECTED_STATE_KEYS: [&str; 64] = [
     "state_projector_version",
     "presence",
     "turn_clock",
+    "turn_phase_actor_ids",
     "locationMaps",
 ];
 

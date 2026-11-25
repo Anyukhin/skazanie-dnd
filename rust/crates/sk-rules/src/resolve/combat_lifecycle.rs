@@ -276,7 +276,9 @@ pub fn start_combat(r: &mut Resolve<'_>) -> Flow {
             surprised_participants(&state, &party, &enemy_ids)
         }
     };
-    let group_initiative = js::is_true(command.get("group_initiative")) || js::is_true(js::path(&state, &["campaign", "rules", "group_initiative"]));
+    let group_initiative = js::is_true(command.get("group_initiative"))
+        || js::is_true(js::path(&state, &["campaign", "rules", "group_initiative"]))
+        || array_of(state.get("enabled_house_rules")).iter().any(|rule| rule.as_str() == Some(sk_ruleset::ruleset_config::GROUP_INITIATIVE_HOUSE_RULE_ID));
     let command_id = js::string(command.get("command_id"));
     let started_event_id = format!("combat-started:{}", slice_utf16(&command_id, 100));
     let instance_id = format!("combat-instance:{}", sk_core::hash::sha256_hex(command_id.as_bytes()));

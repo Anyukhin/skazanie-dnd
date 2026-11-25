@@ -21,6 +21,7 @@ export function latestRoomVersion(current: number, candidate: unknown): number
 
 export function combatTurnActive(state: Pick<GameState, 'mechanics'>): boolean
 export function activeInitiativeIndex(combat: Pick<CombatMechanics, 'active_index'> | null | undefined): number
+export function currentTurnActorIds(state: Pick<GameState, 'mechanics' | 'activePlayerId' | 'turn_clock'>): string[]
 export function currentTurnActorId(state: Pick<GameState, 'mechanics' | 'activePlayerId'>): string
 
 export function mergeTacticalCommandState(current: GameState, authoritative: GameState, result: TacticalNarrationFields & Record<string, unknown>, requestId: string): GameState
