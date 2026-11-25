@@ -13,7 +13,7 @@ import test from 'node:test'
 import { explorationUseFor, combatActionsFor } from '../server/combat-actions.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { BG3_OPENING_STRIKE_HOUSE_RULE_ID } from '../server/ruleset-config.mjs'
-import { palaceFixture } from './shared-npc-consequence-fixture.mjs'
+import { palaceFixture, palaceMeleePoint } from './shared-npc-consequence-fixture.mjs'
 import { normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
 
 function dice(values) {
@@ -233,11 +233,8 @@ test('BG3: спрятавшийся отряд бьёт из укрытия, д�
 test('удар по нейтральному NPC из исследования делает его противником и открывает бой', async () => {
   const fixture = await palaceFixture({ kingHp: 20, witnesses: false })
   // Герой встаёт вплотную к королю: удар голыми руками достаёт на 5 футов.
-  const cells = new Map(fixture.state.scene.cells.map((cell) => [`${cell.x},${cell.y}`, cell]))
-  const near = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-    .map(([dx, dy]) => ({ x: fixture.kingPoint.x + dx, y: fixture.kingPoint.y + dy }))
-    .find((point) => cells.get(`${point.x},${point.y}`)?.type === 'floor')
-  assert.ok(near, 'у короля есть свободная клетка рядом')
+  const near = palaceMeleePoint(fixture)
+  assert.ok(near, 'у короля есть открытая клетка рядом')
   const state = normalizeCampaignState({
     ...fixture.state,
     enabled_house_rules: [...fixture.state.enabled_house_rules, BG3_OPENING_STRIKE_HOUSE_RULE_ID],

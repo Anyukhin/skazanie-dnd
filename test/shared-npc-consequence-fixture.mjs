@@ -1,8 +1,15 @@
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
-import { normalizeCampaignState } from '../server/rules-engine.mjs'
+import { hasClearTrajectory, normalizeCampaignState } from '../server/rules-engine.mjs'
 
 const ARES_ID = 'astohan-ares'
 const WIZARD_ID = 'consequence-wizard'
+
+export function palaceMeleePoint({ state, kingPoint }) {
+  return [[1, 0], [-1, 0], [0, 1], [0, -1]]
+    .map(([dx, dy]) => ({ x: kingPoint.x + dx, y: kingPoint.y + dy }))
+    .find((point) => state.scene.cells.some((cell) => cell.x === point.x && cell.y === point.y && cell.type === 'floor' && cell.revealed)
+      && hasClearTrajectory(state, point, kingPoint))
+}
 
 const wizard = {
   id: WIZARD_ID,
