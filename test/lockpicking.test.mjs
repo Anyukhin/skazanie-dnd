@@ -13,12 +13,25 @@ import {
 } from '../server/lockpicking.mjs'
 import { suggestedActionsFor } from '../server/action-hints.mjs'
 import { RulesValidationError, applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
-import { sceneInteractionCatalogEntry, sceneInteractionDefinition, sceneObjectOperationFromText } from '../server/scene-interactions.mjs'
+import { nearestSceneObjectCommand, sceneInteractionCatalogEntry, sceneInteractionDefinition, sceneObjectOperationFromText } from '../server/scene-interactions.mjs'
 import { addProp, createTacticalMap, deserializeTacticalMap, serializeTacticalMap, setCell, setDoor } from '../server/tactical-map.mjs'
 import { DEED_KINDS } from '../server/world-deeds.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
 const PLAYER = Object.freeze({ id: 'user-1', role: 'player' })
+
+test('сундук в роли ориентира не становится целью свободного действия', () => {
+  const props = [{ id: 'chest', assetId: 'chest', x: 1.5, y: 0.5 }]
+  const select = (text) => nearestSceneObjectCommand({ props, actorPosition: { x: 0, y: 0 }, text })
+  for (const text of [
+    'Потянуть рычаг у двери рядом с сундуком',
+    'Открыть дверь рядом с сундуком',
+    'Вскрыть замок двери возле сундука отмычкой',
+    'Осмотреть рычаг около сундука',
+  ]) assert.equal(select(text), null, text)
+  assert.equal(select('Открыть сундук у двери')?.prop_id, 'chest')
+  assert.equal(select('Открыть')?.prop_id, 'chest')
+})
 
 class FixedRng {
   constructor(value) { this.value = value }

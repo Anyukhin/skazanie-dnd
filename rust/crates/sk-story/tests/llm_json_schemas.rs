@@ -10,8 +10,15 @@ use sk_world_story::autonomous_campaign::{normalize_director_intent, DIRECTOR_IN
 
 const FIXTURE: &str = include_str!("../fixtures/llm-json-schemas.json");
 
-fn all_schemas() -> [&'static Value; 4] {
-    [&s::DIRECTOR_INTENT_JSON_SCHEMA, &s::NPC_SOCIAL_RESPONSE_JSON_SCHEMA, &s::CAMPAIGN_CREATION_JSON_SCHEMA, &s::HERO_HOOKS_JSON_SCHEMA]
+fn all_schemas() -> [&'static Value; 6] {
+    [
+        &s::DIRECTOR_INTENT_JSON_SCHEMA,
+        &s::NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
+        &s::CAMPAIGN_CREATION_JSON_SCHEMA,
+        &s::SCENE_ARCHITECT_JSON_SCHEMA,
+        &s::ACTION_ADJUDICATOR_JSON_SCHEMA,
+        &s::HERO_HOOKS_JSON_SCHEMA,
+    ]
 }
 
 #[test]
@@ -25,6 +32,8 @@ fn schemas_match_js_byte_for_byte() {
         ("NPC_PROMISE_DIRECTIONS", list(&s::NPC_PROMISE_DIRECTIONS)),
         ("NPC_SOCIAL_RESPONSE_JSON_SCHEMA", s::NPC_SOCIAL_RESPONSE_JSON_SCHEMA.clone()),
         ("CAMPAIGN_CREATION_JSON_SCHEMA", s::CAMPAIGN_CREATION_JSON_SCHEMA.clone()),
+        ("SCENE_ARCHITECT_JSON_SCHEMA", s::SCENE_ARCHITECT_JSON_SCHEMA.clone()),
+        ("ACTION_ADJUDICATOR_JSON_SCHEMA", s::ACTION_ADJUDICATOR_JSON_SCHEMA.clone()),
         ("HERO_HOOKS_JSON_SCHEMA", s::HERO_HOOKS_JSON_SCHEMA.clone()),
     ];
     assert_eq!(fixture.as_object().map(|map| map.len()), Some(actual.len()));

@@ -719,7 +719,11 @@ pub fn scenario_scene_args(state: &Value, scene_args: &Value) -> Value {
     insert_raw(&mut result, "title", card.get("title"));
     insert_raw(&mut result, "mood", card.get("mood"));
     insert_raw(&mut result, "arrival", card.get("arrival"));
-    insert_raw(&mut result, "objective", card.get("objective"));
+    // На транзитной остановке цель хранит выбранный отрядом конец маршрута.
+    let scene = json!({ "location": result.get("location"), "objective": args.get("objective") });
+    if crate::party_exit_intent::pending_onward_target(Some(&scene)).is_empty() {
+        insert_raw(&mut result, "objective", card.get("objective"));
+    }
     insert_raw(&mut result, "hook", card.get("objective"));
     Value::Object(result)
 }

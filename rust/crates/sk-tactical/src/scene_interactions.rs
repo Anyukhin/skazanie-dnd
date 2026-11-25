@@ -600,9 +600,13 @@ pub fn scene_object_operation_from_text(text_value: Option<&Value>) -> Option<Sc
         return None;
     };
     let approach = if !lockpick && text::test(re!(r"(?:разбить|сломать|взломать|выломать|ударить|топор)", "u"), &normalized) { "force" } else { "hand" };
+    // После указания места может идти ориентир уже названной двери или рычага.
+    let before_landmark = re!(r"\s+(?:у|возле|около|рядом\s+с)\s+", "u")
+        .find(&normalized).ok().flatten().map_or(normalized.as_str(), |marker| &normalized[..marker.start()]);
+    let target_text = if text::test(re!(NON_PROP_TARGET, "u"), before_landmark) { before_landmark } else { &normalized };
     let aliases: Vec<&'static str> =
-        ASSET_ALIASES_RU.iter().filter(|(_, words)| words.iter().any(|word| normalized.contains(word))).map(|(alias, _)| *alias).collect();
-    let names_other_target = aliases.is_empty() && text::test(re!(NON_PROP_TARGET, "u"), &normalized);
+        ASSET_ALIASES_RU.iter().filter(|(_, words)| words.iter().any(|word| target_text.contains(word))).map(|(alias, _)| *alias).collect();
+    let names_other_target = aliases.is_empty() && text::test(re!(NON_PROP_TARGET, "u"), target_text);
     Some(SceneObjectOperation { intent, approach, aliases, names_other_target })
 }
 

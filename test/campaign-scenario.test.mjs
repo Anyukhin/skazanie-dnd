@@ -23,6 +23,7 @@ import { fallbackDirectorIntent } from '../server/director-agent.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { normalizeCampaignState, replayEvents, resolveCommands } from '../server/rules-engine.mjs'
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
+import { pendingOnwardTarget } from '../server/party-exit-intent.mjs'
 import { getWorldTemplate } from '../server/world-template-catalog.mjs'
 
 const hero = {
@@ -163,6 +164,23 @@ test('переход в место сценария берёт его карто
   const replayed = normalizeCampaignState(replayEvents(start, arrived.events))
   assert.equal(replayed.scene.title, state.scene.title)
   assert.deepEqual(replayed.worldMemory.facts.map((fact) => fact.id), state.worldMemory.facts.map((fact) => fact.id))
+})
+
+test('карточка промежуточной сцены сохраняет выбранную отрядом цель маршрута', async () => {
+  const atAsh = (await travel(await astohanCampaign(), 'astohan-ash-watch', 'onward-to-ash')).state
+  const leg = await travel(atAsh, 'astohan-redstone', 'onward-to-capital')
+  assert.equal(leg.state.scene.location_id, 'astohan-stormberg', 'первая остановка на известной дороге')
+  assert.equal(pendingOnwardTarget(leg.state.scene), 'Редстоуновка')
+  let state = normalizeCampaignState(replayEvents(atAsh, leg.events))
+  assert.equal(state.scene.objective, leg.state.scene.objective)
+
+  for (let step = 0; step < 5 && state.scene.location_id !== 'astohan-redstone'; step += 1) {
+    assert.equal(pendingOnwardTarget(state.scene), 'Редстоуновка')
+    state = (await travel(state, 'astohan-redstone', `onward-from-stop-${step}`)).state
+  }
+  assert.equal(state.scene.location_id, 'astohan-redstone')
+  assert.equal(pendingOnwardTarget(state.scene), '')
+  assert.match(state.scene.objective, /мельниц|осведомител/iu)
 })
 
 test('находка закрывает главу, и сюжет зовёт к ближайшей линии; возвращение не дублирует тайны', async () => {

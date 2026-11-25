@@ -150,6 +150,23 @@ fn text_picks_nearest_barrel() {
 }
 
 #[test]
+fn scene_interaction_skips_a_chest_named_as_a_landmark() {
+    let props = json!([{ "id": "chest", "assetId": "chest", "x": 1.5, "y": 0.5 }]);
+    let at = json!({ "x": 0, "y": 0 });
+    for text in [
+        "Потянуть рычаг у двери рядом с сундуком",
+        "Открыть дверь рядом с сундуком",
+        "Вскрыть замок двери возле сундука отмычкой",
+        "Осмотреть рычаг около сундука",
+    ] {
+        assert_eq!(m::nearest_scene_object_command(Some(&props), Some(&at), Some(&json!(text))), None, "{text}");
+    }
+    for text in ["Открыть сундук у двери", "Открыть"] {
+        assert_eq!(m::nearest_scene_object_command(Some(&props), Some(&at), Some(&json!(text))).unwrap()["prop_id"], "chest");
+    }
+}
+
+#[test]
 fn scene_interaction_memory_normalizes_like_engine() {
     for case in array(&FIXTURE["normalize"]) {
         assert_same(&m::normalize_scene_interactions(arg(&case["input"])), &case["result"], &stringify(&case["input"]));

@@ -35,6 +35,7 @@ use crate::free_action_adjudication::{
     interpret_free_action, normalize_free_action_reading, resolve_exploration_command, resolve_hazard_contact, verify_means, FreeActionResult, FREE_ACTION_ACTIVITY_KINDS,
     FREE_ACTION_CONSEQUENCE_TYPES, FREE_ACTION_DURATION_CLASSES, FREE_ACTION_PROFICIENCY_LEVELS, FREE_ACTION_SKILLS, PLAUSIBILITY_LEVELS, RISK_LEVELS,
 };
+use sk_story::llm_json_schemas::ACTION_ADJUDICATOR_JSON_SCHEMA;
 
 /// `prompts/action_adjudicator/v10.txt`.
 pub const ACTION_ADJUDICATOR_PROMPT: &str = include_str!("../../../../prompts/action_adjudicator/v10.txt");
@@ -729,6 +730,8 @@ impl ActionAdjudicator {
             ],
             "temperature": 0.2,
             "maxTokens": 1000,
+            "role": "action_adjudicator",
+            "jsonSchema": &*ACTION_ADJUDICATOR_JSON_SCHEMA,
         });
         let options = json!({ "timeoutMs": self.timeout_ms });
         let result = (**client).complete_json(&request, &options).await.map_err(|_| ReadFailure::Other)?;

@@ -18,6 +18,7 @@
  * Rules Engine, ни политику Режиссёра.
  */
 import { readFileSync } from 'node:fs'
+import { pendingOnwardTarget } from './party-exit-intent.mjs'
 
 export const SCENARIO_ARC_VERSION = 'skazanie:scenario-arc-v1'
 export const SCENARIO_ARC_PRESET = 'scenario'
@@ -420,14 +421,19 @@ export function scenarioSceneArgs(state, sceneArgs) {
   const location = worldLocationFor(state, { locationId: args.location_id ?? args.locationId, name: args.location })
   const card = location ? locationCard(scenario, clean(location.id, 120)) : null
   if (!card) return args
+  const locationName = clean(location.name, 120) || args.location
+  // На транзитной остановке цель хранит выбранный отрядом конец маршрута.
+  const objective = pendingOnwardTarget({ location: locationName, objective: args.objective })
+    ? args.objective
+    : card.objective
   return {
     ...args,
-    location: clean(location.name, 120) || args.location,
+    location: locationName,
     location_id: card.location_id,
     title: card.title,
     mood: card.mood,
     arrival: card.arrival,
-    objective: card.objective,
+    objective,
     hook: card.objective,
   }
 }
