@@ -45,6 +45,7 @@ use sk_agents::player_request_router::{answer_known_lore, answer_table_question,
 use sk_core::fancy_regex;
 use sk_core::indexmap::IndexMap;
 use sk_core::{hash, js, re, text, RuleError};
+use sk_director::campaign_lifecycle::treaty_ends_adventure;
 use sk_economy::merchant_economy::currency_to_copper;
 use sk_encounters::agent_context::{agent_context_metadata, campaign_concept_for_agent, hero_card_for_agent, npc_known_by_name, scene_context_for_agent, AgentContextOptions};
 use sk_infra::roll_registry::RollRegistry;
@@ -291,6 +292,10 @@ pub trait UnknownActionHandler {
     /// `unknownActionHandler.actionAdjudicator`: судья, которым читаются
     /// детали прямой проверки навыка.
     fn action_adjudicator(&self) -> Option<Arc<dyn FreeActionReader>>;
+    /// Записывает последствия принятого договора до передачи следующего хода.
+    fn settle_accepted_treaty<'a>(&'a self, _campaign_id: &'a str, _key: &'a str, _state: &'a Value) -> AgentFuture<'a, OrchestratorResult<Option<Value>>> {
+        Box::pin(async { Ok(None) })
+    }
 }
 
 impl UnknownActionHandler for AutonomousCampaignOrchestrator {
@@ -300,6 +305,10 @@ impl UnknownActionHandler for AutonomousCampaignOrchestrator {
 
     fn action_adjudicator(&self) -> Option<Arc<dyn FreeActionReader>> {
         self.action_adjudicator.clone()
+    }
+
+    fn settle_accepted_treaty<'a>(&'a self, campaign_id: &'a str, key: &'a str, state: &'a Value) -> AgentFuture<'a, OrchestratorResult<Option<Value>>> {
+        Box::pin(AutonomousCampaignOrchestrator::settle_accepted_treaty(self, campaign_id, key, state))
     }
 }
 
@@ -570,6 +579,11 @@ fn narration_scenario_context(state: &Value) -> Option<Value> {
 
 fn empty_effects() -> Value {
     json!({ "roll": null, "reveal": [], "spawn": [], "objective": null, "grantItems": [] })
+}
+
+fn pending_treaty_epilogue(state: &Value) -> bool {
+    is_str(at(Some(state), &["mechanics", "campaign_lifecycle", "status"]), "active")
+        && treaty_ends_adventure(state)
 }
 
 pub const DIALOGUE_RESPONSE_PLAN_VERSION: &str = "dialogue-response-plan/v1";
@@ -3729,6 +3743,33 @@ impl GameOrchestrator {
             return Ok(response);
         }
         let (authoritative_state, _) = self.load_state(&campaign_id)?;
+        // Договор или завершившаяся кульминация могли остаться в активном
+        // сохранении, если процесс остановился между player commit и шагом
+        // Директора. Закрываем хвост до разбора новой заявки.
+        if pending_treaty_epilogue(&authoritative_state) {
+            if let Some(completion) = self.unknown_action_handler.settle_accepted_treaty(&campaign_id, &idempotency_key, &authoritative_state).await? {
+                let events = list(completion.get("events")).to_vec();
+                let epilogue = events.iter().find(|event| is_str(event.get("event_type"), "CampaignCompleted"))
+                    .and_then(|event| at(Some(event), &["payload", "epilogue"]))
+                    .cloned()
+                    .unwrap_or_else(|| str_value("Кампания завершена."));
+                return Ok(json!({
+                    "narration": epilogue,
+                    "effects": events_to_client_effects(&events, &[]),
+                    "provider": "deterministic-campaign-completion",
+                    "model": "deterministic",
+                    "turn_id": turn_id,
+                    "engine_mode": "enforce",
+                    "state_version": completion.get("state_version"),
+                    "mechanics": events,
+                    "visible_state_changes": visible_changes(&events),
+                    "authoritative_state": completion.get("state"),
+                    "verification": { "valid": true, "violations": [], "origin": { "source": "template", "reason": "campaign_completion" } },
+                    "turn_consumed": false,
+                    "idempotent_replay": js::is_true(completion.get("duplicate")),
+                }));
+            }
+        }
         if request_kind != "action" {
             if let Some(pending) = &pending_clarification {
                 if js::number(pending.get("state_version")) != js::number(authoritative_state.get("state_version")) {
@@ -4483,6 +4524,22 @@ impl GameOrchestrator {
         let brief_span = sk_store::perf::span("orch.post_commit_brief");
         let check_command = plan_check.filter(|command| social_request.is_none() && is_str(command.get("command_type"), "MakeAbilityCheck"));
         committed = self.commit_check_discovery(&campaign_id, &idempotency_key, committed, &message, &rules_context, check_command.as_ref()).await?;
+        let committed_before_completion = committed.get("state").cloned().unwrap_or(Value::Null);
+        if pending_treaty_epilogue(&committed_before_completion) {
+            if let Some(completion) = self.unknown_action_handler.settle_accepted_treaty(&campaign_id, &idempotency_key, &committed_before_completion).await? {
+                let committed_version = js::number(committed.get("state_version"));
+                let completion_version = js::number(completion.get("state_version"));
+                if completion.get("state").is_some() && completion_version > committed_version {
+                    let mut events = list(committed.get("events")).to_vec();
+                    events.extend(list(completion.get("events")).iter().cloned());
+                    committed = with(&committed, obj(vec![
+                        ("state", completion.get("state").cloned()),
+                        ("state_version", completion.get("state_version").cloned()),
+                        ("events", Some(Value::Array(events))),
+                    ]));
+                }
+            }
+        }
         let main_events = match nullish(committed.get("events"), None) {
             Some(events) => list(Some(events)).to_vec(),
             None => list(engine_result.get("events")).to_vec(),

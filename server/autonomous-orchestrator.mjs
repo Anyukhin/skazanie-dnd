@@ -53,6 +53,7 @@ import {
   buildEpilogueNarrationBrief,
   campaignCanAdvanceArc,
   campaignCanAutoComplete,
+  treatyEndsAdventure,
 } from './campaign-lifecycle.mjs'
 import { questTitleFromObjective } from './scene-memory.mjs'
 import { SCENE_REQUIREMENT_KINDS } from './scene-requirements.mjs'
@@ -710,6 +711,27 @@ export class AutonomousCampaignOrchestrator {
     return { ...committed, epilogue_provider: provider }
   }
 
+  /**
+   * Закрывает договор, если процесс остановился сразу после его коммита.
+   * Player-facing orchestration вызывает этот метод до разбора следующего
+   * действия, поэтому активное сохранение не успевает породить новую встречу.
+   */
+  async settleAcceptedTreaty(campaignId, idempotencyKey, state = null) {
+    const current = state ?? (await this.load(campaignId)).state
+    if (current?.mechanics?.campaign_lifecycle?.status !== 'active') return null
+    if (!treatyEndsAdventure(current)) return null
+    let encounterCompletion = null
+    if (current.mechanics?.combat?.active) {
+      encounterCompletion = await this.completeEncounter({
+        campaignId,
+        outcome: 'parley',
+        idempotencyKey: `${idempotencyKey}:treaty-encounter`,
+      })
+      if (encounterCompletion?.state?.mechanics?.campaign_lifecycle?.status === 'completed') return encounterCompletion
+    }
+    return await this.completeCampaignIfReady(campaignId, `${idempotencyKey}:treaty-completion`) ?? encounterCompletion
+  }
+
   async recordIntent(campaignId, intent, idempotencyKey, authorization = null, proofFactIds = []) {
     const loaded = await this.load(campaignId)
     const provenance = {
@@ -759,6 +781,24 @@ export class AutonomousCampaignOrchestrator {
     }
     const existingIntentCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:intent`)
     let loaded = await this.load(campaignId)
+    // Восстановление после остановки между договором и шагом Директора:
+    // сначала закрываем авторское приключение, затем читаем новое намерение.
+    if (loaded.state?.mechanics?.campaign_lifecycle?.status === 'active'
+      && treatyEndsAdventure(loaded.state)) {
+      const completion = await this.settleAcceptedTreaty(campaignId, key, loaded.state)
+      if (completion) {
+        loaded = await this.load(campaignId)
+        return {
+          intent: proposed,
+          authorization: { policy: 'director-intent-policy-v1', reason: 'campaign_completion_recovery', replaced: false },
+          results: [completion],
+          state: loaded.state,
+          state_version: loaded.state_version,
+          admin_commands: 0,
+          recovered_completion: true,
+        }
+      }
+    }
     const existingIntentRecord = existingIntentCommit?.events?.find((entry) => entry.event_type === 'DirectorIntentRecorded')?.payload
     const existingIntent = existingIntentRecord?.intent
     const existingOutcomeCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:director-outcome`)
