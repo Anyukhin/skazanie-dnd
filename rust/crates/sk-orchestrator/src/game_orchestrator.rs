@@ -42,6 +42,7 @@ use sk_agents::lore_voice::LoreVoice;
 use sk_agents::narrator::{deterministic_narration, narrator_response_plan, verify_narrator_craft, Narrator, NarratorError, ProgressCallback, RenderOptions, NARRATOR_PROMPT_VERSION, NARRATOR_RECENT_TEXT_LIMIT};
 use sk_agents::npc_social_controller::NpcSocialController;
 use sk_agents::player_request_router::{answer_known_lore, answer_table_question, KnownLoreOptions};
+use sk_agents_base::llm_client::{current_model_attempt_trace, with_model_attempt_trace};
 use sk_core::fancy_regex;
 use sk_core::indexmap::IndexMap;
 use sk_core::{hash, js, re, text, RuleError};
@@ -3469,7 +3470,7 @@ impl GameOrchestrator {
     /// ответом человека после заклинания и шагами плана; одинаковые
     /// параллельные запросы делят один итог.
     pub fn handle(&self, input: HandleInput) -> AgentFuture<'_, OrchestratorResult<Value>> {
-        Box::pin(async move { self.handle_coalesced(input).await })
+        Box::pin(with_model_attempt_trace(self.handle_coalesced(input)))
     }
 
     async fn handle_coalesced(&self, input: HandleInput) -> OrchestratorResult<Value> {
@@ -4949,6 +4950,10 @@ impl GameOrchestrator {
             ("ruling", Some(trace.ruling.clone().unwrap_or(Value::Null))),
         ]);
         mark_shared_references(&mut input, &trace);
+        let attempts = current_model_attempt_trace();
+        if !attempts.is_empty() {
+            set(&mut input, "model_attempts", Value::Array(attempts));
+        }
         if let Some(recovery) = trace.recovery.filter(|value| js::truthy(Some(value))) {
             set(&mut input, "recovery", recovery);
         }

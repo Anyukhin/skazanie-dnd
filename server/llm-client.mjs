@@ -1,5 +1,5 @@
 import { LLMClient } from './contracts.mjs'
-import { campaignReasoningFor, currentCampaignModel } from './campaign-ai-context.mjs'
+import { campaignReasoningFor, currentCampaignModel, finishModelAttempt, startModelAttempt } from './campaign-ai-context.mjs'
 import { supportsJsonSchema } from './model-style-profiles.mjs'
 
 const DEFAULT_TIMEOUT_MS = 45_000
@@ -764,6 +764,9 @@ export class FallbackLLMClient extends LLMClient {
     const sharedSignal = deadlineController?.signal ?? externalSignal
     try {
       const candidates = this._candidates()
+      const role = String(options.usageRole ?? options.role ?? input?.usageRole ?? input?.role ?? '').trim().slice(0, 80)
+      const schema = options.jsonSchema ?? input?.jsonSchema
+      const schemaRequested = schema != null && typeof schema === 'object' && !Array.isArray(schema)
       let providerRejected = false
       for (const [candidateIndex, client] of candidates.entries()) {
         const isProviderFallback = client === this.providerFallback
@@ -773,6 +776,11 @@ export class FallbackLLMClient extends LLMClient {
         // пишет: модель, проигравшая гонку, могла прислать дельту уже после
         // переключения на резервную, и в рассказ вклинивался чужой текст.
         let attemptOpen = true
+        const underlying = client.client ?? client
+        const fallbackReason = isProviderFallback && (providerRejected ? 'account_refused' : attempts.length ? 'previous_attempt_failed'
+          : this.clients.length && candidates.length === 1 ? 'cloud_cooldown' : '')
+        const traceAttempt = startModelAttempt({ role, model: client.model, schemaRequested, fallbackReason,
+          provider: client.providerLabel ?? underlying.providerLabel ?? client.provider ?? underlying.provider })
         /** @type {AbortSignal | undefined} */
         let attemptSignal
         const onDelta = typeof requestedDelta === 'function'
@@ -818,12 +826,14 @@ export class FallbackLLMClient extends LLMClient {
               throw new LLMResponseError(`Model ${client.model} returned an unusable response`, 'LLM_RESPONSE_INVALID')
             }
             this._markSuccess(client)
+            finishModelAttempt(traceAttempt, { response: result })
             return { ...result, fallback_attempts: attempts, fallback_used: attempts.length > 0 || (isProviderFallback && this.clients.length > 0) }
           } finally {
             attemptOpen = false
             attemptScope?.close()
           }
         } catch (error) {
+          finishModelAttempt(traceAttempt, { error, failed: true })
           if (deadlineController?.signal.aborted) throw error
           const accountRefused = this.providerFallback && !isProviderFallback && providerAccountRefused(error)
           if (accountRefused) {

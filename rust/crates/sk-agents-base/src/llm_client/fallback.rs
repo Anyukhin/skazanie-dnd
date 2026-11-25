@@ -11,6 +11,7 @@ use sk_core::indexmap::IndexMap;
 use sk_core::js;
 
 use super::abort::{race, AbortController, AbortScope, SignalLink};
+use super::attempt_trace::{finish_model_attempt, start_model_attempt};
 use super::{
     coalesce, llm_timer_delay, option_fields, positive_integer_number, prop, spread_object, utf16_head, CallHooks, CallScope, CampaignSnapshot, DeltaHandler, LlmClient, LlmError, LlmErrorExt, LlmFuture, RouterAiClient,
 };
@@ -326,10 +327,12 @@ impl FallbackLlmClient {
         };
         let shared_signal = deadline_controller.as_ref().map(AbortController::signal).or(external);
         let mut candidates = scope.campaign.enter(|| self.candidates());
+        let mut cloud_cooldown = false;
         if let Some(reserve) = self.provider_fallback.as_ref() {
             let now = (self.now)();
             if self.disabled_until(reserve) <= now && candidates.iter().all(|member| self.disabled_until(member) > now) {
                 candidates.clear();
+                cloud_cooldown = true;
             }
             candidates.push(reserve);
         }
@@ -361,7 +364,14 @@ impl FallbackLlmClient {
                     }
                 })
             });
+            let fallback_reason = if !member.provider_fallback { None }
+                else if provider_refused { Some("account_refused") }
+                else if cloud_cooldown { Some("cloud_cooldown") }
+                else if !attempts.is_empty() { Some("previous_attempt_failed") }
+                else { None };
+            let trace_attempt = start_model_attempt(input, options, member.client.trace_provider(), &member.key(), fallback_reason);
             let outcome = self.attempt(member, index, candidates.len(), input, options, &scope, deadline, shared_signal.as_ref(), on_delta).await;
+            finish_model_attempt(trace_attempt, &outcome);
             open.store(false, Ordering::SeqCst);
             match outcome {
                 Ok(mut result) => {

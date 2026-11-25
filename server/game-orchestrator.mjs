@@ -51,6 +51,7 @@ import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
 import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, hasFailedDiscoveryCheck, narratorFailureDetailFor, retrieveWorldMemory, thoroughSearchOutcome } from './world-memory.mjs'
 import { ClarificationRegistry } from './clarification-registry.mjs'
+import { currentModelAttempts, runWithModelAttemptCollector } from './campaign-ai-context.mjs'
 
 /**
  * Сюжет авторского сценария для Рассказчика: о чём кампания, текущий узел,
@@ -2474,7 +2475,7 @@ export class GameOrchestrator {
     const idempotencyKey = String(input.idempotencyKey ?? input.idempotency_key ?? '')
     const npcId = String(input.npcId ?? input.npc_id ?? '').trim().slice(0, 120)
     const coalesces = !input.commands && message !== '/why' && input.why !== true && Boolean(campaignId && idempotencyKey)
-    const run = async () => {
+    const run = () => runWithModelAttemptCollector(async () => {
       const result = await this._handle(input)
       // Арбитр узнал в заявке разговор с присутствующим персонажем (route talk):
       // отвечает сам персонаж, а не ведущий просьбой «скажите прямо, от лица
@@ -2551,7 +2552,7 @@ export class GameOrchestrator {
         precedingStep: [stepText, result.narration].map((text) => String(text ?? '').trim()).filter(Boolean).join(' — ').slice(0, 600),
       })
       return mergePlanStepResults(result, continued)
-    }
+    })
     if (!coalesces) return run()
 
     const key = `${campaignId}\u001f${idempotencyKey}`
@@ -3850,7 +3851,7 @@ export class GameOrchestrator {
     }
   }
 
-  saveTrace({ turnId, campaignId, idempotencyKey = null, requestFingerprint = null, mode, intent, retrievalQueries, retrievedRules, plan, engineResult = {}, stateBefore, stateAfter, verification = {}, latency, narration = null, ruling = null, recovery = null, createdAt = null }, { ifAbsent = false } = {}) {
+  saveTrace({ turnId, campaignId, idempotencyKey = null, requestFingerprint = null, mode, intent, retrievalQueries, retrievedRules, plan, engineResult = {}, stateBefore, stateAfter, verification = {}, latency, narration = null, ruling = null, recovery = null, createdAt = null, modelAttempts = currentModelAttempts() }, { ifAbsent = false } = {}) {
     if (!this.traceStore) return null
     const write = ifAbsent && typeof this.traceStore.saveIfAbsent === 'function'
       ? (input) => this.traceStore.saveIfAbsent(input).trace
@@ -3888,6 +3889,7 @@ export class GameOrchestrator {
       verification_result: verification,
       latency_ms: latency,
       token_usage: narration?.token_usage ?? {},
+      ...(Array.isArray(modelAttempts) && modelAttempts.length ? { model_attempts: modelAttempts } : {}),
       narration_result: narration ? {
         narration: narration.narration,
         visibility: narration.visibility ?? 'party',

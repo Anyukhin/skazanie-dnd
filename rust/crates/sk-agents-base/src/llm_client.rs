@@ -45,6 +45,7 @@ use crate::js_json::{self, Js, JS_STACK_DEPTH};
 pub use sk_infra::usage_ledger::{LlmClient, LlmError, LlmFuture};
 
 mod abort;
+mod attempt_trace;
 mod fake;
 mod fallback;
 // С12: транспорт генератора картинок (`fetch` для `/images`).
@@ -58,6 +59,7 @@ mod test_server;
 mod tests;
 
 pub use abort::{AbortController, AbortSignal};
+pub use attempt_trace::{current_model_attempt_trace, with_model_attempt_trace};
 pub use fake::{FakeHandler, FakeLlm, FakeLlmConfig, FakeReply};
 pub use fallback::{FallbackLlmClient, FallbackLlmClientConfig, FallbackMember};
 pub use image_http::RouterImageTransport;

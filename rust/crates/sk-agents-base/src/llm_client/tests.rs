@@ -906,10 +906,40 @@ async fn fallback_uses_provider_reserve_after_router_auth_failure() {
         provider_fallback: Some(FallbackMember::new(local).as_provider_fallback()),
         ..FallbackLlmClientConfig::default()
     }).expect("каскад");
-    let result = chain.complete(&input(), &json!({})).await.expect("локальный ответ");
+    let (result, trace) = with_model_attempt_trace(async {
+        let options = json!({ "usageRole": "action_adjudicator", "jsonSchema": { "schema": { "description": "private prompt" } } });
+        let result = chain.complete(&input(), &options).await.expect("локальный ответ");
+        (result, current_model_attempt_trace())
+    }).await;
     assert_eq!(result["model"], "qwen3:14b");
     assert_eq!(taken(&log), ["router", "qwen3:14b"]);
     assert_eq!(result["fallback_used"], true);
+    assert_eq!(trace.len(), 2);
+    assert_eq!(trace[0]["role"], "action_adjudicator");
+    assert_eq!(trace[0]["schema_requested"], true);
+    assert_eq!(trace[0]["error_code"], "LLM_PROVIDER_ERROR");
+    assert_eq!(trace[0]["http_status"], 402);
+    assert_eq!(trace[1]["resolved_model"], "qwen3:14b");
+    assert_eq!(trace[1]["fallback_reason"], "account_refused");
+    assert!(trace.iter().all(|attempt| attempt["duration_ms"].as_u64().is_some()));
+    assert!(!json!(trace).to_string().contains("private prompt"));
+    assert!(current_model_attempt_trace().is_empty());
+}
+
+#[tokio::test]
+async fn model_attempt_trace_keeps_attempt_interrupted_by_outer_deadline() {
+    let log = calls();
+    let hanging = scripted("hanging", &log, |_, _, _| std::future::pending::<Result<Value, LlmError>>());
+    let chain = cascade(vec![hanging]);
+    with_model_attempt_trace(async {
+        let result = tokio::time::timeout(Duration::from_millis(20), chain.complete(&input(), &json!({ "role": "narrator" }))).await;
+        assert!(result.is_err());
+        let trace = current_model_attempt_trace();
+        assert_eq!(trace.len(), 1);
+        assert_eq!(trace[0]["role"], "narrator");
+        assert_eq!(trace[0]["error_code"], "LLM_ATTEMPT_INTERRUPTED");
+        assert!(trace[0]["duration_ms"].as_u64().is_some());
+    }).await;
 }
 
 #[tokio::test]

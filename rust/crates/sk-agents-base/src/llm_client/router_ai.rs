@@ -445,6 +445,10 @@ impl LlmClient for RouterAiClient {
         Some(self.model.clone())
     }
 
+    fn trace_provider(&self) -> Option<&str> {
+        Some(self.provider_label())
+    }
+
     fn max_tokens(&self) -> Option<Value> {
         Some(Value::from(self.max_tokens))
     }
