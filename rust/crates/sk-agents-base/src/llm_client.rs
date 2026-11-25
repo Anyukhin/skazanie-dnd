@@ -61,7 +61,7 @@ pub use abort::{AbortController, AbortSignal};
 pub use fake::{FakeHandler, FakeLlm, FakeLlmConfig, FakeReply};
 pub use fallback::{FallbackLlmClient, FallbackLlmClientConfig, FallbackMember};
 pub use image_http::RouterImageTransport;
-pub use router_ai::{RouterAiClient, RouterAiClientConfig};
+pub use router_ai::{RouterAiClient, RouterAiClientConfig, is_openrouter_free_model};
 pub use sse::{parse_router_ai_event_stream, ChunkSource, StreamOptions, StreamResult, VecChunks};
 
 /// `DEFAULT_TIMEOUT_MS`.

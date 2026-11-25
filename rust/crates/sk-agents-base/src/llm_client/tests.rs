@@ -1118,6 +1118,30 @@ async fn router_ai_sends_strict_json_schema_only_to_capable_models() {
 }
 
 #[tokio::test]
+async fn openrouter_free_forces_model_and_requires_parameters() {
+    let server = TestServer::replying(Reply::json(200, &json!({ "model": "provider-free", "choices": [{ "message": { "role": "assistant", "content": "{\"ok\":true}" } }] }))).await;
+    let client = RouterAiClient::with_env(
+        RouterAiClientConfig {
+            api_key: Some("sk-or-v1-test".into()),
+            base_url: Some(server.origin.clone()),
+            provider: Some("openrouter"),
+            model: Some("openrouter/free".into()),
+            reasoning: Some(json!({ "effort": "high" })),
+            ..RouterAiClientConfig::default()
+        },
+        |_| None,
+    ).expect("клиент");
+    let request = json!({ "model": "paid/attacker", "messages": messages(), "jsonSchema": director_schema() });
+    let result = client.complete_json(&request, &json!({})).await.expect("ответ");
+    assert_eq!(result, json!({ "ok": true }));
+    let body = server.requests()[0].json();
+    assert_eq!(body["model"], "openrouter/free");
+    assert_eq!(body["provider"], json!({ "require_parameters": true }));
+    assert_eq!(body["response_format"], json!({ "type": "json_schema", "json_schema": director_schema() }));
+    assert!(body.get("reasoning").is_none());
+}
+
+#[tokio::test]
 async fn router_ai_without_schema_or_with_broken_schema_behaves_as_before() {
     let plain = json!({ "messages": [{ "role": "system", "content": "Система." }, { "role": "user", "content": "Данные." }] });
     assert_eq!(capturing("openai/gpt-6-luna", &plain, true).await["response_format"], json!({ "type": "json_object" }));

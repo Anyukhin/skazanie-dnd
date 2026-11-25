@@ -462,10 +462,7 @@ const VENDOR_MODEL_PREFIX = /^(?:openai|anthropic|google|z-ai|deepseek|meta|x-ai
 const isOpenRouterFreeModel = (model) => model === 'openrouter/free' || /^[a-z0-9._-]+\/[a-z0-9._-]+:free$/u.test(model)
 
 export function openRouterFreeModels(value) {
-  const models = [...new Set(String(value ?? '').split(',').map((entry) => entry.trim()).filter(Boolean))]
-  if (models.some((model) => !isOpenRouterFreeModel(model))) {
-    throw new TypeError('DND_AI_OPENROUTER_MODELS допускает openrouter/free и модели с суффиксом :free')
-  }
+  const models = [...new Set(String(value ?? '').split(',').map((entry) => entry.trim()).filter(isOpenRouterFreeModel))]
   return models.length ? models.slice(0, 5) : ['openrouter/free']
 }
 
@@ -571,7 +568,6 @@ export class RouterAIClient extends LLMClient {
     const jsonSchema = wantsJson(request) ? usableJsonSchema(request.jsonSchema) : null
     if (jsonSchema && (['ollama', 'openrouter'].includes(this.provider) || supportsJsonSchema(body.model))) {
       body.response_format = { type: 'json_schema', json_schema: jsonSchema }
-      if (this.provider === 'openrouter') body.provider = { require_parameters: true }
     } else if (wantsJson(request)) {
       if (body.model !== 'z-ai/glm-5.3-flash') body.response_format = { type: 'json_object' }
       else {
@@ -582,6 +578,7 @@ export class RouterAIClient extends LLMClient {
           : body.messages.map((message, index) => index === systemIndex ? { ...message, content: `${message.content}\n${directive}` } : message)
       }
     }
+    if (this.provider === 'openrouter' && body.response_format) body.provider = { require_parameters: true }
     const streaming = typeof request.onDelta === 'function'
     if (streaming) {
       if (wantsJson(request)) throw new TypeError('Streaming JSON responses are not supported')

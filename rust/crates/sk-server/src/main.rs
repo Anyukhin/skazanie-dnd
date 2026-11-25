@@ -160,9 +160,26 @@ fn build_models(config: &Config, ledger: &Arc<DurableUsageLedger>) -> Result<Llm
         })
         .map_err(|error| error.to_string())
     };
+    let openrouter = |model: &str, timeout_ms: f64| -> Result<RouterAiClient, String> {
+        RouterAiClient::new(RouterAiClientConfig {
+            api_key: Some(config.openrouter_api_key.clone()),
+            base_url: Some(config.openrouter_base_url.clone()),
+            provider: Some("openrouter"),
+            model: Some(model.to_string()),
+            max_tokens: Some(config.ai_max_tokens),
+            reasoning: None,
+            timeout_ms: Some(timeout_ms),
+            ..RouterAiClientConfig::default()
+        })
+        .map_err(|error| error.to_string())
+    };
     let mut automatic = Vec::new();
     let mut selectable = Vec::new();
-    if config.cloud_model_configured() || config.ollama_model.is_none() {
+    if config.openrouter_configured() {
+        for model in &config.automatic_ai_models {
+            automatic.push(Metered::wrap(openrouter(model, config.ai_model_timeout_ms)?, ledger));
+        }
+    } else if config.cloud_model_configured() || config.ollama_model.is_none() {
         for model in &config.allowed_ai_models {
             let client = Metered::wrap(router(model, config.ai_model_timeout_ms)?, ledger);
             if config.automatic_ai_models.contains(model) {
@@ -180,6 +197,9 @@ fn build_models(config: &Config, ledger: &Arc<DurableUsageLedger>) -> Result<Llm
     } else {
         Metered::cascade_with_provider_fallback(automatic, selectable, local_hot, config.ai_probe_timeout_ms, config.ai_failure_cooldown_ms)
     }.map_err(|error| error.to_string())?;
+    if config.openrouter_configured() {
+        return Ok(LlmClients { llm: Some(llm.clone()), lore: Some(llm) });
+    }
     let paid_lore = || router(&config.lore_model, 30_000.0).map(|client| Metered::wrap(client, ledger));
     let lore = if let Some(model) = local_model {
         let local_lore = Metered::wrap(local(model, 30_000.0)?, ledger);
@@ -302,7 +322,10 @@ fn main() {
     }
     let address = format!("{}:{port}", config.host);
     let banner = if let Some(local) = config.ollama_model.as_deref() {
-        if config.cloud_model_configured() { format!("{} + local {} reserve", config.model, local) } else { format!("local {}", local) }
+        if config.openrouter_configured() { format!("OpenRouter {} + Ollama {local}", config.model) }
+        else if config.cloud_model_configured() { format!("{} + local {} reserve", config.model, local) } else { format!("local {}", local) }
+    } else if config.openrouter_configured() {
+        format!("OpenRouter {} + {} резервных моделей", config.model, config.fallback_models.len())
     } else if config.cloud_model_configured() {
         format!("{} + {} fallback models", config.model, config.fallback_models.len())
     } else { "демо-режим".to_string() };
@@ -333,7 +356,7 @@ async fn run(state: Arc<AppState>, address: String, banner: String, faults: Opti
         }
     }
     // `void llmClient.probe()` при наличии ключа (309).
-    if state.config.cloud_model_configured() {
+    if state.config.cloud_model_configured() && !state.config.openrouter_configured() {
         if let Some(llm) = state.models.llm.clone() {
             tokio::spawn(async move {
                 let _ = llm.client().probe().await;

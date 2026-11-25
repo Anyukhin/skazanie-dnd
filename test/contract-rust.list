@@ -194,3 +194,4 @@ test/kit-journal-utf8.test.mjs # readJournal большого журнала: б
 test/request-body-utf8-api.test.mjs # тело из двух кусков с разрывом посреди буквы — кириллица цела
 # Старые сохранения (2026-10-26): null в реестрах, сырой law, NPC и обещания — комната открывается.
 test/old-save-load-api.test.mjs  # LegacyStateImported с мусором: GET /api/rooms 200, нормализация реестров, restart и replay
+test/openrouter-free-api.test.mjs # бесплатный каскад, строгая схема, резерв Ollama и учёт расхода
