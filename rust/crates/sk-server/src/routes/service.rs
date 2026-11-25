@@ -39,9 +39,10 @@ fn health(ctx: &mut RouteCtx) -> RouteFuture<'_> {
         let config = &ctx.state.config;
         let rules = &ctx.state.rules;
         let models = models_health(ctx);
-        let local_only = !config.cloud_model_configured() && config.ollama_model.is_some();
+        let openrouter = config.openrouter_configured();
+        let local_only = !config.cloud_model_configured() && !config.openrouter_configured() && config.ollama_model.is_some();
         let mut fallback_models = if local_only { Vec::new() } else { config.fallback_models.clone() };
-        if config.cloud_model_configured() {
+        if config.cloud_model_configured() || openrouter {
             fallback_models.extend(config.ollama_model.iter().cloned());
         }
         // `characterCreationCatalog(LEGACY_DEFAULT_RULESET_ID)` вне `try` (один раз на процесс):
@@ -49,7 +50,7 @@ fn health(ctx: &mut RouteCtx) -> RouteFuture<'_> {
         let character_creation = blocking(|| crate::routes::catalog::health_character_creation_catalog(LEGACY_DEFAULT_RULESET_ID)).await??;
         let body: Value = json!({
             "configured": config.model_configured(),
-            "provider": if local_only { "Ollama" } else { "RouterAI" },
+            "provider": if openrouter { "OpenRouter" } else if local_only { "Ollama" } else { "RouterAI" },
             "model": if local_only { config.ollama_model.as_deref().unwrap_or(&config.model) } else { config.model.as_str() },
             "fallbackModels": fallback_models,
             "models": models,

@@ -16,6 +16,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use sk_agents_base::llm_client::is_openrouter_free_model;
 use sk_narration_base::model_style_profiles::SELECTABLE_EXTRA_MODELS;
 
 /// `LEGACY_DEFAULT_RULESET_ID` (`server/ruleset-config.mjs:2`).
@@ -32,6 +33,8 @@ const DEFAULT_BASE_URL: &str = "https://routerai.ru/api/v1";
 const DEFAULT_LORE_MODEL: &str = "openai/gpt-5.6-luna-pro";
 const DEFAULT_IMAGE_MODEL: &str = "openai/gpt-image-1";
 const DEFAULT_OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434/v1";
+const DEFAULT_OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
+const DEFAULT_OPENROUTER_MODELS: &str = "openrouter/free";
 
 /// Все настройки процесса.
 #[derive(Clone)]
@@ -76,6 +79,10 @@ pub struct Config {
     pub ollama_model: Option<String>,
     /// `DND_AI_OLLAMA_BASE_URL || http://127.0.0.1:11434/v1`.
     pub ollama_base_url: String,
+    /// OPENROUTER_API_KEY — ключ бесплатного OpenRouter-маршрута.
+    pub openrouter_api_key: String,
+    /// В production фиксирован openrouter.ai; loopback override только в тестах.
+    pub openrouter_base_url: String,
     /// `Number(DND_COMBAT_TURN_TIMEOUT_MS || 120000)`.
     pub combat_turn_timeout_ms: f64,
     /// `DND_IMAGE_MODEL || 'openai/gpt-image-1'`.
@@ -168,10 +175,18 @@ impl Config {
 
     /// То же с подставным окружением (тесты паритета `Number(env)`).
     pub fn from_env_with(root: &Path, cwd: &Path, env: &dyn Fn(&str) -> Option<String>) -> Self {
-        let model = non_empty(env("DND_AI_MODEL")).unwrap_or_else(|| DEFAULT_MODEL.to_string());
-        let fallback_models = fallback_models_from(env("DND_AI_FALLBACK_MODELS"), &model);
+        let openrouter_api_key = openrouter_api_key(env);
+        let free_models = (!openrouter_api_key.is_empty()).then(|| openrouter_models_from(env("DND_AI_OPENROUTER_MODELS")));
+        let model = free_models.as_ref().map(|models| models[0].clone())
+            .or_else(|| non_empty(env("DND_AI_MODEL"))).unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        let fallback_models = free_models.as_ref().map_or_else(
+            || fallback_models_from(env("DND_AI_FALLBACK_MODELS"), &model),
+            |models| models[1..].to_vec(),
+        );
         let automatic_ai_models: Vec<String> = std::iter::once(model.clone()).chain(fallback_models.iter().cloned()).collect();
-        let allowed_ai_models = unique(automatic_ai_models.iter().cloned().chain(SELECTABLE_EXTRA_MODELS.iter().map(|model| model.to_string())));
+        let allowed_ai_models = free_models.unwrap_or_else(|| {
+            unique(automatic_ai_models.iter().cloned().chain(SELECTABLE_EXTRA_MODELS.iter().map(|model| model.to_string())))
+        });
         let base_url = non_empty(env("ROUTERAI_BASE_URL")).unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
         let base_url = base_url.strip_suffix('/').map_or_else(|| base_url.clone(), str::to_string);
         let ollama_base_url = non_empty(env("DND_AI_OLLAMA_BASE_URL")).unwrap_or_else(|| DEFAULT_OLLAMA_BASE_URL.to_string());
@@ -198,6 +213,8 @@ impl Config {
             lore_model: non_empty(env("DND_AI_LORE_MODEL")).unwrap_or_else(|| DEFAULT_LORE_MODEL.to_string()),
             ollama_model: non_empty(env("DND_AI_OLLAMA_MODEL")),
             ollama_base_url,
+            openrouter_api_key,
+            openrouter_base_url: openrouter_test_url(env).unwrap_or_else(|| DEFAULT_OPENROUTER_BASE_URL.to_string()),
             combat_turn_timeout_ms: env_number(env, "DND_COMBAT_TURN_TIMEOUT_MS", 120_000.0),
             image_model: non_empty(env("DND_IMAGE_MODEL")).unwrap_or_else(|| DEFAULT_IMAGE_MODEL.to_string()),
             runtime_image_generation: ["on", "true", "1", "yes"].contains(&lowered(env("DND_RUNTIME_IMAGE_GENERATION")).as_str()),
@@ -228,12 +245,52 @@ impl Config {
 
     /// Есть ли ключ модели (`Boolean(apiKey)`); значение не раскрывается.
     pub fn model_configured(&self) -> bool {
-        self.cloud_model_configured() || self.ollama_model.is_some()
+        self.cloud_model_configured() || self.openrouter_configured() || self.ollama_model.is_some()
     }
 
     /// Есть ли облачная модель с ключом, которой можно поручить картинки.
     pub fn cloud_model_configured(&self) -> bool {
         !self.api_key.is_empty()
+    }
+
+    pub fn openrouter_configured(&self) -> bool {
+        !self.openrouter_api_key.is_empty()
+    }
+}
+
+fn openrouter_test_url(env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    if lowered(env("NODE_ENV")) != "test" {
+        return None;
+    }
+    let base = non_empty(env("DND_AI_OPENROUTER_BASE_URL"))?;
+    let uri = base.parse::<axum::http::Uri>().ok()?;
+    let authority = uri.authority()?;
+    (matches!(uri.scheme_str(), Some("http" | "https"))
+        && matches!(authority.host(), "127.0.0.1" | "localhost" | "[::1]" | "::1")
+        && !authority.as_str().contains('@'))
+        .then(|| base.trim_end_matches('/').to_string())
+}
+
+fn openrouter_api_key(env: &dyn Fn(&str) -> Option<String>) -> String {
+    let key = non_empty(env("OPENROUTER_API_KEY")).unwrap_or_default();
+    if lowered(env("NODE_ENV")) != "test" {
+        return key;
+    }
+    if openrouter_test_url(env).is_some() { key } else { String::new() }
+}
+
+fn openrouter_models_from(raw: Option<String>) -> Vec<String> {
+    let source = non_empty(raw).unwrap_or_else(|| DEFAULT_OPENROUTER_MODELS.to_string());
+    let mut result = Vec::new();
+    for value in source.split(',').map(sk_core::text::trim).filter(|value| !value.is_empty()) {
+        if is_openrouter_free_model(value) && !result.iter().any(|item: &String| item == value) {
+            result.push(value.to_string());
+        }
+    }
+    if result.is_empty() {
+        vec![DEFAULT_OPENROUTER_MODELS.to_string()]
+    } else {
+        result.into_iter().take(5).collect()
     }
 }
 
@@ -311,5 +368,28 @@ mod tests {
         assert!(!config.cloud_model_configured());
         assert_eq!(config.ollama_model.as_deref(), Some("qwen3:14b"));
         assert_eq!(config.ollama_base_url, DEFAULT_OLLAMA_BASE_URL);
+    }
+
+    #[test]
+    fn openrouter_free_models_are_bounded_and_reject_paid_entries() {
+        let config = config(&[
+            ("OPENROUTER_API_KEY", "sk-or-v1-test"),
+            ("NODE_ENV", "test"),
+            ("DND_AI_OPENROUTER_BASE_URL", "http://127.0.0.1:4311/v1/"),
+            ("DND_AI_OPENROUTER_MODELS", "openrouter/free,google/gemma-4:free,openai/gpt-6-luna,openrouter/free"),
+        ]);
+        assert!(config.openrouter_configured());
+        assert_eq!(config.openrouter_base_url, "http://127.0.0.1:4311/v1");
+        assert_eq!(config.allowed_ai_models, ["openrouter/free", "google/gemma-4:free"]);
+        assert_eq!(openrouter_models_from(Some("openai/gpt-6-luna,invalid:free".into())), ["openrouter/free"]);
+    }
+
+    #[test]
+    fn production_openrouter_endpoint_cannot_be_overridden() {
+        let config = config(&[
+            ("OPENROUTER_API_KEY", "sk-or-v1-test"),
+            ("DND_AI_OPENROUTER_BASE_URL", "http://127.0.0.1:4311/v1/"),
+        ]);
+        assert_eq!(config.openrouter_base_url, DEFAULT_OPENROUTER_BASE_URL);
     }
 }

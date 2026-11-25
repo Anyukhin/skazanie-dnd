@@ -459,6 +459,12 @@ export function llmProviderFor(baseUrl) {
 }
 
 const VENDOR_MODEL_PREFIX = /^(?:openai|anthropic|google|z-ai|deepseek|meta|x-ai|mistralai|qwen|moonshotai)\//u
+const isOpenRouterFreeModel = (model) => model === 'openrouter/free' || /^[a-z0-9._-]+\/[a-z0-9._-]+:free$/u.test(model)
+
+export function openRouterFreeModels(value) {
+  const models = [...new Set(String(value ?? '').split(',').map((entry) => entry.trim()).filter(isOpenRouterFreeModel))]
+  return models.length ? models.slice(0, 5) : ['openrouter/free']
+}
 
 /**
  * Имя модели и параметры рассуждений в формате провайдера.
@@ -507,6 +513,7 @@ export class RouterAIClient extends LLMClient {
     maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
     fetchImpl = globalThis.fetch,
     ollama = false,
+    openRouterFree = false,
   } = {}) {
     super()
     if (typeof fetchImpl !== 'function') throw new TypeError('Для RouterAIClient требуется fetch')
@@ -519,8 +526,9 @@ export class RouterAIClient extends LLMClient {
     this.maxToolCalls = positiveInteger(maxToolCalls, DEFAULT_MAX_TOOL_CALLS, 'maxToolCalls')
     this.maxResponseBytes = positiveInteger(maxResponseBytes, DEFAULT_MAX_RESPONSE_BYTES, 'maxResponseBytes')
     this.fetchImpl = fetchImpl
-    this.provider = ollama ? 'ollama' : llmProviderFor(this.baseUrl)
-    this.providerLabel = ollama ? 'Ollama' : this.provider === 'ohmylama' ? 'OhMyLama' : 'RouterAI'
+    this.provider = ollama ? 'ollama' : openRouterFree ? 'openrouter' : llmProviderFor(this.baseUrl)
+    if (openRouterFree && !isOpenRouterFreeModel(this.model)) throw new TypeError('Модель OpenRouter должна быть бесплатной')
+    this.providerLabel = { ollama: 'Ollama', openrouter: 'OpenRouter', ohmylama: 'OhMyLama' }[this.provider] ?? 'RouterAI'
   }
 
   async complete(input, options = {}) {
@@ -529,7 +537,7 @@ export class RouterAIClient extends LLMClient {
     const timeoutMs = positiveInteger(request.timeoutMs ?? this.timeoutMs, this.timeoutMs, 'timeoutMs')
     const scope = makeAbortScope(timeoutMs, request.signal)
     const body = {
-      model: this.provider === 'ollama' ? this.model : String(request.model || this.model),
+      model: ['ollama', 'openrouter'].includes(this.provider) ? this.model : String(request.model || this.model),
       messages: request.messages,
       temperature: Number.isFinite(Number(request.temperature)) ? Number(request.temperature) : 0,
       max_tokens: positiveInteger(request.maxTokens ?? this.maxTokens, this.maxTokens, 'maxTokens'),
@@ -548,7 +556,7 @@ export class RouterAIClient extends LLMClient {
       ? request.reasoning
       : campaignReasoningFor(body.model, request.role) ?? this.reasoning
     if (this.provider === 'ollama') body.reasoning_effort = 'none'
-    else if (reasoning) body.reasoning = reasoning
+    else if (reasoning && this.provider !== 'openrouter') body.reasoning = reasoning
     // Роль может приложить JSON Schema своего ответа (`jsonSchema`). Модели,
     // у которых маршрут исполняет strict json_schema (`supportsJsonSchema`,
     // проба 2026-10-01), получают её; остальные — прежний json_object. Схема
@@ -558,7 +566,7 @@ export class RouterAIClient extends LLMClient {
     // без response_format и с явной инструкцией формата проверен 2026-09-08.
     // Строгий parser ответа сохраняется.
     const jsonSchema = wantsJson(request) ? usableJsonSchema(request.jsonSchema) : null
-    if (jsonSchema && (this.provider === 'ollama' || supportsJsonSchema(body.model))) {
+    if (jsonSchema && (['ollama', 'openrouter'].includes(this.provider) || supportsJsonSchema(body.model))) {
       body.response_format = { type: 'json_schema', json_schema: jsonSchema }
     } else if (wantsJson(request)) {
       if (body.model !== 'z-ai/glm-5.3-flash') body.response_format = { type: 'json_object' }
@@ -570,6 +578,7 @@ export class RouterAIClient extends LLMClient {
           : body.messages.map((message, index) => index === systemIndex ? { ...message, content: `${message.content}\n${directive}` } : message)
       }
     }
+    if (this.provider === 'openrouter' && body.response_format) body.provider = { require_parameters: true }
     const streaming = typeof request.onDelta === 'function'
     if (streaming) {
       if (wantsJson(request)) throw new TypeError('Streaming JSON responses are not supported')

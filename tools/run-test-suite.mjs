@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 // Тесты включают модель только через собственную заглушку.
 process.env.DND_AI_OLLAMA_MODEL = ''
+process.env.OPENROUTER_API_KEY = ''
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)))
 const testDir = join(rootDir, 'test')
