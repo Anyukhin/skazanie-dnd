@@ -311,26 +311,21 @@ test('хранитель зацепки, вставший на поле во в�
   assert.doesNotMatch(String(accepted.narration), /Обстановка изменилась/u)
 })
 
-test('провал проверки рассказывается через цену и причину от судьи, а не «не вышло»', async () => {
-  // Замер 9 (2026-10-10): «Дверь не поддаётся, и Борин остаётся снаружи» —
-  // без причины и цены. Судья называет до броска, что герой увидит при
-  // провале (`failure_detail`), и рассказчик получает это как деталь исхода.
-  const { narratorResponsePlan } = await import('../server/narrator.mjs')
+test('провал проверки поиска не раскрывает неподтверждённую улику', async () => {
+  // Провал поиска не передаёт модельную failure_detail рассказчику: это
+  // неподтверждённое знание, которое могло бы раскрыть тайну места.
   const failure = 'Ветер воет в щелях так, что все звуки с кормы тонут в нём.'
   const reader = {
     llmClient: { completeJson: async () => ({}) },
     read: async () => ({ goal_summary: 'Осмотреть корму', approach_summary: 'Осматриваю', ability: 'wis', skill: 'perception', plausibility: 'plausible', risk: 'none', required_means: [], effect: 'none', source: 'agent-adjudicator', success_detail: 'Знак артели на корме.', failure_detail: failure }),
   }
-  const briefs = []
-  const narrator = { render: async (brief) => { briefs.push(brief); return { narration: 'Ветер воет так, что корма молчит; метку в темноте не разобрать.', provider: 'test-llm' } } }
+  let narratorCalls = 0
+  const narrator = { render: async () => { narratorCalls += 1; return { narration: 'Ветер воет так, что корма молчит; метку в темноте не разобрать.', provider: 'test-llm' } } }
   const { send } = await fixture({ reader, narrator, rolls: [2, 2, 2] })
   const missed = await send('Прислушиваюсь у кормы, есть ли кто в трюме', { idempotencyKey: 'look-failure-detail' })
   assert.equal(missed.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')?.payload?.success, false)
-  const brief = briefs.at(-1)
-  assert.equal(brief?.known_environment?.player_intent?.outcome_detail, failure)
-  // Без имён полей: «outcome_detail» уходил в текст модели (замер 13).
-  assert.match(narratorResponsePlan(brief).must_answer, /деталь исхода/u)
-  assert.doesNotMatch(narratorResponsePlan(brief).must_answer, /outcome_detail/u)
+  assert.equal(narratorCalls, 0, 'провал поиска использует детерминированный ответ')
+  assert.doesNotMatch(String(missed.narration), /Ветер воет|Знак артели/u)
 })
 
 test('реакция NPC из подтверждённой детали исхода разрешена рассказчику', async () => {
@@ -366,7 +361,8 @@ test('методичный осмотр с проваленным броском
   assert.ok(facts.includes(clue), `спрятанное найдено: ${JSON.stringify(facts)}`)
   const minutes = result.mechanics.filter((event) => event.event_type === 'TimeAdvanced').reduce((sum, event) => sum + Number(event.payload?.minutes ?? event.payload?.amount ?? 0), 0)
   assert.ok(minutes >= 30, `ушло полчаса: ${minutes}`)
-  assert.equal(briefs.at(-1)?.known_environment?.player_intent?.thorough_search, 'found')
+  assert.equal(briefs.length, 0)
+  assert.ok(result.narration.includes(clue), 'подтверждённая находка озвучена игроку')
 })
 
 test('прямая речь живого игрока: человеку рядом — разговор, спутнику — отыгрыш без броска', async () => {
