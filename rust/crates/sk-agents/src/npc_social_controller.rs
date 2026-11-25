@@ -1813,11 +1813,15 @@ impl NpcSocialController {
             out.insert("prompt_version".into(), str_value(NPC_SOCIAL_PROMPT_VERSION));
             return Ok(Some(Value::Object(out)));
         };
-        match self.with_model(client.as_ref(), &request, &profile, &social, &leads).await {
+        let mut token_usage = Map::new();
+        match self.with_model(client.as_ref(), &request, &profile, &social, &leads, &mut token_usage).await {
             Ok((mut out, repetition)) => {
                 out.insert("context_metadata".into(), context_metadata);
                 out.insert("provider".into(), str_value(self.provider()));
                 out.insert("prompt_version".into(), str_value(NPC_SOCIAL_PROMPT_VERSION));
+                if !token_usage.is_empty() {
+                    out.insert("token_usage".into(), Value::Object(token_usage));
+                }
                 if let Some(repetition) = repetition {
                     out.insert("repetition".into(), str_value(repetition));
                 }
@@ -1831,13 +1835,16 @@ impl NpcSocialController {
                 let code = error.code.clone().unwrap_or_else(|| error.name.clone());
                 out.insert("provider_error".into(), str_value(clean_str(&code, 80)));
                 out.insert("facts_available".into(), Value::from(facts.len()));
+                if !token_usage.is_empty() {
+                    out.insert("token_usage".into(), Value::Object(token_usage));
+                }
                 Ok(Some(Value::Object(out)))
             }
         }
     }
 
     /// Запрос к модели с брифом (`complete(options)` в JS).
-    async fn complete(&self, client: &dyn LlmClient, request: &RespondInput<'_>, profile: &Value, options: &BriefOptions<'_>) -> R<Value> {
+    async fn complete(&self, client: &dyn LlmClient, request: &RespondInput<'_>, profile: &Value, options: &BriefOptions<'_>, token_usage: &mut Map<String, Value>) -> R<Value> {
         let model = client.model();
         let system = prompt_for_model_role(NPC_SOCIAL_PROMPT, model.as_deref(), "npc");
         let brief = brief_for(request.state, profile, &request.hero_id, request.message, request.check, options)?;
@@ -1853,14 +1860,26 @@ impl NpcSocialController {
             "role": "npc",
             "jsonSchema": *NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
         });
-        Ok(client.complete_json(&input, &json!({ "timeoutMs": 20_000, "usageRole": "npc_social" })).await?)
+        let response = client.complete(&input, &json!({ "json": true, "timeoutMs": 20_000, "usageRole": "npc_social" })).await?;
+        if let Some(usage) = response.get("usage").and_then(Value::as_object) {
+            for (key, value) in usage {
+                if let Some(number) = value.as_f64().filter(|n| n.is_finite() && *n >= 0.0) {
+                    let previous = token_usage.get(key).and_then(Value::as_f64).unwrap_or_default();
+                    token_usage.insert(key.clone(), js::num(previous + number));
+                }
+            }
+        }
+        if response.get("provider").and_then(Value::as_str) == Some("Ollama") {
+            token_usage.entry("provider_cost").or_insert_with(|| Value::from(0));
+        }
+        Ok(response.get("json").cloned().unwrap_or(Value::Null))
     }
 
     /// Тело `try` в JS: ответ модели, антиповтор, нормализация.
-    async fn with_model(&self, client: &dyn LlmClient, request: &RespondInput<'_>, profile: &Value, social: &Value, leads: &[Value]) -> R<(Map<String, Value>, Option<&'static str>)> {
+    async fn with_model(&self, client: &dyn LlmClient, request: &RespondInput<'_>, profile: &Value, social: &Value, leads: &[Value], token_usage: &mut Map<String, Value>) -> R<(Map<String, Value>, Option<&'static str>)> {
         let state = request.state;
         let base = BriefOptions { leads, just_seen: request.just_seen, ..BriefOptions::default() };
-        let mut result = self.complete(client, request, profile, &base).await?;
+        let mut result = self.complete(client, request, profile, &base, token_usage).await?;
         if !structurally_valid_social_response(&result) {
             return Err(NpcSocialError::error("NPC_SOCIAL_RESPONSE_INVALID_SHAPE"));
         }
@@ -1881,7 +1900,7 @@ impl NpcSocialController {
         if fresh.text.is_empty() {
             let repeated_lines: Vec<String> = reply_sentences(&js::s(get(Some(&result), "reply"))).into_iter().take(6).collect();
             let retry = BriefOptions { repeat_retry: true, repeated_lines, ..base.clone() };
-            let retried = self.complete(client, request, profile, &retry).await.unwrap_or(Value::Null);
+            let retried = self.complete(client, request, profile, &retry, token_usage).await.unwrap_or(Value::Null);
             let retried_fresh = if js::truthy(Some(&retried)) && structurally_valid_social_response(&retried) {
                 fresh_reply_text(&js::s(get(Some(&retried), "reply")), &earlier_for(&retried)?)
             } else {

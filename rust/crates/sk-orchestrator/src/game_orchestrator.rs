@@ -4396,6 +4396,7 @@ impl GameOrchestrator {
         }
 
         let mut social_base_state = authoritative_state.clone();
+        let mut social_token_usage = None;
         let mut preceding_events: Vec<Value> = Vec::new();
         let mut preceding_rolls: Vec<Value> = Vec::new();
         let mut preceding_commands: Vec<Value> = Vec::new();
@@ -4445,6 +4446,7 @@ impl GameOrchestrator {
                     "justSeen": js::s(input.field("precedingStep")),
                 });
                 let social_turn = controller.respond(&request).await?.filter(|turn| js::truthy(Some(turn))).ok_or_else(|| OrchestratorError::plain("NPC is no longer available for this social turn"))?;
+                social_token_usage = social_turn.get("token_usage").cloned();
                 set(&mut rules_context, "isSocialController", Value::Bool(true));
                 set(&mut rules_context, "socialCheckOutcome", check_outcome.clone());
                 let social_command = obj(vec![
@@ -4618,7 +4620,10 @@ impl GameOrchestrator {
             },
             _ => None,
         };
-        let stored_social = npc_conversation_narration(&committed_events, &committed_state);
+        let mut stored_social = npc_conversation_narration(&committed_events, &committed_state);
+        if let (Some(social), Some(usage)) = (stored_social.as_mut(), social_token_usage) {
+            set(social, "token_usage", usage);
+        }
         let private_social = committed_events.iter().any(|event| is_str(event.get("event_type"), "NpcConversationRecorded") && is_str(event.get("visibility"), "specific_player"));
         let resolver = actor_name_resolver(&committed_state);
         let explicit_combat_maneuver = maneuver;

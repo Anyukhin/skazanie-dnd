@@ -1133,18 +1133,29 @@ export class NpcSocialController {
       provider: 'deterministic-social-fallback',
       prompt_version: NPC_SOCIAL_PROMPT_VERSION,
     }
-    const complete = (options = {}) => this.llmClient.completeJson({
-      messages: [
-        { role: 'system', content: promptForModelRole(prompt, this.llmClient, 'npc') },
-        { role: 'user', content: buildDataOnlyContext({ npc_social_brief: briefFor(state, profile, heroId, message, checkOutcome, { leads, justSeen, ...options }) }) },
-      ],
-      temperature: 0.7,
-      maxTokens: 700,
-      // Творческая роль: профиль рассуждений лидера кампании её касается.
-      role: 'npc',
-      // Форма ответа на стороне провайдера; structurallyValidSocialResponse всё равно проверяет.
-      jsonSchema: NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
-    }, { timeoutMs: 20_000, usageRole: 'npc_social' })
+    const tokenUsage = Object.create(null)
+    const complete = async (options = {}) => {
+      const request = {
+        messages: [
+          { role: 'system', content: promptForModelRole(prompt, this.llmClient, 'npc') },
+          { role: 'user', content: buildDataOnlyContext({ npc_social_brief: briefFor(state, profile, heroId, message, checkOutcome, { leads, justSeen, ...options }) }) },
+        ],
+        temperature: 0.7,
+        maxTokens: 700,
+        // Творческая роль: профиль рассуждений лидера кампании её касается.
+        role: 'npc',
+        // Формат провайдера дополняет локальную проверку.
+        jsonSchema: NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
+      }
+      const completionOptions = { timeoutMs: 20_000, usageRole: 'npc_social' }
+      if (typeof this.llmClient.complete !== 'function') return this.llmClient.completeJson(request, completionOptions)
+      const response = await this.llmClient.complete(request, { ...completionOptions, json: true })
+      for (const [key, value] of Object.entries(response.usage ?? {})) {
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0) tokenUsage[key] = (tokenUsage[key] ?? 0) + value
+      }
+      if (response.provider === 'Ollama' && tokenUsage.provider_cost == null) tokenUsage.provider_cost = 0
+      return response.json
+    }
     try {
       let result = await complete()
       if (!structurallyValidSocialResponse(result)) throw new Error('NPC_SOCIAL_RESPONSE_INVALID_SHAPE')
@@ -1195,6 +1206,7 @@ export class NpcSocialController {
         ...normalizedResult(result, profile, state, heroId, message, turnId, checkOutcome, { leads }),
         context_metadata: contextMetadata,
         provider: this.llmClient.constructor?.name ?? 'llm',
+        ...(Object.keys(tokenUsage).length ? { token_usage: { ...tokenUsage } } : {}),
         prompt_version: NPC_SOCIAL_PROMPT_VERSION,
         ...(repetition ? { repetition } : {}),
       }
@@ -1205,6 +1217,7 @@ export class NpcSocialController {
         provider: 'deterministic-social-fallback',
         prompt_version: NPC_SOCIAL_PROMPT_VERSION,
         provider_error: clean(error?.code ?? error?.name ?? 'LLM_PROVIDER_ERROR', 80),
+        ...(Object.keys(tokenUsage).length ? { token_usage: { ...tokenUsage } } : {}),
         facts_available: facts.length,
       }
     }

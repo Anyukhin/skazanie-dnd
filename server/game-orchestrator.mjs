@@ -3608,6 +3608,7 @@ export class GameOrchestrator {
       ? requestTrace ?? this.traceStore.get(campaignId, turnId)
       : null
     const storedSocialNarration = npcConversationNarration(committedEvents, committed.state)
+    if (storedSocialNarration && socialTurn?.token_usage) storedSocialNarration.token_usage = socialTurn.token_usage
     const privateSocialNarration = committedEvents.some((event) => event.event_type === 'NpcConversationRecorded' && event.visibility === 'specific_player')
     const resolveActorName = actorNameResolver(committed.state)
     // Кто рассказывает про эти события, знает реестр. Раньше выбор был записан
