@@ -4,7 +4,7 @@
 // хранилище. Рабочее storage/ не читает и не пишет.
 //
 //   node tools/rust-play.mjs                 порт 8788, хранилище tmp/rust-play/storage
-//   node tools/rust-play.mjs --offline       без модели (пустой ROUTERAI_API_KEY)
+//   node tools/rust-play.mjs --offline       без облачных и локальных моделей
 //   node tools/rust-play.mjs --port 8790 --storage tmp/rust-play/second
 //   node tools/rust-play.mjs --no-build      без пересборки бинаря и клиента
 //
@@ -94,7 +94,11 @@ if (process.platform === 'win32') {
 
 mkdirSync(storage, { recursive: true })
 const serverEnv = { ...env, AGENT_PORT: String(port), AGENT_HOST: option('--host', '127.0.0.1'), DND_STORAGE_DIR: storage, DND_DATA_DIR: root }
-if (flag('--offline')) serverEnv.ROUTERAI_API_KEY = ''
+if (flag('--offline')) {
+  serverEnv.ROUTERAI_API_KEY = ''
+  serverEnv.OPENROUTER_API_KEY = ''
+  serverEnv.DND_AI_OLLAMA_MODEL = ''
+}
 console.log(`Rust-сервер: http://127.0.0.1:${port}  хранилище: ${storage}${flag('--offline') ? '  без модели' : ''}`)
 console.log('Остановить — Ctrl+C.')
 const server = spawn(executable, [], { cwd: root, env: serverEnv, stdio: 'inherit' })

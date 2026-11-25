@@ -1134,6 +1134,9 @@ export class NpcSocialController {
       prompt_version: NPC_SOCIAL_PROMPT_VERSION,
     }
     const tokenUsage = Object.create(null)
+    const model = String(this.llmClient.model ?? '')
+    // У бесплатных маршрутов OpenRouter обязательные рассуждения тоже входят в лимит JSON-ответа.
+    const maxTokens = model === 'openrouter/free' || model.endsWith(':free') ? 1400 : 700
     const complete = async (options = {}) => {
       const request = {
         messages: [
@@ -1141,7 +1144,7 @@ export class NpcSocialController {
           { role: 'user', content: buildDataOnlyContext({ npc_social_brief: briefFor(state, profile, heroId, message, checkOutcome, { leads, justSeen, ...options }) }) },
         ],
         temperature: 0.7,
-        maxTokens: 700,
+        maxTokens,
         // Творческая роль: профиль рассуждений лидера кампании её касается.
         role: 'npc',
         // Формат провайдера дополняет локальную проверку.

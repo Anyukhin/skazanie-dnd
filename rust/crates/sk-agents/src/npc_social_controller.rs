@@ -21,7 +21,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
-use sk_agents_base::llm_client::{LlmClient, LlmError};
+use sk_agents_base::llm_client::{LlmClient, LlmError, is_openrouter_free_model};
 use sk_core::indexmap::{IndexMap, IndexSet};
 use sk_core::{hash, js, re, text};
 use sk_encounters::agent_context::{
@@ -1846,6 +1846,8 @@ impl NpcSocialController {
     /// Запрос к модели с брифом (`complete(options)` в JS).
     async fn complete(&self, client: &dyn LlmClient, request: &RespondInput<'_>, profile: &Value, options: &BriefOptions<'_>, token_usage: &mut Map<String, Value>) -> R<Value> {
         let model = client.model();
+        // У бесплатных маршрутов OpenRouter обязательные рассуждения тоже входят в лимит JSON-ответа.
+        let max_tokens = if model.as_deref().is_some_and(is_openrouter_free_model) { 1400 } else { 700 };
         let system = prompt_for_model_role(NPC_SOCIAL_PROMPT, model.as_deref(), "npc");
         let brief = brief_for(request.state, profile, &request.hero_id, request.message, request.check, options)?;
         let mut sections = Map::new();
@@ -1856,7 +1858,7 @@ impl NpcSocialController {
                 { "role": "user", "content": build_data_only_context(Some(&Value::Object(sections))) },
             ],
             "temperature": 0.7,
-            "maxTokens": 700,
+            "maxTokens": max_tokens,
             "role": "npc",
             "jsonSchema": *NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
         });

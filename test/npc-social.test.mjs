@@ -551,11 +551,14 @@ test('orchestrator commits NPC dialogue once and replays the stored reply withou
   })
   let socialCalls = 0
   let narratorCalls = 0
+  let outputBudget
   const traceStore = new FileTraceStore({ rootDir: join(root, 'traces') })
   const controller = new NpcSocialController({
     llmClient: {
-      complete: async (_input, options) => {
+      model: 'test/npc:free',
+      complete: async (input, options) => {
         assert.equal(options.json, true)
+        outputBudget = input.maxTokens
         return {
           json: {
             npc_id: 'marta', reply: 'Сегодня лавка закрывается на закате.', stance: 'neutral',
@@ -598,6 +601,7 @@ test('orchestrator commits NPC dialogue once and replays the stored reply withou
   assert.equal(second.narration, first.narration)
   assert.equal(socialCalls, 1)
   assert.equal(narratorCalls, 0)
+  assert.equal(outputBudget, 1400)
   assert.deepEqual(traceStore.get('NPC-SOCIAL', first.turn_id).token_usage, {
     prompt_tokens: 20, completion_tokens: 14, total_tokens: 34, provider_cost: 0,
   })
