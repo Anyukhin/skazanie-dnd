@@ -321,7 +321,7 @@ impl CampaignRecapService {
             "temperature": 0.5,
             "maxTokens": 400,
         });
-        let result = (**client).complete_json(&request, &json!({})).await.ok()?;
+        let result = (**client).complete_json(&request, &json!({ "usageRole": "recap" })).await.ok()?;
         let text = clean(prop(Some(&result), "recap"), 1_500);
         (!text.is_empty()).then_some(text)
     }

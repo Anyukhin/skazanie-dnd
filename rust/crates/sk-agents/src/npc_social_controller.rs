@@ -1815,7 +1815,7 @@ impl NpcSocialController {
             "role": "npc",
             "jsonSchema": *NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
         });
-        Ok(client.complete_json(&input, &json!({ "timeoutMs": 20_000 })).await?)
+        Ok(client.complete_json(&input, &json!({ "timeoutMs": 20_000, "usageRole": "npc_social" })).await?)
     }
 
     /// Тело `try` в JS: ответ модели, антиповтор, нормализация.

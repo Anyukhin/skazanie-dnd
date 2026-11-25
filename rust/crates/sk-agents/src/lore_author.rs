@@ -112,7 +112,7 @@ impl LoreAuthor {
             // горячего пути. Поставщику поле не уходит.
             "usageScope": "lore",
         });
-        match (**client).complete(&request, &json!({})).await {
+        match (**client).complete(&request, &json!({ "usageRole": "lore_author" })).await {
             Ok(result) => {
                 let content = nullish(nullish(prop(Some(&result), "content"), prop(Some(&result), "text")), None);
                 bounded_text(content, 12_000)

@@ -152,6 +152,7 @@ export class DurableUsageLedger {
     estimatedTokens,
     scope = 'global',
     model = 'unknown',
+    role = null,
   } = {}) {
     const id = clean(requestId, 160)
     if (!id) throw new UsageLedgerError('Usage request id is required', 'USAGE_REQUEST_ID_INVALID')
@@ -163,6 +164,7 @@ export class DurableUsageLedger {
     // конфликт на каждом повторе такого резерва.
     const entryScope = clean(scope, 120) || 'global'
     const entryModel = clean(model, 160) || 'unknown'
+    const entryRole = clean(role, 120) || null
     const existing = ledger.requests[id]
     if (existing) {
       if (existing.scope !== entryScope || existing.model !== entryModel || existing.estimated_tokens !== requested) {
@@ -177,6 +179,7 @@ export class DurableUsageLedger {
       day: dayKey(now),
       scope: entryScope,
       model: entryModel,
+      ...(entryRole ? { role: entryRole } : {}),
       status: 'reserved',
       estimated_tokens: requested,
       reserved_tokens: requested,
@@ -302,6 +305,7 @@ export class MeteredLLMClient {
       estimatedTokens: estimatedInputTokens(input) + maximumOutput,
       scope: options.usageScope ?? request.usageScope ?? 'global',
       model: options.model ?? request.model ?? this.model,
+      role: options.usageRole ?? options.role ?? request.usageRole ?? request.role ?? null,
     })
     try {
       const result = await this.client.complete(input, options)

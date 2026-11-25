@@ -393,7 +393,7 @@ export class HeroHookWeaver {
         // Творческая роль ведущего: тот же профиль рассуждений, что у Режиссёра.
         role: 'director',
         jsonSchema: HERO_HOOKS_JSON_SCHEMA,
-      }, { timeoutMs: 30_000 })
+      }, { timeoutMs: 30_000, usageRole: 'hero_hooks' })
     } catch (error) {
       return {
         hero_ids: targets, plans: [], provider: 'error', prompt_version: HERO_HOOKS_PROMPT_VERSION,
