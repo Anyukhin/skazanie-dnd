@@ -28,6 +28,9 @@ jobs:
         working-directory: rust
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Аудит заклинаний сверяет эталон с историческим коммитом каталога.
+          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
 
