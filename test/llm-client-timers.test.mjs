@@ -40,6 +40,49 @@ function router(model, timeoutMs, fetchImpl) {
   return new RouterAIClient({ apiKey: 'test-key', baseUrl: 'http://127.0.0.1:9/api/v1', model, maxTokens: 50, timeoutMs, fetchImpl })
 }
 
+test('HTTP 402 переводит запрос в Ollama под общим учётом расхода', async (t) => {
+  const ledger = ledgerFixture(t)
+  const paid = new MeteredLLMClient({ client: router('test/paid', 500, async () => ({ ok: false, status: 402 })), ledger })
+  let otherPaidCalls = 0
+  const sameProvider = { model: 'test/other-paid', async complete() {
+    otherPaidCalls += 1
+    throw new Error('Общий ключ уже получил отказ')
+  } }
+  let localCalls = 0
+  const local = new MeteredLLMClient({
+    client: new RouterAIClient({
+      apiKey: 'ollama', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen3:14b', ollama: true,
+      async fetchImpl(url, { body, headers }) {
+        localCalls += 1
+        assert.equal(url, 'http://127.0.0.1:11434/v1/chat/completions')
+        assert.equal(headers.Authorization, 'Bearer ollama')
+        const input = JSON.parse(body)
+        assert.equal(input.model, 'qwen3:14b')
+        assert.equal(input.reasoning_effort, 'none')
+        assert.equal(input.response_format.type, 'json_schema')
+        return new Response(JSON.stringify({ model: 'qwen3:14b',
+          usage: { prompt_tokens: 7, completion_tokens: 2, total_tokens: 9 },
+          choices: [{ message: { role: 'assistant', content: '{"ok":true}' } }] }))
+      },
+    }),
+    ledger,
+  })
+  const cascade = new FallbackLLMClient({ clients: [paid, sameProvider], providerFallback: local })
+  const input = { messages: MESSAGES, json: true, model: 'test/paid', usageScope: 'lore',
+    jsonSchema: { name: 'test', strict: true, schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false } } }
+  const result = await cascade.complete(input)
+  assert.equal(result.provider, 'Ollama')
+  assert.deepEqual(result.json, { ok: true })
+  assert.deepEqual(result.fallback_attempts, [{ model: 'test/paid', code: 'LLM_PROVIDER_ERROR' }])
+  assert.equal(localCalls, 1)
+  assert.equal(ledger.report().committed_tokens, 9)
+  await cascade.complete(input)
+  assert.equal(ledger.report().requests, 3, 'после общего отказа оплачиваемый провайдер остывает, работает локальный')
+  await cascade.probe()
+  assert.equal(localCalls, 2, 'фоновая проба не запускает локальную генерацию')
+  assert.equal(otherPaidCalls, 0, 'проба общей учётной записи останавливается после первого 402')
+})
+
 test('каскад снимает основную модель по её лимиту и за обёрткой учёта расхода', async (t) => {
   const ledger = ledgerFixture(t)
   const primary = new MeteredLLMClient({ client: router('test/primary', 40, hangingFetch()), ledger })
@@ -69,17 +112,20 @@ test('каскад снимает основную модель по её лим
 test('дельта снятой по сроку попытки не попадает в живой поток, а её сигнал отменён', async () => {
   const deltas = []
   let lateSignalAborted = null
-  let lateDeltaSent = null
+  let releaseLateDelta
+  const release = new Promise((resolve) => { releaseLateDelta = resolve })
+  let finishLateDelta
+  const finished = new Promise((resolve) => { finishLateDelta = resolve })
   const slow = {
     model: 'test/slow',
     timeoutMs: 20,
     async complete(_input, options) {
       // Модель, которая сигнал не слушает: проигравшая гонку попытка
       // продолжает работать и пишет в поток уже после переключения.
-      await sleep(150)
+      await release
       lateSignalAborted = options.signal?.aborted ?? null
       await options.onDelta('поздний текст основной модели')
-      lateDeltaSent = true
+      finishLateDelta()
       return { role: 'assistant', content: 'поздний текст основной модели', tool_calls: [], model: 'test/slow' }
     },
   }
@@ -91,10 +137,10 @@ test('дельта снятой по сроку попытки не попада
     },
   }
   const cascade = new FallbackLLMClient({ clients: [slow, reserve] })
-  const result = await cascade.complete({ messages: MESSAGES, timeoutMs: 100, onDelta: (delta) => deltas.push(delta) })
+  const result = await cascade.complete({ messages: MESSAGES, timeoutMs: 1_000, onDelta: (delta) => deltas.push(delta) })
   assert.equal(result.content, 'ответ резервной')
-  await sleep(250)
-  assert.equal(lateDeltaSent, true, 'основная модель дошла до поздней дельты')
+  releaseLateDelta()
+  await finished
   assert.equal(lateSignalAborted, true, 'сигнал снятой попытки отменён')
   assert.deepEqual(deltas, ['ответ резервной'])
 })

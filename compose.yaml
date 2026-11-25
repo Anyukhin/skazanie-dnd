@@ -8,6 +8,7 @@ services:
       AGENT_HOST: 0.0.0.0
       AGENT_PORT: 8787
       DND_STORAGE_DIR: /app/storage
+      DND_AI_OLLAMA_BASE_URL: ${DND_AI_OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
       # Node должен использовать системное хранилище CA внутри контейнера.
       # Значение по умолчанию сохраняет это поведение и при ручном `docker
       # compose up`, когда Start-DnD.ps1 не запускался.

@@ -40,6 +40,7 @@
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use serde_json::json;
 
 /// Распределитель памяти бинаря — mimalloc (Ск2, зависимость разрешена
 /// владельцем): горячий путь собирает и копирует большие `serde_json::Value`
@@ -146,18 +147,56 @@ fn build_models(config: &Config, ledger: &Arc<DurableUsageLedger>) -> Result<Llm
         })
         .map_err(|error| error.to_string())
     };
+    let local = |model: &str, timeout_ms: f64| -> Result<RouterAiClient, String> {
+        RouterAiClient::new(RouterAiClientConfig {
+            api_key: Some("ollama".to_string()),
+            base_url: Some(config.ollama_base_url.clone()),
+            provider: Some("ollama"),
+            model: Some(model.to_string()),
+            max_tokens: Some(config.ai_max_tokens),
+            reasoning: Some(json!({ "effort": "none" })),
+            timeout_ms: Some(timeout_ms),
+            ..RouterAiClientConfig::default()
+        })
+        .map_err(|error| error.to_string())
+    };
     let mut automatic = Vec::new();
     let mut selectable = Vec::new();
-    for model in &config.allowed_ai_models {
-        let client = Metered::wrap(router(model, config.ai_model_timeout_ms)?, ledger);
-        if config.automatic_ai_models.contains(model) {
-            automatic.push(client);
-        } else {
-            selectable.push(client);
+    if config.cloud_model_configured() || config.ollama_model.is_none() {
+        for model in &config.allowed_ai_models {
+            let client = Metered::wrap(router(model, config.ai_model_timeout_ms)?, ledger);
+            if config.automatic_ai_models.contains(model) {
+                automatic.push(client);
+            } else {
+                selectable.push(client);
+            }
         }
     }
-    let llm = Metered::cascade(automatic, selectable, config.ai_probe_timeout_ms, config.ai_failure_cooldown_ms).map_err(|error| error.to_string())?;
-    let lore = Metered::wrap(router(&config.lore_model, 30_000.0)?, ledger);
+    let local_model = config.ollama_model.as_deref();
+    let local_hot = local_model.map(|model| local(model, config.ai_model_timeout_ms.max(30_000.0))).transpose()?.map(|client| Metered::wrap(client, ledger));
+    let llm = if automatic.is_empty() {
+        let local_client = local_hot.ok_or_else(|| "Не настроена ни облачная, ни локальная модель".to_string())?;
+        Metered::cascade(vec![local_client], Vec::new(), config.ai_probe_timeout_ms, config.ai_failure_cooldown_ms)
+    } else {
+        Metered::cascade_with_provider_fallback(automatic, selectable, local_hot, config.ai_probe_timeout_ms, config.ai_failure_cooldown_ms)
+    }.map_err(|error| error.to_string())?;
+    let paid_lore = || router(&config.lore_model, 30_000.0).map(|client| Metered::wrap(client, ledger));
+    let lore = if let Some(model) = local_model {
+        let local_lore = Metered::wrap(local(model, 30_000.0)?, ledger);
+        if config.cloud_model_configured() {
+            Metered::cascade_with_provider_fallback(
+                vec![paid_lore()?],
+                Vec::new(),
+                Some(local_lore),
+                config.ai_probe_timeout_ms,
+                config.ai_failure_cooldown_ms,
+            ).map_err(|error| error.to_string())?
+        } else {
+            local_lore
+        }
+    } else {
+        paid_lore()?
+    };
     Ok(LlmClients { llm: Some(llm), lore: Some(lore) })
 }
 
@@ -262,7 +301,11 @@ fn main() {
         fail(error);
     }
     let address = format!("{}:{port}", config.host);
-    let banner = if config.model_configured() { format!("{} + {} fallback models", config.model, config.fallback_models.len()) } else { "демо-режим".to_string() };
+    let banner = if let Some(local) = config.ollama_model.as_deref() {
+        if config.cloud_model_configured() { format!("{} + local {} reserve", config.model, local) } else { format!("local {}", local) }
+    } else if config.cloud_model_configured() {
+        format!("{} + {} fallback models", config.model, config.fallback_models.len())
+    } else { "демо-режим".to_string() };
     let factory_config = config.clone();
     let injected = Injected { dice: hooks.dice, llm: Some(Box::new(move |ledger| build_models(&factory_config, ledger))), ..Injected::default() };
     let state = match AppState::open(config, injected) {
@@ -290,7 +333,7 @@ async fn run(state: Arc<AppState>, address: String, banner: String, faults: Opti
         }
     }
     // `void llmClient.probe()` при наличии ключа (309).
-    if state.config.model_configured() {
+    if state.config.cloud_model_configured() {
         if let Some(llm) = state.models.llm.clone() {
             tokio::spawn(async move {
                 let _ = llm.client().probe().await;

@@ -28,12 +28,13 @@ pub type FallbackClock = Arc<dyn Fn() -> f64 + Send + Sync>;
 pub struct FallbackMember {
     pub client: Arc<dyn LlmClient>,
     pub timeout_ms: Option<f64>,
+    pub provider_fallback: bool,
 }
 
 impl FallbackMember {
     pub fn new(client: Arc<dyn LlmClient>) -> Self {
         let timeout_ms = client.model_timeout_ms();
-        FallbackMember { client, timeout_ms }
+        FallbackMember { client, timeout_ms, provider_fallback: false }
     }
 
     pub fn with_timeout(mut self, timeout_ms: f64) -> Self {
@@ -41,10 +42,16 @@ impl FallbackMember {
         self
     }
 
+    /// Резерв с независимым адресом и ключом.
+    pub fn as_provider_fallback(mut self) -> Self {
+        self.provider_fallback = true;
+        self
+    }
+
     /// `RouterAIClient` с его `timeoutMs`.
     pub fn router(client: Arc<RouterAiClient>) -> Self {
         let timeout_ms = client.timeout_ms() as f64;
-        FallbackMember { client, timeout_ms: Some(timeout_ms) }
+        FallbackMember { client, timeout_ms: Some(timeout_ms), provider_fallback: false }
     }
 
     /// `String(client.model ?? 'unknown-model')`.
@@ -65,6 +72,9 @@ pub struct FallbackLlmClientConfig {
     pub clients: Vec<FallbackMember>,
     /// Ручные варианты: участвуют только в выбравшей их кампании, без фоновых проб.
     pub selectable_clients: Vec<FallbackMember>,
+    /// Другой провайдер в конце каскада. При общем HTTP 401/402 получит
+    /// запрос сразу. В фоновой проверке облачных моделей не участвует.
+    pub provider_fallback: Option<FallbackMember>,
     pub failure_cooldown_ms: Option<f64>,
     pub probe_timeout_ms: Option<f64>,
     pub now: Option<FallbackClock>,
@@ -90,6 +100,7 @@ impl Default for ModelStatus {
 pub struct FallbackLlmClient {
     clients: Vec<FallbackMember>,
     selectable_clients: Vec<FallbackMember>,
+    provider_fallback: Option<FallbackMember>,
     model: String,
     models: Vec<String>,
     failure_cooldown_ms: i64,
@@ -119,7 +130,7 @@ impl FallbackLlmClient {
             return Err(LlmError::type_error("FallbackLLMClient requires at least one LLM client"));
         }
         let model = config.clients[0].client.model().unwrap_or_else(|| "fallback-cascade".into());
-        let models: Vec<String> = config.clients.iter().chain(config.selectable_clients.iter()).map(FallbackMember::key).collect();
+        let models: Vec<String> = config.clients.iter().chain(config.selectable_clients.iter()).chain(config.provider_fallback.iter()).map(FallbackMember::key).collect();
         let statuses = models.iter().map(|model| (model.clone(), ModelStatus::default())).collect();
         Ok(FallbackLlmClient {
             failure_cooldown_ms: positive_integer_number(config.failure_cooldown_ms.unwrap_or(120_000.0), Some(120_000), "failureCooldownMs")?,
@@ -127,6 +138,7 @@ impl FallbackLlmClient {
             now: config.now.unwrap_or_else(|| Arc::new(|| sk_core::clock::now_ms() as f64)),
             clients: config.clients,
             selectable_clients: config.selectable_clients,
+            provider_fallback: config.provider_fallback,
             model,
             models,
             statuses: Mutex::new(statuses),
@@ -147,6 +159,16 @@ impl FallbackLlmClient {
         let mut statuses = lock(&self.statuses);
         let status = statuses.entry(member.key()).or_default();
         *status = ModelStatus { state: "ready", failures: 0, disabled_until: 0.0, last_error_code: None, last_success_at: Some(now), last_failure_at: status.last_failure_at };
+    }
+
+    fn account_refused(error: &LlmError) -> bool {
+        error.code_str() == "LLM_PROVIDER_ERROR" && [401.0, 402.0].contains(&error.status())
+    }
+
+    fn mark_provider_failure(&self, error: &LlmError) {
+        for paid in self.clients.iter().chain(&self.selectable_clients) {
+            self.mark_failure(paid, error);
+        }
     }
 
     fn mark_failure(&self, member: &FallbackMember, error: &LlmError) {
@@ -193,7 +215,7 @@ impl FallbackLlmClient {
         if ["LLM_ABORTED", "LLM_NOT_CONFIGURED"].contains(&code) {
             return false;
         }
-        if code == "LLM_PROVIDER_ERROR" && [401.0, 402.0].contains(&error.status()) {
+        if Self::account_refused(error) {
             return false;
         }
         ["LLM_PROVIDER_ERROR", "LLM_PROVIDER_UNAVAILABLE", "LLM_RESPONSE_INVALID", "LLM_JSON_INVALID", "LLM_RESPONSE_TOO_LARGE"].contains(&code)
@@ -258,6 +280,9 @@ impl FallbackLlmClient {
         });
         let attempt_scope = attempt_budget.map(|budget| AbortScope::new(budget, shared_signal));
         let mut fields = option_fields(options);
+        if member.provider_fallback {
+            fields.insert("model".into(), Value::String(member.key()));
+        }
         if let Some(budget) = attempt_budget {
             fields.insert("timeoutMs".into(), js::num(budget));
         }
@@ -300,9 +325,20 @@ impl FallbackLlmClient {
             _ => None,
         };
         let shared_signal = deadline_controller.as_ref().map(AbortController::signal).or(external);
-        let candidates = scope.campaign.enter(|| self.candidates());
+        let mut candidates = scope.campaign.enter(|| self.candidates());
+        if let Some(reserve) = self.provider_fallback.as_ref() {
+            let now = (self.now)();
+            if self.disabled_until(reserve) <= now && candidates.iter().all(|member| self.disabled_until(member) > now) {
+                candidates.clear();
+            }
+            candidates.push(reserve);
+        }
+        let mut provider_refused = false;
         let mut attempts: Vec<Value> = Vec::new();
         for (index, member) in candidates.iter().enumerate() {
+            if provider_refused && !member.provider_fallback {
+                continue;
+            }
             let emitted = Arc::new(AtomicBool::new(false));
             // Закончившаяся попытка в живой поток больше не пишет: снятая по
             // сроку модель не вклинивает текст после переключения на резервную.
@@ -331,7 +367,7 @@ impl FallbackLlmClient {
                 Ok(mut result) => {
                     if let Value::Object(map) = &mut result {
                         map.insert("fallback_attempts".into(), Value::Array(attempts.clone()));
-                        map.insert("fallback_used".into(), Value::Bool(!attempts.is_empty()));
+                        map.insert("fallback_used".into(), Value::Bool(!attempts.is_empty() || member.provider_fallback));
                     }
                     return Ok(result);
                 }
@@ -339,10 +375,16 @@ impl FallbackLlmClient {
                     if deadline_controller.as_ref().is_some_and(|controller| controller.signal().aborted()) {
                         return Err(error);
                     }
-                    if !Self::retryable(&error) {
-                        return Err(error);
+                    let account_refused = self.provider_fallback.is_some() && !member.provider_fallback && Self::account_refused(&error);
+                    if account_refused {
+                        provider_refused = true;
+                        self.mark_provider_failure(&error);
+                    } else {
+                        if !Self::retryable(&error) {
+                            return Err(error);
+                        }
+                        self.mark_failure(member, &error);
                     }
-                    self.mark_failure(member, &error);
                     attempts.push(json!({ "model": member.key(), "code": error.code_or_name() }));
                     // После первой показанной дельты другой провайдер не может
                     // продолжить текст без склейки двух разных ответов.
@@ -403,6 +445,10 @@ impl LlmClient for FallbackLlmClient {
                 });
                 match outcome {
                     Ok(()) => self.mark_success(member),
+                    Err(error) if self.provider_fallback.is_some() && Self::account_refused(&error) => {
+                        self.mark_provider_failure(&error);
+                        break;
+                    }
                     Err(error) => self.mark_failure(member, &error),
                 }
             }
