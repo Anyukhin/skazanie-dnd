@@ -846,7 +846,7 @@ async function playCombat(label) {
   const ended = (state.battleLog ?? []).findLast((entry) => entry.type === 'combat-end')
   const heroesUp = state.players.filter(isUp).length
   if (!state.mechanics.combat.active) {
-    if ((state.enemies ?? []).every((enemy) => !isUp(enemy))) stats.combatWins += 1
+    if (['enemies_defeated', 'fled'].includes(ended?.reason)) stats.combatWins += 1
     note(`- итог боя: раундов ${maxRound}, ${ended?.reason ?? ended?.text ?? '?'}, героев на ногах ${heroesUp}/${heroIds().length}`)
   }
   const tally = {}
