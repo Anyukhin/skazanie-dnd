@@ -1,6 +1,9 @@
 # Текущая архитектура
 
-Дата среза: 30 августа 2026 года.
+Клиент и публичный API сверены 24 ноября 2026 года. В схемах ниже описан
+JS-эталон поведения. Основную игру обслуживает Rust-сервер с тем же HTTP- и
+SSE-контрактом, SQLite-журналом и проекцией комнаты из журнала.
+См. [устройство Rust-сервера](../rust/README.md) и [запуск игры](rust-docker.md).
 
 > **Редакция правил:** целевым выбран `dnd_5e_2014`; мастер мира предлагает его
 > как `preview` рядом со стабильным `srd_5_2_1` / D&D 2024. Выбор хранится в
@@ -12,11 +15,11 @@
 
 ## Краткий вывод
 
-Приложение работает в единственном режиме **`enforce`**. Авторитетная механика выполняется Rules Engine на сервере и фиксируется в `FileEventStore`; JSON room сохранён только как server-owned read-модель для текущего React UI.
+Приложение работает в единственном режиме **`enforce`**. Rules Engine рассчитывает механику на сервере, а Event Store фиксирует события. React читает серверную проекцию комнаты.
 
 Исполняемые ветки `legacy` и `shadow`, legacy narrator/tools, browser gameplay fallback и broad room `PUT` удалены. Старые значения режима при чтении нормализуются в `enforce`, но не могут включить иной runtime. Любая новая кампания создаётся непосредственно в Event Store.
 
-Cutover кода завершён, но перенос существующих данных отделён от него: перед подтверждением проекции сервер сравнивает канонический SHA-256, а `cutover:verify` останавливает миграцию при расхождении room, snapshot и replay. Текущее локальное хранилище имеет такие расхождения, поэтому оно намеренно не переписано.
+В JS перед подтверждением проекции сервер сравнивает канонический SHA-256. Сверка комнат, снимков и replay выполняется командой `pnpm cutover:audit`.
 
 ## Runtime-схема
 
@@ -73,8 +76,8 @@ Event Store обязателен для любого игрового хода. 
 ### Frontend
 
 - `src/main.tsx` создаёт React root.
-- `src/App.tsx` содержит основной экран, карту, чат, персонажей, торговца и admin UI. В `enforce` карта показывает initiative ribbon, merchant screen — серверные buy/sell quotes, кассу NPC и действие оценки нестандартного предмета без локальной механической мутации, а admin-раздел — ограниченные difficulty/theme controls EncounterAssembler и результат собранного roster.
-- `src/useGameSession.ts` загружает read-модель, вызывает narration/roll/command API и принимает только авторитетный результат сервера. Ошибка API показывается пользователю и не запускает локальную механику.
+- `src/App.tsx` содержит основной экран, карту, чат, персонажей, торговца и admin UI. В `enforce` карта показывает initiative ribbon, merchant screen — серверные buy/sell quotes, кассу NPC и действие оценки нестандартного предмета без локальной механической мутации, экран развития показывает готовность повышения уровня и открывает редактор выбора, а admin-раздел — ограниченные difficulty/theme controls EncounterAssembler и результат собранного roster.
+- `src/useGameSession.ts` загружает read-модель, подключает session-bound `EventSource` для SSE, вызывает narration/roll/command API и принимает только авторитетный результат сервера. При доступном потоке остаётся hash-aware синхронизация комнаты с интервалом 15 секунд как страховка восстановления. Ошибка API показывается пользователю и не запускает локальную механику.
 - `src/game-engine.ts` содержит только presentation helper для сообщения игрока; механики и RNG в нём нет.
 - `src/auth-client.ts` и `src/ai-client.ts` адаптируют browser calls к существующим contracts.
 
@@ -89,13 +92,14 @@ Frontend является UI/read-model adapter. Он не отправляет 
 | `GET /api/health` | RouterAI configuration, фиксированный `enforce` и descriptors двух установленных ruleset |
 | auth/admin routes | `server/store.mjs`: пользователи, scrypt, sessions, hero access |
 | `GET /api/rules/search` | Rule Retriever; auth и строгая фильтрация ruleset/enabled packs |
-| `POST /api/campaigns` | Admin-only создание кампании непосредственно в Event Store с server-owned lock выбранного ruleset |
+| `POST /api/campaigns` | Авторизованный игрок создаёт кампанию через мастер. Сервер фиксирует кампанию в журнале и закрепляет за ней редакцию правил. Администратору также доступен импорт состояния |
 | `GET/PATCH /api/campaigns/:id/settings` | Настройки ИИ и ruleset кампании; редакция меняется событием только до первого игрового события |
 | `PATCH /api/campaigns/:id/engine-mode` | Retired endpoint: всегда `410 ENGINE_MODE_RETIRED` |
 | `POST /api/campaigns/:id/commands` | Игрок — разрешённый typed набор за назначенного героя; admin — расширенный typed набор. Затем Rules Engine → event commit → при необходимости NPC scheduler → room projection |
 | `POST /api/campaigns/:id/encounters/assemble` | Admin-only: bounded `difficulty/theme` → server-owned EncounterAssembler → атомарные `EncounterCreated + CombatStarted` → NPC scheduler/replay → viewer projection |
 | `GET /api/campaigns/:id/turns/:turnId/explanation` | Trace lookup и `buildTurnExplanation`; `latest` разрешён |
 | `GET /api/rooms/:code` | ACL-protected compatibility read model; при необходимости reconciliation по hash |
+| `GET /api/campaigns/:id/stream` | SSE для комнаты, присутствия и повествования. Сервер проверяет доступ сессии и схлопывает промежуточные кадры комнаты и присутствия в ограниченной очереди |
 | `PUT /api/rooms/:code` | Retired endpoint: всегда `410 ROOM_MUTATION_RETIRED` для доступной кампании |
 | `POST /api/rooms/:code/dice` | `DiceService` → `PublicDieRolled` → Event Store → projection |
 | `POST /api/roll` | `RollRegistry.issue` для серверного `roll_id`; только под зарегистрированный `check_id` |
