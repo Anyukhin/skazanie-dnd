@@ -1,0 +1,34 @@
+{
+  "schema": "skazanie-model-notice/v1",
+  "models": [
+    {
+      "file": "dragon.glb",
+      "sha256": "7177312bcc7c9183dd3ea461a2501077fdf8bd0081e944e6cad08721ae3971f2",
+      "bytes": 1567088,
+      "title": "Cethiel's Dragon 3D — детализированная модель Саргата",
+      "author": "Drummyfish (3D), Cethiel (исходный рисунок)",
+      "source": "https://opengameart.org/content/cethiels-dragon-3d",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "source_glb": "/assets/models/cethiel/dragon-15190f872082e85af253/dragon.glb",
+      "source_sha256": "15190f872082e85af253437c767c083da4ea321a8cb914203d2325271cfa2eef",
+      "changes": "Два прохода подразделения Лупа по общей геометрической сетке. Координаты фактуры и нормали интерполируются по углам граней, веса скелета — по общей вершине. Встроенная фактура и четыре исходные анимации сохранены.",
+      "original": {
+        "triangles": 1262,
+        "vertices": 633,
+        "boundaryEdges": 0
+      },
+      "output": {
+        "triangles": 20192,
+        "vertices": 13073,
+        "boundaryEdges": 0
+      },
+      "clips": [
+        "Idle",
+        "Walk",
+        "Bite_Attack",
+        "Death"
+      ]
+    }
+  ]
+}

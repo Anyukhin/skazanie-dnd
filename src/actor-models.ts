@@ -26,6 +26,7 @@ import {
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { ActorAppearance, ActorStature, PublicLoadout } from './types'
 import { normalizePublicLoadout } from '../server/equipment-visuals.mjs'
+import { applyAstohanNpcFigure, astohanNpcModelKey } from './astohan-npc-figures'
 import { createEquipmentController, type EquipmentControllerStatus } from './equipment-models'
 import {
   clearSharedModelBufferCache,
@@ -428,6 +429,11 @@ export function resolveModelProfile(input: ActorModelInput, manifest: ActorModel
   const catalog = validateModelManifest(manifest)
   const explicit = actor.modelKey ? catalog.models.find((entry) => entry.key === actor.modelKey) : undefined
   if (explicit) return explicit
+  const pilotNpcKey = astohanNpcModelKey(actor)
+  if (pilotNpcKey) {
+    const pilotEntry = catalog.models.find((entry) => entry.key === pilotNpcKey)
+    if (pilotEntry) return pilotEntry
+  }
   // Дальше — только автоподбор: записи с auto=false открываются лишь по ключу.
   const automatic = catalog.models.filter((entry) => entry.auto !== false)
   // Серверная внешность уже прошла проверку прав. Она должна предшествовать
@@ -1644,6 +1650,7 @@ async function createGlbModel(input: NormalizedActorModelInput, entry: ActorMode
   try {
     enableActorShadows(root)
     fitToHeight(root, targetHeight, false)
+    if (!input.modelKey) applyAstohanNpcFigure(root, input, 'glb')
     // Запрос может быть отменён уже после parse callback. Не отдаём компоненту
     // частично готовую сцену и сразу освобождаем поздно пришедший результат.
     if (options.signal?.aborted) {
@@ -1734,6 +1741,7 @@ export function createProceduralActorModel(input: ActorModelInput, manifest: Act
   built.root.add(body)
   const equipmentController = createProceduralEquipment(built.rig, entry.profile, PALETTES[entry.profile], normalized)
   fitToHeight(built.root, targetHeight)
+  if (!normalized.modelKey) applyAstohanNpcFigure(built.root, normalized)
   const model = decorateModel(built.root, normalized, entry, 'procedural', targetHeight, built.rig, undefined, undefined, equipmentController)
   addProceduralMethods(model, built.rig)
   return model
