@@ -15,6 +15,8 @@ import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import {
   applyWorldMemoryEvent,
   diagnoseWorldMemory,
+  hasFailedDiscoveryCheck,
+  narratorFailureDetailFor,
   normalizeWorldMemory,
   retrieveKnownWorldMemory,
   retrieveWorldMemory,
@@ -22,6 +24,20 @@ import {
   worldMemoryEvent,
   worldMemoryForViewer,
 } from '../server/world-memory.mjs'
+
+test('модельная деталь провала discovery-проверки не попадает рассказчику', () => {
+  const secret = 'Засов ворот снят изнутри, а не выбит; следы когтей начинаются уже за стенами. Дракона впустил кто-то из своих.'
+  const failed = [{
+    event_type: 'AbilityCheckResolved',
+    payload: { success: false, skill: 'survival' },
+  }]
+
+  assert.equal(hasFailedDiscoveryCheck(failed), true)
+  assert.equal(narratorFailureDetailFor({ skill: 'survival', detail: secret }), '')
+  assert.equal(narratorFailureDetailFor({ skill: 'survival', detail: secret, thorough: { found: false } }), 'Герой не жалеет получаса, перебирает всё по одному — и убеждается: ничего спрятанного здесь нет.')
+  assert.equal(narratorFailureDetailFor({ skill: 'athletics', detail: 'Камень сдвинулся, но проход остался узким.' }), 'Камень сдвинулся, но проход остался узким.')
+  assert.equal(hasFailedDiscoveryCheck([{ event_type: 'AbilityCheckResolved', payload: { success: false, skill: 'athletics' } }]), false)
+})
 
 function dice() {
   return new DiceService({ rng: new SequenceDiceRng([]) })

@@ -46,6 +46,16 @@ const QUEST_PROGRESS_PREDICATES: [&str; 2] = ["discovery", "quest_progress"];
 /// или Скрытность — способ сделать, а не узнать; их успех уликой не становится.
 pub const DISCOVERY_SKILLS: [&str; 9] = ["perception", "investigation", "insight", "survival", "history", "arcana", "religion", "nature", "medicine"];
 
+/// Проваленная проверка навыка, который может открыть заготовку ведущего.
+/// Модельный `failure_detail` для такого события не подтверждён механикой.
+pub fn has_failed_discovery_check(events: &[Value]) -> bool {
+    events.iter().any(|event| {
+        is_str(event.get("event_type"), "AbilityCheckResolved")
+            && js::is_false(get(Some(event), "payload").and_then(|payload| payload.get("success")))
+            && has_str(&DISCOVERY_SKILLS, &dashed(get(get(Some(event), "payload"), "skill")))
+    })
+}
+
 /// Навыки, которыми можно открыть заготовку ведущего (`GM_SECRET_SKILLS`).
 pub const GM_SECRET_SKILLS: [&str; 9] = ["investigation", "perception", "survival", "insight", "history", "arcana", "religion", "nature", "medicine"];
 
@@ -780,6 +790,21 @@ pub fn thorough_search_detail(outcome: Option<&Value>, hero_name: Option<&Value>
     } else {
         format!("{name} не жалеет получаса, перебирает всё по одному — и убеждается: ничего спрятанного здесь нет.")
     }
+}
+
+/// Деталь провала, которую можно положить в NarrationBrief. Тщательный поиск
+/// получает существующую серверную формулировку. Для остальных провалов
+/// discovery-навыка модельная деталь отбрасывается: она не подтверждена событием
+/// или фактом памяти. Обычные навыки сохраняют творческую деталь судьи.
+pub fn narrator_failure_detail_for(skill: &str, thorough: Option<&Value>, detail: &str, hero_name: Option<&Value>) -> String {
+    let normalized_skill = dashed(Some(&Value::String(skill.to_string())));
+    if thorough.is_some() {
+        return thorough_search_detail(thorough, hero_name);
+    }
+    if has_str(&DISCOVERY_SKILLS, &normalized_skill) {
+        return String::new();
+    }
+    detail.to_string()
 }
 
 /// Улики свободного действия (`freeActionDiscoveryCommands`). Успешная

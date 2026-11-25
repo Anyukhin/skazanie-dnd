@@ -49,7 +49,7 @@ import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
-import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, retrieveWorldMemory, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, hasFailedDiscoveryCheck, narratorFailureDetailFor, retrieveWorldMemory, thoroughSearchOutcome } from './world-memory.mjs'
 import { ClarificationRegistry } from './clarification-registry.mjs'
 
 /**
@@ -1980,6 +1980,14 @@ export class GameOrchestrator {
     }
     const committedEvents = Array.isArray(freeAction.events) ? freeAction.events : []
     const publicCommittedEvents = mechanicsForViewer(sharedNarrationEvents(committedEvents, state), { isPartyMember: true }, playerId, state)
+    // `failure_detail` приходит от модели и не является подтверждённым фактом.
+    // Для провала поиска он особенно опасен: модель может пересказать ещё не
+    // открытую тайну сценария. Очищаем его здесь даже для старого/внешнего
+    // AutonomousOrchestrator и используем детерминированный голос ведущего.
+    const unverifiedDiscoveryFailure = hasFailedDiscoveryCheck(publicCommittedEvents)
+    const narrationFreeAction = unverifiedDiscoveryFailure
+      ? { ...freeAction, outcome_detail: '' }
+      : freeAction
     const constraints = [
       ...(Array.isArray(plan?.narration_constraints) ? plan.narration_constraints : []),
       ...(noWorldChangeConstraint(plan) ? ['no-unconfirmed-world-changes'] : []),
@@ -2000,7 +2008,7 @@ export class GameOrchestrator {
           approach: String(freeAction.reading?.approach_summary ?? '').slice(0, 500),
           outcome: freeAction.kind,
           ...(intent?.roleplay_speech === true ? { roleplay_speech: true } : {}),
-          ...(freeAction.outcome_detail ? { outcome_detail: String(freeAction.outcome_detail).slice(0, 300) } : {}),
+          ...(narrationFreeAction.outcome_detail ? { outcome_detail: String(narrationFreeAction.outcome_detail).slice(0, 300) } : {}),
           ...(freeAction.thorough_search ? { thorough_search: String(freeAction.thorough_search) } : {}),
           // Своё заклинание героя вне боя срабатывает: проверка судит цель —
           // реакцию, обман, — а не само заклинание. Прежде рассказчик писал «на
@@ -2030,11 +2038,11 @@ export class GameOrchestrator {
           && ['check_success', 'check_failure'].includes(String(freeAction.kind))
           ? { npcId: freeAction.reading.target_id, success: freeAction.kind === 'check_success' }
           : null,
-      }), [String(freeAction.outcome_detail ?? ''), ...discoveryDetailTexts(publicCommittedEvents)]),
+      }), [String(narrationFreeAction.outcome_detail ?? ''), ...discoveryDetailTexts(publicCommittedEvents)]),
       narration_constraints: constraints,
       viewer,
     })
-    const candidateNarration = String(freeAction.narration ?? '').trim()
+    const candidateNarration = String(narrationFreeAction.narration ?? '').trim()
     let renderedNarration = ''
     let renderedProvider = ''
     let renderedVerification = null
@@ -2055,6 +2063,7 @@ export class GameOrchestrator {
       && (freeAction.reading?.source !== 'deterministic-trivial' || roleplaySpeech)
       && ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
       && committedEvents.length > 0
+      && !unverifiedDiscoveryFailure
       && typeof this.narrator?.render === 'function'
     if (narrateCommittedImprovisation) {
       const renderStarted = this.now()
@@ -2079,7 +2088,7 @@ export class GameOrchestrator {
     }
     const narrationState = campaignStateForViewer(state, viewer, playerId) ?? {}
     const deterministicNarration = deterministicFreeActionNarration({
-      freeAction,
+      freeAction: narrationFreeAction,
       message,
       events: publicCommittedEvents,
       state: narrationState,
@@ -2087,7 +2096,9 @@ export class GameOrchestrator {
       roleplaySpeech,
     })
     const deterministicProvider = /^deterministic(?:-|$)/u.test(renderedProvider)
-    const preferredNarration = deterministicProvider || unconfirmedPassage
+    const preferredNarration = unverifiedDiscoveryFailure
+      ? deterministicNarration
+      : deterministicProvider || unconfirmedPassage
       ? deterministicNarration || candidateNarration || renderedNarration
       : renderedNarration || candidateNarration || deterministicNarration
     const candidateVerification = verifyNarration(preferredNarration, brief, { knownRuleIds: [] })
@@ -3618,7 +3629,14 @@ export class GameOrchestrator {
     const replayFallback = deterministicResponse
       ?? storedSocialNarration
       ?? deterministicReplayNarration(brief, resolvedRuleIds, resolveActorName)
-    const structuredMechanics = (Array.isArray(input.commands) || ['approach_attack', 'long_jump_attack', 'swing_attack'].includes(plan.maneuver)) && !deterministicNarrator
+    // Проваленная проверка навыка поиска может открыть тайну только отдельным
+    // подтверждённым событием. Пока его нет, модель не получает шанса превратить
+    // свой `failure_detail` в сюжетный факт — используем тот же детерминированный
+    // запасной текст, что и при недоступном провайдере.
+    const unverifiedDiscoveryFailure = hasFailedDiscoveryCheck(committedEvents)
+    const structuredMechanics = (Array.isArray(input.commands)
+      || ['approach_attack', 'long_jump_attack', 'swing_attack'].includes(plan.maneuver)
+      || unverifiedDiscoveryFailure) && !deterministicNarrator
     const streamsModelNarration = !idempotentReplay
       && !deterministicResponse
       && !storedSocialNarration
@@ -3726,9 +3744,7 @@ export class GameOrchestrator {
     const heroName = String((committed.state?.players ?? []).find((player) => String(player?.id) === String(checkCommand.actor_id))?.character || 'Герой')
     const outcomeDetail = succeeded
       ? (DISCOVERY_SKILLS.has(skill) ? '' : String(details.success_detail ?? ''))
-      : thorough
-        ? thoroughSearchDetail(thorough, heroName)
-        : String(details.failure_detail ?? '')
+      : narratorFailureDetailFor({ skill, thorough, detail: details.failure_detail, heroName })
     if (outcomeDetail) committed = { ...committed, outcome_detail: outcomeDetail }
     if (thorough) committed = { ...committed, thorough_search: thorough.found ? 'found' : 'nothing' }
     if (!DISCOVERY_SKILLS.has(skill)) return committed

@@ -51,6 +51,17 @@ export function questProgressEvidenceFor(state = {}, questId = '', { includeCons
  */
 export const DISCOVERY_SKILLS = new Set(['perception', 'investigation', 'insight', 'survival', 'history', 'arcana', 'religion', 'nature', 'medicine'])
 
+/**
+ * Проверка с навыком, который может открыть заготовку ведущего, провалилась.
+ * Такой исход нельзя отдавать рассказчику как творческую деталь: `failure_detail`
+ * приходит от модели и не подтверждён ни событием, ни фактом памяти.
+ */
+export function hasFailedDiscoveryCheck(events = []) {
+  return (Array.isArray(events) ? events : []).some((event) => event?.event_type === 'AbilityCheckResolved'
+    && event?.payload?.success === false
+    && DISCOVERY_SKILLS.has(String(event?.payload?.skill ?? '').replace(/_/gu, '-')))
+}
+
 /** Слова, совпадение по которым ещё не говорит, что действие про это дело. */
 const GENERIC_TOPIC_STEMS = new Set([
   'город', 'начат', 'занят', 'собст', 'делам', 'отряд', 'героя', 'герои', 'место', 'места', 'своих', 'своим',
@@ -545,6 +556,20 @@ export function thoroughSearchDetail(outcome, heroName = 'Герой') {
   return outcome?.found
     ? `С ходу ничего не попалось, но ${name} не жалеет получаса, перебирает всё по одному — и находит то, что ускользало.`
     : `${name} не жалеет получаса, перебирает всё по одному — и убеждается: ничего спрятанного здесь нет.`
+}
+
+/**
+ * Деталь провала, которую можно положить в NarrationBrief.
+ * Тщательный поиск получает существующую серверную формулировку. Для остальных
+ * провалов discovery-навыка модельная деталь отбрасывается: она могла быть
+ * точной, но не подтверждена Rules Engine и потому не имеет права звучать.
+ * Обычные навыки сохраняют творческую деталь судьи.
+ */
+export function narratorFailureDetailFor({ skill = '', thorough = null, detail = '', heroName = 'Герой' } = {}) {
+  const normalizedSkill = String(skill ?? '').replace(/_/gu, '-')
+  if (thorough) return thoroughSearchDetail(thorough, heroName)
+  if (DISCOVERY_SKILLS.has(normalizedSkill)) return ''
+  return String(detail ?? '')
 }
 
 export function freeActionDiscoveryCommands(state = {}, input = {}) {

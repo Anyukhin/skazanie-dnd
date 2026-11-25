@@ -89,7 +89,7 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
-import { DISCOVERY_SKILLS, corpseClueCommand, freeActionDiscoveryCommands, freeActionSurfaceCommands, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, corpseClueCommand, freeActionDiscoveryCommands, freeActionSurfaceCommands, narratorFailureDetailFor, thoroughSearchOutcome } from './world-memory.mjs'
 import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { sceneHazardNarration } from './scene-hazard-narration.mjs'
@@ -2198,9 +2198,7 @@ export class AutonomousCampaignOrchestrator {
     const heroName = String(findActor(loaded.state, actorId)?.character || 'Герой')
     const outcomeDetail = inCombat ? '' : succeeded
       ? (passageRefused || discoverySkill ? '' : String(reading.success_detail ?? ''))
-      : thorough
-        ? thoroughSearchDetail(thorough, heroName)
-        : String(reading.failure_detail ?? '')
+      : narratorFailureDetailFor({ skill: reading.skill, thorough, detail: reading.failure_detail, heroName })
     return {
       context_metadata: actionContextMetadata,
       kind: succeeded ? 'check_success' : 'check_failure',

@@ -34,6 +34,105 @@ async function setup(values = [], { narrator = new Narrator(), ...orchestratorOp
   return { orchestrator, eventStore, traceStore, rulesEngine }
 }
 
+test('проваленная survival-проверка не отдаёт неподтверждённую тайну рассказчику', async () => {
+  const secret = 'Засов ворот снят изнутри, а не выбит; следы когтей начинаются уже за стенами. Дракона впустил кто-то из своих.'
+  let narratorCalls = 0
+  const narrator = {
+    render: async () => {
+      narratorCalls += 1
+      return { narration: secret, provider: 'unexpected-model', verification: { valid: true, violations: [] } }
+    },
+  }
+  const unknownActionHandler = {
+    actionAdjudicator: {
+      llmClient: { completeJson: async () => ({}) },
+      read: async () => ({ failure_detail: secret }),
+    },
+  }
+  const prepared = await setup([1], {
+    narrator,
+    unknownActionHandler,
+    intentParser: {
+      parse: async ({ message, playerId }) => ({
+        actor_id: playerId,
+        intent: 'ability_check',
+        approach: 'test',
+        targets: [],
+        mentioned_entities: [],
+        missing_information: [],
+        requires_clarification: false,
+        confidence: 1,
+        raw_message: message,
+      }),
+    },
+    adjudicator: {
+      createPlan: async () => ({
+        rule_ids: [],
+        proposed_commands: [{ command_type: 'MakeAbilityCheck', actor_id: 'hero', ability: 'wis', skill: 'survival', difficulty: 30 }],
+        roll_requests: [],
+        ruling_required: false,
+        ruling_draft: null,
+        narration_constraints: [],
+        confidence: 1,
+      }),
+    },
+  })
+
+  const result = await prepared.orchestrator.handle({
+    state,
+    playerId: 'hero',
+    message: 'Осматриваю ворота и ищу следы',
+    idempotencyKey: 'failed-survival-private-clue',
+  })
+
+  assert.equal(narratorCalls, 0, 'рискованный провал должен использовать детерминированный fallback')
+  assert.doesNotMatch(result.narration, /Засов ворот снят изнутри|следы когтей|впустил кто-то/u)
+  assert.equal(result.provider, 'deterministic-mechanics')
+})
+
+test('старый free-action commit с тайной тоже не проходит в модельную нарацию', async () => {
+  const secret = 'Засов ворот снят изнутри, а не выбит; следы когтей начинаются уже за стенами. Дракона впустил кто-то из своих.'
+  let narratorCalls = 0
+  const prepared = await setup([], {
+    narrator: { render: async () => { narratorCalls += 1; return { narration: secret, provider: 'unexpected-model' } } },
+  })
+  const event = {
+    event_id: 'failed-survival-event',
+    event_type: 'AbilityCheckResolved',
+    visibility: 'public',
+    actor_id: 'hero',
+    payload: { success: false, skill: 'survival' },
+  }
+  const result = await prepared.orchestrator.freeActionResponse({
+    freeAction: {
+      state,
+      state_version: state.state_version,
+      kind: 'check_failure',
+      narration: secret,
+      outcome_detail: secret,
+      reading: { goal_summary: 'Осмотреть ворота', approach_summary: 'Смотрю на ворота', activity_kind: 'knowledge', source: 'model' },
+      events: [event],
+      rolls: [],
+    },
+    campaignId: state.sessionCode,
+    playerId: 'hero',
+    viewer: { playerId: 'hero', partyIds: [], isPartyMember: true },
+    message: 'Осматриваю ворота',
+    intent: { roleplay_speech: false },
+    retrievalQueries: [],
+    retrievedRules: { results: [] },
+    plan: { narration_constraints: [] },
+    authoritativeState: state,
+    idempotencyKey: 'legacy-free-action-secret',
+    turnId: 'legacy-free-action-secret-turn',
+    started: Date.now(),
+    mode: 'enforce',
+  })
+
+  assert.equal(narratorCalls, 0)
+  assert.doesNotMatch(result.narration, /Засов ворот снят изнутри|следы когтей|впустил кто-то/u)
+})
+
 function proseRulingOptions(narrator) {
   return {
     narrator,

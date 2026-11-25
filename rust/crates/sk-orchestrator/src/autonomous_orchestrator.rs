@@ -51,7 +51,7 @@ use sk_encounters::agent_context::{agent_context_metadata, AgentContextOptions};
 use sk_infra::roll_registry::RollRegistry;
 use sk_items::loot_tables::ENCOUNTER_LOOT_POLICY_ID;
 use sk_memory::party_decision::party_decision_opened_event;
-use sk_memory::world_memory::{corpse_clue_command, free_action_discovery_commands, free_action_surface_commands, quest_progress_evidence_for, thorough_search_detail, thorough_search_outcome, DISCOVERY_SKILLS};
+use sk_memory::world_memory::{corpse_clue_command, free_action_discovery_commands, free_action_surface_commands, narrator_failure_detail_for, quest_progress_evidence_for, thorough_search_outcome, DISCOVERY_SKILLS};
 use sk_narration::combat_narration::encounter_end_text;
 use sk_rules::context::Context;
 use sk_rules::core::incapacitating_condition_for;
@@ -3084,10 +3084,8 @@ impl AutonomousCampaignOrchestrator {
             } else {
                 js::s(reading.get("success_detail"))
             }
-        } else if let Some(thorough) = &thorough {
-            thorough_search_detail(Some(thorough), Some(&str_value(hero_name)))
         } else {
-            js::s(reading.get("failure_detail"))
+            narrator_failure_detail_for(&skill_key, thorough.as_ref(), &js::s(reading.get("failure_detail")), Some(&str_value(hero_name)))
         };
         let narration = if in_combat {
             if succeeded {
