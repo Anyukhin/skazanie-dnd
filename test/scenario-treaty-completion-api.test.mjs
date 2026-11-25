@@ -274,7 +274,3 @@ test('договор в уже начатом бою через обычную �
   assert.equal(journal.events.filter((event) => event.event_type === 'EncounterOutcomeRecorded' && event.payload?.outcome === 'parley').length, 1)
   assert.equal(journal.state.mechanics.campaign_lifecycle.ending.id, 'treaty')
 })
-
-
-
-
