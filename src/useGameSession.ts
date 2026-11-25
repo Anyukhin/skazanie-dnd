@@ -28,6 +28,7 @@ import {
 import { withLootTakenRecord } from './loot-panel-rules.mjs'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
+import { stagedCommandsForPilotBuild, type AstohanPilotBuild } from './astohan-pilot-builds'
 import {
   clearPendingNarrate,
   clearPendingPartyDecision,
@@ -2019,6 +2020,32 @@ export function useGameSession(options: {
     return executeTacticalCommand({ command_type: 'LevelUp', actor_id: playerId, expected_level: expectedLevel } as TacticalCommand, 'Повысить уровень персонажа')
   }, [executeTacticalCommand])
 
+  const applyPilotBuild = useCallback(async (playerId: string, build: AstohanPilotBuild) => {
+    const commands = stagedCommandsForPilotBuild(build, playerId)
+    let stageLevel = 1
+    for (const command of commands) {
+      const player = stateRef.current.players.find((candidate) => candidate.id === playerId)
+      if (!player) throw new Error('Герой не найден в кампании.')
+      const currentLevel = player.level ?? 1
+      if (command.command_type === 'LevelUp') {
+        const expectedLevel = Number(command.expected_level)
+        if (expectedLevel < currentLevel) {
+          stageLevel = expectedLevel + 1
+          continue
+        }
+        const outcome = await levelUpCharacter(playerId, expectedLevel)
+        if (!outcome.ok) throw new Error(outcome.error || 'Не удалось повысить уровень героя.')
+        stageLevel = expectedLevel + 1
+        continue
+      }
+      // SetCharacterChoices после LevelUp относится к только что достигнутому
+      // уровню. Уже пройденные этапы можно пропустить при повторе после
+      // сетевого сбоя или частичного отказа сервера.
+      if (stageLevel < currentLevel) continue
+      await executeCharacterBuild([command as unknown as CharacterBuildCommand])
+    }
+  }, [executeCharacterBuild, levelUpCharacter])
+
   const setSpellBonusPreference = useCallback((playerId: string, enabled: boolean) => {
     return executeTacticalCommand({ command_type: 'SetSpellBonusPreference', actor_id: playerId, spell_id: 'bless', enabled }, enabled ? 'Использовать бонус Благословения' : 'Не использовать бонус Благословения')
   }, [executeTacticalCommand])
@@ -2440,6 +2467,7 @@ export function useGameSession(options: {
     rollCharacterAbilities,
     rollCharacterWealth,
     levelUpCharacter,
+    applyPilotBuild,
     switchCampaign,
     loadMerchant,
     bargainWithMerchant,

@@ -16,6 +16,7 @@ import { PhbCharacterOptions } from './PhbCharacterOptions'
 import type { PhbCharacterOptionsValue } from './PhbCharacterOptions'
 import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
 import { validateClassChoices } from '../server/character-creation-class-options.mjs'
+import type { AstohanPilotBuild } from './astohan-pilot-builds'
 import {
   abilityPreview,
   addStartingPurchase,
@@ -409,6 +410,9 @@ export function CharacterCreationWizard({
   catalog,
   rulesetId,
   campaignCode,
+  pilotEnabled = false,
+  pilotBuilds = [],
+  onApplyPilotBuild,
   required = false,
   onClose,
   onImport,
@@ -421,6 +425,9 @@ export function CharacterCreationWizard({
   rulesetId?: string
   /** Код кампании — часть ключа черновика: без него черновик не сохраняется. */
   campaignCode?: string
+  pilotEnabled?: boolean
+  pilotBuilds?: AstohanPilotBuild[]
+  onApplyPilotBuild?: (build: AstohanPilotBuild) => Promise<void>
   required?: boolean
   onClose: () => void
   onImport: (source: string) => Promise<void>
@@ -446,6 +453,7 @@ export function CharacterCreationWizard({
   const mainRef = useRef<HTMLElement>(null)
   const [furthestStep, setFurthestStep] = useState<CreationStepId>(restored?.furthestStep ?? 'class')
   const [draft, setDraft] = useState<CreationDraft>(() => restored?.draft ?? freshDraft())
+  const [selectedPilotBuild, setSelectedPilotBuild] = useState<AstohanPilotBuild | null>(null)
   // Нетронутый мастер черновиком не считается: запись стирается, и следующее
   // открытие начинается с чистого листа, как и раньше.
   useEffect(() => {
@@ -586,6 +594,51 @@ export function CharacterCreationWizard({
 
   const patch = <K extends keyof CreationDraft>(key: K, value: CreationDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }))
+    setError('')
+  }
+
+  const applyPilotBuild = (recipe: AstohanPilotBuild) => {
+    const species = catalog.ability_policy.species_options.find((entry) => entry.id === recipe.species)
+    const background = catalog.backgrounds?.options.find((entry) => entry.id === recipe.background)
+    const backgroundEquipment = catalog.starter_equipment?.backgrounds?.find((entry) => entry.background_id === recipe.background)
+    const classEntry = catalog.classes.find((entry) => entry.id === recipe.class)
+    const recipeStarter = recipe.starter_equipment as unknown as Record<string, string>
+    const starterEquipmentChoices = Object.fromEntries((classEntry?.starter_equipment?.choice_groups ?? []).map((group) => [group.id, [recipeStarter[group.id]].filter(Boolean)]))
+    const backgroundEquipmentChoices = defaultChoiceRecord(backgroundEquipment?.choice_groups)
+    const backgroundTools = (background?.toolChoice?.options ?? []).slice(0, background?.toolChoice?.count ?? 0).map((entry) => entry.id)
+    const backgroundLanguages = (catalog.backgrounds?.language_options ?? []).slice(0, background?.languageChoiceCount ?? 0).map((entry) => entry.id)
+    const classChoices = recipe.class === 'monk' ? { tool_or_instrument: { kind: 'artisan_tool', id: 'smiths_tools' } } : {}
+    setDraft((current) => ({
+      ...current,
+      abilityMethod: 'standard_array',
+      equipmentMode: 'standard',
+      purchases: [],
+      classId: recipe.class,
+      subclass: '',
+      speciesOptionId: recipe.species,
+      speciesBonusAbilities: [],
+      speciesChoices: defaultChoiceRecord(species?.choice_groups),
+      background: background?.name ?? '',
+      backgroundId: recipe.background,
+      backgroundAbilityMode: catalog.backgrounds?.ability_modes?.[0]?.id ?? 'none',
+      backgroundAbilities: [],
+      backgroundTools,
+      backgroundLanguages,
+      backgroundReplacementSkills: [],
+      backgroundEquipmentChoices,
+      backgroundReplacementTools: [],
+      abilities: recommendedStandardArray(recipe.class, catalog.ability_policy.standard_array),
+      classSkillIds: [...recipe.class_skills],
+      selectedFeatureIds: recipe.class === 'fighter' ? [...recipe.features] : [],
+      starterEquipmentChoices,
+      knownSpellIds: [],
+      preparedSpellIds: [],
+      phb: { schema_version: 1, classChoices },
+      character: current.character || '',
+    }))
+    setSelectedPilotBuild(recipe)
+    setStep('identity')
+    setFurthestStep('identity')
     setError('')
   }
 
@@ -1167,7 +1220,20 @@ export function CharacterCreationWizard({
     setBusy(true)
     setError('')
     try {
-      await onImport(JSON.stringify(document))
+      const importedPilot = Boolean(
+        selectedPilotBuild
+        && player.characterSetupRequired
+        && player.characterClass === selectedPilotBuild.class
+        && String(player.character ?? '').trim(),
+      )
+      const resumePilot = Boolean(selectedPilotBuild && importedPilot)
+      if (!resumePilot) await onImport(JSON.stringify(document))
+      if (!selectedPilotBuild || !onApplyPilotBuild) {
+        clearCreationDraft(draftStorage, draftKey)
+        onClose()
+        return
+      }
+      if (selectedPilotBuild && onApplyPilotBuild) await onApplyPilotBuild(selectedPilotBuild)
       // Герой создан — черновик своё отслужил и к следующему открытию этого
       // места переходить не должен. При отказе сервера он остаётся.
       clearCreationDraft(draftStorage, draftKey)
@@ -1234,6 +1300,16 @@ export function CharacterCreationWizard({
             </dl>
           </aside>
           {/* Английский `entry.id` здесь раньше печатался игроку как есть. */}
+          {currentStep === 'class' && pilotEnabled && pilotBuilds.length > 0 && player.characterSetupRequired && <section className="pilot-build-picker" aria-label="Готовые листы первой партии">
+            <header><b>Готовый лист для первой партии</b><span>Асстохан · 7-й уровень · только проверенные действия</span></header>
+            <div>{pilotBuilds.map((recipe) => <button
+              key={recipe.id}
+              type="button"
+              className={selectedPilotBuild?.id === recipe.id ? 'selected' : ''}
+              aria-pressed={selectedPilotBuild?.id === recipe.id}
+              onClick={() => applyPilotBuild(recipe)}
+            ><strong>{recipe.label}</strong><small>{recipe.exposed_actions.length} проверенных действий · без заклинаний</small></button>)}</div>
+          </section>}
           {currentStep === 'class' && <div className="creation-card-grid" role="radiogroup" aria-label="Выбор класса">{catalog.classes.map((entry) => {
             const skills = entry.class_skills?.choice_count ?? 0
             const magic = entry.spell_selection && (entry.spell_selection.cantrips > 0 || entry.spell_selection.maximumSpellLevel > 0) ? 'есть магия' : 'без магии на 1 уровне'
@@ -1663,7 +1739,7 @@ export function CharacterCreationWizard({
             <button type="button" disabled={currentStepIndex === 0 || busy} onClick={() => setStep((current) => steps[Math.max(0, steps.findIndex((entry) => entry.id === current) - 1)]?.id ?? current)}><ArrowLeft size={15} />Назад</button>
             {currentStepIndex < steps.length - 1
               ? <button type="button" className="primary" onClick={next}>Дальше<ArrowRight size={15} /></button>
-              : <button type="button" className="primary" disabled={busy} onClick={() => { void submit() }}><ShieldCheck size={15} />{busy ? 'Создаём героя…' : 'Создать героя'}</button>}
+              : <button type="button" className="primary" disabled={busy} onClick={() => { void submit() }}><ShieldCheck size={15} />{busy ? (selectedPilotBuild ? 'Готовим лист…' : 'Создаём героя…') : 'Создать героя'}</button>}
           </span>
         </footer>
       </section>
