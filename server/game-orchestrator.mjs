@@ -49,7 +49,7 @@ import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
-import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, hasFailedDiscoveryCheck, narratorFailureDetailFor, retrieveWorldMemory, thoroughSearchOutcome } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, hasFailedDiscoveryCheck, hasUnambiguousAuthoredClue, narratorFailureDetailFor, retrieveWorldMemory, thoroughSearchOutcome } from './world-memory.mjs'
 import { ClarificationRegistry } from './clarification-registry.mjs'
 import { currentModelAttempts, runWithModelAttemptCollector } from './campaign-ai-context.mjs'
 
@@ -3736,7 +3736,8 @@ export class GameOrchestrator {
     // прямой проверкой навыка, и провал оставался пустым «ничего не заметила»
     // (замер 2026-10-10: ни одной записанной детали за партию). Повтор хода
     // судью не зовёт: улика уже записана под своим ключом.
-    const details = discoveryCommit ? {} : await this.checkDetailsFor(committed.state, checkCommand.actor_id, message, skill)
+    const authoredClue = hasUnambiguousAuthoredClue(committed.state, { skill, actionText: message })
+    const details = discoveryCommit || authoredClue ? {} : await this.checkDetailsFor(committed.state, checkCommand.actor_id, message, skill)
     // Деталь исхода для рассказчика — то, что герой видит при этом исходе:
     // на провале — причина и цена, на успехе вне поиска — как именно вышло.
     // Находку поиска сервер пишет фактом ниже; здесь её нет.

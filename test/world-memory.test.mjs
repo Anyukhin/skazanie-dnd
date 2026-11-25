@@ -17,6 +17,7 @@ import {
   diagnoseWorldMemory,
   freeActionDiscoveryCommands,
   hasFailedDiscoveryCheck,
+  hasUnambiguousAuthoredClue,
   narratorFailureDetailFor,
   normalizeWorldMemory,
   retrieveKnownWorldMemory,
@@ -28,7 +29,7 @@ import {
 
 test('авторская улика поиска остаётся в текущей локации при совпадающей заготовке другой сцены', () => {
   const state = {
-    campaignConcept: { arc: { version: 'skazanie:scenario-arc-v1' } },
+    campaignConcept: { arc: { version: 'skazanie:scenario-arc-v1', scenario_id: 'astohan-dragon-hunt' } },
     scene: { location: 'Пепельная застава', location_id: 'astohan-ash-watch' },
     worldMemory: normalizeWorldMemory({
       entities: [
@@ -51,12 +52,15 @@ test('авторская улика поиска остаётся в текущ�
     checkEvent: { event_id: 'lada-gate-check', payload: { success: true, skill: 'perception' } },
     skill: 'perception',
   }
-  const [command] = freeActionDiscoveryCommands(state, {
-    ...check,
-    actionText: 'Лада осматривает распахнутые ворота и выжженную землю у входа. Ищу следы, по которым можно понять, кто открыл ворота перед пожаром.',
-  })
+  const actionText = 'Лада осматривает распахнутые ворота и выжженную землю у входа. Ищу следы, по которым можно понять, кто открыл ворота перед пожаром.'
+  const [command] = freeActionDiscoveryCommands(state, { ...check, actionText })
   assert.equal(command?.fact?.supersedes_fact_id, 'fact:secret:scenario:astohan-dragon-hunt:ash-gate')
   assert.equal(command?.fact?.subject_id, 'location:ash-watch')
+  assert.equal(hasUnambiguousAuthoredClue(state, { skill: 'perception', actionText }), true)
+  assert.equal(hasUnambiguousAuthoredClue(state, { skill: 'perception', actionText: 'Осматриваю ворота' }), false)
+  const competing = structuredClone(state)
+  competing.worldMemory.facts.push({ ...competing.worldMemory.facts[0], id: 'fact:secret:scenario:astohan-dragon-hunt:another-gate-clue' })
+  assert.equal(hasUnambiguousAuthoredClue(competing, { skill: 'perception', actionText }), false)
   assert.deepEqual(freeActionDiscoveryCommands(state, { ...check,
     actionText: 'Осматриваю обгоревший сундук', goalSummary: 'Разглядеть следы на воротах',
   }), [], 'цель, сформулированная моделью, не подменяет объект осмотра')

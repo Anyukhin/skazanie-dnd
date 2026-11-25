@@ -51,7 +51,7 @@ use sk_encounters::agent_context::{agent_context_metadata, AgentContextOptions};
 use sk_infra::roll_registry::RollRegistry;
 use sk_items::loot_tables::ENCOUNTER_LOOT_POLICY_ID;
 use sk_memory::party_decision::party_decision_opened_event;
-use sk_memory::world_memory::{corpse_clue_command, free_action_discovery_commands, free_action_surface_commands, narrator_failure_detail_for, quest_progress_evidence_for, thorough_search_outcome, DISCOVERY_SKILLS};
+use sk_memory::world_memory::{corpse_clue_command, free_action_discovery_commands, free_action_surface_commands, has_unambiguous_authored_clue, narrator_failure_detail_for, quest_progress_evidence_for, thorough_search_outcome, DISCOVERY_SKILLS};
 use sk_narration::combat_narration::encounter_end_text;
 use sk_rules::context::Context;
 use sk_rules::core::incapacitating_condition_for;
@@ -2324,15 +2324,17 @@ impl AutonomousCampaignOrchestrator {
             None => None,
         };
         let harmless_reading = harmless_reading.filter(|reading| !reading.is_null());
-        let proposed_reading = match (&stored_reading, &harmless_reading, &self.action_adjudicator) {
-            (Some(stored), _, _) => stored.clone(),
-            (None, Some(harmless), _) => harmless.clone(),
-            (None, None, Some(adjudicator)) => adjudicator.read(state, &actor_id, &action, &deterministic_reading).await?,
-            (None, None, None) => deterministic_reading.clone(),
+        let authored_reading = is_str(deterministic_reading.get("source"), "deterministic-pattern")
+            && has_unambiguous_authored_clue(state, &js::s(deterministic_reading.get("skill")), &action);
+        let local_reading = stored_reading.as_ref().or(harmless_reading.as_ref()).or(authored_reading.then_some(&deterministic_reading));
+        let proposed_reading = match (local_reading, &self.action_adjudicator) {
+            (Some(local), _) => local.clone(),
+            (None, Some(adjudicator)) => adjudicator.read(state, &actor_id, &action, &deterministic_reading).await?,
+            (None, None) => deterministic_reading.clone(),
         };
         // Бриф мог быть собран до параллельного коммита: прочтение к
         // изменившейся сцене не применяется, кроме фоновой записи памяти.
-        let may_await = stored_reading.is_none() && harmless_reading.is_none() && self.action_adjudicator.as_ref().is_some_and(|adjudicator| adjudicator.awaits_model());
+        let may_await = local_reading.is_none() && self.action_adjudicator.as_ref().is_some_and(|adjudicator| adjudicator.awaits_model());
         if may_await {
             let after = self.load(campaign_id)?;
             if after.state_version != loaded.state_version {
@@ -2348,7 +2350,7 @@ impl AutonomousCampaignOrchestrator {
         }
         // Маршрут заявки (контракт судьи): переход, разговор или переспрос —
         // без коммита. Повтор исполненной заявки маршрут не пересчитывает.
-        if stored_reading.is_none() && harmless_reading.is_none() && previous_events.is_empty() {
+        if local_reading.is_none() && previous_events.is_empty() {
             if let Some(routed) = self.routed_free_action(&loaded, &actor_id, &action, &proposed_reading, idempotency_key, campaign_id) {
                 let mut map = Map::new();
                 put(&mut map, "context_metadata", meta);

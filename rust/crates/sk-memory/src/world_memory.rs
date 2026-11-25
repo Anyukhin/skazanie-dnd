@@ -405,7 +405,7 @@ fn uses_authored_scene_search(state: &Value) -> bool {
 /// Какой секрет открывает удачная проверка (`secretRevealCommand`). Сначала —
 /// по теме заявки и подходящему навыку; общий поиск без темы даёт ближайший
 /// секрет того же навыка в этой локации. Секрет заменяется фактом отряда.
-fn secret_reveal_command(state: &Value, source_event_id: &str, skill: Option<&Value>, action_text: &str, goal_summary: &str, topical_only: bool) -> Option<Value> {
+fn secret_reveal_command(state: &Value, source_event_id: &str, skill: Option<&Value>, action_text: &str, goal_summary: &str, topical_only: bool, unambiguous_authored: bool) -> Option<Value> {
     let memory = get(Some(state), "worldMemory");
     let normalized_skill = dashed(skill);
     let authored_scenario = uses_authored_scene_search(state);
@@ -460,6 +460,14 @@ fn secret_reveal_command(state: &Value, source_event_id: &str, skill: Option<&Va
         .filter(|entry| entry.score >= 2 || (entry.score >= 1 && (entry.here || entry.personal)))
         .collect();
     topical.sort_by(|left, right| right.score.cmp(&left.score).then((right.here as u8).cmp(&(left.here as u8))));
+    if unambiguous_authored {
+        let [only] = topical.as_slice() else { return None };
+        let scenario = string(get(get(get(Some(state), "campaignConcept"), "arc"), "scenario_id"));
+        if scenario.is_empty() || !only.exact || only.score < 2
+            || !string(only.fact.get("id")).starts_with(&format!("fact:secret:scenario:{scenario}:")) {
+            return None;
+        }
+    }
     let topical = topical.first().copied();
     // Общий поиск открывает тайну этого места сперва своим навыком, затем
     // родственным; свидетельство хранителя общий осмотр не открывает.
@@ -481,6 +489,13 @@ fn secret_reveal_command(state: &Value, source_event_id: &str, skill: Option<&Va
     fact.insert("source_event_ids".into(), json!([source_event_id]));
     put(&mut fact, "supersedes_fact_id", get(Some(chosen.fact), "id"));
     Some(json!({ "command_type": "RecordWorldFact", "fact": Value::Object(fact) }))
+}
+
+/// Проверяет тему поиска без раскрытия тайны, броска или записи в журнал.
+pub fn has_unambiguous_authored_clue(state: &Value, skill: &str, action_text: &str) -> bool {
+    uses_authored_scene_search(state) && !js::is_true(get(get(state.get("mechanics"), "combat"), "active"))
+        && has_str(&SEARCH_SKILLS, skill) && general_search(action_text)
+        && secret_reveal_command(state, "", Some(&Value::String(skill.into())), action_text, "", true, true).is_some()
 }
 
 struct NpcLead<'a> {
@@ -711,7 +726,7 @@ pub fn thorough_search_outcome(state: &Value, input: &Value) -> Option<Value> {
     if hostile {
         return None;
     }
-    let secret = secret_reveal_command(state, &source_event_id, Some(&Value::String(normalized_skill)), &action_text, "", false);
+    let secret = secret_reveal_command(state, &source_event_id, Some(&Value::String(normalized_skill)), &action_text, "", false, false);
     let found = secret.is_some();
     Some(json!({ "commands": secret.into_iter().collect::<Vec<_>>(), "found": found, "minutes": THOROUGH_SEARCH_MINUTES }))
 }
@@ -868,12 +883,12 @@ fn discovery_commands_for(state: &Value, input: &Value) -> Vec<Value> {
     let action = param_text(input, "actionText");
     let goal = param_text(input, "goalSummary");
     // Секрет мастера важнее безликой «зацепки».
-    if let Some(secret) = secret_reveal_command(state, &source_event_id, skill, &action, &goal, true) {
+    if let Some(secret) = secret_reveal_command(state, &source_event_id, skill, &action, &goal, true, false) {
         return vec![secret];
     }
     // Ответ на заданный вопрос, названный арбитром до броска, — находка отряда.
     let detail = success_detail_command(state, &source_event_id, success_detail, "detail");
-    let secret = if unrolled { None } else { secret_reveal_command(state, &source_event_id, skill, &action, &goal, false) };
+    let secret = if unrolled { None } else { secret_reveal_command(state, &source_event_id, skill, &action, &goal, false, false) };
     if detail.is_some() || secret.is_some() {
         return detail.into_iter().chain(secret).collect();
     }

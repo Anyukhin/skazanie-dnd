@@ -8,6 +8,7 @@ import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import { fixedDice } from './kit/dice.mjs'
 import { addPlayer, createCampaign, expectStatus, setupAdmin, startTestServer } from './kit/http.mjs'
 import { readJournal } from './kit/journal.mjs'
+import { chatCompletion, startFakeProvider } from './kit/llm.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const CODE = 'ASTOHAN-ASH-GATE'
@@ -35,9 +36,11 @@ test('осмотр ворот 15 против СЛ 15 засчитывает а�
   const investigationId = state.worldMemory.quests.find((quest) => quest.clock.label === 'Прогресс расследования')?.id
   assert.ok(investigationId)
 
+  const fake = await startFakeProvider(t, () => chatCompletion('Засов снят изнутри. Следы когтей начинаются за стенами.'))
   const server = await startTestServer(t, {
     storagePrefix: 'skazanie-ash-gate-api-',
     dice: { format: 'skazanie.test-dice/1', rules: [{ sides: 20, value: 11 }, { value: 'min' }] },
+    env: fake.env,
   })
   const { client: owner } = await setupAdmin(server)
   await createCampaign(owner, { code: CODE, state: {
@@ -75,6 +78,8 @@ test('осмотр ворот 15 против СЛ 15 засчитывает а�
   assert.equal(check?.payload.total, 15)
   assert.equal(check?.payload.success, true)
   assert.equal(result.mechanics.find((event) => event.event_type === 'WorldFactRecorded')?.payload.fact.supersedes_fact_id, gateFact)
+  const reads = fake.requests.filter(({ body }) => body?.messages?.some((message) => message.content?.includes('free_action_brief')))
+  assert.equal(reads.length, 0, 'арбитр не нужен для единственной авторской улики')
   await assertProgress(lada, 1)
   await assertProgress(gleb, 1)
 

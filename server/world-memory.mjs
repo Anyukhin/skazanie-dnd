@@ -221,7 +221,7 @@ function secretAlreadyTold(state, fact) {
  * (`discovery` с `supersedes_fact_id`): тайна становится общим знанием одним
  * событием, а повтор того же хода не открывает её дважды.
  */
-function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actionText = '', goalSummary = '', topicalOnly = false } = {}) {
+function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actionText = '', goalSummary = '', topicalOnly = false, unambiguousAuthored = false } = {}) {
   const memory = state.worldMemory ?? {}
   const normalizedSkill = String(skill ?? '').replace(/_/gu, '-')
   const authoredScenario = usesAuthoredSceneSearch(state)
@@ -267,9 +267,15 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
   // удачным Восприятием открыло «Эдна видела, как Таррен мазал смолой борт»
   // (замер 21, оба прогона). Свидетельство — разговор или Проницательность.
   const physicalSearch = SEARCH_SKILLS.has(normalizedSkill)
-  const topical = candidates.filter((entry) => !testimonyOfHolder(entry) || (!physicalSearch && asksHolder(entry)))
+  const topicalMatches = candidates.filter((entry) => !testimonyOfHolder(entry) || (!physicalSearch && asksHolder(entry)))
     .filter((entry) => entry.score >= 2 || (entry.score >= 1 && (entry.here || entry.personal)))
-    .sort((left, right) => right.score - left.score || Number(right.here) - Number(left.here))[0]
+    .sort((left, right) => right.score - left.score || Number(right.here) - Number(left.here))
+  const [topical] = topicalMatches
+  if (unambiguousAuthored) {
+    const scenarioId = state.campaignConcept?.arc?.scenario_id
+    if (!scenarioId || topicalMatches.length !== 1 || !topical.exact || topical.score < 2
+      || !String(topical.fact.id).startsWith(`fact:secret:scenario:${scenarioId}:`)) return null
+  }
   // Общий поиск открывает тайну этого места сперва своим навыком, затем
   // родственным: тайна лагеря ждала Анализа, и удачная Внимательность у
   // обелиска не давала ничего (прогон Асстохана 2026-10-07).
@@ -298,6 +304,13 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
       supersedes_fact_id: chosen.fact.id,
     },
   }
+}
+
+/** Проверяет тему поиска без раскрытия тайны, броска или записи в журнал. */
+export function hasUnambiguousAuthoredClue(state, { skill, actionText }) {
+  return usesAuthoredSceneSearch(state) && state.mechanics?.combat?.active !== true
+    && SEARCH_SKILLS.has(skill) && GENERAL_SEARCH_PATTERN.test(actionText)
+    && Boolean(secretRevealCommand(state, { skill, actionText, topicalOnly: true, unambiguousAuthored: true }))
 }
 
 /**
