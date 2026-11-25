@@ -27,6 +27,7 @@ import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
 import { CharacterCreationWizard } from './CharacterCreationWizard'
+import { astohanPilotBuildCatalog } from './astohan-pilot-builds'
 import { DiceTray } from './DiceTray'
 import { DiceRollScene, type DiceRollResult } from './DiceRollScene'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
@@ -851,7 +852,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const { confirmPendingAction, cancelPendingAction } = gameSession
   const { advanceAdventure, directorBusy } = gameSession
   const { pendingTacticalCommand, retryPendingTacticalCommand } = gameSession
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, setSpellBonusPreference, setReactionPreference, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, chooseDialogueOption, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, setSpellBonusPreference, setReactionPreference, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, chooseDialogueOption, attuneItem, activateItem, importCharacter, applyPilotBuild, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
   const [checkDiceScene, setCheckDiceScene] = useState<PendingCheckDiceScene | null>(null)
   const checkDiceSceneRef = useRef<PendingCheckDiceScene | null>(null)
   const checkDiceTimerRef = useRef<number | null>(null)
@@ -2003,13 +2004,29 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         catalog={characterCreationCatalog ?? aiHealth!.characterCreation!}
         rulesetId={state.ruleset_id}
         campaignCode={state.sessionCode}
+        pilotEnabled={Boolean(
+          state.character_start_level === 7
+          && String((state.campaignConcept as { world_template_id?: string } | undefined)?.world_template_id ?? '') === 'astohan-plains'
+          && state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired === true
+          && (state.players.find((player) => player.id === creatingPlayerId)?.level ?? 1) === 1,
+        )}
+        pilotBuilds={astohanPilotBuildCatalog}
+        onApplyPilotBuild={async (build) => {
+          // Мастер остаётся открыт до конца пресета: редактор, который
+          // открывает импорт стартового уровня, не должен перекрывать прогресс
+          // и сообщение об ошибке повторного запуска.
+          setEditingPlayerId(null)
+          await applyPilotBuild(creatingPlayerId, build)
+          setEditorInitialTab('sheet')
+          setEditorRequestLevelUp(false)
+        }}
         required={Boolean(state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired)}
         onClose={() => { setCreatingPlayerId(null); setHeroWizardDismissed(true) }}
-        onImport={async (source) => {
+        onImport={async (source, options) => {
           await importCharacter(creatingPlayerId, source)
           // При повышенном старте импорт фиксирует только первый уровень;
           // дальше тот же игрок продолжает подготовку в мастере развития.
-          if ((state.character_start_level ?? 1) > 1) {
+          if ((state.character_start_level ?? 1) > 1 && !options?.deferDevelopment) {
             setEditorInitialTab('advancement')
             setEditorRequestLevelUp(false)
             setEditingPlayerId(creatingPlayerId)

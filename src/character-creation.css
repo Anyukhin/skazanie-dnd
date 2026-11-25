@@ -27,6 +27,16 @@
 .creation-spells article.blocked button{cursor:pointer}
 .character-creation-wizard>footer .creation-error{color:#e6a5a0}
 
+.pilot-build-picker{display:grid;gap:10px;margin:0 0 18px;padding:13px 14px;border:1px solid rgba(211,160,97,.28);border-radius:9px;background:rgba(120,80,40,.08)}
+.pilot-build-picker>header{display:grid;gap:3px}
+.pilot-build-picker>header b{color:#ead8be;font:600 var(--fs-lg) var(--f-serif)}
+.pilot-build-picker>header span{color:#a79582;font:500 var(--fs-xs) var(--f-ui)}
+.pilot-build-picker>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pilot-build-picker button{display:grid;gap:4px;padding:10px 11px;border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#c7b6a1;text-align:left;background:rgba(255,255,255,.025)}
+.pilot-build-picker button.selected{border-color:#d4a064;color:#f0d6ae;background:rgba(173,113,54,.15)}
+.pilot-build-picker button small{color:#958677;font:500 var(--fs-xxs)/1.3 var(--f-ui)}
+@media(max-width:760px){.pilot-build-picker>div{grid-template-columns:1fr}}
+
 /* Покупка сверх остатка и корзина дороже бюджета (плейтест 2026-10-04). */
 .creation-form p.creation-purchase-warning{color:#e6a5a0}
 
