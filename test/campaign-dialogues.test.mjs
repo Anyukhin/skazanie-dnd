@@ -58,7 +58,14 @@ test('каждый диалог ссылается на настоящих со�
       if (option.action?.command_type === 'NegotiateScenarioTreaty') {
         const finale = scenario.beats.find((beat) => beat.kind === 'finale')
         assert.equal(dialogue.npc_id, finale.boss.npc_id, `${dialogue.id}.${option.id}: договор — с главным противником`)
-        assert.deepEqual(option.check, { skill: finale.treaty.skill, dc: finale.treaty.dc })
+        if (option.action.proof === 'ares-signed-confession') {
+          // Подписанное признание — серверное доказательство договора без
+          // повторной проверки Убеждения. Ветка с обычными уликами по-прежнему
+          // обязана содержать проверку из карточки финала.
+          assert.equal(option.check, null, `${dialogue.id}.${option.id}: подписанное признание не бросает проверку`)
+        } else {
+          assert.deepEqual(option.check, { skill: finale.treaty.skill, dc: finale.treaty.dc })
+        }
       }
     }
     assert.ok(dialogue.options.some((option) => option.ends), `${dialogue.id}: разговор можно закончить`)
