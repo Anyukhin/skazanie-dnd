@@ -715,7 +715,10 @@ async fn settle_after_commit(core: &Rc<GameCore>, campaign_id: &str, result: &mu
     };
     let mut latest = core.events.load(campaign_id, &LoadOptions::default())?;
     let mut subsequent = if (latest.state_version as f64) > original_version { core.events.get_events(campaign_id, original_version as i64, Some(latest.state_version))? } else { Vec::new() };
-    if get(get(get(Some(&latest.state), "mechanics"), "encounter"), "status").and_then(Value::as_str) == Some("ended")
+    let encounter = get(get(Some(&latest.state), "mechanics"), "encounter");
+    // Восстановление нужно сразу после поражения; награду за победу возвращает продолжение.
+    if get(encounter, "status").and_then(Value::as_str) == Some("ended")
+        && get(encounter, "outcome").and_then(Value::as_str) == Some("party_incapacitated")
         && !js::truthy(get(get(Some(&latest.state), "mechanics"), "combat").and_then(|combat| combat.get("active")))
     {
         let stages: [&str; 1] = ["encounter-completion"];

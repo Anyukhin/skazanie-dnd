@@ -5892,7 +5892,11 @@ async function handleHttpRequest(req, res) {
         let responseEvents = subsequentEvents
         let completedState = latest.state
         let completedVersion = latest.state_version
-        if (latest.state?.mechanics?.combat?.active !== true && latest.state?.mechanics?.encounter?.status === 'ended') {
+        const encounter = latest.state?.mechanics?.encounter
+        // После поражения отряду нужно восстановиться до следующего действия.
+        // Награду за победу, как и раньше, возвращает продолжение после боя.
+        if (latest.state?.mechanics?.combat?.active !== true
+          && encounter?.status === 'ended' && encounter.outcome === 'party_incapacitated') {
           const completionRun = await postCommitCoordinator.run({
             campaignId: commandMatch[1],
             state: latest.state,
