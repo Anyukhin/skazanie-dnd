@@ -11,7 +11,7 @@ use sk_core::indexmap::IndexMap;
 use sk_core::js;
 
 use super::abort::{race, AbortController, AbortScope, SignalLink};
-use super::attempt_trace::{finish_model_attempt, start_model_attempt};
+use super::attempt_trace::{current_model_call_budget, finish_model_attempt, start_model_attempt};
 use super::{
     coalesce, llm_timer_delay, option_fields, positive_integer_number, prop, spread_object, utf16_head, CallHooks, CallScope, CampaignSnapshot, DeltaHandler, LlmClient, LlmError, LlmErrorExt, LlmFuture, RouterAiClient,
 };
@@ -260,10 +260,11 @@ impl FallbackLlmClient {
         options: &Value,
         scope: &CallScope,
         deadline: Option<(tokio::time::Instant, f64)>,
+        cloud_remaining: Option<f64>,
         shared_signal: Option<&super::AbortSignal>,
         on_delta: Option<DeltaHandler>,
     ) -> Result<Value, LlmError> {
-        let remaining = deadline.map(|(started, requested)| requested - started.elapsed().as_millis() as f64);
+        let remaining = deadline.map(|(started, requested)| requested - started.elapsed().as_secs_f64() * 1_000.0);
         if let (Some(remaining), Some((_, requested))) = (remaining, deadline) {
             if remaining <= 0.0 {
                 return Err(LlmError::timeout(requested));
@@ -277,7 +278,7 @@ impl FallbackLlmClient {
         let model_limit = if configured.is_finite() && configured > 0.0 && !(deadline.is_some() && requested > configured) { Some(configured) } else { remaining };
         let attempt_budget = remaining.map(|remaining| {
             let reserve = if index == 0 && count > 1 { (requested * 0.6).floor() } else { remaining };
-            1f64.max(remaining.min(model_limit.unwrap_or(remaining)).min(reserve))
+            1f64.max(remaining.min(cloud_remaining.unwrap_or(remaining)).min(model_limit.unwrap_or(remaining)).min(reserve))
         });
         let attempt_scope = attempt_budget.map(|budget| AbortScope::new(budget, shared_signal));
         let mut fields = option_fields(options);
@@ -310,9 +311,18 @@ impl FallbackLlmClient {
     }
 
     async fn run(&self, input: &Value, options: &Value, scope: CallScope) -> Result<Value, LlmError> {
-        let requested_timeout = js::number(coalesce(options.get("timeoutMs"), prop(Some(input), "timeoutMs")));
-        let has_deadline = requested_timeout.is_finite() && requested_timeout > 0.0;
-        let deadline = has_deadline.then(|| (tokio::time::Instant::now(), requested_timeout));
+        let role_limit = js::number(coalesce(options.get("timeoutMs"), prop(Some(input), "timeoutMs")));
+        let role_timeout = (role_limit.is_finite() && role_limit > 0.0).then_some(role_limit);
+        let started = tokio::time::Instant::now();
+        let turn_budget = current_model_call_budget(role_timeout, self.provider_fallback.is_some());
+        if turn_budget.is_some_and(|(ms, _)| ms <= 0.0) {
+            return Err(LlmError::llm("Общий срок модельного хода истёк", "LLM_TURN_DEADLINE"));
+        }
+        let configured_timeout = turn_budget.map(|(ms, _)| ms).or(role_timeout);
+        let requested_timeout = configured_timeout.unwrap_or(f64::NAN);
+        let has_deadline = configured_timeout.is_some();
+        let deadline = configured_timeout.map(|ms| (started, ms));
+        let cloud_ms = turn_budget.and_then(|(_, cloud)| cloud);
         let deadline_controller = has_deadline.then(AbortController::new);
         let _timer = TimerGuard(deadline_controller.clone().map(|controller| {
             tokio::spawn(async move {
@@ -337,9 +347,15 @@ impl FallbackLlmClient {
             candidates.push(reserve);
         }
         let mut provider_refused = false;
+        let mut cloud_budget_expired = false;
         let mut attempts: Vec<Value> = Vec::new();
         for (index, member) in candidates.iter().enumerate() {
             if provider_refused && !member.provider_fallback {
+                continue;
+            }
+            let cloud_remaining = cloud_ms.filter(|_| !member.provider_fallback).map(|ms| ms - started.elapsed().as_secs_f64() * 1_000.0);
+            if cloud_remaining.is_some_and(|ms| ms <= 0.0) {
+                cloud_budget_expired = true;
                 continue;
             }
             let emitted = Arc::new(AtomicBool::new(false));
@@ -366,11 +382,12 @@ impl FallbackLlmClient {
             });
             let fallback_reason = if !member.provider_fallback { None }
                 else if provider_refused { Some("account_refused") }
+                else if cloud_budget_expired { Some("turn_reserve") }
                 else if cloud_cooldown { Some("cloud_cooldown") }
                 else if !attempts.is_empty() { Some("previous_attempt_failed") }
                 else { None };
             let trace_attempt = start_model_attempt(input, options, member.client.trace_provider(), &member.key(), fallback_reason);
-            let outcome = self.attempt(member, index, candidates.len(), input, options, &scope, deadline, shared_signal.as_ref(), on_delta).await;
+            let outcome = self.attempt(member, index, candidates.len(), input, options, &scope, deadline, cloud_remaining, shared_signal.as_ref(), on_delta).await;
             finish_model_attempt(trace_attempt, &outcome);
             open.store(false, Ordering::SeqCst);
             match outcome {

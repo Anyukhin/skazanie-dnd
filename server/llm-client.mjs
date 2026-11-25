@@ -1,5 +1,5 @@
 import { LLMClient } from './contracts.mjs'
-import { campaignReasoningFor, currentCampaignModel, finishModelAttempt, startModelAttempt } from './campaign-ai-context.mjs'
+import { campaignReasoningFor, currentCampaignModel, currentModelTurnBudget, finishModelAttempt, startModelAttempt } from './campaign-ai-context.mjs'
 import { supportsJsonSchema } from './model-style-profiles.mjs'
 
 const DEFAULT_TIMEOUT_MS = 45_000
@@ -750,9 +750,13 @@ export class FallbackLLMClient extends LLMClient {
     const validateResponse = options.validateResponse ?? (input && !Array.isArray(input) ? input.validateResponse : null)
     const requestedDelta = options.onDelta ?? (input && !Array.isArray(input) ? input.onDelta : null)
     const attempts = []
-    const requestedTimeout = Number(options.timeoutMs ?? input?.timeoutMs)
-    const hasDeadline = Number.isFinite(requestedTimeout) && requestedTimeout > 0
-    const deadline = hasDeadline ? Date.now() + requestedTimeout : null
+    const roleLimit = Number(options.timeoutMs ?? input?.timeoutMs)
+    const roleTimeout = Number.isFinite(roleLimit) && roleLimit > 0 ? roleLimit : null
+    const turnBudget = currentModelTurnBudget(roleTimeout, Boolean(this.providerFallback))
+    if (turnBudget && turnBudget.timeoutMs <= 0) throw new LLMError('Общий срок модельного хода истёк', 'LLM_TURN_DEADLINE')
+    const requestedTimeout = turnBudget?.timeoutMs ?? roleTimeout
+    const hasDeadline = requestedTimeout != null
+    const deadline = hasDeadline ? performance.now() + requestedTimeout : null
     const deadlineController = hasDeadline ? new AbortController() : null
     const timer = deadlineController ? setTimeout(() => deadlineController.abort(new LLMTimeoutError(requestedTimeout)), timerDelay(requestedTimeout)) : null
     const externalSignal = options.signal ?? input?.signal
@@ -768,16 +772,22 @@ export class FallbackLLMClient extends LLMClient {
       const schema = options.jsonSchema ?? input?.jsonSchema
       const schemaRequested = schema != null && typeof schema === 'object' && !Array.isArray(schema)
       let providerRejected = false
+      let cloudBudgetExpired = false
       for (const [candidateIndex, client] of candidates.entries()) {
         const isProviderFallback = client === this.providerFallback
         if (providerRejected && !isProviderFallback) continue
+        const cloudRemaining = !isProviderFallback && turnBudget?.cloudDeadline != null ? turnBudget.cloudDeadline - performance.now() : null
+        if (cloudRemaining != null && cloudRemaining <= 0) {
+          cloudBudgetExpired = true
+          continue
+        }
         let emitted = false
         // Попытка, снятая по своему сроку или общему, в живой поток больше не
         // пишет: модель, проигравшая гонку, могла прислать дельту уже после
         // переключения на резервную, и в рассказ вклинивался чужой текст.
         let attemptOpen = true
         const underlying = client.client ?? client
-        const fallbackReason = isProviderFallback && (providerRejected ? 'account_refused' : attempts.length ? 'previous_attempt_failed'
+        const fallbackReason = isProviderFallback && (providerRejected ? 'account_refused' : cloudBudgetExpired ? 'turn_reserve' : attempts.length ? 'previous_attempt_failed'
           : this.clients.length && candidates.length === 1 ? 'cloud_cooldown' : '')
         const traceAttempt = startModelAttempt({ role, model: client.model, schemaRequested, fallbackReason,
           provider: client.providerLabel ?? underlying.providerLabel ?? client.provider ?? underlying.provider })
@@ -791,7 +801,7 @@ export class FallbackLLMClient extends LLMClient {
             }
           : null
         try {
-          const remaining = deadline == null ? null : deadline - Date.now()
+          const remaining = deadline == null ? null : deadline - performance.now()
           if (remaining != null && remaining <= 0) throw new LLMTimeoutError(requestedTimeout)
           // Оставляем время резервной модели: зависший основной запрос
           // иначе израсходует весь общий бюджет до переключения.
@@ -806,7 +816,7 @@ export class FallbackLLMClient extends LLMClient {
             : remaining
           const attemptBudget = remaining == null
             ? null
-            : Math.max(1, Math.min(remaining, modelLimit ?? remaining,
+            : Math.max(1, Math.min(remaining, cloudRemaining ?? remaining, modelLimit ?? remaining,
               candidateIndex === 0 && candidates.length > 1 ? Math.floor(requestedTimeout * 0.6) : remaining))
           const attemptScope = attemptBudget == null ? null : makeAbortScope(attemptBudget, sharedSignal)
           attemptSignal = attemptScope?.signal ?? sharedSignal
