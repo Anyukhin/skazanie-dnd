@@ -1475,33 +1475,13 @@ impl AutonomousCampaignOrchestrator {
         if !campaign_can_auto_complete(state)? {
             return Ok(None);
         }
-        // Развязку сценария выбрал исход боя; её авторский текст идёт первым.
+        // У авторской развязки есть готовый эпилог.
         let ending = scenario_ending(state);
-        let deterministic = build_deterministic_epilogue(state, None);
-        let fallback = match &ending {
-            Some(ending) => text::head(&format!("{} {deterministic}", js::string(ending.get("epilogue"))), 8_000),
-            None => deterministic,
-        };
-        let mut epilogue = str_value(fallback);
+        let authored = ending.as_ref().and_then(|ending| ending.get("epilogue")).and_then(Value::as_str).filter(|text| !text.is_empty());
+        let mut epilogue = str_value(authored.map(str::to_string).unwrap_or_else(|| build_deterministic_epilogue(state, None)));
         let mut provider = str_value("deterministic");
-        if let Some(narrator) = &self.narrator {
+        if let Some(narrator) = self.narrator.as_ref().filter(|_| authored.is_none()) {
             let brief = build_epilogue_narration_brief(state, None)?;
-            let brief = match &ending {
-                Some(ending) => {
-                    let mut visible = vec![json!({ "event_type": "CampaignEndingReached", "payload": {
-                        "title": ending.get("title").cloned().unwrap_or(Value::Null),
-                        "outcome": ending.get("outcome").cloned().unwrap_or(Value::Null),
-                        "summary": ending.get("epilogue").cloned().unwrap_or(Value::Null),
-                    } })];
-                    match nullish(brief.get("visible_events"), None) {
-                        Some(Value::Array(items)) => visible.extend(items.iter().cloned()),
-                        Some(other) => visible.push(other.clone()),
-                        None => {}
-                    }
-                    with_field(&brief, "visible_events", Value::Array(visible))
-                }
-                None => brief,
-            };
             let options = json!({ "style": "Связный русский эпилог в 3–5 предложениях: эмоциональная развязка без новых фактов и решений за героев." });
             let rendered = narrator.render(&brief, &options).await?;
             let rendered_provider = rendered.get("provider");

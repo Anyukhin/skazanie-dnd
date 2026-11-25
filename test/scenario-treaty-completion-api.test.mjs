@@ -8,6 +8,7 @@ import { normalizeCampaignState, resolveCommands } from '../server/rules-engine.
 import { fixedDice } from './kit/dice.mjs'
 import { addPlayer, createCampaign, expectStatus, sendCommand, setupAdmin, startTestServer } from './kit/http.mjs'
 import { readJournal } from './kit/journal.mjs'
+import { chatCompletion, startFakeProvider } from './kit/llm.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const CODE = 'TREATY-HTTP'
@@ -189,7 +190,11 @@ test('договор через диалог сразу завершает ка�
 
 test('диалог о подписанном признании завершает кампанию без броска', { timeout: runnerTimeout(180_000) }, async (t) => {
   const code = 'SIGNED-TREATY-HTTP'
-  const server = await startTestServer(t, { storagePrefix: 'skazanie-signed-treaty-' })
+  const fake = await startFakeProvider(t, () => chatCompletion('Отряд только прибыл в логово и ещё не решил судьбу дракона.'))
+  const server = await startTestServer(t, {
+    storagePrefix: 'skazanie-signed-treaty-',
+    env: { OPENROUTER_API_KEY: 'kit-free', DND_AI_OPENROUTER_BASE_URL: fake.baseUrl },
+  })
   const { client: admin } = await setupAdmin(server)
   const state = await lairState(code)
   state.dialogues = { 'astohan-ares': { flags: ['ares-signed-confession'] } }
@@ -211,6 +216,11 @@ test('диалог о подписанном признании завершае
   const { state: after } = expectStatus(await player.get(`/api/rooms/${code}`))
   assert.equal(after.mechanics.campaign_lifecycle.status, 'completed')
   assert.equal(after.mechanics.campaign_lifecycle.ending.id, 'treaty')
+  assert.match(after.mechanics.campaign_lifecycle.epilogue, /^Саргат ушёл с равнин по договору\./u)
+  const journal = await readJournal(server, code)
+  const completed = journal.events.find((event) => event.event_type === 'CampaignCompleted')
+  assert.equal(completed?.payload.epilogue, after.mechanics.campaign_lifecycle.epilogue)
+  assert.equal(fake.requests.length, 0, 'для авторского эпилога не запрашиваем модель')
 })
 
 test('старое активное сохранение с treaty.concluded закрывается перед первым запросом Директора', { timeout: runnerTimeout(180_000) }, async (t) => {

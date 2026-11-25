@@ -30,6 +30,7 @@ import { publicTavernRoundFor, tavernForViewer } from './tavern-life.mjs'
 import { blessingsForViewer } from './blessings.mjs'
 import { lockpickingForViewer } from './lockpicking.mjs'
 import { scenarioCourtForViewer } from './scenario-attention.mjs'
+import { scenarioEnding } from './campaign-scenario.mjs'
 import { sceneDialoguesForViewer } from './campaign-dialogues.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { courierLetterForViewer, courierLettersForViewer } from './courier-letters.mjs'
@@ -1897,6 +1898,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     weather_by_actor: weatherByActorFor(state, { isAdmin: true, actorId: String(actorId ?? '') }),
     mechanics: {
       ...(state.mechanics ?? {}),
+      ...authoredEpilogueForViewer(state),
       movement: Object.fromEntries([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])]
         .map((/** @type {Loose} */ actor) => [String(actor.id), movementForActor(state, String(actor.id))])),
       hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),
@@ -2007,6 +2009,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
           : null
       return {
       ...publicMechanics,
+      ...authoredEpilogueForViewer(state),
       ...(ownReactionPreferences ? { reaction_preferences: ownReactionPreferences } : {}),
       ...(Object.hasOwn(publicMechanics, 'resources')
         ? { resources: publicResourcesFor(state, publicMechanics.resources) }
@@ -2678,6 +2681,16 @@ function eventForViewer(event, user, actorId, state = {}) {
     return { ...visible, payload: publicReactionWindowFor(payload, state, actorId) }
   }
   return { ...visible, payload }
+}
+
+/** @param {LooseState} state */
+function authoredEpilogueForViewer(state) {
+  const lifecycle = state.mechanics?.campaign_lifecycle
+  if (!lifecycle?.ending?.id || !['completed', 'archived'].includes(lifecycle.status)) return {}
+  const ending = scenarioEnding(state)
+  if (!ending?.epilogue || ending.id !== lifecycle.ending.id) return {}
+  // Старый эпилог остаётся в журнале. В комнате показываем текст этого исхода.
+  return { campaign_lifecycle: { ...lifecycle, epilogue: ending.epilogue } }
 }
 
 /**
