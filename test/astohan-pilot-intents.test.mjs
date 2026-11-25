@@ -26,12 +26,20 @@ function visibleNpc(state, id, name) {
   }
 }
 
-test('Асстохан: 14 живых формулировок держатся шести маршрутов пилота', async () => {
+test('Асстохан: 15 живых формулировок держатся шести маршрутов пилота', async () => {
   const parser = new IntentParser()
   let state = await astohan()
   const ares = visibleNpc(state, 'astohan-ares', 'Король Арес')
   const gedrik = visibleNpc(state, 'astohan-gedrik', 'Гедрик Сол')
   const oren = visibleNpc(state, 'astohan-oren', 'Орен Фаль')
+
+  const royalAudience = await parser.parse({
+    message: 'Расспросить короля Ареса о поручении и Пепельной заставе.',
+    playerId: HERO.id,
+    visibleState: state,
+  })
+  assert.equal(royalAudience.intent, 'social')
+  assert.deepEqual(royalAudience.targets, ['astohan-ares'])
 
   const conversation = [
     ['Расспросить Гедрика, почему дракон ищет именно его', gedrik, 'social'],
