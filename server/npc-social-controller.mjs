@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import {
   ensureNpcSocialState, implicitSecretHolderIds, npcBehaviorPolicy, npcKnownFactIds, npcProfileAtWorldTime, npcRelationshipScore, npcSecretMeta, relationshipTier,
 } from './npc-social.mjs'
+import { dialogueFor, dialogueOptionsFor, dialogueRevealFactId } from './campaign-dialogues.mjs'
 import { agentContextMetadata, boundedSelectionMetadata, campaignConceptForAgent, heroCardForAgent, sceneCanonFor, sceneContextForAgent } from './agent-context.mjs'
 import { NPC_SOCIAL_RESPONSE_JSON_SCHEMA } from './llm-json-schemas.mjs'
 import { promptForModelRole } from './model-style-profiles.mjs'
@@ -1113,6 +1114,37 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
   }
 }
 
+/**
+ * Авторские варианты разговора должны работать и из свободной реплики.
+ * Иначе просьба о донесении Ивары уходила в модельный социальный ответ и могла
+ * закончиться общим «просто так не рассказывают», хотя тот же вариант уже
+ * существует в карточке авторского диалога.
+ *
+ * @param {any} state
+ * @param {any} profile
+ * @param {string} playerId
+ * @param {string} message
+ * @returns {any | null}
+ */
+function authoredFreeDialogueResponse(state, profile, playerId, message) {
+  if (String(profile?.id ?? '') !== 'astohan-ivara') return null
+  if (!/(?:покажите|покажи|дайте|нужн\p{L}*)[^.!?]{0,100}донесени\p{L}*/iu.test(message)
+    || !/(?:пожар|сожж|выживш|застав)/iu.test(message)) return null
+  const dialogue = dialogueFor(state, profile.id)
+  const option = dialogue?.options.find((entry) => entry.id === 'ash-watch-report')
+  if (!dialogue || !option || !dialogueOptionsFor(state, profile.id, playerId)?.options.some((entry) => entry.id === option.id)) return null
+  const factId = dialogueRevealFactId(state, option.success)
+  return {
+    reply: option.success.reply,
+    stance: 'neutral',
+    confidence: 1,
+    disclosed_fact_ids: factId ? [factId] : [],
+    disclosed_claim_ids: [],
+    relationship_delta: 0,
+    promise: null,
+  }
+}
+
 export class NpcSocialController {
   constructor({ llmClient = null } = {}) {
     this.llmClient = llmClient
@@ -1127,6 +1159,15 @@ export class NpcSocialController {
     const facts = npcFacts(state, profile, message)
     const heroId = String(playerId)
     const leads = conversationLeads(state, profile, message, social, heroId)
+    const authored = authoredFreeDialogueResponse(state, profile, heroId, message)
+    if (authored) {
+      return {
+        ...normalizedResult(authored, profile, state, heroId, message, turnId, checkOutcome, { leads }),
+        context_metadata: contextMetadata,
+        provider: 'deterministic-authored-dialogue',
+        prompt_version: 'campaign-dialogues/v1',
+      }
+    }
     if (!this.llmClient) return {
       ...normalizedResult({}, profile, state, heroId, message, turnId, checkOutcome, { leads }),
       context_metadata: contextMetadata,

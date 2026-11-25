@@ -36,6 +36,7 @@ use sk_social::npc_social::{
     ensure_npc_social_state, implicit_secret_holder_ids, npc_behavior_policy, npc_known_fact_ids, npc_profile_at_world_time, npc_secret_meta, relationship_tier,
 };
 use sk_story::llm_json_schemas::NPC_SOCIAL_RESPONSE_JSON_SCHEMA;
+use sk_story::campaign_dialogues::{dialogue_for, dialogue_options_for, dialogue_reveal_fact_id};
 use sk_tactics::security::build_data_only_context;
 
 /// Версия контракта социальной роли NPC.
@@ -1669,6 +1670,35 @@ fn normalized_result(raw: &Value, profile: &Value, state: &Value, player_id: &st
     Ok(out)
 }
 
+/// Авторский вариант Ивары работает и из свободной реплики, как карточка
+/// `ChooseDialogueOption`. Это не модельная догадка: ответ и раскрытие берутся
+/// из каталога диалогов, а доступность проверяется тем же списком вариантов.
+fn authored_free_dialogue_response(state: &Value, profile: &Value, hero_id: &str, message: &str) -> Option<Value> {
+    if js::s(profile.get("id")) != "astohan-ivara"
+        || !text::test(re!(r"(?:покажите|покажи|дайте|нужн\p{L}*)[^.!?]{0,100}донесени\p{L}*", "iu"), message)
+        || !text::test(re!(r"пожар|сожж|выживш|застав", "iu"), message)
+    {
+        return None;
+    }
+    let dialogue = dialogue_for(state, Some(&Value::String("astohan-ivara".into())))?;
+    let option = dialogue.options.iter().find(|entry| entry.id == "ash-watch-report")?;
+    let offered = dialogue_options_for(state, Some(&Value::String("astohan-ivara".into())), Some(&Value::String(hero_id.into())))?;
+    if !arr(get(Some(&offered), "options")).iter().any(|entry| js::s(entry.get("id")) == "ash-watch-report") {
+        return None;
+    }
+    let outcome = option.success.to_json();
+    let fact_id = dialogue_reveal_fact_id(state, Some(&outcome));
+    Some(json!({
+        "reply": option.success.reply,
+        "stance": "neutral",
+        "confidence": 1,
+        "disclosed_fact_ids": if fact_id.is_empty() { json!([]) } else { json!([fact_id]) },
+        "disclosed_claim_ids": [],
+        "relationship_delta": 0,
+        "promise": null,
+    }))
+}
+
 // --- проверка ответа модели --------------------------------------------------------
 
 fn finite_number(value: &Value) -> bool {
@@ -1806,6 +1836,13 @@ impl NpcSocialController {
         let hero_id = js::string(Some(player_id));
         let leads = conversation_leads(state, &profile, message, Some(&social), &hero_id)?;
         let request = RespondInput { state, hero_id, message, turn_id, check, just_seen };
+        if let Some(authored) = authored_free_dialogue_response(state, &profile, &request.hero_id, &js::s(message)) {
+            let mut out = normalized_result(&authored, &profile, state, &request.hero_id, message, turn_id, check, &leads)?;
+            out.insert("context_metadata".into(), context_metadata);
+            out.insert("provider".into(), str_value("deterministic-authored-dialogue"));
+            out.insert("prompt_version".into(), str_value("campaign-dialogues/v1"));
+            return Ok(Some(Value::Object(out)));
+        }
         let Some(client) = self.llm_client.as_ref() else {
             let mut out = normalized_result(&json!({}), &profile, state, &request.hero_id, message, turn_id, check, &leads)?;
             out.insert("context_metadata".into(), context_metadata);
