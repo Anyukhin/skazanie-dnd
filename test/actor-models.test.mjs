@@ -29,6 +29,16 @@ test('каталог фигурок содержит шесть профилей
   assert.deepEqual(models.availableActorModels(validated).map((entry) => entry.key), validated.models.map((entry) => entry.key))
 })
 
+test('пилотный NPC-ростер получает нужные модели и права', () => {
+  assert.equal(models.resolveModelProfile({ id: 'astohan-sargat', label: 'Саргат', kind: 'enemy', archetype: 'dragon' }, manifest).key, 'dragon')
+  const dragon = manifest.models.find((entry) => entry.key === 'dragon')
+  assert.match(dragon.url, /dragon-hd-/u)
+  assert.equal(dragon.rights.license, 'CC0-1.0')
+  for (const [label, expected] of [['Король Арес', 'warrior'], ['Орен Фаль', 'warrior'], ['Гедрик Сол', 'warrior']]) {
+    assert.equal(models.resolveModelProfile({ id: label, label, kind: 'neutral', archetype: 'humanoid' }, manifest).profile, expected)
+  }
+})
+
 test('разрешение уважает override, точный actor id и архетип', () => {
   const catalog = {
     version: 1,
