@@ -30,8 +30,8 @@ import { publicTavernRoundFor, tavernForViewer } from './tavern-life.mjs'
 import { blessingsForViewer } from './blessings.mjs'
 import { lockpickingForViewer } from './lockpicking.mjs'
 import { scenarioCourtForViewer } from './scenario-attention.mjs'
-import { scenarioEnding } from './campaign-scenario.mjs'
-import { sceneDialoguesForViewer } from './campaign-dialogues.mjs'
+import { scenarioEnding, scenarioFoundClueIds } from './campaign-scenario.mjs'
+import { dialogueFlags, sceneDialoguesForViewer } from './campaign-dialogues.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { courierLetterForViewer, courierLettersForViewer } from './courier-letters.mjs'
 import { weatherForViewer } from './weather.mjs'
@@ -77,6 +77,34 @@ function text(value, maximum = 500) {
 function integer(value, fallback = 0) {
   const parsed = Number(value)
   return Number.isSafeInteger(parsed) ? parsed : fallback
+}
+
+/** Следующий шаг строится из уже открытых этому игроку фактов.
+ * @param {LooseState} state @param {Loose} scene @param {Loose} memory
+ */
+function applyAstohanJournalGuidance(state, scene, memory) {
+  if (state.campaignConcept?.arc?.scenario_id !== 'astohan-dragon-hunt') return
+  const clues = scenarioFoundClueIds({ campaignConcept: state.campaignConcept, worldMemory: memory })
+  if (!clues.has('camp-gedrik')) return
+
+  const wantsSignature = clues.has('stormberg-journal-page') && !dialogueFlags(state).has('ares-signed-confession')
+  const active = (memory.quests ?? []).filter((/** @type {Loose} */ quest) => quest.status === 'active')
+  const current = active.find((/** @type {Loose} */ quest) => quest.id === `quest:chapter:${state.adventure?.chapter}`)
+  if (scene.location_id === 'astohan-quiet-watch-camp' && scene.objective === 'Выяснить, почему дракон ищет коменданта Гедрика Сола') {
+    scene.objective = wantsSignature ? 'Вернуться в Штормберг за подписанным признанием Ареса'
+      : clues.has('stormberg-journal-page') ? 'Предъявить подписанное признание Саргату в Жаровне Вулканиса'
+      : 'Найти страницу журнала похода у Орена Фаля в Архиве Сломанного Клыка'
+    if (current) {
+      current.title = scene.objective
+      current.objectives = [scene.objective]
+    }
+  }
+
+  const investigation = active.find((/** @type {Loose} */ quest) => /^quest-[0-9a-f]{12}$/u.test(quest.id)) ?? current
+  if (wantsSignature && investigation) investigation.objectives = [
+    'Собранные улики позволяют попросить Ареса подписать признание для мирного договора с Саргатом',
+    ...(investigation.objectives ?? []),
+  ]
 }
 
 /**
@@ -1974,6 +2002,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
   const publicState = Object.fromEntries(Object.entries(openState).filter(([key]) => PROJECTED_STATE_KEY_SET.has(key)))
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
   const scene = publicSceneFor(state.scene, state.locationLevels?.[currentLocationId])
+  const memory = worldMemoryForViewer(state.worldMemory, { playerId: String(actorId ?? ''), isAdmin: false, isPartyMember: true })
+  applyAstohanJournalGuidance(state, scene, memory)
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
     .filter((/** @type {Loose} */ merchant) => merchantTradeAvailabilityFor(state, merchant).can_trade)
     .map(publicMerchantFor)
@@ -2105,11 +2135,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     scene,
     adventure: publicAdventureFor(visible.adventure),
     worldMap: publicWorldMapFor(visible.worldMap ?? state.worldMap),
-    worldMemory: compactWorldMemoryForTransport(worldMemoryForViewer(state.worldMemory, {
-      playerId: String(actorId ?? ''),
-      isAdmin: false,
-      isPartyMember: true,
-    }), memoryTransportV2For(user)),
+    worldMemory: compactWorldMemoryForTransport(memory, memoryTransportV2For(user)),
     social: npcSocialForViewer(state.social, {
       playerId: String(actorId ?? ''),
       isAdmin: false,

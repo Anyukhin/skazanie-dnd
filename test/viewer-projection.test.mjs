@@ -2,8 +2,56 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { campaignStateForViewer, mechanicsForViewer, publicActorFootprintFor, publicEnemyFor, publicSceneFor, publicTacticalMapFor, publicWorldMapFor, turnExplanationForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
+import { normalizeWorldMemory } from '../server/world-memory.mjs'
 
 const user = { role: 'player', heroIds: ['hero'] }
+
+function astohanJournalState({ journal = false, signed = false } = {}) {
+  const fact = (id, subject) => ({
+    id, subject_id: subject, predicate: 'gm_secret', visibility: 'gm_only', status: 'active',
+    object: '{"topic":"поход на Вулканиса","skills":["insight"]}', summary: id,
+  })
+  const camp = 'fact:secret:scenario:astohan-dragon-hunt:camp-gedrik'
+  const page = 'fact:secret:scenario:astohan-dragon-hunt:stormberg-journal-page'
+  const state = {
+    sessionCode: 'ASTOHAN-CAMP-TEST', adventure: { chapter: 2 },
+    partyMemberIds: ['hero', 'ally', 'other'], players: [{ id: 'hero' }, { id: 'ally' }, { id: 'other' }],
+    campaignConcept: { arc: { version: 'skazanie:scenario-arc-v1', scenario_id: 'astohan-dragon-hunt', scenario_version: 1 } },
+    scene: { location_id: 'astohan-quiet-watch-camp', location: 'Лагерь Тихой Стражи', objective: 'Выяснить, почему дракон ищет коменданта Гедрика Сола' },
+    dialogues: signed ? { 'astohan-ares': { flags: ['ares-signed-confession'] } } : {},
+    worldMemory: normalizeWorldMemory({
+      entities: [{ id: 'astohan-quiet-watch-camp', kind: 'location', name: 'Лагерь Тихой Стражи', visibility: 'party' }],
+      facts: [fact(camp, 'astohan-quiet-watch-camp'), fact(page, 'astohan-stormberg')],
+      knowledge_revealed: [
+        { id: 'known-camp', hero_id: 'hero', fact_id: camp, recorded_at_minutes: 1 },
+        { id: 'ally-known-camp', hero_id: 'ally', fact_id: camp, recorded_at_minutes: 1 },
+        ...(journal ? [{ id: 'known-page', hero_id: 'hero', fact_id: page, recorded_at_minutes: 1 }] : []),
+        ...(journal ? [{ id: 'ally-known-page', hero_id: 'ally', fact_id: page, recorded_at_minutes: 1 }] : []),
+      ],
+      quests: [{ id: 'quest:chapter:2', status: 'active', visibility: 'party', objectives: ['Выяснить, почему дракон ищет коменданта Гедрика Сола'], clock: { current: 0, max: 2 } }],
+    }),
+  }
+  return state
+}
+
+test('Асстохан: после признания Гедрика проекция ведёт к Аресу, а подпись видна только при двух уликах', () => {
+  const campOnly = campaignStateForViewer(astohanJournalState(), user, 'hero')
+  assert.equal(campOnly.scene.objective, 'Найти страницу журнала похода у Орена Фаля в Архиве Сломанного Клыка')
+  assert.deepEqual(campOnly.worldMemory.quests[0].objectives, ['Найти страницу журнала похода у Орена Фаля в Архиве Сломанного Клыка'])
+
+  for (const id of ['hero', 'ally']) {
+    const both = campaignStateForViewer(astohanJournalState({ journal: true }), { role: 'player', heroIds: [id] }, id)
+    assert.match(both.scene.objective, /подписанным признанием Ареса/u)
+    assert.match(JSON.stringify(both.worldMemory.quests[0].objectives), /попросить Ареса подписать признание/u)
+  }
+
+  const signed = campaignStateForViewer(astohanJournalState({ journal: true, signed: true }), user, 'hero')
+  assert.match(JSON.stringify(signed.worldMemory.quests[0].objectives), /Предъявить подписанное признание Саргату/u)
+  assert.doesNotMatch(JSON.stringify(signed.worldMemory.quests[0].objectives), /Собранные улики позволяют/u)
+
+  const privatePlayer = campaignStateForViewer(astohanJournalState({ journal: true }), { role: 'player', heroIds: ['other'] }, 'other')
+  assert.deepEqual(privatePlayer.worldMemory.quests[0].objectives, ['Выяснить, почему дракон ищет коменданта Гедрика Сола'])
+})
 
 test('служебные доказательства квеста не раскрываются в событиях игрока', () => {
   const events = [
