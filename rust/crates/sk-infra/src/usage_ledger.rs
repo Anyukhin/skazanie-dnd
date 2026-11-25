@@ -359,6 +359,10 @@ impl DurableUsageLedger {
     /// `settle(requestId, usage)`: закрыть резерв фактическим расходом.
     /// `usage = None` — аргумент не передан (`{}`).
     pub fn settle(&self, request_id: &str, usage: Option<&Value>) -> Result<Value, UsageLedgerError> {
+        self.settle_reported_model(request_id, usage, None)
+    }
+
+    fn settle_reported_model(&self, request_id: &str, usage: Option<&Value>, reported_model: Option<&str>) -> Result<Value, UsageLedgerError> {
         let _guard = self.guard();
         let id = clean_str(request_id, 160);
         let now = self.now();
@@ -375,12 +379,18 @@ impl DurableUsageLedger {
             return Err(UsageLedgerError::Type("Cannot read properties of null (reading 'input_tokens')".into()));
         }
         let normalized = normalize_provider_usage(usage, field(Some(&*entry), "estimated_tokens"));
+        let actual_model = reported_model.map(|model| clean_str(model, 160)).filter(|model| !model.is_empty() && model != "openrouter/free");
         if let Some(map) = entry.as_object_mut() {
             map.insert("status".into(), Value::String("completed".into()));
             map.insert("reserved_tokens".into(), Value::from(0));
             if let Value::Object(normalized) = normalized {
                 for (key, value) in normalized {
                     map.insert(key, value);
+                }
+            }
+            if map.get("model").and_then(Value::as_str) == Some("openrouter/free") {
+                if let Some(model) = actual_model {
+                    map.insert("reported_model".into(), Value::String(model));
                 }
             }
             map.insert("finished_at_ms".into(), Value::from(now));
@@ -668,7 +678,7 @@ impl<C: LlmClient> MeteredLLMClient<C> {
                     Some(usage) if !usage.is_null() => usage.clone(),
                     _ => json!({}),
                 };
-                match self.ledger.settle(&reservation_id, Some(&usage)) {
+                match self.ledger.settle_reported_model(&reservation_id, Some(&usage), result.get("model").and_then(Value::as_str)) {
                     Ok(_) => return Ok(result),
                     Err(error) => LlmError::from(error),
                 }

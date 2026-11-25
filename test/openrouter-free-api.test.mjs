@@ -7,7 +7,8 @@ import { createCampaign, expectStatus, registerUser, setupAdmin, startTestServer
 import { chatCompletion, startFakeProvider } from './kit/llm.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
-const freeModels = ['test/primary:free', 'test/reserve:free']
+const freeModels = ['test/primary:free', 'openrouter/free']
+const actualModel = 'test/reserve:free'
 const localModel = 'qwen-test:14b'
 const opening = {
   campaignName: 'Речной архив',
@@ -17,7 +18,7 @@ const prologue = 'Луч фонаря дрожит на арке речного 
 
 test('OpenRouter отклоняет платную конфигурацию и сохраняет порядок бесплатных моделей', () => {
   assert.deepEqual(openRouterFreeModels(), ['openrouter/free'])
-  assert.deepEqual(openRouterFreeModels(' test/primary:free , test/primary:free,test/reserve:free'), freeModels)
+  assert.deepEqual(openRouterFreeModels(' test/primary:free , test/primary:free,openrouter/free'), freeModels)
   assert.deepEqual(openRouterFreeModels('openrouter/free,test/paid'), ['openrouter/free'])
   assert.deepEqual(openRouterFreeModels('test/paid,invalid:free'), ['openrouter/free'])
   assert.throws(() => new RouterAIClient({ openRouterFree: true, model: 'test/paid' }), /бесплатной/u)
@@ -32,7 +33,7 @@ for (const rateLimited of [false, true]) {
       if (rateLimited || request.body.model === freeModels[0]) {
         return { status: 429, json: { error: { code: 429 } } }
       }
-      return chatCompletion(request.body.response_format ? opening : prologue, { model: freeModels[1] })
+      return chatCompletion(request.body.response_format ? opening : prologue, { model: actualModel })
     })
     const local = await startFakeProvider(t, (request) => chatCompletion(
       request.body.response_format ? opening : prologue, { model: localModel },
@@ -83,6 +84,8 @@ for (const rateLimited of [false, true]) {
     assert.equal(usage.provider_cost, 0)
     const ledger = JSON.parse(readFileSync(join(server.storageDir, 'engine', 'llm-usage.json'), 'utf8'))
     const model = rateLimited ? localModel : freeModels[1]
-    assert.ok(Object.values(ledger.requests).some((entry) => entry.scope === 'lore' && entry.model === model && entry.status === 'completed'))
+    const lore = Object.values(ledger.requests).find((entry) => entry.scope === 'lore' && entry.model === model && entry.status === 'completed')
+    assert.ok(lore)
+    if (!rateLimited) assert.equal(lore.reported_model, actualModel)
   })
 }

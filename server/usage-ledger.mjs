@@ -197,7 +197,7 @@ export class DurableUsageLedger {
     return structuredClone(entry)
   }
 
-  settle(requestId, usage = {}) {
+  settle(requestId, usage = {}, { reportedModel } = {}) {
     const id = clean(requestId, 160)
     const now = Number(this.now())
     const ledger = this._prune(this._read(), now)
@@ -206,10 +206,12 @@ export class DurableUsageLedger {
     if (entry.status === 'completed') return structuredClone(entry)
     if (entry.status !== 'reserved') throw new UsageLedgerError(`Usage reservation ${id} is ${entry.status}`, 'USAGE_RESERVATION_CLOSED')
     const normalized = normalizeProviderUsage(usage, entry.estimated_tokens)
+    const actualModel = clean(reportedModel, 160)
     Object.assign(entry, {
       status: 'completed',
       reserved_tokens: 0,
       ...normalized,
+      ...(entry.model === 'openrouter/free' && actualModel && actualModel !== entry.model ? { reported_model: actualModel } : {}),
       finished_at_ms: now,
     })
     atomicWrite(this.storageFile, ledger)
@@ -309,7 +311,7 @@ export class MeteredLLMClient {
     })
     try {
       const result = await this.client.complete(input, options)
-      this.ledger.settle(reservation.request_id, result.usage ?? {})
+      this.ledger.settle(reservation.request_id, result.usage ?? {}, { reportedModel: result.model })
       return result
     } catch (error) {
       // Аудит PR #131, COST-01: RouterAIClient прикладывает к ошибке
