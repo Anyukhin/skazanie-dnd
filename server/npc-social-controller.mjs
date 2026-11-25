@@ -29,6 +29,14 @@ export const NPC_ALREADY_SAID_LIMIT = 6
 /** Подряд одинаковых слов, после которых предложение считается повтором. */
 const REPEAT_WORD_RUN = 6
 
+// Три финальные правды авторской арки нельзя выдавать свободным ответом NPC:
+// они открываются только authored dialogue или подтверждённой находкой.
+const SCENARIO_TRUTH_FACT_IDS = new Set([
+  'fact:secret:scenario:astohan-dragon-hunt:ares-confession',
+  'fact:secret:scenario:astohan-dragon-hunt:stormberg-journal-page',
+  'fact:secret:scenario:astohan-dragon-hunt:camp-gedrik',
+])
+
 const NPC_SOCIAL_RESPONSE_FIELDS = new Set([
   'npc_id', 'reply', 'stance', 'disclosed_fact_ids', 'disclosed_claim_ids',
   'relationship_delta', 'promise', 'confidence',
@@ -75,6 +83,25 @@ function stableId(namespace, ...parts) {
   return `${namespace}:${digest}`
 }
 
+function authorizedScenarioTruthFactIds(state = {}) {
+  const memory = state.worldMemory ?? {}
+  const ids = new Set([
+    ...(Array.isArray(memory.knowledge_ledger) ? memory.knowledge_ledger : []).map((entry) => String(entry?.fact_id ?? '')),
+    ...(Array.isArray(memory.knowledge_revealed) ? memory.knowledge_revealed : []).map((entry) => String(entry?.fact_id ?? '')),
+    ...(Array.isArray(memory.facts) ? memory.facts : [])
+      .filter((fact) => fact?.predicate === 'discovery')
+      .map((fact) => String(fact?.supersedes_fact_id ?? '')),
+    ...Object.values(state.dialogues && typeof state.dialogues === 'object' && !Array.isArray(state.dialogues) ? state.dialogues : {})
+      .flatMap((entry) => Array.isArray(entry?.granted) ? entry.granted.map(String) : []),
+  ])
+  return new Set([...ids].filter((id) => SCENARIO_TRUTH_FACT_IDS.has(id)))
+}
+
+function scenarioTruthFactAllowed(state, factId) {
+  const id = String(factId ?? '')
+  return !SCENARIO_TRUTH_FACT_IDS.has(id) || authorizedScenarioTruthFactIds(state).has(id)
+}
+
 /**
  * Факты, которые NPC знает и может произнести. До 2026-10-10 сюда шли все
  * факты отряда, и любой собеседник пересказывал чужие находки (плейтест
@@ -84,7 +111,9 @@ function stableId(namespace, ...parts) {
  */
 function npcSpeakableFactRecords(state, profile) {
   const allowedIds = npcKnownFactIds(state, profile)
-  return (state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active' && allowedIds.has(String(fact.id)))
+  return (state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active'
+    && allowedIds.has(String(fact.id))
+    && scenarioTruthFactAllowed(state, fact.id))
 }
 
 function npcSpeakableClaimRecords(state, profile) {
@@ -605,7 +634,7 @@ export function conversationLeads(state = {}, profile = {}, message = '', social
     .map((entry) => String(entry?.npc_id ?? '')).filter(Boolean))
   const candidates = []
   for (const fact of state.worldMemory?.facts ?? []) {
-    if (fact?.predicate !== 'gm_secret' || fact.status !== 'active' || revealed.has(String(fact.id))) continue
+    if (fact?.predicate !== 'gm_secret' || fact.status !== 'active' || revealed.has(String(fact.id)) || !scenarioTruthFactAllowed(state, fact.id)) continue
     const meta = npcSecretMeta(fact)
     const topic = leadStems(`${meta.topic} ${fact.summary ?? ''}`)
     const questionScore = stemOverlap(asked, topic)

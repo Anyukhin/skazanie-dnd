@@ -279,6 +279,47 @@ fn npc_does_not_retell_finding_it_did_not_see() {
 }
 
 #[test]
+fn authored_truths_are_hidden_from_freeform_npc_until_confirmed() {
+    let ids = vec![
+        "fact:secret:scenario:astohan-dragon-hunt:ares-confession",
+        "fact:secret:scenario:astohan-dragon-hunt:stormberg-journal-page",
+        "fact:secret:scenario:astohan-dragon-hunt:camp-gedrik",
+    ];
+    let mut state = grey_pier();
+    state["social"]["npcs"].as_array_mut().unwrap().push(json!({
+        "id": "astohan-ares", "name": "Арес", "role": "король", "location": "Таверна «Сеть»",
+        "public_summary": "Король в дорожном плаще.", "voice": "Говорит сдержанно.",
+        "visibility": "party", "available": true, "known_fact_ids": [],
+    }));
+    for (index, id) in ids.iter().enumerate() {
+        state["worldMemory"]["facts"].as_array_mut().unwrap().push(json!({
+            "id": id, "subject_id": "loc:tavern", "predicate": "gm_secret",
+            "object": format!(r#"{{"topic":"поход Вулканиса правда {index}","skills":["history"],"holder":"Арес"}}"#),
+            "summary": format!("КАНОН_ТАЙНА_{index}: признание о походе Вулканиса."),
+            "visibility": "gm_only", "status": "active", "source_event_ids": [], "recorded_at_minutes": 0,
+        }));
+    }
+    let client = scripted(vec![reply_with("Обычный ответ без признания.", json!({ "disclosed_fact_ids": ids }))]);
+    let blocked = respond(&with_model(&client), json!({
+        "state": state, "playerId": "wizard", "npcId": "astohan-ares",
+        "message": "Расспросить Ареса о походе Вулканиса и правде", "turnId": "ares-freeform-blocked",
+    }));
+    let brief = untrusted_payload(&client.calls()[0], "npc_social_brief");
+    assert!(!brief["speakable_facts"].as_array().unwrap().iter().any(|fact| ids.contains(&fact["id"].as_str().unwrap_or_default())));
+    assert!(!sk_core::js::stringify(&brief).contains("КАНОН_ТАЙНА"));
+    assert_eq!(blocked["disclosed_fact_ids"], json!([]));
+
+    let mut confirmed = state;
+    confirmed["worldMemory"]["knowledge_revealed"] = json!([{ "fact_id": ids[0] }]);
+    let authorized_client = scripted(vec![reply_with("Подтверждённая правда.", json!({ "disclosed_fact_ids": [ids[0]] }))]);
+    let authorized = respond(&with_model(&authorized_client), json!({
+        "state": confirmed, "playerId": "wizard", "npcId": "astohan-ares",
+        "message": "Расспросить Ареса о походе Вулканиса и правде", "turnId": "ares-freeform-confirmed",
+    }));
+    assert_eq!(authorized["disclosed_fact_ids"], json!([ids[0]]));
+}
+
+#[test]
 fn witness_knows_the_finding() {
     let client = scripted(vec![reply_with("Знак тот я видела.", json!({}))]);
     respond(&with_model(&client), json!({ "state": grey_pier(), "playerId": "wizard", "npcId": "npc:helga", "message": "Что за знак на борту баркаса?", "turnId": "helga-mark" }));

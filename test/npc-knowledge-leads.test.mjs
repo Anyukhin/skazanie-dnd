@@ -17,6 +17,11 @@ const MARK = 'На борту баркаса выжжен знак — рыба 
 const OWNER_CLUE = 'Баркас «Чайка» ушёл к маяку той ночью без огней, и правил им чужак.'
 const PIER_CLUE = 'Под настилом пирса спрятан ящик с сетями чужаков.'
 const EMPTY_BOAT = 'Баркас пришёл пустой на рассвете, и никто не видел, кто его пригнал.'
+const FINAL_TRUTH_IDS = [
+  'fact:secret:scenario:astohan-dragon-hunt:ares-confession',
+  'fact:secret:scenario:astohan-dragon-hunt:stormberg-journal-page',
+  'fact:secret:scenario:astohan-dragon-hunt:camp-gedrik',
+]
 
 function untrustedPayload(content, section) {
   const open = `${UNTRUSTED_DATA_START}:${section}>>>`
@@ -96,6 +101,46 @@ test('NPC не знает находки отряда, которой не ви�
     state, playerId: 'wizard', npcId: 'npc:bors', message: 'Что за знак выжжен на борту баркаса?', turnId: 'bors-mark-offline',
   })
   assert.doesNotMatch(fallback.reply, /выжжен|тремя глазами/u, fallback.reply)
+})
+
+test('свободный ответ NPC не видит и не принимает три финальные правды до авторизованного раскрытия', async () => {
+  const state = greyPier()
+  state.social.npcs.push({
+    id: 'astohan-ares', name: 'Арес', role: 'король',
+    location: 'Таверна «Сеть»', public_summary: 'Король в дорожном плаще.', voice: 'Говорит сдержанно.',
+    visibility: 'party', available: true, known_fact_ids: [],
+  })
+  for (const [index, id] of FINAL_TRUTH_IDS.entries()) {
+    state.worldMemory.facts.push({
+      id,
+      subject_id: 'loc:tavern',
+      predicate: 'gm_secret',
+      object: JSON.stringify({ topic: 'поход Вулканиса правда ' + index, skills: ['history'], holder: 'Арес' }),
+      summary: 'КАНОН_ТАЙНА_' + index + ': признание о походе Вулканиса.',
+      visibility: 'gm_only',
+      status: 'active',
+      source_event_ids: [],
+      recorded_at_minutes: 0,
+    })
+  }
+
+  const llm = scriptedLlm([replyWith('Обычный ответ без признания.', { disclosed_fact_ids: FINAL_TRUTH_IDS })])
+  const blocked = await new NpcSocialController({ llmClient: llm }).respond({
+    state, playerId: 'wizard', npcId: 'astohan-ares', message: 'Расспросить Ареса о походе Вулканиса и правде', turnId: 'ares-freeform-blocked',
+  })
+  const brief = untrustedPayload(llm.calls[0].input.messages[1].content, 'npc_social_brief')
+  assert.equal(brief.speakable_facts.some((fact) => FINAL_TRUTH_IDS.includes(fact.id)), false)
+  assert.doesNotMatch(JSON.stringify(brief), /КАНОН_ТАЙНА/u)
+  assert.deepEqual(blocked.disclosed_fact_ids, [])
+
+  const confirmed = structuredClone(state)
+  confirmed.worldMemory.knowledge_revealed = [{ fact_id: FINAL_TRUTH_IDS[0] }]
+  const authorized = await new NpcSocialController({
+    llmClient: scriptedLlm([replyWith('Подтверждённая правда.', { disclosed_fact_ids: [FINAL_TRUTH_IDS[0]] })]),
+  }).respond({
+    state: confirmed, playerId: 'wizard', npcId: 'astohan-ares', message: 'Расспросить Ареса о походе Вулканиса и правде', turnId: 'ares-freeform-confirmed',
+  })
+  assert.deepEqual(authorized.disclosed_fact_ids, [FINAL_TRUTH_IDS[0]], 'ранее подтверждённая улика остаётся доступной')
 })
 
 test('находку, сделанную у него на глазах, NPC знает', async () => {

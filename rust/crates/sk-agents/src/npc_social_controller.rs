@@ -57,6 +57,14 @@ pub const NPC_ALREADY_SAID_LIMIT: usize = 6;
 /// Подряд одинаковых слов, после которых предложение считается повтором.
 const REPEAT_WORD_RUN: usize = 6;
 
+// Три финальные правды авторской арки нельзя выдавать свободным ответом NPC:
+// они открываются только authored dialogue или подтверждённой находкой.
+const SCENARIO_TRUTH_FACT_IDS: [&str; 3] = [
+    "fact:secret:scenario:astohan-dragon-hunt:ares-confession",
+    "fact:secret:scenario:astohan-dragon-hunt:stormberg-journal-page",
+    "fact:secret:scenario:astohan-dragon-hunt:camp-gedrik",
+];
+
 const STANCES: [&str; 4] = ["friendly", "neutral", "guarded", "hostile"];
 const DIRECTIONS: [&str; 2] = ["npc_to_party", "party_to_npc"];
 const NPC_SOCIAL_RESPONSE_FIELDS: [&str; 8] = ["npc_id", "reply", "stance", "disclosed_fact_ids", "disclosed_claim_ids", "relationship_delta", "promise", "confidence"];
@@ -289,6 +297,32 @@ fn world_memory(state: &Value) -> Option<&Value> {
     get(Some(state), "worldMemory")
 }
 
+fn authorized_scenario_truth_fact_ids(state: &Value) -> HashSet<String> {
+    let memory = world_memory(state);
+    let mut ids = HashSet::new();
+    for entry in arr(get(memory, "knowledge_ledger")).iter().chain(arr(get(memory, "knowledge_revealed")).iter()) {
+        ids.insert(js::string(get(Some(entry), "fact_id")));
+    }
+    for fact in arr(get(memory, "facts")) {
+        if is_str(get(Some(fact), "predicate"), "discovery") {
+            ids.insert(js::string(get(Some(fact), "supersedes_fact_id")));
+        }
+    }
+    if let Some(dialogues) = get(Some(state), "dialogues").and_then(Value::as_object) {
+        for entry in dialogues.values() {
+            for fact_id in arr(get(Some(entry), "granted")) {
+                ids.insert(js::string(Some(fact_id)));
+            }
+        }
+    }
+    ids.retain(|id| SCENARIO_TRUTH_FACT_IDS.contains(&id.as_str()));
+    ids
+}
+
+fn scenario_truth_fact_allowed(state: &Value, fact_id: &str) -> bool {
+    !SCENARIO_TRUTH_FACT_IDS.contains(&fact_id) || authorized_scenario_truth_fact_ids(state).contains(fact_id)
+}
+
 /// Факты, которые NPC знает и может произнести.
 fn npc_speakable_fact_records<'a>(state: &'a Value, profile: &Value) -> R<Vec<&'a Value>> {
     known_fact_ids_guard(state)?;
@@ -296,7 +330,8 @@ fn npc_speakable_fact_records<'a>(state: &'a Value, profile: &Value) -> R<Vec<&'
     let facts = filterable(get(world_memory(state), "facts"))?;
     let mut out = Vec::new();
     for fact in facts {
-        if is_str(deref(fact, "status")?, "active") && allowed.contains(&js::string(get(Some(fact), "id"))) {
+        let fact_id = js::string(get(Some(fact), "id"));
+        if is_str(deref(fact, "status")?, "active") && allowed.contains(&fact_id) && scenario_truth_fact_allowed(state, &fact_id) {
             out.push(fact);
         }
     }
@@ -987,6 +1022,9 @@ pub fn conversation_leads(state: &Value, profile: &Value, message: Option<&Value
     for fact in iterable(get(world_memory(state), "facts"))? {
         let fact = &fact;
         if !is_str(get(Some(fact), "predicate"), "gm_secret") || !is_str(get(Some(fact), "status"), "active") || revealed.contains(&js::string(get(Some(fact), "id"))) {
+            continue;
+        }
+        if !scenario_truth_fact_allowed(state, &js::string(get(Some(fact), "id"))) {
             continue;
         }
         let meta = npc_secret_meta(fact);
