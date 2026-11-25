@@ -394,7 +394,7 @@ async fn run_advance(core: Rc<GameCore>, step: Advance) -> Result<Value, Caught>
         if let Some(completion) = set.autonomous.settle_accepted_treaty(&campaign_id, &key, &loaded.state).await.map_err(orchestrator_failure)? {
             let completion_state = match completion.get("state").cloned() {
                 Some(state) => state,
-                None => set.autonomous.load(&campaign_id).map_err(orchestrator_failure)?.state,
+                None => set.autonomous.load(&campaign_id).map_err(orchestrator_failure)?.state.as_ref().clone(),
             };
             let completion_events = array(completion.get("events")).to_vec();
             persist_authoritative_projection(&core, &campaign_id, &completion_state, &completion_events, None, PersistOptions::default())?;
