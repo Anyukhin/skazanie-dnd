@@ -451,7 +451,7 @@ export function auditSpellAcceptance({ baseline = readSpellAcceptanceBaseline(),
   const fingerprints = Object.fromEntries([
     CATALOG_PATH, OVERRIDES_PATH, 'server/combat-spells.mjs', 'server/rules-engine.mjs',
     'data/rule_packs/dnd_5e_2014/manifest.yaml', 'server/spell-acceptance-audit.mjs',
-  ].map((path) => [path, sha256(read(path))]))
+  ].map((path) => [path, spellEvidenceTextSha256(read(path))]))
   const longstriderInspection = inspectLongstriderEvidence(longstriderEvidence, longstriderDependencyFingerprints())
   const basicIds = catalog.spells.filter(raw => canonicalCombatSpellFor(raw.id, { rulesetId: 'dnd_5e_2014' }).mechanicsSupport === 'verified').map(raw => raw.id)
   const basicInspection = inspectBasicSpellEvidence(basicEvidence, basicSpellDependencyFingerprints(), basicIds)
