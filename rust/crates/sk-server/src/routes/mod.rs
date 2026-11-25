@@ -56,7 +56,7 @@ pub fn table(extra: Vec<Route>) -> Vec<Route> {
         autonomy::routes(),
         merchants_admin::routes(),
         encounters::routes(),
-        vec![Route::pass(5483, Methods::Any, Matcher::path_template(MERCHANT_PATH), merchant_id_guard)],
+        vec![Route::pass(5544, Methods::Any, Matcher::path_template(MERCHANT_PATH), merchant_id_guard)],
         merchant_trade::routes(),
         commands::routes(),
         system_tick::routes(),
@@ -113,15 +113,13 @@ mod tests {
         for route in &routes {
             let at = |line: u32| lines.get(line as usize - 1).copied().unwrap_or("");
             let mut window = vec![at(route.line - 1), at(route.line), at(route.line + 1)];
-            // Обработчики торговца (С14 — 5456, С18.2 — 5473) проверяют общую
-            // регулярку `merchantMatch` строки 5450 (правка С14).
-            if matches!(route.line, 5489 | 5506) {
-                window.push(at(5483));
+            // GET и POST торговца используют общую регулярку `merchantMatch`.
+            if matches!(route.line, 5550 | 5567) {
+                window.push(at(5544));
             }
             let here = window[1];
-            // Модули, вынесенные из `index.mjs` (combat-lab 3959, map-import
-            // 3960): на строке — подключение, регулярка — в своём файле (С13).
-            if matches!(route.line, 3972 | 3973) {
+            // Combat lab и импорт карт сверяют регулярки в своих модулях.
+            if matches!(route.line, 4019 | 4020) {
                 assert!(here.contains("Route(req, res, requestPath)"), "строка {}: нет подключения модуля\n{here}", route.line);
                 continue;
             }
