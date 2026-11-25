@@ -52,6 +52,7 @@ test('портреты Асстохана полные, квадратные, у
   assert.deepEqual(Object.keys(NPC_PORTRAIT_CHARACTER_ASSETS).sort(), [
     'astohan-ares',
     'astohan-eldrin',
+    'astohan-gedrik',
     'astohan-ivara',
     'astohan-kaelan',
     'astohan-lomar',
@@ -77,5 +78,20 @@ test('портреты Асстохана полные, квадратные, у
     assert.ok(tuple, `${relative}: файл не зарегистрирован в data/asset-rights.json`)
     assert.equal(tuple[1], hash, `${relative}: SHA-256 разошёлся с реестром прав`)
     assert.equal(tuple[2], bytes.length, `${relative}: размер разошёлся с реестром прав`)
+  }
+})
+
+test('четыре ключевых NPC Асстохана загружаются по стабильным ID', () => {
+  const expected = {
+    'astohan-ares': '/assets/npcs/astohan/astohan-ares-v1.png',
+    'astohan-oren': '/assets/npcs/astohan/astohan-oren-v1.png',
+    'astohan-gedrik': '/assets/npcs/astohan/astohan-gedrik-v1.png',
+    'astohan-sargat': '/assets/npcs/astohan/astohan-sargat-v1.png',
+  }
+  for (const [id, url] of Object.entries(expected)) {
+    assert.equal(NPC_PORTRAIT_CHARACTER_ASSETS[id], url, id)
+    const file = new URL(`../public${url}`, import.meta.url)
+    assert.equal(existsSync(file), true, `${id}: файла нет`)
+    assert.deepEqual(pngDimensions(readFileSync(file)), { width: 512, height: 512 }, `${id}: размер`)
   }
 })

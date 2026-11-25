@@ -223,7 +223,7 @@ pub fn wait_target_from_text(value: Option<&Value>) -> Option<WaitTarget> {
     wait_targets().into_iter().find(|(_, pattern)| text::test(pattern, &text)).map(|(target, _)| target)
 }
 
-fn intent_patterns() -> [(&'static str, &'static Regex); 17] {
+fn intent_patterns() -> [(&'static str, &'static Regex); 19] {
     let [impossible, bounded, corpse] = free_action_patterns();
     [
         ("why", jre!(r"^\s*\/why\b", "i")),
@@ -261,6 +261,8 @@ fn intent_patterns() -> [(&'static str, &'static Regex); 17] {
                 "iu"
             ),
         ),
+        ("social", jre!(concat!(w!(), r"(спрос|расспрос|показ|предъяв)\p{L}*"), "iu")),
+        ("ability_check", jre!(concat!(w!(), r"(искать|поиск)\s+(?:\p{L}+\s+)?(?:след|улик|тайник|ловушк|подсказ|зацепк)"), "iu")),
         ("explore", jre!(concat!(w!(), "(осматр|исслед|иду|двига|открыва|ищу|слуша)"), "iu")),
     ]
 }

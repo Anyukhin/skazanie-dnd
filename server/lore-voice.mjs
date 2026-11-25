@@ -109,7 +109,7 @@ export class LoreVoice {
         temperature: 0.5,
         maxTokens: 600,
         role: 'lore_keeper',
-      }, { timeoutMs: this.timeoutMs })
+      }, { timeoutMs: this.timeoutMs, usageRole: 'lore_keeper' })
       const answer = String(result?.answer ?? '').replace(/\s+/gu, ' ').trim()
       if (!verifyLoreAnswer(answer, material, { location, hero }).valid) return null
       return { narration: answer, prompt_version: LORE_KEEPER_PROMPT_VERSION }

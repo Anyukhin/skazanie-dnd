@@ -53,6 +53,7 @@ import {
   buildEpilogueNarrationBrief,
   campaignCanAdvanceArc,
   campaignCanAutoComplete,
+  treatyEndsAdventure,
 } from './campaign-lifecycle.mjs'
 import { questTitleFromObjective } from './scene-memory.mjs'
 import { SCENE_REQUIREMENT_KINDS } from './scene-requirements.mjs'
@@ -88,7 +89,7 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
-import { DISCOVERY_SKILLS, corpseClueCommand, freeActionDiscoveryCommands, freeActionSurfaceCommands, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, corpseClueCommand, freeActionDiscoveryCommands, freeActionSurfaceCommands, narratorFailureDetailFor, thoroughSearchOutcome } from './world-memory.mjs'
 import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { sceneHazardNarration } from './scene-hazard-narration.mjs'
@@ -655,20 +656,14 @@ export class AutonomousCampaignOrchestrator {
   async completeCampaignIfReady(campaignId, idempotencyKey) {
     const loaded = await this.load(campaignId)
     if (!campaignCanAutoComplete(loaded.state)) return null
-    // Развязку сценария выбрал исход боя; её авторский текст идёт первым, а
-    // рассказчику — фактом брифа: переписать слова он может, исход — нет.
+    // У авторской развязки есть готовый эпилог. Модель пишет финал лишь
+    // для кампаний без заданного автором текста.
     const ending = scenarioEnding(loaded.state)
-    const fallback = ending
-      ? `${ending.epilogue} ${buildDeterministicEpilogue(loaded.state)}`.slice(0, 8_000)
-      : buildDeterministicEpilogue(loaded.state)
-    let epilogue = fallback
+    let epilogue = ending?.epilogue || buildDeterministicEpilogue(loaded.state)
     let provider = 'deterministic'
-    if (this.narrator) {
+    if (!ending?.epilogue && this.narrator) {
       const brief = buildEpilogueNarrationBrief(loaded.state)
-      const rendered = await this.narrator.render(ending ? {
-        ...brief,
-        visible_events: [{ event_type: 'CampaignEndingReached', payload: { title: ending.title, outcome: ending.outcome, summary: ending.epilogue } }, ...(brief.visible_events ?? [])],
-      } : brief, {
+      const rendered = await this.narrator.render(brief, {
         style: 'Связный русский эпилог в 3–5 предложениях: эмоциональная развязка без новых фактов и решений за героев.',
       })
       if (rendered.provider && !String(rendered.provider).startsWith('deterministic') && rendered.narration) {
@@ -708,6 +703,27 @@ export class AutonomousCampaignOrchestrator {
       epilogue,
     }])
     return { ...committed, epilogue_provider: provider }
+  }
+
+  /**
+   * Закрывает договор, если процесс остановился сразу после его коммита.
+   * Player-facing orchestration вызывает этот метод до разбора следующего
+   * действия, поэтому активное сохранение не успевает породить новую встречу.
+   */
+  async settleAcceptedTreaty(campaignId, idempotencyKey, state = null) {
+    const current = state ?? (await this.load(campaignId)).state
+    if (current?.mechanics?.campaign_lifecycle?.status !== 'active') return null
+    if (!treatyEndsAdventure(current)) return null
+    let encounterCompletion = null
+    if (current.mechanics?.combat?.active) {
+      encounterCompletion = await this.completeEncounter({
+        campaignId,
+        outcome: 'parley',
+        idempotencyKey: `${idempotencyKey}:treaty-encounter`,
+      })
+      if (encounterCompletion?.state?.mechanics?.campaign_lifecycle?.status === 'completed') return encounterCompletion
+    }
+    return await this.completeCampaignIfReady(campaignId, `${idempotencyKey}:treaty-completion`) ?? encounterCompletion
   }
 
   async recordIntent(campaignId, intent, idempotencyKey, authorization = null, proofFactIds = []) {
@@ -759,6 +775,24 @@ export class AutonomousCampaignOrchestrator {
     }
     const existingIntentCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:intent`)
     let loaded = await this.load(campaignId)
+    // Восстановление после остановки между договором и шагом Директора:
+    // сначала закрываем авторское приключение, затем читаем новое намерение.
+    if (loaded.state?.mechanics?.campaign_lifecycle?.status === 'active'
+      && treatyEndsAdventure(loaded.state)) {
+      const completion = await this.settleAcceptedTreaty(campaignId, key, loaded.state)
+      if (completion) {
+        loaded = await this.load(campaignId)
+        return {
+          intent: proposed,
+          authorization: { policy: 'director-intent-policy-v1', reason: 'campaign_completion_recovery', replaced: false },
+          results: [completion],
+          state: loaded.state,
+          state_version: loaded.state_version,
+          admin_commands: 0,
+          recovered_completion: true,
+        }
+      }
+    }
     const existingIntentRecord = existingIntentCommit?.events?.find((entry) => entry.event_type === 'DirectorIntentRecorded')?.payload
     const existingIntent = existingIntentRecord?.intent
     const existingOutcomeCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:director-outcome`)
@@ -2158,9 +2192,7 @@ export class AutonomousCampaignOrchestrator {
     const heroName = String(findActor(loaded.state, actorId)?.character || 'Герой')
     const outcomeDetail = inCombat ? '' : succeeded
       ? (passageRefused || discoverySkill ? '' : String(reading.success_detail ?? ''))
-      : thorough
-        ? thoroughSearchDetail(thorough, heroName)
-        : String(reading.failure_detail ?? '')
+      : narratorFailureDetailFor({ skill: reading.skill, thorough, detail: reading.failure_detail, heroName })
     return {
       context_metadata: actionContextMetadata,
       kind: succeeded ? 'check_success' : 'check_failure',

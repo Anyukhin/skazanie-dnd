@@ -140,6 +140,23 @@ fn thorough_search_finds_hidden_outside_combat() {
 }
 
 #[test]
+fn failed_discovery_detail_is_not_narrator_input() {
+    let secret = "Засов ворот снят изнутри, а не выбит; следы когтей начинаются уже за стенами. Дракона впустил кто-то из своих.";
+    let failed = vec![json!({
+        "event_type": "AbilityCheckResolved",
+        "payload": { "success": false, "skill": "survival" },
+    })];
+
+    assert!(has_failed_discovery_check(&failed));
+    assert_eq!(narrator_failure_detail_for("survival", None, secret, None), "");
+    assert_eq!(narrator_failure_detail_for("athletics", None, secret, None), secret);
+    assert!(!has_failed_discovery_check(&[json!({
+        "event_type": "AbilityCheckResolved",
+        "payload": { "success": false, "skill": "athletics" },
+    })]));
+}
+
+#[test]
 fn insight_reads_the_holder_without_revealing_the_secret() {
     let mut state = gm_secrets_state();
     state["scene_npcs"] = json!([{ "id": "klara", "name": "Клара Вельм", "location_id": "mytar", "alive": true }, { "id": "tom", "name": "Том Рыбак", "location_id": "mytar", "alive": true }]);

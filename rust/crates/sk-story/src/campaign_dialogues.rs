@@ -81,6 +81,7 @@ pub struct DialogueAction {
     pub catalog_id: Option<String>,
     pub informant_id: Option<String>,
     pub choice: Option<String>,
+    pub proof: Option<String>,
 }
 
 impl DialogueAction {
@@ -93,6 +94,9 @@ impl DialogueAction {
         if let Some(informant_id) = &self.informant_id {
             map.insert("informant_id".into(), Value::String(informant_id.clone()));
             map.insert("choice".into(), Value::String(self.choice.clone().unwrap_or_default()));
+        }
+        if let Some(proof) = &self.proof {
+            map.insert("proof".into(), Value::String(proof.clone()));
         }
         Value::Object(map)
     }
@@ -159,9 +163,13 @@ impl Dialogue {
 /// Бросает ли команда проверку сама: тогда вариант задаёт навык, а исход — её
 /// бросок. Упокоение рыцаря, договор и перевербовка осведомителя.
 pub fn dialogue_action_checks(action: &DialogueAction) -> bool {
-    action.command_type == "ReleaseCursedKnight"
-        || action.command_type == "NegotiateScenarioTreaty"
-        || (action.command_type == "ResolveScenarioInformant" && action.choice.as_deref() == Some("turn"))
+    dialogue_action_uses_check(&action.command_type, action.choice.as_deref(), action.proof.as_deref())
+}
+
+pub fn dialogue_action_uses_check(command: &str, choice: Option<&str>, proof: Option<&str>) -> bool {
+    command == "ReleaseCursedKnight"
+        || (command == "NegotiateScenarioTreaty" && proof != Some("ares-signed-confession"))
+        || (command == "ResolveScenarioInformant" && choice == Some("turn"))
 }
 
 /// `String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)`.
@@ -280,11 +288,19 @@ fn option(raw: Option<&Value>, place: &str) -> Result<DialogueOption, String> {
         if informant && (!id_ok(&informant_id) || !INFORMANT_CHOICES.contains(&choice.as_str())) {
             return invalid(format!("{place}.{id}: осведомитель «{informant_id}» и решение «{choice}»"));
         }
+        let proof = if command_type == "NegotiateScenarioTreaty" {
+            let proof = clean(field(action_raw, "proof"), 80);
+            if !proof.is_empty() && proof != "ares-signed-confession" {
+                return invalid(format!("{place}.{id}: доказательство «{proof}»"));
+            }
+            (!proof.is_empty()).then_some(proof)
+        } else { None };
         let built = DialogueAction {
             command_type: command_type.clone(),
             catalog_id: (!catalog_id.is_empty()).then_some(catalog_id),
             choice: (!informant_id.is_empty()).then_some(choice),
             informant_id: (!informant_id.is_empty()).then_some(informant_id),
+            proof,
         };
         if dialogue_action_checks(&built) && check.is_none() {
             return invalid(format!("{place}.{id}: команда «{command_type}» бросает проверку — нужен check с навыком"));
@@ -646,7 +662,8 @@ fn dialogue_action_open(state: &Value, item: &DialogueOption, hero: &str, progre
         {
             return false;
         }
-        return !strings_include(prop(prop(attention, "treaty"), "attempts"), hero);
+        return action.and_then(|action| action.proof.as_deref()) == Some("ares-signed-confession")
+            || !strings_include(prop(prop(attention, "treaty"), "attempts"), hero);
     }
     // Кошель и вещь оружейной — раз на героя, каким бы путём он их ни взял:
     // фразой, другим вариантом или этим.
@@ -682,8 +699,9 @@ pub fn dialogue_options_for(state: &Value, npc_id: Option<&Value>, hero_id: Opti
             !(!item.group.is_empty()
                 && dialogue.options.iter().any(|other| other.group == item.group && other.id != item.id && chosen_by_hero(&other.id)))
         })
-        // Рассказанное второй раз не спрашивают: тайну успеха отряд уже знает.
-        .filter(|item| !fact_known_to_party(state, &dialogue_outcome_fact_id(state, &item.success)))
+        // Разовый вариант может закрепить новое действие, когда рассказ уже известен.
+        .filter(|item| item.success.sets.iter().any(|flag| item.requires.flags_none.contains(flag))
+            || !fact_known_to_party(state, &dialogue_outcome_fact_id(state, &item.success)))
         .filter(|item| item.action.is_none() || dialogue_action_open(state, item, &hero, &progress))
         .map(|item| {
             let mut entry = Map::new();

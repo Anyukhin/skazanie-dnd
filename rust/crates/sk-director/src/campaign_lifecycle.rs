@@ -568,6 +568,27 @@ pub fn build_deterministic_epilogue(state: &Value, outcome_or_options: Option<&V
     head16(&joined.join(" "), 8_000)
 }
 
+/// Договор закрывает авторское приключение; постоянный мир продолжает игру.
+pub fn treaty_ends_adventure(state: &Value) -> bool {
+    state["scenario_attention"]["treaty"]["concluded"].as_bool() == Some(true)
+        && campaign_mode_for(state) != "persistent"
+        && campaign_scenario(state).is_some()
+}
+
+/// Авторский эпилог уже сохранённого исхода, выводимый в игровой комнате.
+pub fn authored_completed_epilogue(state: &Value) -> Option<String> {
+    let lifecycle = get(Some(state), &["mechanics", "campaign_lifecycle"])?;
+    if !matches!(lifecycle.get("status").and_then(Value::as_str), Some("completed" | "archived")) {
+        return None;
+    }
+    let ending_id = get(Some(lifecycle), &["ending", "id"])?.as_str()?;
+    let ending = scenario_ending(state)?;
+    if ending.get("id").and_then(Value::as_str) != Some(ending_id) {
+        return None;
+    }
+    ending.get("epilogue").and_then(Value::as_str).filter(|text| !text.is_empty()).map(str::to_string)
+}
+
 /// `campaignCanAutoComplete(state)`: кульминация с разрешённой главной нитью
 /// (или развязка сценария) — кампания может закончиться сама.
 pub fn campaign_can_auto_complete(state: &Value) -> DirectorResult<bool> {

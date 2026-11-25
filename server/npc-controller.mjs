@@ -103,7 +103,7 @@ export class NpcMoraleAgent {
         ],
         temperature: 0.65,
         maxTokens: 300,
-      })
+      }, { usageRole: 'npc_morale' })
       const decision = normalizeDecision(result, fallback, actorId(enemy))
       // Модель не может сдать главного противника в плен: сломленный, он улетает.
       if (decision.disposition === 'surrender' && scenarioBossMorale(state, actorId(enemy))) decision.disposition = 'flee'

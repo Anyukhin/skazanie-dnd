@@ -6,6 +6,10 @@ import { projectVisibleState, redactTrace as redactSecurityTrace } from './secur
 const SECRET_KEY = /(api[_-]?key|authorization|cookie|password|passwd|secret|session|token|environment|env)/i
 const SAFE_ID = /^[A-Za-z0-9._-]{1,120}$/
 
+function normalizedTraceKey(key) {
+  return String(key).replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/[-\s]+/g, '_').toLowerCase()
+}
+
 function safeId(value, label) {
   const id = String(value || '')
   if (!SAFE_ID.test(id)) throw new TypeError(`Некорректный ${label}`)
@@ -14,7 +18,9 @@ function safeId(value, label) {
 
 export function redactTrace(value, key = '', seen = new WeakSet()) {
   if (key === '') value = redactSecurityTrace(value)
-  if (SECRET_KEY.test(key)) return '[REDACTED]'
+  const normalizedKey = normalizedTraceKey(key)
+  if (normalizedKey === 'token_usage') return value
+  if (SECRET_KEY.test(normalizedKey)) return '[REDACTED]'
   if (typeof value === 'string') {
     return value
       .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [REDACTED]')

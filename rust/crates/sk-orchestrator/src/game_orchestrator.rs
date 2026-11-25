@@ -45,11 +45,12 @@ use sk_agents::player_request_router::{answer_known_lore, answer_table_question,
 use sk_core::fancy_regex;
 use sk_core::indexmap::IndexMap;
 use sk_core::{hash, js, re, text, RuleError};
+use sk_director::campaign_lifecycle::treaty_ends_adventure;
 use sk_economy::merchant_economy::currency_to_copper;
 use sk_encounters::agent_context::{agent_context_metadata, campaign_concept_for_agent, hero_card_for_agent, npc_known_by_name, scene_context_for_agent, AgentContextOptions};
 use sk_infra::roll_registry::RollRegistry;
 use sk_items::pickpocket::{pickpocket_difficulty_for, PICKPOCKET_ABILITY, PICKPOCKET_POLICY_ID, PICKPOCKET_SKILL};
-use sk_memory::world_memory::{free_action_discovery_commands, free_action_surface_commands, retrieve_world_memory, thorough_search_detail, thorough_search_outcome, DISCOVERY_SKILLS};
+use sk_memory::world_memory::{free_action_discovery_commands, free_action_surface_commands, has_failed_discovery_check, narrator_failure_detail_for, retrieve_world_memory, thorough_search_outcome, DISCOVERY_SKILLS};
 use sk_narration::combat_narration::{combat_narration, damage_type_label, COMBAT_NARRATOR};
 use sk_narration_base::clarification_registry::{ClarificationRegistry, ClarificationRegistryOptions};
 use sk_narration_base::deterministic_narration::{deterministic_narrator_for, render_deterministic_narration, DeterministicNarrator};
@@ -291,6 +292,10 @@ pub trait UnknownActionHandler {
     /// `unknownActionHandler.actionAdjudicator`: судья, которым читаются
     /// детали прямой проверки навыка.
     fn action_adjudicator(&self) -> Option<Arc<dyn FreeActionReader>>;
+    /// Записывает последствия принятого договора до передачи следующего хода.
+    fn settle_accepted_treaty<'a>(&'a self, _campaign_id: &'a str, _key: &'a str, _state: &'a Value) -> AgentFuture<'a, OrchestratorResult<Option<Value>>> {
+        Box::pin(async { Ok(None) })
+    }
 }
 
 impl UnknownActionHandler for AutonomousCampaignOrchestrator {
@@ -300,6 +305,10 @@ impl UnknownActionHandler for AutonomousCampaignOrchestrator {
 
     fn action_adjudicator(&self) -> Option<Arc<dyn FreeActionReader>> {
         self.action_adjudicator.clone()
+    }
+
+    fn settle_accepted_treaty<'a>(&'a self, campaign_id: &'a str, key: &'a str, state: &'a Value) -> AgentFuture<'a, OrchestratorResult<Option<Value>>> {
+        Box::pin(AutonomousCampaignOrchestrator::settle_accepted_treaty(self, campaign_id, key, state))
     }
 }
 
@@ -570,6 +579,11 @@ fn narration_scenario_context(state: &Value) -> Option<Value> {
 
 fn empty_effects() -> Value {
     json!({ "roll": null, "reveal": [], "spawn": [], "objective": null, "grantItems": [] })
+}
+
+fn pending_treaty_epilogue(state: &Value) -> bool {
+    is_str(at(Some(state), &["mechanics", "campaign_lifecycle", "status"]), "active")
+        && treaty_ends_adventure(state)
 }
 
 pub const DIALOGUE_RESPONSE_PLAN_VERSION: &str = "dialogue-response-plan/v1";
@@ -2906,6 +2920,12 @@ impl GameOrchestrator {
         let committed_events: Vec<Value> = list(free_action.get("events")).to_vec();
         let shared = shared_narration_events(&committed_events, &state);
         let public_events: Vec<Value> = mechanics_for_viewer(Some(&Value::Array(shared)), Some(&json!({ "isPartyMember": true })), Some(&str_value(player_id)), Some(&state)).map_err(projection_error)?.and_then(|value| value.as_array().cloned()).unwrap_or_default();
+        let unverified_discovery_failure = has_failed_discovery_check(&public_events);
+        let narration_free_action = if unverified_discovery_failure {
+            with(&free_action, json!({ "outcome_detail": "" }))
+        } else {
+            free_action.clone()
+        };
         let mut constraints: Vec<Value> = list(plan.get("narration_constraints")).to_vec();
         if no_world_change_constraint(plan) {
             constraints.push(str_value("no-unconfirmed-world-changes"));
@@ -2926,8 +2946,8 @@ impl GameOrchestrator {
         if js::is_true(intent.get("roleplay_speech")) {
             set(&mut player_intent, "roleplay_speech", Value::Bool(true));
         }
-        if js::truthy(free_action.get("outcome_detail")) {
-            set(&mut player_intent, "outcome_detail", str_value(text::head(&js::string(free_action.get("outcome_detail")), 300)));
+        if js::truthy(narration_free_action.get("outcome_detail")) {
+            set(&mut player_intent, "outcome_detail", str_value(text::head(&js::string(narration_free_action.get("outcome_detail")), 300)));
         }
         if js::truthy(free_action.get("thorough_search")) {
             set(&mut player_intent, "thorough_search", str_value(js::string(free_action.get("thorough_search"))));
@@ -2956,7 +2976,7 @@ impl GameOrchestrator {
         let activity = get(reading, "activity_kind");
         let hero_deed = played_kind(&kind) && !in_combat && !(is_str(activity, "stealth") && kind != "check_failure");
         let social_target = (is_str(activity, "social") && js::truthy(get(reading, "target_id")) && (kind == "check_success" || kind == "check_failure")).then(|| SocialTarget { npc_id: get(reading, "target_id").cloned().unwrap_or(Value::Null), success: Some(kind == "check_success") });
-        let mut details = vec![js::s(free_action.get("outcome_detail"))];
+        let mut details = vec![js::s(narration_free_action.get("outcome_detail"))];
         details.extend(discovery_detail_texts(&public_events));
         let reactions = with_detail_reactions(narration_npc_reactions(list(story_context.get("present_npcs")), &public_events, hero_deed, social_target.as_ref()), &details);
         let brief = build_narration_brief(Some(&json!({
@@ -2968,7 +2988,7 @@ impl GameOrchestrator {
             "viewer": viewer,
         })))
         .map_err(security_error)?;
-        let candidate_narration = text::trim(&js::s(free_action.get("narration"))).to_string();
+        let candidate_narration = text::trim(&js::s(narration_free_action.get("narration"))).to_string();
         let mut rendered_narration = String::new();
         let mut rendered_provider = String::new();
         let mut rendered_verification: Option<Value> = None;
@@ -2982,6 +3002,7 @@ impl GameOrchestrator {
             && (!is_str(get(reading, "source"), "deterministic-trivial") || roleplay_speech)
             && played_kind(&kind)
             && !committed_events.is_empty()
+            && !unverified_discovery_failure
             && self.narrator.is_some();
         if narrate_committed_improvisation {
             let render_started = self.now_ms();
@@ -3002,10 +3023,16 @@ impl GameOrchestrator {
             rendered_elapsed_ms = (self.now_ms() - render_started).max(0);
         }
         let narration_state = campaign_state_for_viewer(Some(&state), Some(viewer), Some(&str_value(player_id))).map_err(projection_error)?.unwrap_or_else(|| json!({}));
-        let deterministic_text = deterministic_free_action_narration(&free_action, message, &public_events, &narration_state, unconfirmed_passage, roleplay_speech)?;
+        let deterministic_text = deterministic_free_action_narration(&narration_free_action, message, &public_events, &narration_state, unconfirmed_passage, roleplay_speech)?;
         let deterministic_provider = text::test(re!(r"^deterministic(?:-|$)", "u"), &rendered_provider);
         let first_nonempty = |options: [&String; 3]| options.into_iter().find(|text| !text.is_empty()).cloned().unwrap_or_default();
-        let preferred = if deterministic_provider || unconfirmed_passage { first_nonempty([&deterministic_text, &candidate_narration, &rendered_narration]) } else { first_nonempty([&rendered_narration, &candidate_narration, &deterministic_text]) };
+        let preferred = if unverified_discovery_failure {
+            deterministic_text.clone()
+        } else if deterministic_provider || unconfirmed_passage {
+            first_nonempty([&deterministic_text, &candidate_narration, &rendered_narration])
+        } else {
+            first_nonempty([&rendered_narration, &candidate_narration, &deterministic_text])
+        };
         let candidate_verification = verify_text(&preferred, &brief, &[])?;
         let mut grounded_parts = free_action_effect_text(&public_events, &narration_state)?;
         grounded_parts.push(free_action_time_text(&public_events));
@@ -3024,7 +3051,7 @@ impl GameOrchestrator {
         if played_kind(&kind) {
             fallbacks.push(deterministic_text.clone());
             if !roleplay_speech {
-                fallbacks.push(free_action_unchanged_scene_narration(&free_action, message, &public_events, &narration_state));
+                fallbacks.push(free_action_unchanged_scene_narration(&narration_free_action, message, &public_events, &narration_state));
             }
         }
         let mut verified_fallback = String::new();
@@ -3729,6 +3756,33 @@ impl GameOrchestrator {
             return Ok(response);
         }
         let (authoritative_state, _) = self.load_state(&campaign_id)?;
+        // Договор или завершившаяся кульминация могли остаться в активном
+        // сохранении, если процесс остановился между player commit и шагом
+        // Директора. Закрываем хвост до разбора новой заявки.
+        if pending_treaty_epilogue(&authoritative_state) {
+            if let Some(completion) = self.unknown_action_handler.settle_accepted_treaty(&campaign_id, &idempotency_key, &authoritative_state).await? {
+                let events = list(completion.get("events")).to_vec();
+                let epilogue = events.iter().find(|event| is_str(event.get("event_type"), "CampaignCompleted"))
+                    .and_then(|event| at(Some(event), &["payload", "epilogue"]))
+                    .cloned()
+                    .unwrap_or_else(|| str_value("Кампания завершена."));
+                return Ok(json!({
+                    "narration": epilogue,
+                    "effects": events_to_client_effects(&events, &[]),
+                    "provider": "deterministic-campaign-completion",
+                    "model": "deterministic",
+                    "turn_id": turn_id,
+                    "engine_mode": "enforce",
+                    "state_version": completion.get("state_version"),
+                    "mechanics": events,
+                    "visible_state_changes": visible_changes(&events),
+                    "authoritative_state": completion.get("state"),
+                    "verification": { "valid": true, "violations": [], "origin": { "source": "template", "reason": "campaign_completion" } },
+                    "turn_consumed": false,
+                    "idempotent_replay": js::is_true(completion.get("duplicate")),
+                }));
+            }
+        }
         if request_kind != "action" {
             if let Some(pending) = &pending_clarification {
                 if js::number(pending.get("state_version")) != js::number(authoritative_state.get("state_version")) {
@@ -4342,6 +4396,7 @@ impl GameOrchestrator {
         }
 
         let mut social_base_state = authoritative_state.clone();
+        let mut social_token_usage = None;
         let mut preceding_events: Vec<Value> = Vec::new();
         let mut preceding_rolls: Vec<Value> = Vec::new();
         let mut preceding_commands: Vec<Value> = Vec::new();
@@ -4391,6 +4446,7 @@ impl GameOrchestrator {
                     "justSeen": js::s(input.field("precedingStep")),
                 });
                 let social_turn = controller.respond(&request).await?.filter(|turn| js::truthy(Some(turn))).ok_or_else(|| OrchestratorError::plain("NPC is no longer available for this social turn"))?;
+                social_token_usage = social_turn.get("token_usage").cloned();
                 set(&mut rules_context, "isSocialController", Value::Bool(true));
                 set(&mut rules_context, "socialCheckOutcome", check_outcome.clone());
                 let social_command = obj(vec![
@@ -4483,6 +4539,22 @@ impl GameOrchestrator {
         let brief_span = sk_store::perf::span("orch.post_commit_brief");
         let check_command = plan_check.filter(|command| social_request.is_none() && is_str(command.get("command_type"), "MakeAbilityCheck"));
         committed = self.commit_check_discovery(&campaign_id, &idempotency_key, committed, &message, &rules_context, check_command.as_ref()).await?;
+        let committed_before_completion = committed.get("state").cloned().unwrap_or(Value::Null);
+        if pending_treaty_epilogue(&committed_before_completion) {
+            if let Some(completion) = self.unknown_action_handler.settle_accepted_treaty(&campaign_id, &idempotency_key, &committed_before_completion).await? {
+                let committed_version = js::number(committed.get("state_version"));
+                let completion_version = js::number(completion.get("state_version"));
+                if completion.get("state").is_some() && completion_version > committed_version {
+                    let mut events = list(committed.get("events")).to_vec();
+                    events.extend(list(completion.get("events")).iter().cloned());
+                    committed = with(&committed, obj(vec![
+                        ("state", completion.get("state").cloned()),
+                        ("state_version", completion.get("state_version").cloned()),
+                        ("events", Some(Value::Array(events))),
+                    ]));
+                }
+            }
+        }
         let main_events = match nullish(committed.get("events"), None) {
             Some(events) => list(Some(events)).to_vec(),
             None => list(engine_result.get("events")).to_vec(),
@@ -4548,7 +4620,10 @@ impl GameOrchestrator {
             },
             _ => None,
         };
-        let stored_social = npc_conversation_narration(&committed_events, &committed_state);
+        let mut stored_social = npc_conversation_narration(&committed_events, &committed_state);
+        if let (Some(social), Some(usage)) = (stored_social.as_mut(), social_token_usage) {
+            set(social, "token_usage", usage);
+        }
         let private_social = committed_events.iter().any(|event| is_str(event.get("event_type"), "NpcConversationRecorded") && is_str(event.get("visibility"), "specific_player"));
         let resolver = actor_name_resolver(&committed_state);
         let explicit_combat_maneuver = maneuver;
@@ -4562,7 +4637,10 @@ impl GameOrchestrator {
             (None, Some(social)) => social.clone(),
             (None, None) => deterministic_replay_narration(&brief, &resolved_rule_ids, &resolver)?,
         };
-        let structured_mechanics = (input.field("commands").is_some_and(Value::is_array) || maneuver) && deterministic_narrator.is_none();
+        // Проваленная проверка навыка поиска не даёт модели права превращать
+        // неподтверждённый `failure_detail` в сюжетную улику.
+        let unverified_discovery_failure = has_failed_discovery_check(&committed_events);
+        let structured_mechanics = (input.field("commands").is_some_and(Value::is_array) || maneuver || unverified_discovery_failure) && deterministic_narrator.is_none();
         let streams_model = !idempotent_replay && deterministic_response.is_none() && stored_social.is_none() && !structured_mechanics;
         let state_version_payload = json!({ "stateVersion": committed.get("state_version").cloned().unwrap_or(Value::Null) });
         if streams_model {
@@ -4719,10 +4797,8 @@ impl GameOrchestrator {
             } else {
                 details.success_detail.clone()
             }
-        } else if let Some(thorough) = &thorough {
-            thorough_search_detail(Some(thorough), Some(&str_value(hero_name)))
         } else {
-            details.failure_detail.clone()
+            narrator_failure_detail_for(&skill, thorough.as_ref(), &details.failure_detail, Some(&str_value(hero_name)))
         };
         let mut committed = committed;
         if !outcome_detail.is_empty() {

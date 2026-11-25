@@ -45,13 +45,13 @@ use sk_character::encounter_rewards::{
 use sk_combat_content::scene_hazard_narration::scene_hazard_narration;
 use sk_core::indexmap::IndexMap;
 use sk_core::{clock, game, hash, js, re, text, v8sort, RuleError};
-use sk_director::campaign_lifecycle::{build_deterministic_epilogue, build_epilogue_narration_brief, campaign_can_advance_arc, campaign_can_auto_complete};
+use sk_director::campaign_lifecycle::{build_deterministic_epilogue, build_epilogue_narration_brief, campaign_can_advance_arc, campaign_can_auto_complete, treaty_ends_adventure};
 use sk_director::scene_memory::quest_title_from_objective;
 use sk_encounters::agent_context::{agent_context_metadata, AgentContextOptions};
 use sk_infra::roll_registry::RollRegistry;
 use sk_items::loot_tables::ENCOUNTER_LOOT_POLICY_ID;
 use sk_memory::party_decision::party_decision_opened_event;
-use sk_memory::world_memory::{corpse_clue_command, free_action_discovery_commands, free_action_surface_commands, quest_progress_evidence_for, thorough_search_detail, thorough_search_outcome, DISCOVERY_SKILLS};
+use sk_memory::world_memory::{corpse_clue_command, free_action_discovery_commands, free_action_surface_commands, narrator_failure_detail_for, quest_progress_evidence_for, thorough_search_outcome, DISCOVERY_SKILLS};
 use sk_narration::combat_narration::encounter_end_text;
 use sk_rules::context::Context;
 use sk_rules::core::incapacitating_condition_for;
@@ -1475,33 +1475,13 @@ impl AutonomousCampaignOrchestrator {
         if !campaign_can_auto_complete(state)? {
             return Ok(None);
         }
-        // Развязку сценария выбрал исход боя; её авторский текст идёт первым.
+        // У авторской развязки есть готовый эпилог.
         let ending = scenario_ending(state);
-        let deterministic = build_deterministic_epilogue(state, None);
-        let fallback = match &ending {
-            Some(ending) => text::head(&format!("{} {deterministic}", js::string(ending.get("epilogue"))), 8_000),
-            None => deterministic,
-        };
-        let mut epilogue = str_value(fallback);
+        let authored = ending.as_ref().and_then(|ending| ending.get("epilogue")).and_then(Value::as_str).filter(|text| !text.is_empty());
+        let mut epilogue = str_value(authored.map(str::to_string).unwrap_or_else(|| build_deterministic_epilogue(state, None)));
         let mut provider = str_value("deterministic");
-        if let Some(narrator) = &self.narrator {
+        if let Some(narrator) = self.narrator.as_ref().filter(|_| authored.is_none()) {
             let brief = build_epilogue_narration_brief(state, None)?;
-            let brief = match &ending {
-                Some(ending) => {
-                    let mut visible = vec![json!({ "event_type": "CampaignEndingReached", "payload": {
-                        "title": ending.get("title").cloned().unwrap_or(Value::Null),
-                        "outcome": ending.get("outcome").cloned().unwrap_or(Value::Null),
-                        "summary": ending.get("epilogue").cloned().unwrap_or(Value::Null),
-                    } })];
-                    match nullish(brief.get("visible_events"), None) {
-                        Some(Value::Array(items)) => visible.extend(items.iter().cloned()),
-                        Some(other) => visible.push(other.clone()),
-                        None => {}
-                    }
-                    with_field(&brief, "visible_events", Value::Array(visible))
-                }
-                None => brief,
-            };
             let options = json!({ "style": "Связный русский эпилог в 3–5 предложениях: эмоциональная развязка без новых фактов и решений за героев." });
             let rendered = narrator.render(&brief, &options).await?;
             let rendered_provider = rendered.get("provider");
@@ -1550,6 +1530,23 @@ impl AutonomousCampaignOrchestrator {
             &[json!({ "command_type": "CompleteCampaign", "reason": "main_thread_resolved_at_climax", "occurred_at": self.now_iso(), "epilogue": epilogue })],
         )?;
         Ok(Some(js::spread(&committed, json!({ "epilogue_provider": provider }))))
+    }
+
+    /// Договор в бою сначала фиксирует штатный исход встречи, затем закрывает
+    /// авторский сценарий. В мирной сцене достаточно сразу записать эпилог.
+    pub async fn settle_accepted_treaty(&self, campaign_id: &str, key: &str, state: &Value) -> OrchestratorResult<Option<Value>> {
+        if !is_str(at(Some(state), &["mechanics", "campaign_lifecycle", "status"]), "active") || !treaty_ends_adventure(state) { return Ok(None); }
+        let mut encounter_completion = None;
+        if scenario_encounter_end_reason(state) == Some("parley")
+            && (game::combat_active(state) || js::s(at(Some(state), &["mechanics", "encounter", "outcome"])) == "parley")
+        {
+            let completion = self.complete_encounter(campaign_id, Some(&json!("parley"))).await?;
+            if is_str(at(completion.get("state"), &["mechanics", "campaign_lifecycle", "status"]), "completed") {
+                return Ok(Some(completion));
+            }
+            encounter_completion = Some(completion);
+        }
+        Ok(self.complete_campaign_if_ready(campaign_id, key).await?.or(encounter_completion))
     }
 
     /// `recordIntent(campaignId, intent, idempotencyKey, authorization, proofFactIds)`.
@@ -1623,6 +1620,25 @@ impl AutonomousCampaignOrchestrator {
         }
         let existing_intent_commit = self.by_key_json(campaign_id, &format!("{key}:intent"))?;
         let mut loaded = self.load(campaign_id)?;
+        // Восстановление после остановки между договором и шагом Директора.
+        // Терминальный сценарий закрывается до записи нового намерения, чтобы
+        // stale active save не успел создать следующую встречу.
+        if is_str(at(Some(&loaded.state), &["mechanics", "campaign_lifecycle", "status"]), "active")
+            && treaty_ends_adventure(&loaded.state)
+        {
+            if let Some(completion) = self.settle_accepted_treaty(campaign_id, &key, &loaded.state).await? {
+                loaded = self.load(campaign_id)?;
+                return Ok(json!({
+                    "intent": proposed,
+                    "authorization": { "policy": "director-intent-policy-v1", "reason": "campaign_completion_recovery", "replaced": false },
+                    "results": [completion],
+                    "state": loaded.state,
+                    "state_version": loaded.state_version,
+                    "admin_commands": 0,
+                    "recovered_completion": true,
+                }));
+            }
+        }
         let existing_intent_record = existing_intent_commit.as_ref().and_then(|commit| list(commit.get("events")).iter().find(|entry| type_is(entry, "DirectorIntentRecorded"))).and_then(|entry| entry.get("payload")).cloned();
         let existing_intent = get(existing_intent_record.as_ref(), "intent").filter(|value| js::truthy(Some(value))).cloned();
         let existing_outcome_commit = self.by_key_json(campaign_id, &format!("{key}:director-outcome"))?;
@@ -3048,10 +3064,8 @@ impl AutonomousCampaignOrchestrator {
             } else {
                 js::s(reading.get("success_detail"))
             }
-        } else if let Some(thorough) = &thorough {
-            thorough_search_detail(Some(thorough), Some(&str_value(hero_name)))
         } else {
-            js::s(reading.get("failure_detail"))
+            narrator_failure_detail_for(&skill_key, thorough.as_ref(), &js::s(reading.get("failure_detail")), Some(&str_value(hero_name)))
         };
         let narration = if in_combat {
             if succeeded {

@@ -180,11 +180,21 @@ export function isLocalProviderUrl(address) {
 export function isolatedServerEnv({ port, storageDir, setupToken, env = {} }) {
   const callerKey = env.ROUTERAI_API_KEY ?? ''
   const callerBaseUrl = env.ROUTERAI_BASE_URL ?? ''
+  const callerOllama = env.DND_AI_OLLAMA_MODEL ?? ''
+  const callerOllamaUrl = env.DND_AI_OLLAMA_BASE_URL ?? ''
+  const callerOpenRouterKey = env.OPENROUTER_API_KEY ?? ''
+  const callerOpenRouterUrl = env.DND_AI_OPENROUTER_BASE_URL ?? ''
   if (callerBaseUrl && !isLocalProviderUrl(callerBaseUrl)) {
     throw new Error(`Тестовый сервер не ходит во внешнюю сеть: ROUTERAI_BASE_URL=${callerBaseUrl} не локальный`)
   }
   if (callerKey && !callerBaseUrl) {
     throw new Error('Непустой ROUTERAI_API_KEY допустим только вместе с локальным ROUTERAI_BASE_URL (startFakeProvider)')
+  }
+  if (callerOllama && !isLocalProviderUrl(callerOllamaUrl)) {
+    throw new Error('Тестовая модель Ollama требует явного loopback-адреса заглушки')
+  }
+  if (callerOpenRouterKey && !isLocalProviderUrl(callerOpenRouterUrl)) {
+    throw new Error('Тестовый OpenRouter требует loopback-адреса заглушки')
   }
   if ('DND_STORAGE_DIR' in env || 'AGENT_PORT' in env) {
     throw new Error('Хранилище и порт задаются набором: используйте опции storageDir и restart()')
@@ -203,6 +213,10 @@ export function isolatedServerEnv({ port, storageDir, setupToken, env = {} }) {
     DND_STORAGE_DIR: storageDir,
     ROUTERAI_API_KEY: String(callerKey),
     ROUTERAI_BASE_URL: String(callerBaseUrl),
+    DND_AI_OLLAMA_MODEL: String(callerOllama),
+    DND_AI_OLLAMA_BASE_URL: String(callerOllamaUrl),
+    OPENROUTER_API_KEY: String(callerOpenRouterKey),
+    DND_AI_OPENROUTER_BASE_URL: String(callerOpenRouterUrl),
   }
   return /** @type {Record<string, string>} */ (Object.fromEntries(
     Object.entries(merged).filter(([, value]) => value !== undefined).map(([name, value]) => [name, String(value)]),

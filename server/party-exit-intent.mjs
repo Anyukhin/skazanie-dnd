@@ -928,6 +928,7 @@ export function pendingOnwardTarget(scene) {
  * приключение» сюда не входит — это просьба к Режиссёру, а не о дороге.
  */
 const ROUTE_CONTINUATION = /^(?:(?:ну|итак|ладно|что\s+ж|давайте|давай|ребята|всё|все)[,!.]?\s+){0,2}(?:продолж(?:им|аем|ить)(?:\s+(?:путь|маршрут|дорогу|путешествие|поход))?|(?:ид[её]м|пойд[её]м|пошли|двигаемся|двинемся|едем|поехали|отправляемся)\s+дальше|(?:дальше\s+)?в\s+путь)$/iu
+const ASTOHAN_LAIR_APPROACH = /^(?:откры(?:ть|ваем|ваю)|откро(?:ю|ем)|отпира(?:ю|ем|ть))\s+проход\s+(?:к|в)\s+жаровн[еуя]\s+вулканиса[.!…]*$/iu
 
 /**
  * @param {unknown} action
@@ -952,11 +953,16 @@ export function isRouteContinuation(action) {
  * @returns {{destination: string, source: 'route', destinationLocationId?: string}|null}
  */
 export function onwardRouteExitRequest(action, state = {}) {
+  /** @type {Array<Record<string, any>>} */
+  const locations = Array.isArray(state?.worldMap?.locations) ? state.worldMap.locations : []
+  if (state?.scene?.location_id === 'astohan-obsidian-pass' && ASTOHAN_LAIR_APPROACH.test(compact(action, 200))) {
+    const lair = locations.find((entry) => entry?.id === 'astohan-vulkanis-brazier'
+      && entry.known !== false && entry.hidden !== true && entry.visibility !== 'gm_only')
+    return lair ? { destination: lair.name, source: 'route', destinationLocationId: lair.id } : null
+  }
   if (!isRouteContinuation(action)) return null
   const target = pendingOnwardTarget(state?.scene)
   if (!target) return null
-  /** @type {Array<Record<string, any>>} */
-  const locations = Array.isArray(state?.worldMap?.locations) ? state.worldMap.locations : []
   const known = locations.filter((entry) => entry?.id && entry.known !== false && entry.hidden !== true
     && entry.visibility !== 'gm_only' && compact(entry.name, 120) === target)
   if (!known.length) return null

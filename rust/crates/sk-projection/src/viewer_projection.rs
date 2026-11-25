@@ -2053,6 +2053,7 @@ fn admin_room(state: &Value, actor: &Value) -> R<Value> {
     room.insert("weather".into(), sk_world_time::weather::weather_for_viewer(state, Some(actor)));
     room.insert("weather_by_actor".into(), weather_by_actor_for(state, true, &actor_s));
     let mut mechanics = spread_any(coalesce(get(source, "mechanics"), None));
+    project_authored_epilogue(state, &mut mechanics);
     let mut movement = Map::new();
     for actor in actor_list(source, &["players", "actors", "enemies"])? {
         let id = actor_key(actor)?;
@@ -2347,6 +2348,13 @@ fn visible_social_ids(state: Option<&Value>, visible: &IndexSet<String>) -> R<In
         .collect())
 }
 
+fn project_authored_epilogue(state: &Value, mechanics: &mut Map<String, Value>) {
+    let Some(lifecycle) = mechanics.get_mut("campaign_lifecycle").and_then(Value::as_object_mut) else { return };
+    if let Some(epilogue) = sk_director::campaign_lifecycle::authored_completed_epilogue(state) {
+        lifecycle.insert("epilogue".into(), Value::String(epilogue));
+    }
+}
+
 /// `mechanics` комнаты игрока.
 #[allow(clippy::too_many_arguments)] // повторяет замыкание JS над локальными переменными проекции
 fn player_mechanics(
@@ -2362,6 +2370,7 @@ fn player_mechanics(
 ) -> R<Value> {
     let source = Some(state);
     let mut out = spread_any(mechanics);
+    project_authored_epilogue(state, &mut out);
     for key in ["enemy_knowledge", "active_effects", "concentration", "reaction_preferences"] {
         out.shift_remove(key);
     }

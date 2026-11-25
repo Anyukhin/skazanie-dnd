@@ -67,10 +67,10 @@ const INFORMANT_CHOICES = new Set(['expose', 'release', 'turn'])
 /**
  * Бросает ли команда проверку сама: тогда вариант задаёт навык, а исход — её
  * бросок. Упокоение рыцаря, договор и перевербовка осведомителя.
- * @param {{ command_type: string, choice?: string }} action
+ * @param {{ command_type: string, choice?: string, proof?: string }} action
  */
 export function dialogueActionChecks(action) {
-  return action.command_type === 'ReleaseCursedKnight' || action.command_type === 'NegotiateScenarioTreaty'
+  return action.command_type === 'ReleaseCursedKnight' || (action.command_type === 'NegotiateScenarioTreaty' && action.proof !== 'ares-signed-confession')
     || (action.command_type === 'ResolveScenarioInformant' && action.choice === 'turn')
 }
 
@@ -99,7 +99,7 @@ function invalid(message) {
  * @property {{ skill: string, dc: number } | null} check
  * @property {DialogueOutcome} success исход без проверки — тоже здесь
  * @property {DialogueOutcome | null} failure
- * @property {{ command_type: string, catalog_id?: string, informant_id?: string, choice?: string } | null} action
+ * @property {{ command_type: string, catalog_id?: string, informant_id?: string, choice?: string, proof?: string } | null} action
  * @property {boolean} ends
  */
 
@@ -169,7 +169,9 @@ function option(raw, where) {
     if (commandType === 'ResolveScenarioInformant' && (!ID_PATTERN.test(informantId) || !INFORMANT_CHOICES.has(choice))) {
       invalid(`${where}.${id}: осведомитель «${informantId}» и решение «${choice}»`)
     }
-    action = { command_type: commandType, ...(catalogId ? { catalog_id: catalogId } : {}), ...(informantId ? { informant_id: informantId, choice } : {}) }
+    const proof = commandType === 'NegotiateScenarioTreaty' ? clean(raw.action.proof, 80) : ''
+    if (proof && proof !== 'ares-signed-confession') invalid(`${where}.${id}: доказательство «${proof}»`)
+    action = { command_type: commandType, ...(catalogId ? { catalog_id: catalogId } : {}), ...(informantId ? { informant_id: informantId, choice } : {}), ...(proof ? { proof } : {}) }
     if (dialogueActionChecks(action) && !check) invalid(`${where}.${id}: команда «${commandType}» бросает проверку — нужен check с навыком`)
     if (!dialogueActionChecks(action) && check) invalid(`${where}.${id}: команда и проверка в одном варианте не поддержаны`)
   }
@@ -362,7 +364,8 @@ function dialogueActionOpen(state, item, hero, progress) {
   if (type === 'NegotiateScenarioTreaty') {
     const rules = scenarioTreatyRules(state)
     if (!rules || rules.concluded || !rules.truth_revealed || scenarioLocationId(state) !== rules.boss_location_id) return false
-    return !(state?.scenario_attention?.treaty?.attempts ?? []).map(String).includes(hero)
+    return item.action?.proof === 'ares-signed-confession'
+      || !(state?.scenario_attention?.treaty?.attempts ?? []).map(String).includes(hero)
   }
   // Кошель и вещь оружейной — раз на героя, каким бы путём он их ни взял:
   // фразой, другим вариантом или этим.
@@ -394,8 +397,10 @@ export function dialogueOptionsFor(state, npcId, heroId) {
     // Из группы герой выбирает один вариант: остальные для него закрыты.
     .filter((item) => !(item.group && dialogue.options.some((other) => other.group === item.group && other.id !== item.id
       && (progress.chosen[other.id] ?? []).includes(hero))))
-    // Рассказанное второй раз не спрашивают: тайну успеха отряд уже знает.
-    .filter((item) => !factKnownToParty(state, dialogueRevealFactId(state, item.success)))
+    // Разовый вариант может закрепить новое действие (например, подпись)
+    // даже когда его рассказ уже известен отряду.
+    .filter((item) => item.success.sets.some((flag) => item.requires.flags_none.includes(flag))
+      || !factKnownToParty(state, dialogueRevealFactId(state, item.success)))
     .filter((item) => !item.action || dialogueActionOpen(state, item, hero, progress))
     .map((item) => ({
       id: item.id,

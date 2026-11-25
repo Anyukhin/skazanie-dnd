@@ -253,9 +253,9 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
-import { applyScenarioMapReveals, scenarioArmoryRules, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { applyScenarioMapReveals, campaignScenario, scenarioArmoryRules, scenarioClueFactId, scenarioFoundClueIds, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
 import { wildShapeFormFor } from './wild-shape.mjs'
-import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueActionChecks, dialogueFor, dialogueGrantedFactIds, dialogueOptionsFor, dialogueRevealFactId, normalizeDialogueState } from './campaign-dialogues.mjs'
+import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueActionChecks, dialogueFlags, dialogueFor, dialogueGrantedFactIds, dialogueOptionsFor, dialogueRevealFactId, normalizeDialogueState } from './campaign-dialogues.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
   SCENARIO_PURSE_COMMAND_TYPES,
@@ -6585,7 +6585,12 @@ export function validateCommand(input, rawState, context = {}) {
       throw new RulesValidationError('Саргат не станет слушать, пока правда о походе на Вулканиса не раскрыта', 'SCENARIO_TREATY_TRUTH_MISSING')
     }
     if (state.npc_world?.vitals?.[rules.boss_npc_id]?.alive === false) throw new RulesValidationError('Договариваться больше не с кем', 'SCENARIO_TREATY_BOSS_GONE')
-    if ((state.scenario_attention?.treaty?.attempts ?? []).map(String).includes(String(command.actor_id))) {
+    const scenario = campaignScenario(state)
+    const aresConfessionFactId = scenario ? scenarioClueFactId(scenario, 'ares-confession') : ''
+    const signedConfession = dialogueFlags(state).has('ares-signed-confession')
+      && aresConfessionFactId && scenarioFoundClueIds(state).has('ares-confession')
+    const signedProof = !state.mechanics.combat.active && signedConfession
+    if ((state.scenario_attention?.treaty?.attempts ?? []).map(String).includes(String(command.actor_id)) && !signedProof) {
       throw new RulesValidationError('Этого героя дракон уже выслушал и не поверил', 'SCENARIO_TREATY_ATTEMPT_SPENT')
     }
     if (state.mechanics.combat.active) {
@@ -6596,6 +6601,8 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError('Пока дракон не ранен всерьёз, он не станет торговаться', 'SCENARIO_TREATY_BOSS_UNHURT')
       }
     }
+    if (signedProof) command.treaty_proof = 'ares-confession'
+    else delete command.treaty_proof
     command.skill = rules.skill
     command.difficulty = rules.dc
     command.visibility = 'public'
@@ -10829,7 +10836,7 @@ function lifeDomainCaster(actor) {
   return characterClassKey(actor) === 'cleric' && /life|zhiz|жизн/iu.test(String(normalizedCombatSubclassFor(actor) ?? actor?.subclass ?? ''))
 }
 
-function isOwnCombatTurn(state, id) {
+export function isOwnCombatTurn(state, id) {
   const combat = state.mechanics.combat
   return combat.active && !(combat.turn_completed ?? []).includes(id)
     && (String(combat.initiative[combat.active_index]?.actor_id) === id || initiativeGroupIds(state).includes(id))
@@ -20815,6 +20822,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           actor_id: command.actor_id,
           ...(option.action.catalog_id ? { catalog_id: option.action.catalog_id } : {}),
           ...(option.action.informant_id ? { informant_id: option.action.informant_id, choice: option.action.choice } : {}),
+          ...(option.action.proof ? { proof: option.action.proof } : {}),
           ...(checkedAction ? { skill: option.check.skill } : {}),
         }, state, { diceService, context })
         events.push(...acted.events)
@@ -20910,18 +20918,23 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
     case 'NegotiateScenarioTreaty': {
       const rules = scenarioTreatyRules(state)
-      const check = resolveCommandInternal({
-        ...command,
-        command_type: 'MakeAbilityCheck',
-        command_id: `${command.command_id}:check`,
-        skill: command.skill,
-        difficulty: command.difficulty,
-        source_rule_ids: [...command.source_rule_ids],
-      }, state, { diceService, context })
-      events.push(...check.events)
-      rolls.push(...(check.rolls ?? []))
-      const resolved = check.events.find((event) => event.event_type === 'AbilityCheckResolved')
-      if (resolved?.payload?.success !== true) {
+      const signedConfession = command.treaty_proof === 'ares-confession' && !state.mechanics.combat.active
+      let succeeded = signedConfession
+      if (!signedConfession) {
+        const check = resolveCommandInternal({
+          ...command,
+          command_type: 'MakeAbilityCheck',
+          command_id: `${command.command_id}:check`,
+          skill: command.skill,
+          difficulty: command.difficulty,
+          source_rule_ids: [...command.source_rule_ids],
+        }, state, { diceService, context })
+        events.push(...check.events)
+        rolls.push(...(check.rolls ?? []))
+        const resolved = check.events.find((event) => event.event_type === 'AbilityCheckResolved')
+        succeeded = resolved?.payload?.success === true
+      }
+      if (!succeeded) {
         events.push(eventFrom(command, SCENARIO_TREATY_REFUSED_EVENT, {
           schema_version: 1, npc_id: rules.boss_npc_id, skill: command.skill, text: rules.failure_text,
         }, [rules.boss_npc_id, command.actor_id]))

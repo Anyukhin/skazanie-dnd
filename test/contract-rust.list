@@ -158,6 +158,7 @@ test/combat-lab-observer-api.test.mjs  # права, справочники, о�
 # С12 (2026-10-24): ассеты и картинки — портрет NPC, иллюстрация места, подготовка ассетов,
 # /generated/items и generate-image; поставщик — startFakeProvider на 127.0.0.1.
 test/item-images-api.test.mjs           # картинка предмета через учёт расхода: completed/failed, 429 LLM_QUOTA_EXCEEDED до провайдера
+test/ollama-fallback-api.test.mjs        # локальные текстовые роли после HTTP 402 и без облачного ключа
 test/npc-portraits-api.test.mjs         # права и видимость, 302 заглушки, кеш с ETag и 304, лимит генераций, restart
 test/location-illustrations-api.test.mjs # подготовка при выключенном флаге, рантайм только из кеша, перегенерация меняет ETag
 
@@ -193,3 +194,6 @@ test/kit-journal-utf8.test.mjs # readJournal большого журнала: б
 test/request-body-utf8-api.test.mjs # тело из двух кусков с разрывом посреди буквы — кириллица цела
 # Старые сохранения (2026-10-26): null в реестрах, сырой law, NPC и обещания — комната открывается.
 test/old-save-load-api.test.mjs  # LegacyStateImported с мусором: GET /api/rooms 200, нормализация реестров, restart и replay
+test/openrouter-free-api.test.mjs # бесплатный каскад, строгая схема, резерв Ollama и учёт расхода
+test/astohan-player-party-inability-api.test.mjs # поражение оставляет отряду выход из боя и сохраняется после перезапуска
+test/scenario-treaty-completion-api.test.mjs # договор до и во время боя, восстановление незавершённого эпилога

@@ -108,7 +108,7 @@ fn trace_redaction_removes_secrets_raw_prompts_environment_and_pii_without_mutat
         "nested": { "password": "hunter2", "authorization": "Bearer abcdefghijklmnop", "email": "hero@example.org" },
         "environment": { "PATH": "secret path", "OTHER": "value" },
         "messages": [{ "role": "user", "content": "private diary" }],
-        "token_usage": { "input_tokens": 10, "output_tokens": 20 },
+        "token_usage": { "input_tokens": 10, "output_tokens": 20, "total_tokens": 30, "cost": 0.25, "authorization": "Bearer usage-secret", "extra": "drop-me" },
     });
     let before = trace.clone();
     let redacted = redact_trace(Some(&trace), Some(&json!({ "sensitiveValues": ["generic-provider-secret"] }))).expect("трасса");
@@ -119,7 +119,7 @@ fn trace_redaction_removes_secrets_raw_prompts_environment_and_pii_without_mutat
     assert_eq!(redacted["nested"]["email"], "[REDACTED_PII]");
     assert_eq!(redacted["environment"], "[OMITTED_ENVIRONMENT]");
     assert_eq!(redacted["messages"], "[OMITTED_CONTENT]");
-    assert_eq!(redacted["token_usage"], json!({ "input_tokens": 10, "output_tokens": 20 }));
+    assert_eq!(redacted["token_usage"], json!({ "input_tokens": 10, "output_tokens": 20, "total_tokens": 30, "cost": 0.25 }));
     for leaked in ["hunter2", "hero@example", "secret path", "abcdefghijk"] {
         assert!(!encoded.contains(leaked), "{leaked}");
     }

@@ -551,7 +551,25 @@ test('orchestrator commits NPC dialogue once and replays the stored reply withou
   })
   let socialCalls = 0
   let narratorCalls = 0
-  const fallback = new NpcSocialController()
+  let outputBudget
+  const traceStore = new FileTraceStore({ rootDir: join(root, 'traces') })
+  const controller = new NpcSocialController({
+    llmClient: {
+      model: 'test/npc:free',
+      complete: async (input, options) => {
+        assert.equal(options.json, true)
+        outputBudget = input.maxTokens
+        return {
+          json: {
+            npc_id: 'marta', reply: 'Сегодня лавка закрывается на закате.', stance: 'neutral',
+            disclosed_fact_ids: [], disclosed_claim_ids: [], relationship_delta: 0, promise: null, confidence: 1,
+          },
+          provider: 'Ollama',
+          usage: { prompt_tokens: 20, completion_tokens: 14, total_tokens: 34 },
+        }
+      },
+    },
+  })
   const orchestrator = new GameOrchestrator({
     modeResolver: () => 'enforce',
     intentParser: { parse: async ({ message, playerId }) => ({
@@ -561,11 +579,12 @@ test('orchestrator commits NPC dialogue once and replays the stored reply withou
     }) },
     adjudicator: { createPlan: async () => { throw new Error('Adjudicator must not handle a recognized NPC conversation') } },
     npcSocialController: {
-      respond: async (input) => { socialCalls += 1; return fallback.respond(input) },
+      respond: async (input) => { socialCalls += 1; return controller.respond(input) },
     },
     narrator: { render: async () => { narratorCalls += 1; throw new Error('Narrator must not rewrite committed NPC dialogue') } },
     rulesEngine: new RulesEngine({ diceService: dice() }),
     eventStore,
+    traceStore,
     idFactory: () => 'social-turn',
   })
   const input = {
@@ -582,6 +601,10 @@ test('orchestrator commits NPC dialogue once and replays the stored reply withou
   assert.equal(second.narration, first.narration)
   assert.equal(socialCalls, 1)
   assert.equal(narratorCalls, 0)
+  assert.equal(outputBudget, 1400)
+  assert.deepEqual(traceStore.get('NPC-SOCIAL', first.turn_id).token_usage, {
+    prompt_tokens: 20, completion_tokens: 14, total_tokens: 34, provider_cost: 0,
+  })
   assert.equal((await eventStore.load('NPC-SOCIAL')).state.social.conversations.length, 1)
 })
 

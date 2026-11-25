@@ -238,16 +238,19 @@ test('бинарь Rust получает изолированное окруже
 })
 
 test('isolatedServerEnv закрывает сеть: пустой ключ, ключ только с локальным адресом, ничего из окружения', () => {
-  const saved = { key: process.env.ROUTERAI_API_KEY, url: process.env.ROUTERAI_BASE_URL }
+  const saved = { key: process.env.ROUTERAI_API_KEY, url: process.env.ROUTERAI_BASE_URL, ollama: process.env.DND_AI_OLLAMA_MODEL }
   // Окружение разработчика с боевым ключом — ровно то, что наследовал бы
   // запуск без явного поля.
   process.env.ROUTERAI_API_KEY = 'inherited-real-key'
   process.env.ROUTERAI_BASE_URL = 'https://routerai.ru/api/v1'
+  process.env.DND_AI_OLLAMA_MODEL = 'inherited-local-model'
   try {
     const base = { port: 1, storageDir: 'storage-dir', setupToken: 'token' }
     const plain = isolatedServerEnv(base)
     assert.equal(plain.ROUTERAI_API_KEY, '', 'ключ из окружения не наследуется')
     assert.equal(plain.ROUTERAI_BASE_URL, '', 'адрес из окружения не наследуется')
+    assert.equal(plain.DND_AI_OLLAMA_MODEL, '', 'модель Ollama из окружения не наследуется')
+    assert.throws(() => isolatedServerEnv({ ...base, env: { DND_AI_OLLAMA_MODEL: 'test', DND_AI_OLLAMA_BASE_URL: 'https://example.test/v1' } }), /loopback/u)
     assert.equal(isolatedServerEnv({ ...base, env: { ROUTERAI_API_KEY: '' } }).ROUTERAI_API_KEY, '')
     assert.equal(isolatedServerEnv({ ...base, env: { ROUTERAI_API_KEY: undefined } }).ROUTERAI_API_KEY, '', 'undefined не снимает защиту')
 
@@ -262,7 +265,7 @@ test('isolatedServerEnv закрывает сеть: пустой ключ, кл
       assert.deepEqual([stubbed.ROUTERAI_API_KEY, stubbed.ROUTERAI_BASE_URL], ['fake', local])
     }
   } finally {
-    for (const [name, value] of [['ROUTERAI_API_KEY', saved.key], ['ROUTERAI_BASE_URL', saved.url]]) {
+    for (const [name, value] of [['ROUTERAI_API_KEY', saved.key], ['ROUTERAI_BASE_URL', saved.url], ['DND_AI_OLLAMA_MODEL', saved.ollama]]) {
       if (value === undefined) delete process.env[name]
       else process.env[name] = value
     }

@@ -1055,6 +1055,21 @@ pub fn is_route_continuation(action: &str) -> bool {
 /// известной точкой карты мира; идентификатор берётся, только если имя на
 /// карте однозначно.
 pub fn onward_route_exit_request(action: &str, state: &Value) -> Option<PartyExitRequest> {
+    if is_str(state.get("scene").and_then(|scene| scene.get("location_id")), "astohan-obsidian-pass")
+        && text::test(re!(r"^(?:откры(?:ть|ваем|ваю)|откро(?:ю|ем)|отпира(?:ю|ем|ть))\s+проход\s+(?:к|в)\s+жаровн[еуя]\s+вулканиса[.!…]*$", "iu"), &compact(action, 200))
+    {
+        let lair = array(state.get("worldMap").and_then(|map| map.get("locations"))).iter().find(|entry| {
+            is_str(entry.get("id"), "astohan-vulkanis-brazier")
+                && !js::is_false(entry.get("known"))
+                && !js::is_true(entry.get("hidden"))
+                && !is_str(entry.get("visibility"), "gm_only")
+        })?;
+        return Some(PartyExitRequest {
+            destination: js::s(lair.get("name")),
+            source: "route",
+            destination_location_id: Some("astohan-vulkanis-brazier".to_string()),
+        });
+    }
     if !is_route_continuation(action) {
         return None;
     }

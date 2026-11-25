@@ -459,6 +459,12 @@ export function llmProviderFor(baseUrl) {
 }
 
 const VENDOR_MODEL_PREFIX = /^(?:openai|anthropic|google|z-ai|deepseek|meta|x-ai|mistralai|qwen|moonshotai)\//u
+const isOpenRouterFreeModel = (model) => model === 'openrouter/free' || /^[a-z0-9._-]+\/[a-z0-9._-]+:free$/u.test(model)
+
+export function openRouterFreeModels(value) {
+  const models = [...new Set(String(value ?? '').split(',').map((entry) => entry.trim()).filter(isOpenRouterFreeModel))]
+  return models.length ? models.slice(0, 5) : ['openrouter/free']
+}
 
 /**
  * Имя модели и параметры рассуждений в формате провайдера.
@@ -506,6 +512,8 @@ export class RouterAIClient extends LLMClient {
     maxToolCalls = DEFAULT_MAX_TOOL_CALLS,
     maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
     fetchImpl = globalThis.fetch,
+    ollama = false,
+    openRouterFree = false,
   } = {}) {
     super()
     if (typeof fetchImpl !== 'function') throw new TypeError('Для RouterAIClient требуется fetch')
@@ -518,8 +526,9 @@ export class RouterAIClient extends LLMClient {
     this.maxToolCalls = positiveInteger(maxToolCalls, DEFAULT_MAX_TOOL_CALLS, 'maxToolCalls')
     this.maxResponseBytes = positiveInteger(maxResponseBytes, DEFAULT_MAX_RESPONSE_BYTES, 'maxResponseBytes')
     this.fetchImpl = fetchImpl
-    this.provider = llmProviderFor(this.baseUrl)
-    this.providerLabel = this.provider === 'ohmylama' ? 'OhMyLama' : 'RouterAI'
+    this.provider = ollama ? 'ollama' : openRouterFree ? 'openrouter' : llmProviderFor(this.baseUrl)
+    if (openRouterFree && !isOpenRouterFreeModel(this.model)) throw new TypeError('Модель OpenRouter должна быть бесплатной')
+    this.providerLabel = { ollama: 'Ollama', openrouter: 'OpenRouter', ohmylama: 'OhMyLama' }[this.provider] ?? 'RouterAI'
   }
 
   async complete(input, options = {}) {
@@ -528,7 +537,7 @@ export class RouterAIClient extends LLMClient {
     const timeoutMs = positiveInteger(request.timeoutMs ?? this.timeoutMs, this.timeoutMs, 'timeoutMs')
     const scope = makeAbortScope(timeoutMs, request.signal)
     const body = {
-      model: String(request.model || this.model),
+      model: ['ollama', 'openrouter'].includes(this.provider) ? this.model : String(request.model || this.model),
       messages: request.messages,
       temperature: Number.isFinite(Number(request.temperature)) ? Number(request.temperature) : 0,
       max_tokens: positiveInteger(request.maxTokens ?? this.maxTokens, this.maxTokens, 'maxTokens'),
@@ -546,7 +555,8 @@ export class RouterAIClient extends LLMClient {
     const reasoning = request.reasoning && typeof request.reasoning === 'object'
       ? request.reasoning
       : campaignReasoningFor(body.model, request.role) ?? this.reasoning
-    if (reasoning) body.reasoning = reasoning
+    if (this.provider === 'ollama') body.reasoning_effort = 'none'
+    else if (reasoning && this.provider !== 'openrouter') body.reasoning = reasoning
     // Роль может приложить JSON Schema своего ответа (`jsonSchema`). Модели,
     // у которых маршрут исполняет strict json_schema (`supportsJsonSchema`,
     // проба 2026-10-01), получают её; остальные — прежний json_object. Схема
@@ -556,7 +566,7 @@ export class RouterAIClient extends LLMClient {
     // без response_format и с явной инструкцией формата проверен 2026-09-08.
     // Строгий parser ответа сохраняется.
     const jsonSchema = wantsJson(request) ? usableJsonSchema(request.jsonSchema) : null
-    if (jsonSchema && supportsJsonSchema(body.model)) {
+    if (jsonSchema && (['ollama', 'openrouter'].includes(this.provider) || supportsJsonSchema(body.model))) {
       body.response_format = { type: 'json_schema', json_schema: jsonSchema }
     } else if (wantsJson(request)) {
       if (body.model !== 'z-ai/glm-5.3-flash') body.response_format = { type: 'json_object' }
@@ -568,6 +578,7 @@ export class RouterAIClient extends LLMClient {
           : body.messages.map((message, index) => index === systemIndex ? { ...message, content: `${message.content}\n${directive}` } : message)
       }
     }
+    if (this.provider === 'openrouter' && body.response_format) body.provider = { require_parameters: true }
     const streaming = typeof request.onDelta === 'function'
     if (streaming) {
       if (wantsJson(request)) throw new TypeError('Streaming JSON responses are not supported')
@@ -626,24 +637,31 @@ export class RouterAIClient extends LLMClient {
 
 const CONTENT_FAILURE_CODES = new Set(['LLM_JSON_INVALID', 'LLM_RESPONSE_INVALID', 'LLM_RESPONSE_TOO_LARGE'])
 
+function providerAccountRefused(error) {
+  return error?.code === 'LLM_PROVIDER_ERROR' && [401, 402].includes(Number(error.status))
+}
+
 export class FallbackLLMClient extends LLMClient {
   constructor({
     clients = [],
     selectableClients = [],
+    providerFallback = null,
     failureCooldownMs = 120_000,
     probeTimeoutMs = 8_000,
     now = () => Date.now(),
   } = {}) {
     super()
-    if (!Array.isArray(clients) || !clients.length || !Array.isArray(selectableClients)
-      || [...clients, ...selectableClients].some((client) => !client || typeof client.complete !== 'function')) {
+    if (!Array.isArray(clients) || (!clients.length && !providerFallback) || !Array.isArray(selectableClients)
+      || [...clients, ...selectableClients, ...(providerFallback ? [providerFallback] : [])].some((client) => !client || typeof client.complete !== 'function')) {
       throw new TypeError('FallbackLLMClient requires at least one LLM client')
     }
     this.clients = [...clients]
     // Ручные варианты участвуют только в выбранной кампании, без фоновых probe.
     this.selectableClients = [...selectableClients]
-    this.model = String(this.clients[0].model ?? 'fallback-cascade')
-    this.models = [...this.clients, ...this.selectableClients].map((client) => String(client.model ?? 'unknown-model'))
+    this.providerFallback = providerFallback
+    this.model = String((this.clients[0] ?? providerFallback).model ?? 'fallback-cascade')
+    this.models = [...this.clients, ...this.selectableClients, ...(providerFallback ? [providerFallback] : [])]
+      .map((client) => String(client.model ?? 'unknown-model'))
     this.failureCooldownMs = positiveInteger(failureCooldownMs, 120_000, 'failureCooldownMs')
     this.probeTimeoutMs = positiveInteger(probeTimeoutMs, 8_000, 'probeTimeoutMs')
     this.now = now
@@ -704,8 +722,12 @@ export class FallbackLLMClient extends LLMClient {
     if (error instanceof LLMResponseError || error instanceof LLMTimeoutError) return true
     if (!(error instanceof LLMError)) return false
     if (['LLM_ABORTED', 'LLM_NOT_CONFIGURED'].includes(error.code)) return false
-    if (error.code === 'LLM_PROVIDER_ERROR' && [401, 402].includes(Number(error.status))) return false
+    if (providerAccountRefused(error)) return false
     return ['LLM_PROVIDER_ERROR', 'LLM_PROVIDER_UNAVAILABLE', 'LLM_RESPONSE_INVALID', 'LLM_JSON_INVALID', 'LLM_RESPONSE_TOO_LARGE'].includes(error.code)
+  }
+
+  _markProviderFailure(error) {
+    for (const paid of [...this.clients, ...this.selectableClients]) this._markFailure(paid, error)
   }
 
   _candidates() {
@@ -714,11 +736,14 @@ export class FallbackLLMClient extends LLMClient {
     const selected = this.selectableClients.find(client => client.model === preferredModel)
     const pool = selected ? [selected, ...this.clients] : this.clients
     const ready = pool.filter((client) => this._status(client).disabledUntil <= now)
-    const candidates = ready.length ? ready : [...pool].sort((left, right) => this._status(left).disabledUntil - this._status(right).disabledUntil)
-    if (!preferredModel) return candidates
-    const preferredIndex = candidates.findIndex((client) => String(client.model ?? '') === preferredModel)
-    if (preferredIndex <= 0) return candidates
-    return [candidates[preferredIndex], ...candidates.slice(0, preferredIndex), ...candidates.slice(preferredIndex + 1)]
+    const fallbackReady = this.providerFallback && this._status(this.providerFallback).disabledUntil <= now
+    const candidates = ready.length || fallbackReady
+      ? ready
+      : [...pool].sort((left, right) => this._status(left).disabledUntil - this._status(right).disabledUntil)
+    const preferredIndex = preferredModel ? candidates.findIndex((client) => String(client.model ?? '') === preferredModel) : -1
+    if (preferredIndex > 0) candidates.unshift(...candidates.splice(preferredIndex, 1))
+    if (this.providerFallback) candidates.push(this.providerFallback)
+    return candidates
   }
 
   async complete(input, options = {}) {
@@ -739,7 +764,10 @@ export class FallbackLLMClient extends LLMClient {
     const sharedSignal = deadlineController?.signal ?? externalSignal
     try {
       const candidates = this._candidates()
+      let providerRejected = false
       for (const [candidateIndex, client] of candidates.entries()) {
+        const isProviderFallback = client === this.providerFallback
+        if (providerRejected && !isProviderFallback) continue
         let emitted = false
         // Попытка, снятая по своему сроку или общему, в живой поток больше не
         // пишет: модель, проигравшая гонку, могла прислать дельту уже после
@@ -777,6 +805,7 @@ export class FallbackLLMClient extends LLMClient {
           try {
             const request = {
               ...options,
+              ...(isProviderFallback ? { model: client.model } : {}),
               ...(attemptBudget != null ? { timeoutMs: attemptBudget } : {}),
               ...(attemptScope ? { signal: attemptScope.signal } : sharedSignal ? { signal: sharedSignal } : {}),
               ...(onDelta ? { onDelta } : {}),
@@ -789,15 +818,23 @@ export class FallbackLLMClient extends LLMClient {
               throw new LLMResponseError(`Model ${client.model} returned an unusable response`, 'LLM_RESPONSE_INVALID')
             }
             this._markSuccess(client)
-            return { ...result, fallback_attempts: attempts, fallback_used: attempts.length > 0 }
+            return { ...result, fallback_attempts: attempts, fallback_used: attempts.length > 0 || (isProviderFallback && this.clients.length > 0) }
           } finally {
             attemptOpen = false
             attemptScope?.close()
           }
         } catch (error) {
           if (deadlineController?.signal.aborted) throw error
-          if (!this._retryable(error)) throw error
-          this._markFailure(client, error)
+          const accountRefused = this.providerFallback && !isProviderFallback && providerAccountRefused(error)
+          if (accountRefused) {
+            providerRejected = true
+            // Ошибка относится к общему ключу, поэтому переходим к другому
+            // провайдеру и даём остыть всей цепочке на этом ключе.
+            this._markProviderFailure(error)
+          } else {
+            if (!this._retryable(error)) throw error
+            this._markFailure(client, error)
+          }
           attempts.push({ model: String(client.model ?? 'unknown-model'), code: String(error?.code ?? error?.name ?? 'LLM_ERROR') })
           // После первой показанной дельты другой провайдер не может продолжить
           // текст без склейки двух независимо сгенерированных ответов.
@@ -839,6 +876,10 @@ export class FallbackLLMClient extends LLMClient {
         if (result.json?.ok !== true) throw new LLMResponseError('Model health check returned invalid JSON', 'LLM_PROBE_INVALID')
         this._markSuccess(client)
       } catch (error) {
+        if (this.providerFallback && providerAccountRefused(error)) {
+          this._markProviderFailure(error)
+          break
+        }
         this._markFailure(client, error)
       }
     }

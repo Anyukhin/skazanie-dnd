@@ -87,7 +87,9 @@ test('AI-02: пролог летописца проходит через usage-l
   assert.equal(report.provider_cost, 0.1)
   assert.equal(report.completed_requests, 1)
   const stored = readFileSync(storageFile, 'utf8')
-  assert.deepEqual(Object.values(JSON.parse(stored).requests).map((entry) => entry.scope), ['lore'])
+  const entries = Object.values(JSON.parse(stored).requests)
+  assert.deepEqual(entries.map((entry) => entry.scope), ['lore'])
+  assert.deepEqual(entries.map((entry) => entry.role), ['lore_author'])
   assert.doesNotMatch(stored, /Секретная кампания/u, 'ledger не хранит промпт')
 })
 

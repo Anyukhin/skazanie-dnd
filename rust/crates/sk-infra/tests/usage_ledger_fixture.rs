@@ -54,6 +54,7 @@ fn ledger_matches_js_scenarios() {
                             estimated_tokens: request["estimated_tokens"].as_f64().expect("оценка"),
                             scope: request.get("scope").and_then(Value::as_str).map(String::from),
                             model: request.get("model").and_then(Value::as_str).map(String::from),
+                            role: request.get("role").and_then(Value::as_str).map(String::from),
                         })
                         .map(Some)
                 }

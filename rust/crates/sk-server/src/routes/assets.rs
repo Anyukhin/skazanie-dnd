@@ -113,6 +113,7 @@ impl ItemImages {
             estimated_tokens: (image_prompt.len() + ITEM_IMAGE_ESTIMATED_OUTPUT_TOKENS) as f64,
             scope: Some("item-image".into()),
             model: Some(self.model.clone()),
+            role: None,
         })?;
         let request_id = js::s(reservation.get("request_id"));
         let generator = if aspect_ratio == "16:9" { &self.wide } else { &self.square };
@@ -327,7 +328,7 @@ async fn prepare_assets(ctx: &mut RouteCtx, state: &AppState, user: &Value, camp
     let npcs = npc_portrait_inventory(&images.portraits, campaign_id, &projected, |state, profile| npc_portrait_significance(state, profile).significant, &profiles).await.map_err(image_failure)?;
     let known_locations = visible_campaign_locations(&projected);
     let locations = location_illustration_inventory(&images.illustrations, campaign_id, &known_locations).await.map_err(image_failure)?;
-    let configured = state.config.model_configured() && !state.config.image_model.is_empty();
+    let configured = state.config.cloud_model_configured() && !state.config.image_model.is_empty();
     if ctx.method == Method::GET {
         return Ok(Ok(json(
             StatusCode::OK,
@@ -400,7 +401,7 @@ fn generate_item_image_route(ctx: &mut RouteCtx) -> RouteFuture<'_> {
                 "RUNTIME_IMAGE_GENERATION_DISABLED",
             ));
         }
-        if !state.config.model_configured() {
+        if !state.config.cloud_model_configured() {
             return Err(ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "Генератор изображений не настроен"));
         }
         // `readBody` — внутри `try` JS: ошибка тела — 502 с её текстом, а не 400.

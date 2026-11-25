@@ -21,7 +21,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
-use sk_agents_base::llm_client::{LlmClient, LlmError};
+use sk_agents_base::llm_client::{LlmClient, LlmError, is_openrouter_free_model};
 use sk_core::indexmap::{IndexMap, IndexSet};
 use sk_core::{hash, js, re, text};
 use sk_encounters::agent_context::{
@@ -56,6 +56,14 @@ pub const NPC_REPEAT_WINDOW: usize = 12;
 pub const NPC_ALREADY_SAID_LIMIT: usize = 6;
 /// Подряд одинаковых слов, после которых предложение считается повтором.
 const REPEAT_WORD_RUN: usize = 6;
+
+// Три финальные правды авторской арки нельзя выдавать свободным ответом NPC:
+// они открываются только authored dialogue или подтверждённой находкой.
+const SCENARIO_TRUTH_FACT_IDS: [&str; 3] = [
+    "fact:secret:scenario:astohan-dragon-hunt:ares-confession",
+    "fact:secret:scenario:astohan-dragon-hunt:stormberg-journal-page",
+    "fact:secret:scenario:astohan-dragon-hunt:camp-gedrik",
+];
 
 const STANCES: [&str; 4] = ["friendly", "neutral", "guarded", "hostile"];
 const DIRECTIONS: [&str; 2] = ["npc_to_party", "party_to_npc"];
@@ -289,6 +297,32 @@ fn world_memory(state: &Value) -> Option<&Value> {
     get(Some(state), "worldMemory")
 }
 
+fn authorized_scenario_truth_fact_ids(state: &Value) -> HashSet<String> {
+    let memory = world_memory(state);
+    let mut ids = HashSet::new();
+    for entry in arr(get(memory, "knowledge_ledger")).iter().chain(arr(get(memory, "knowledge_revealed")).iter()) {
+        ids.insert(js::string(get(Some(entry), "fact_id")));
+    }
+    for fact in arr(get(memory, "facts")) {
+        if is_str(get(Some(fact), "predicate"), "discovery") {
+            ids.insert(js::string(get(Some(fact), "supersedes_fact_id")));
+        }
+    }
+    if let Some(dialogues) = get(Some(state), "dialogues").and_then(Value::as_object) {
+        for entry in dialogues.values() {
+            for fact_id in arr(get(Some(entry), "granted")) {
+                ids.insert(js::string(Some(fact_id)));
+            }
+        }
+    }
+    ids.retain(|id| SCENARIO_TRUTH_FACT_IDS.contains(&id.as_str()));
+    ids
+}
+
+fn scenario_truth_fact_allowed(state: &Value, fact_id: &str) -> bool {
+    !SCENARIO_TRUTH_FACT_IDS.contains(&fact_id) || authorized_scenario_truth_fact_ids(state).contains(fact_id)
+}
+
 /// Факты, которые NPC знает и может произнести.
 fn npc_speakable_fact_records<'a>(state: &'a Value, profile: &Value) -> R<Vec<&'a Value>> {
     known_fact_ids_guard(state)?;
@@ -296,7 +330,8 @@ fn npc_speakable_fact_records<'a>(state: &'a Value, profile: &Value) -> R<Vec<&'
     let facts = filterable(get(world_memory(state), "facts"))?;
     let mut out = Vec::new();
     for fact in facts {
-        if is_str(deref(fact, "status")?, "active") && allowed.contains(&js::string(get(Some(fact), "id"))) {
+        let fact_id = js::string(get(Some(fact), "id"));
+        if is_str(deref(fact, "status")?, "active") && allowed.contains(&fact_id) && scenario_truth_fact_allowed(state, &fact_id) {
             out.push(fact);
         }
     }
@@ -987,6 +1022,9 @@ pub fn conversation_leads(state: &Value, profile: &Value, message: Option<&Value
     for fact in iterable(get(world_memory(state), "facts"))? {
         let fact = &fact;
         if !is_str(get(Some(fact), "predicate"), "gm_secret") || !is_str(get(Some(fact), "status"), "active") || revealed.contains(&js::string(get(Some(fact), "id"))) {
+            continue;
+        }
+        if !scenario_truth_fact_allowed(state, &js::string(get(Some(fact), "id"))) {
             continue;
         }
         let meta = npc_secret_meta(fact);
@@ -1775,11 +1813,15 @@ impl NpcSocialController {
             out.insert("prompt_version".into(), str_value(NPC_SOCIAL_PROMPT_VERSION));
             return Ok(Some(Value::Object(out)));
         };
-        match self.with_model(client.as_ref(), &request, &profile, &social, &leads).await {
+        let mut token_usage = Map::new();
+        match self.with_model(client.as_ref(), &request, &profile, &social, &leads, &mut token_usage).await {
             Ok((mut out, repetition)) => {
                 out.insert("context_metadata".into(), context_metadata);
                 out.insert("provider".into(), str_value(self.provider()));
                 out.insert("prompt_version".into(), str_value(NPC_SOCIAL_PROMPT_VERSION));
+                if !token_usage.is_empty() {
+                    out.insert("token_usage".into(), Value::Object(token_usage));
+                }
                 if let Some(repetition) = repetition {
                     out.insert("repetition".into(), str_value(repetition));
                 }
@@ -1793,14 +1835,19 @@ impl NpcSocialController {
                 let code = error.code.clone().unwrap_or_else(|| error.name.clone());
                 out.insert("provider_error".into(), str_value(clean_str(&code, 80)));
                 out.insert("facts_available".into(), Value::from(facts.len()));
+                if !token_usage.is_empty() {
+                    out.insert("token_usage".into(), Value::Object(token_usage));
+                }
                 Ok(Some(Value::Object(out)))
             }
         }
     }
 
     /// Запрос к модели с брифом (`complete(options)` в JS).
-    async fn complete(&self, client: &dyn LlmClient, request: &RespondInput<'_>, profile: &Value, options: &BriefOptions<'_>) -> R<Value> {
+    async fn complete(&self, client: &dyn LlmClient, request: &RespondInput<'_>, profile: &Value, options: &BriefOptions<'_>, token_usage: &mut Map<String, Value>) -> R<Value> {
         let model = client.model();
+        // У бесплатных маршрутов OpenRouter обязательные рассуждения тоже входят в лимит JSON-ответа.
+        let max_tokens = if model.as_deref().is_some_and(is_openrouter_free_model) { 1400 } else { 700 };
         let system = prompt_for_model_role(NPC_SOCIAL_PROMPT, model.as_deref(), "npc");
         let brief = brief_for(request.state, profile, &request.hero_id, request.message, request.check, options)?;
         let mut sections = Map::new();
@@ -1811,18 +1858,30 @@ impl NpcSocialController {
                 { "role": "user", "content": build_data_only_context(Some(&Value::Object(sections))) },
             ],
             "temperature": 0.7,
-            "maxTokens": 700,
+            "maxTokens": max_tokens,
             "role": "npc",
             "jsonSchema": *NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
         });
-        Ok(client.complete_json(&input, &json!({ "timeoutMs": 20_000 })).await?)
+        let response = client.complete(&input, &json!({ "json": true, "timeoutMs": 20_000, "usageRole": "npc_social" })).await?;
+        if let Some(usage) = response.get("usage").and_then(Value::as_object) {
+            for (key, value) in usage {
+                if let Some(number) = value.as_f64().filter(|n| n.is_finite() && *n >= 0.0) {
+                    let previous = token_usage.get(key).and_then(Value::as_f64).unwrap_or_default();
+                    token_usage.insert(key.clone(), js::num(previous + number));
+                }
+            }
+        }
+        if response.get("provider").and_then(Value::as_str) == Some("Ollama") {
+            token_usage.entry("provider_cost").or_insert_with(|| Value::from(0));
+        }
+        Ok(response.get("json").cloned().unwrap_or(Value::Null))
     }
 
     /// Тело `try` в JS: ответ модели, антиповтор, нормализация.
-    async fn with_model(&self, client: &dyn LlmClient, request: &RespondInput<'_>, profile: &Value, social: &Value, leads: &[Value]) -> R<(Map<String, Value>, Option<&'static str>)> {
+    async fn with_model(&self, client: &dyn LlmClient, request: &RespondInput<'_>, profile: &Value, social: &Value, leads: &[Value], token_usage: &mut Map<String, Value>) -> R<(Map<String, Value>, Option<&'static str>)> {
         let state = request.state;
         let base = BriefOptions { leads, just_seen: request.just_seen, ..BriefOptions::default() };
-        let mut result = self.complete(client, request, profile, &base).await?;
+        let mut result = self.complete(client, request, profile, &base, token_usage).await?;
         if !structurally_valid_social_response(&result) {
             return Err(NpcSocialError::error("NPC_SOCIAL_RESPONSE_INVALID_SHAPE"));
         }
@@ -1843,7 +1902,7 @@ impl NpcSocialController {
         if fresh.text.is_empty() {
             let repeated_lines: Vec<String> = reply_sentences(&js::s(get(Some(&result), "reply"))).into_iter().take(6).collect();
             let retry = BriefOptions { repeat_retry: true, repeated_lines, ..base.clone() };
-            let retried = self.complete(client, request, profile, &retry).await.unwrap_or(Value::Null);
+            let retried = self.complete(client, request, profile, &retry, token_usage).await.unwrap_or(Value::Null);
             let retried_fresh = if js::truthy(Some(&retried)) && structurally_valid_social_response(&retried) {
                 fresh_reply_text(&js::s(get(Some(&retried), "reply")), &earlier_for(&retried)?)
             } else {

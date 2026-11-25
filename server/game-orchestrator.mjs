@@ -44,11 +44,12 @@ import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedC
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
 import { agentContextMetadata, campaignConceptForAgent, heroCardForAgent, npcKnownByName, sceneContextForAgent } from './agent-context.mjs'
 import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
+import { treatyEndsAdventure } from './campaign-lifecycle.mjs'
 import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
-import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, retrieveWorldMemory, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, hasFailedDiscoveryCheck, narratorFailureDetailFor, retrieveWorldMemory, thoroughSearchOutcome } from './world-memory.mjs'
 import { ClarificationRegistry } from './clarification-registry.mjs'
 
 /**
@@ -70,6 +71,11 @@ function emptyEffects() {
 }
 
 const DIALOGUE_RESPONSE_PLAN_VERSION = 'dialogue-response-plan/v1'
+
+function treatyCompletionPending(state) {
+  return state?.mechanics?.campaign_lifecycle?.status === 'active'
+    && treatyEndsAdventure(state)
+}
 
 function dialogueVerification(mode, upstream = '') {
   return {
@@ -1974,6 +1980,14 @@ export class GameOrchestrator {
     }
     const committedEvents = Array.isArray(freeAction.events) ? freeAction.events : []
     const publicCommittedEvents = mechanicsForViewer(sharedNarrationEvents(committedEvents, state), { isPartyMember: true }, playerId, state)
+    // `failure_detail` приходит от модели и не является подтверждённым фактом.
+    // Для провала поиска он особенно опасен: модель может пересказать ещё не
+    // открытую тайну сценария. Очищаем его здесь даже для старого/внешнего
+    // AutonomousOrchestrator и используем детерминированный голос ведущего.
+    const unverifiedDiscoveryFailure = hasFailedDiscoveryCheck(publicCommittedEvents)
+    const narrationFreeAction = unverifiedDiscoveryFailure
+      ? { ...freeAction, outcome_detail: '' }
+      : freeAction
     const constraints = [
       ...(Array.isArray(plan?.narration_constraints) ? plan.narration_constraints : []),
       ...(noWorldChangeConstraint(plan) ? ['no-unconfirmed-world-changes'] : []),
@@ -1994,7 +2008,7 @@ export class GameOrchestrator {
           approach: String(freeAction.reading?.approach_summary ?? '').slice(0, 500),
           outcome: freeAction.kind,
           ...(intent?.roleplay_speech === true ? { roleplay_speech: true } : {}),
-          ...(freeAction.outcome_detail ? { outcome_detail: String(freeAction.outcome_detail).slice(0, 300) } : {}),
+          ...(narrationFreeAction.outcome_detail ? { outcome_detail: String(narrationFreeAction.outcome_detail).slice(0, 300) } : {}),
           ...(freeAction.thorough_search ? { thorough_search: String(freeAction.thorough_search) } : {}),
           // Своё заклинание героя вне боя срабатывает: проверка судит цель —
           // реакцию, обман, — а не само заклинание. Прежде рассказчик писал «на
@@ -2024,11 +2038,11 @@ export class GameOrchestrator {
           && ['check_success', 'check_failure'].includes(String(freeAction.kind))
           ? { npcId: freeAction.reading.target_id, success: freeAction.kind === 'check_success' }
           : null,
-      }), [String(freeAction.outcome_detail ?? ''), ...discoveryDetailTexts(publicCommittedEvents)]),
+      }), [String(narrationFreeAction.outcome_detail ?? ''), ...discoveryDetailTexts(publicCommittedEvents)]),
       narration_constraints: constraints,
       viewer,
     })
-    const candidateNarration = String(freeAction.narration ?? '').trim()
+    const candidateNarration = String(narrationFreeAction.narration ?? '').trim()
     let renderedNarration = ''
     let renderedProvider = ''
     let renderedVerification = null
@@ -2049,6 +2063,7 @@ export class GameOrchestrator {
       && (freeAction.reading?.source !== 'deterministic-trivial' || roleplaySpeech)
       && ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
       && committedEvents.length > 0
+      && !unverifiedDiscoveryFailure
       && typeof this.narrator?.render === 'function'
     if (narrateCommittedImprovisation) {
       const renderStarted = this.now()
@@ -2073,7 +2088,7 @@ export class GameOrchestrator {
     }
     const narrationState = campaignStateForViewer(state, viewer, playerId) ?? {}
     const deterministicNarration = deterministicFreeActionNarration({
-      freeAction,
+      freeAction: narrationFreeAction,
       message,
       events: publicCommittedEvents,
       state: narrationState,
@@ -2081,7 +2096,9 @@ export class GameOrchestrator {
       roleplaySpeech,
     })
     const deterministicProvider = /^deterministic(?:-|$)/u.test(renderedProvider)
-    const preferredNarration = deterministicProvider || unconfirmedPassage
+    const preferredNarration = unverifiedDiscoveryFailure
+      ? deterministicNarration
+      : deterministicProvider || unconfirmedPassage
       ? deterministicNarration || candidateNarration || renderedNarration
       : renderedNarration || candidateNarration || deterministicNarration
     const candidateVerification = verifyNarration(preferredNarration, brief, { knownRuleIds: [] })
@@ -2679,6 +2696,34 @@ export class GameOrchestrator {
     }
     const loaded = await this.eventStore.load(campaignId)
     const authoritativeState = normalizeCampaignState(loaded.state)
+    // Договор — терминальный исход сценария. Если процесс остановился между
+    // коммитом договора и эпилогом, закрываем активное сохранение до разбора
+    // новой заявки, чтобы оно не успело породить следующую встречу.
+    if (treatyCompletionPending(authoritativeState)
+      && typeof this.unknownActionHandler?.settleAcceptedTreaty === 'function') {
+      const completion = await this.unknownActionHandler.settleAcceptedTreaty(campaignId, idempotencyKey, authoritativeState)
+      if (completion?.state && Number(completion.state_version) > Number(authoritativeState.state_version)) {
+        const events = completion.events ?? []
+        const epilogue = events.find((event) => event.event_type === 'CampaignCompleted')?.payload?.epilogue
+          ?? completion.epilogue
+          ?? 'Кампания завершена.'
+        return {
+          narration: String(epilogue),
+          effects: eventsToClientEffects(events),
+          provider: 'deterministic-campaign-completion',
+          model: 'deterministic',
+          turn_id: turnId,
+          engine_mode: mode,
+          state_version: completion.state_version,
+          mechanics: events,
+          visible_state_changes: projectVisibleState(visibleChanges(events), viewer) ?? [],
+          authoritative_state: completion.state,
+          verification: dialogueVerification('world_narration', 'campaign-completion'),
+          turn_consumed: false,
+          idempotent_replay: Boolean(completion.duplicate),
+        }
+      }
+    }
     // Questions and discussion may inspect a pending clarification, but never
     // resurrect one from an older room version after another commit. Action
     // continuations keep the explicit stale-version error below.
@@ -3499,6 +3544,18 @@ export class GameOrchestrator {
       campaignId, idempotencyKey, committed, message, rulesContext,
       checkCommand: planCheckCommand && !socialRequest && planCheckCommand.command_type === 'MakeAbilityCheck' ? planCheckCommand : null,
     })
+    if (treatyCompletionPending(committed.state)
+      && typeof this.unknownActionHandler?.settleAcceptedTreaty === 'function') {
+      const completion = await this.unknownActionHandler.settleAcceptedTreaty(campaignId, idempotencyKey, committed.state)
+      if (completion?.state && Number(completion.state_version) > Number(committed.state_version)) {
+        committed = {
+          ...committed,
+          state: completion.state,
+          state_version: completion.state_version,
+          events: [...(committed.events ?? []), ...(completion.events ?? [])],
+        }
+      }
+    }
     const mainEvents = committed.events ?? engineResult.events
     const committedEvents = [...precedingEvents, ...mainEvents]
     const publicCommittedEvents = mechanicsForViewer(sharedNarrationEvents(committedEvents, committed.state), input.user ?? {}, playerId, committed.state)
@@ -3551,6 +3608,7 @@ export class GameOrchestrator {
       ? requestTrace ?? this.traceStore.get(campaignId, turnId)
       : null
     const storedSocialNarration = npcConversationNarration(committedEvents, committed.state)
+    if (storedSocialNarration && socialTurn?.token_usage) storedSocialNarration.token_usage = socialTurn.token_usage
     const privateSocialNarration = committedEvents.some((event) => event.event_type === 'NpcConversationRecorded' && event.visibility === 'specific_player')
     const resolveActorName = actorNameResolver(committed.state)
     // Кто рассказывает про эти события, знает реестр. Раньше выбор был записан
@@ -3572,7 +3630,14 @@ export class GameOrchestrator {
     const replayFallback = deterministicResponse
       ?? storedSocialNarration
       ?? deterministicReplayNarration(brief, resolvedRuleIds, resolveActorName)
-    const structuredMechanics = (Array.isArray(input.commands) || ['approach_attack', 'long_jump_attack', 'swing_attack'].includes(plan.maneuver)) && !deterministicNarrator
+    // Проваленная проверка навыка поиска может открыть тайну только отдельным
+    // подтверждённым событием. Пока его нет, модель не получает шанса превратить
+    // свой `failure_detail` в сюжетный факт — используем тот же детерминированный
+    // запасной текст, что и при недоступном провайдере.
+    const unverifiedDiscoveryFailure = hasFailedDiscoveryCheck(committedEvents)
+    const structuredMechanics = (Array.isArray(input.commands)
+      || ['approach_attack', 'long_jump_attack', 'swing_attack'].includes(plan.maneuver)
+      || unverifiedDiscoveryFailure) && !deterministicNarrator
     const streamsModelNarration = !idempotentReplay
       && !deterministicResponse
       && !storedSocialNarration
@@ -3680,9 +3745,7 @@ export class GameOrchestrator {
     const heroName = String((committed.state?.players ?? []).find((player) => String(player?.id) === String(checkCommand.actor_id))?.character || 'Герой')
     const outcomeDetail = succeeded
       ? (DISCOVERY_SKILLS.has(skill) ? '' : String(details.success_detail ?? ''))
-      : thorough
-        ? thoroughSearchDetail(thorough, heroName)
-        : String(details.failure_detail ?? '')
+      : narratorFailureDetailFor({ skill, thorough, detail: details.failure_detail, heroName })
     if (outcomeDetail) committed = { ...committed, outcome_detail: outcomeDetail }
     if (thorough) committed = { ...committed, thorough_search: thorough.found ? 'found' : 'nothing' }
     if (!DISCOVERY_SKILLS.has(skill)) return committed

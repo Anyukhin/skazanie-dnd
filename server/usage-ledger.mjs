@@ -152,6 +152,7 @@ export class DurableUsageLedger {
     estimatedTokens,
     scope = 'global',
     model = 'unknown',
+    role = null,
   } = {}) {
     const id = clean(requestId, 160)
     if (!id) throw new UsageLedgerError('Usage request id is required', 'USAGE_REQUEST_ID_INVALID')
@@ -163,6 +164,7 @@ export class DurableUsageLedger {
     // конфликт на каждом повторе такого резерва.
     const entryScope = clean(scope, 120) || 'global'
     const entryModel = clean(model, 160) || 'unknown'
+    const entryRole = clean(role, 120) || null
     const existing = ledger.requests[id]
     if (existing) {
       if (existing.scope !== entryScope || existing.model !== entryModel || existing.estimated_tokens !== requested) {
@@ -177,6 +179,7 @@ export class DurableUsageLedger {
       day: dayKey(now),
       scope: entryScope,
       model: entryModel,
+      ...(entryRole ? { role: entryRole } : {}),
       status: 'reserved',
       estimated_tokens: requested,
       reserved_tokens: requested,
@@ -194,7 +197,7 @@ export class DurableUsageLedger {
     return structuredClone(entry)
   }
 
-  settle(requestId, usage = {}) {
+  settle(requestId, usage = {}, { reportedModel } = {}) {
     const id = clean(requestId, 160)
     const now = Number(this.now())
     const ledger = this._prune(this._read(), now)
@@ -203,10 +206,12 @@ export class DurableUsageLedger {
     if (entry.status === 'completed') return structuredClone(entry)
     if (entry.status !== 'reserved') throw new UsageLedgerError(`Usage reservation ${id} is ${entry.status}`, 'USAGE_RESERVATION_CLOSED')
     const normalized = normalizeProviderUsage(usage, entry.estimated_tokens)
+    const actualModel = clean(reportedModel, 160)
     Object.assign(entry, {
       status: 'completed',
       reserved_tokens: 0,
       ...normalized,
+      ...(entry.model === 'openrouter/free' && actualModel && actualModel !== entry.model ? { reported_model: actualModel } : {}),
       finished_at_ms: now,
     })
     atomicWrite(this.storageFile, ledger)
@@ -302,10 +307,11 @@ export class MeteredLLMClient {
       estimatedTokens: estimatedInputTokens(input) + maximumOutput,
       scope: options.usageScope ?? request.usageScope ?? 'global',
       model: options.model ?? request.model ?? this.model,
+      role: options.usageRole ?? options.role ?? request.usageRole ?? request.role ?? null,
     })
     try {
       const result = await this.client.complete(input, options)
-      this.ledger.settle(reservation.request_id, result.usage ?? {})
+      this.ledger.settle(reservation.request_id, result.usage ?? {}, { reportedModel: result.model })
       return result
     } catch (error) {
       // Аудит PR #131, COST-01: RouterAIClient прикладывает к ошибке

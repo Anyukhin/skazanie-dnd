@@ -172,6 +172,7 @@ pub struct ReserveRequest {
     pub estimated_tokens: f64,
     pub scope: Option<String>,
     pub model: Option<String>,
+    pub role: Option<String>,
 }
 
 /// `DurableUsageLedger`.
@@ -302,6 +303,7 @@ impl DurableUsageLedger {
         // всегда давал USAGE_IDEMPOTENCY_CONFLICT).
         let scope = Some(clean_str(request.scope.as_deref().unwrap_or("global"), 120)).filter(|scope| !scope.is_empty()).unwrap_or_else(|| "global".into());
         let model = Some(clean_str(request.model.as_deref().unwrap_or("unknown"), 160)).filter(|model| !model.is_empty()).unwrap_or_else(|| "unknown".into());
+        let role = request.role.as_deref().map(|role| clean_str(role, 120)).filter(|role| !role.is_empty());
         let now = self.now();
         let mut ledger = self.read()?;
         self.prune(&mut ledger, now)?;
@@ -318,7 +320,7 @@ impl DurableUsageLedger {
         if used + requested > self.daily_token_limit {
             return Err(UsageLedgerError::QuotaExceeded { limit: self.daily_token_limit, used, requested });
         }
-        let entry = json!({
+        let mut entry = json!({
             "request_id": id,
             "day": day_key(now),
             "scope": scope,
@@ -335,6 +337,11 @@ impl DurableUsageLedger {
             "finished_at_ms": null,
             "error_code": null,
         });
+        if let Some(role) = role {
+            if let Some(map) = entry.as_object_mut() {
+                map.insert("role".into(), Value::String(role));
+            }
+        }
         if let Some(requests) = ledger["requests"].as_object_mut() {
             requests.insert(id, entry.clone());
         }
@@ -352,6 +359,10 @@ impl DurableUsageLedger {
     /// `settle(requestId, usage)`: закрыть резерв фактическим расходом.
     /// `usage = None` — аргумент не передан (`{}`).
     pub fn settle(&self, request_id: &str, usage: Option<&Value>) -> Result<Value, UsageLedgerError> {
+        self.settle_reported_model(request_id, usage, None)
+    }
+
+    fn settle_reported_model(&self, request_id: &str, usage: Option<&Value>, reported_model: Option<&str>) -> Result<Value, UsageLedgerError> {
         let _guard = self.guard();
         let id = clean_str(request_id, 160);
         let now = self.now();
@@ -368,12 +379,18 @@ impl DurableUsageLedger {
             return Err(UsageLedgerError::Type("Cannot read properties of null (reading 'input_tokens')".into()));
         }
         let normalized = normalize_provider_usage(usage, field(Some(&*entry), "estimated_tokens"));
+        let actual_model = reported_model.map(|model| clean_str(model, 160)).filter(|model| !model.is_empty() && model != "openrouter/free");
         if let Some(map) = entry.as_object_mut() {
             map.insert("status".into(), Value::String("completed".into()));
             map.insert("reserved_tokens".into(), Value::from(0));
             if let Value::Object(normalized) = normalized {
                 for (key, value) in normalized {
                     map.insert(key, value);
+                }
+            }
+            if map.get("model").and_then(Value::as_str) == Some("openrouter/free") {
+                if let Some(model) = actual_model {
+                    map.insert("reported_model".into(), Value::String(model));
                 }
             }
             map.insert("finished_at_ms".into(), Value::from(now));
@@ -642,6 +659,7 @@ impl<C: LlmClient> MeteredLLMClient<C> {
             request_id = sk_core::hash::uuid_v4();
         }
         let scope = nullish(option("usageScope"), from_request("usageScope")).map(|value| js::s(Some(value))).unwrap_or_else(|| "global".into());
+        let role = nullish(nullish(option("usageRole"), option("role")), nullish(from_request("usageRole"), from_request("role"))).map(|value| js::s(Some(value))).filter(|role| !role.is_empty());
         let model = match nullish(option("model"), from_request("model")) {
             Some(value) => Some(js::s(Some(value))),
             None => self.client.model(),
@@ -651,6 +669,7 @@ impl<C: LlmClient> MeteredLLMClient<C> {
             estimated_tokens: (estimated_input_tokens(input) + maximum_output) as f64,
             scope: Some(scope),
             model,
+            role,
         })?;
         let reservation_id = js::s(reservation.get("request_id"));
         let outcome = match self.client.complete(input, options).await {
@@ -659,7 +678,7 @@ impl<C: LlmClient> MeteredLLMClient<C> {
                     Some(usage) if !usage.is_null() => usage.clone(),
                     _ => json!({}),
                 };
-                match self.ledger.settle(&reservation_id, Some(&usage)) {
+                match self.ledger.settle_reported_model(&reservation_id, Some(&usage), result.get("model").and_then(Value::as_str)) {
                     Ok(_) => return Ok(result),
                     Err(error) => LlmError::from(error),
                 }

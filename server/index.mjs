@@ -48,7 +48,7 @@ import { MapStore } from './map-store.mjs'
 import { RATE_WINDOW_MS, SlidingWindowCounter } from './rate-window.mjs'
 import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
-import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
+import { FallbackLLMClient, RouterAIClient, openRouterFreeModels } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
 import { createRouterImageGenerator } from './image-generation.mjs'
 import { ArchitectUsageStore, DEFAULT_ARCHITECT_ALERT_THRESHOLD, architectAlertText } from './architect-usage.mjs'
@@ -104,7 +104,7 @@ import {
   campaignRulesetMetadata,
   campaignRulesetSettings,
 } from './campaign-ruleset.mjs'
-import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
+import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, isOwnCombatTurn, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { activeTurnActorIds, CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation, isMechanicalTrace } from './trace-store.mjs'
@@ -211,12 +211,29 @@ const port = Number(process.env.AGENT_PORT || 8787)
 const host = process.env.AGENT_HOST || '0.0.0.0'
 const apiKey = process.env.ROUTERAI_API_KEY || ''
 const baseUrl = (process.env.ROUTERAI_BASE_URL || 'https://routerai.ru/api/v1').replace(/\/$/, '')
+const testOpenRouterBaseUrl = process.env.DND_AI_OPENROUTER_BASE_URL ?? ''
+const testOpenRouterUrl = process.env.NODE_ENV === 'test' && URL.canParse(testOpenRouterBaseUrl)
+  ? new URL(testOpenRouterBaseUrl)
+  : null
+const localOpenRouterStub = testOpenRouterUrl && ['http:', 'https:'].includes(testOpenRouterUrl.protocol)
+  && ['127.0.0.1', 'localhost', '[::1]'].includes(testOpenRouterUrl.hostname)
+const openRouterKey = process.env.NODE_ENV !== 'test' || localOpenRouterStub
+  ? String(process.env.OPENROUTER_API_KEY ?? '').trim()
+  : ''
+const freeModels = openRouterKey ? openRouterFreeModels(process.env.DND_AI_OPENROUTER_MODELS) : []
+const openRouterBaseUrl = localOpenRouterStub ? testOpenRouterUrl.href : 'https://openrouter.ai/api/v1'
+const textApiKey = openRouterKey || apiKey
+const textBaseUrl = openRouterKey ? openRouterBaseUrl : baseUrl
+const ollamaModel = String(process.env.DND_AI_OLLAMA_MODEL ?? '').trim()
+const ollamaBaseUrl = String(process.env.DND_AI_OLLAMA_BASE_URL ?? '').trim() || 'http://127.0.0.1:11434/v1'
+const textModelConfigured = Boolean(textApiKey || ollamaModel)
+const constrainedModels = openRouterKey ? freeModels : !apiKey && ollamaModel ? [ollamaModel] : null
 // Умолчание — по перебору 2026-10-01 (`docs/model-reasoning-sweep-2026-10-01.md`).
-const model = process.env.DND_AI_MODEL || 'openai/gpt-6-luna'
-const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'google/gemini-2.5-flash-lite,z-ai/glm-5.3-flash,deepseek/deepseek-v4-flash,openai/gpt-4.1-nano')
+const model = constrainedModels?.[0] || process.env.DND_AI_MODEL || 'openai/gpt-6-luna'
+const fallbackModels = constrainedModels ? constrainedModels.slice(1) : [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'google/gemini-2.5-flash-lite,z-ai/glm-5.3-flash,deepseek/deepseek-v4-flash,openai/gpt-4.1-nano')
   .split(',').map((value) => value.trim()).filter((value) => value && value !== model))].slice(0, 5)
 const automaticAiModels = [model, ...fallbackModels]
-const allowedAiModels = Object.freeze([...new Set([...automaticAiModels, ...SELECTABLE_EXTRA_MODELS])])
+const allowedAiModels = Object.freeze(constrainedModels ?? [...new Set([...automaticAiModels, ...SELECTABLE_EXTRA_MODELS])])
 const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
 const modelTimeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS || 9_000)
 const modelProbeTimeoutMs = Number(process.env.DND_AI_PROBE_TIMEOUT_MS || 15_000)
@@ -298,9 +315,17 @@ const rollRegistry = new RollRegistry({
   diceService,
   storageFile: join(storageDir, 'engine', 'roll-registry.json'),
 })
-const configuredLlmClients = allowedAiModels.map((modelId) => new MeteredLLMClient({
+const ollamaClient = ollamaModel ? new MeteredLLMClient({
   client: new RouterAIClient({
-    apiKey, baseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
+    apiKey: 'ollama', baseUrl: ollamaBaseUrl, model: ollamaModel, maxTokens,
+    timeoutMs: Math.max(30_000, modelTimeoutMs), ollama: true,
+  }),
+  ledger: usageLedger,
+}) : null
+const configuredLlmClients = (textApiKey || !ollamaClient ? allowedAiModels : []).map((modelId) => new MeteredLLMClient({
+  client: new RouterAIClient({
+    apiKey: textApiKey, baseUrl: textBaseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
+    openRouterFree: Boolean(openRouterKey),
     reasoning: reasoningProfileFor(modelId),
   }),
   ledger: usageLedger,
@@ -308,11 +333,13 @@ const configuredLlmClients = allowedAiModels.map((modelId) => new MeteredLLMClie
 const llmClient = new FallbackLLMClient({
   clients: configuredLlmClients.filter(client => automaticAiModels.includes(client.model)),
   selectableClients: configuredLlmClients.filter(client => !automaticAiModels.includes(client.model)),
+  providerFallback: ollamaClient,
   probeTimeoutMs: modelProbeTimeoutMs,
   failureCooldownMs: modelFailureCooldownMs,
 })
-if (apiKey) void llmClient.probe().catch(() => {})
-const sceneArchitect = new SceneArchitectAgent({ llmClient: apiKey ? llmClient : null })
+if (apiKey && !openRouterKey) void llmClient.probe().catch(() => {})
+const textLlmClient = textModelConfigured ? llmClient : null
+const sceneArchitect = new SceneArchitectAgent({ llmClient: textLlmClient })
 const defaultRulesetId = process.env.DND_DEFAULT_RULESET_ID || LEGACY_DEFAULT_RULESET_ID
 const defaultRulesetProfile = rulesetProfile(defaultRulesetId)
 const installedRulePacks = await loadRulePacks([...new Set([...INSTALLED_RULESET_IDS, defaultRulesetId])])
@@ -398,10 +425,10 @@ const postCommitCoordinator = new PostCommitCoordinator({
   },
 })
 const traceStore = new FileTraceStore({ rootDir: join(storageDir, 'turn-traces') })
-const narrator = new Narrator({ llmClient: apiKey ? llmClient : null })
+const narrator = new Narrator({ llmClient: textLlmClient })
 const creativeDirector = new CriticalNarrationCoordinator({ narrator })
-const npcController = new NpcMoraleAgent({ llmClient: apiKey ? llmClient : null })
-const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmClient : null })
+const npcController = new NpcMoraleAgent({ llmClient: textLlmClient })
+const npcSocialController = new NpcSocialController({ llmClient: textLlmClient })
 // Длинная форма — пролог и хроника арки — идёт через отдельную дешёвую модель:
 // замер показал, что Luna в длинной форме не уступает и стоит в разы меньше.
 // Модель меняется переменной DND_AI_LORE_MODEL; без ключа летописец молчит.
@@ -421,15 +448,20 @@ const loreLlmClient = new MeteredLLMClient({
   }),
   ledger: usageLedger,
 })
-const loreAuthor = new LoreAuthor({ llmClient: apiKey ? loreLlmClient : null })
-const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null, loreAuthor, diceService })
-const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
+const loreClient = openRouterKey ? textLlmClient : ollamaClient ? new FallbackLLMClient({
+  clients: apiKey ? [loreLlmClient] : [],
+  providerFallback: ollamaClient,
+  failureCooldownMs: modelFailureCooldownMs,
+}) : apiKey ? loreLlmClient : null
+const loreAuthor = new LoreAuthor({ llmClient: loreClient })
+const campaignBootstrapper = new CampaignBootstrapper({ llmClient: textLlmClient, loreAuthor, diceService })
+const actionAdjudicator = new ActionAdjudicator({ llmClient: textLlmClient })
 const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator, loreAuthor, rollRegistry })
-const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
+const directorAgent = new DirectorAgent({ llmClient: textLlmClient })
 // Рекап зовётся раз на возвращение стола и кешируется по версии состояния,
 // поэтому идёт через общий metered-клиент и попадает в usage-леджер.
 const campaignRecap = new CampaignRecapService({
-  llmClient: apiKey ? llmClient : null,
+  llmClient: textLlmClient,
   cache: new RecapCacheStore({ storageFile: join(storageDir, 'engine', 'campaign-recap.json') }),
   gapHours: Number(process.env.DND_RECAP_GAP_HOURS || DEFAULT_RECAP_GAP_HOURS),
 })
@@ -2872,7 +2904,7 @@ onRoomSaved((campaignId, room) => {
 // так плетение догоняет и героев, собранных до этой правки. Без ключа модели
 // список ждущих пуст и ничего не происходит; ошибка модели или коммита запрос
 // игрока не задевает — стадия упадёт в лог и повторится позже.
-const heroHookWeaver = new HeroHookWeaver({ llmClient: apiKey ? llmClient : null })
+const heroHookWeaver = new HeroHookWeaver({ llmClient: textLlmClient })
 const heroHookJobs = new Set()
 
 async function weaveHeroHooksFor({ campaignId }) {
@@ -3034,7 +3066,7 @@ const gameOrchestrator = new GameOrchestrator({
   // одного вопроса появилось бы два разных ответа.
   unknownActionHandler: autonomousCampaign,
   // Ответ «что мы знаем» голосом ведущего; без ключа — серверный ответ.
-  loreVoice: new LoreVoice({ llmClient: apiKey ? llmClient : null }),
+  loreVoice: new LoreVoice({ llmClient: textLlmClient }),
   rollRegistry,
 })
 
@@ -3967,10 +3999,10 @@ async function handleHttpRequest(req, res) {
     }
   }
   if (req.url === '/api/health') return json(res, 200, {
-    configured: Boolean(apiKey),
-    provider: 'RouterAI',
-    model,
-    fallbackModels,
+    configured: textModelConfigured,
+    provider: openRouterKey ? 'OpenRouter' : apiKey || !ollamaModel ? 'RouterAI' : 'Ollama',
+    model: textApiKey || !ollamaModel ? model : ollamaModel,
+    fallbackModels: !ollamaModel ? fallbackModels : textApiKey ? [...fallbackModels, ollamaModel] : [],
     models: llmClient.health(),
     imageModel,
     engineMode: 'enforce',
@@ -5153,6 +5185,19 @@ async function handleHttpRequest(req, res) {
         replayedIntent = duplicate.events.find((event) => event.event_type === 'DirectorIntentRecorded')?.payload?.intent ?? null
       }
       let loaded = await autonomousCampaign.load(campaignId)
+      const treatyCompletion = await autonomousCampaign.settleAcceptedTreaty(campaignId, key, loaded.state)
+      if (treatyCompletion?.state) {
+        const projected = persistAuthoritativeProjection(campaignId, treatyCompletion.state, treatyCompletion.events ?? [])
+        const state = projected?.state ?? treatyCompletion.state
+        return json(res, 200, {
+          intent: null,
+          director_trace: { mode: 'treaty-epilogue-recovery' },
+          reward: null,
+          state_version: treatyCompletion.state_version,
+          admin_commands: 0,
+          state: viewerStateFor(state, user, ownedViewerActorId(state, user, campaignId)),
+        })
+      }
       assertCampaignPlayable(loaded.state)
       assertDirectorAdvanceReady(campaignId, loaded.state)
       if (!replayedIntent && loaded.state.agentInteraction?.status === 'open') {
@@ -5844,12 +5889,31 @@ async function handleHttpRequest(req, res) {
         const subsequentEvents = latest.state_version > originalVersion
           ? await eventStore.getEvents(commandMatch[1], { after_version: originalVersion, up_to_version: latest.state_version })
           : []
-        const mechanics = [...(result.mechanics ?? []), ...subsequentEvents]
+        let responseEvents = subsequentEvents
+        let completedState = latest.state
+        let completedVersion = latest.state_version
+        if (latest.state?.mechanics?.combat?.active !== true && latest.state?.mechanics?.encounter?.status === 'ended') {
+          const completionRun = await postCommitCoordinator.run({
+            campaignId: commandMatch[1],
+            state: latest.state,
+            events: subsequentEvents,
+            commitKey: idempotencyKey,
+            stages: ['encounter-completion'],
+          })
+          if (Array.isArray(completionRun.results?.['encounter-completion']?.events)
+            && completionRun.results['encounter-completion'].events.length) {
+            const completed = await eventStore.load(commandMatch[1])
+            completedState = completed.state
+            completedVersion = completed.state_version
+            responseEvents = await eventStore.getEvents(commandMatch[1], { after_version: originalVersion, up_to_version: completed.state_version })
+          }
+        }
+        const mechanics = [...(result.mechanics ?? []), ...responseEvents]
           .filter((event, index, all) => all.findIndex((candidate) => String(candidate.event_id ?? `${candidate.state_version_after}:${candidate.event_type}`) === String(event.event_id ?? `${event.state_version_after}:${event.event_type}`)) === index)
         result = {
           ...result,
-          state_version: latest.state_version,
-          authoritative_state: latest.state,
+          state_version: completedVersion,
+          authoritative_state: completedState,
           mechanics,
           npc_turns: scheduler.turns,
         }
@@ -6240,7 +6304,7 @@ async function handleHttpRequest(req, res) {
       if (!canUseHero(user, playerId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
       const explicitNpcId = conversationOnly ? '' : explicitNarrationNpcId(trustedState, user, playerId, body.npc_id)
       const combatActorId = String(trustedState.mechanics?.combat?.initiative?.[trustedState.mechanics?.combat?.active_index ?? 0]?.actor_id ?? '')
-      if (!conversationOnly && trustedState.mechanics?.combat?.active && combatActorId && playerId !== combatActorId) {
+      if (!conversationOnly && trustedState.mechanics?.combat?.active && combatActorId && !isOwnCombatTurn(trustedState, playerId)) {
         return json(res, 409, { error: `Сейчас ходит другой участник: ${combatActorId}`, code: 'NOT_ACTIVE_ACTOR' })
       }
       if (!conversationOnly && trustedState.mechanics?.death?.campaign_status === 'party_defeated') {
@@ -6547,7 +6611,9 @@ await releaseOrphanRollReservations()
 server.keepAliveTimeout = 65_000
 server.headersTimeout = 66_000
 server.listen(port, host, () => {
-  console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} + ${fallbackModels.length} fallback models` : 'демо-режим'}`)
+  const modelLabel = textApiKey ? `${model} + ${fallbackModels.length} резервных моделей${ollamaModel ? ` + Ollama ${ollamaModel}` : ''}`
+    : ollamaModel ? `Ollama ${ollamaModel}` : 'демо-режим'
+  console.log(`[Сказание] Сервер: http://${host}:${port} · ${modelLabel}`)
   // После рестарта активной кампании NPC может потребовать заметного CPU ещё до
   // первого await. Сначала даём HTTP принять health-check, затем возобновляем
   // фоновые часы; игровое состояние и durable-дедлайны от этой паузы не меняются.

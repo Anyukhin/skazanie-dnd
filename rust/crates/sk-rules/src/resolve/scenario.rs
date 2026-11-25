@@ -177,11 +177,11 @@ const AUTHORED_EVENTS: [&str; 7] = [
 
 /// `dialogueActionChecks(action)` над действием из команды.
 fn action_checks(action: &Value) -> bool {
-    match action.get("command_type").and_then(Value::as_str) {
-        Some("ReleaseCursedKnight" | "NegotiateScenarioTreaty") => true,
-        Some("ResolveScenarioInformant") => action.get("choice").and_then(Value::as_str) == Some("turn"),
-        _ => false,
-    }
+    sk_story::campaign_dialogues::dialogue_action_uses_check(
+        action.get("command_type").and_then(Value::as_str).unwrap_or_default(),
+        action.get("choice").and_then(Value::as_str),
+        action.get("proof").and_then(Value::as_str),
+    )
 }
 
 /// `{ skill, dc, success, total }` проверки варианта.
@@ -229,6 +229,7 @@ pub fn choose_dialogue_option(r: &mut Resolve<'_>) -> Flow {
             input.insert("informant_id".into(), informant_id.clone());
             put(&mut input, "choice", action.get("choice"));
         }
+        put(&mut input, "proof", action.get("proof"));
         if checked_action {
             let Some(check_spec) = option.get("check").filter(|value| !value.is_null()) else { return Err(missing("skill")) };
             put(&mut input, "skill", check_spec.get("skill"));
@@ -361,13 +362,20 @@ fn scenario_payload(command: &Value, npc_id: &Value, rest: &[(&str, Value)]) -> 
 pub fn negotiate_scenario_treaty(r: &mut Resolve<'_>) -> Flow {
     use sk_attention::scenario_attention::{SCENARIO_TREATY_CONCLUDED_EVENT, SCENARIO_TREATY_REFUSED_EVENT};
     let rules = sk_scenario::campaign_scenario::scenario_treaty_rules(&r.state);
-    let input = ability_check_input(&r.command, &field(&r.command, "command_id"), r.command.get("skill"), r.command.get("difficulty"), rule_list(&r.command, None));
-    let check = r.nested(&input)?;
-    r.absorb(&check);
     let Some(rules) = rules else { return Err(missing("boss_npc_id")) };
     let boss = field(&rules, "boss_npc_id");
     let pair = json!([boss, field(&r.command, "actor_id")]);
-    if !check_succeeded(&check.events) {
+    let signed_confession = r.command.get("treaty_proof").and_then(Value::as_str) == Some("ares-confession")
+        && !sk_core::game::combat_active(&r.state);
+    let succeeded = if signed_confession {
+        true
+    } else {
+        let input = ability_check_input(&r.command, &field(&r.command, "command_id"), r.command.get("skill"), r.command.get("difficulty"), rule_list(&r.command, None));
+        let check = r.nested(&input)?;
+        r.absorb(&check);
+        check_succeeded(&check.events)
+    };
+    if !succeeded {
         let payload = scenario_payload(&r.command, &boss, &[("text", field(&rules, "failure_text"))]);
         r.events.push(event_from(&r.command, SCENARIO_TREATY_REFUSED_EVENT, Some(payload), Some(&pair)));
         return Ok(());

@@ -89,6 +89,25 @@ fn strict_json_parse_matches_js() {
     finish("strict", cases("strict").len(), failures);
 }
 
+#[tokio::test]
+async fn local_ollama_uses_openai_compatibility_without_router_key() {
+    let server = TestServer::start(Arc::new(|request, _| {
+        let body = request.json();
+        assert_eq!(body["model"], "qwen3:14b");
+        assert_eq!(body["reasoning"], json!({ "effort": "none" }));
+        Reply::json(200, &envelope("локальный ответ"))
+    })).await;
+    let client = RouterAiClient::with_env(RouterAiClientConfig {
+        base_url: Some(server.origin.clone()),
+        provider: Some("ollama"),
+        model: Some("qwen3:14b".into()),
+        reasoning: Some(json!({ "effort": "none" })),
+        ..RouterAiClientConfig::default()
+    }, |_| None).expect("локальный клиент");
+    let result = client.complete(&json!({ "messages": messages(), "reasoning": { "effort": "none" } }), &json!({})).await.expect("ответ");
+    assert_eq!(result["content"], "локальный ответ");
+}
+
 #[test]
 fn validate_tool_calls_matches_js() {
     let mut failures = Vec::new();
@@ -873,6 +892,47 @@ async fn fallback_does_not_retry_aborts_auth_and_foreign_errors() {
 }
 
 #[tokio::test]
+async fn fallback_uses_provider_reserve_after_router_auth_failure() {
+    let log = calls();
+    let primary = scripted("router", &log, |_, _, _| async {
+        Err(LlmError::llm("HTTP 402", "LLM_PROVIDER_ERROR").with_detail("status", json!(402)))
+    });
+    let paid_reserve = scripted("paid-reserve", &log, |_, _, _| async {
+        Ok(json!({ "content": "paid reserve must not run", "model": "paid-reserve" }))
+    });
+    let local = scripted("qwen3:14b", &log, |_, _, _| async { answer("локальный ответ", "qwen3:14b") });
+    let chain = FallbackLlmClient::new(FallbackLlmClientConfig {
+        clients: vec![FallbackMember::new(primary), FallbackMember::new(paid_reserve)],
+        provider_fallback: Some(FallbackMember::new(local).as_provider_fallback()),
+        ..FallbackLlmClientConfig::default()
+    }).expect("каскад");
+    let result = chain.complete(&input(), &json!({})).await.expect("локальный ответ");
+    assert_eq!(result["model"], "qwen3:14b");
+    assert_eq!(taken(&log), ["router", "qwen3:14b"]);
+    assert_eq!(result["fallback_used"], true);
+}
+
+#[tokio::test]
+async fn fallback_uses_provider_reserve_after_last_cloud_retryable_failure() {
+    let log = calls();
+    let primary = scripted("router", &log, |_, _, _| async {
+        Err(LlmError::llm("HTTP 503", "LLM_PROVIDER_ERROR").with_detail("status", json!(503)))
+    });
+    let paid_reserve = scripted("paid-reserve", &log, |_, _, _| async {
+        Err(LlmError::llm("HTTP 503", "LLM_PROVIDER_ERROR").with_detail("status", json!(503)))
+    });
+    let local = scripted("qwen3:14b", &log, |_, _, _| async { answer("локальный ответ", "qwen3:14b") });
+    let chain = FallbackLlmClient::new(FallbackLlmClientConfig {
+        clients: vec![FallbackMember::new(primary), FallbackMember::new(paid_reserve)],
+        provider_fallback: Some(FallbackMember::new(local).as_provider_fallback()),
+        ..FallbackLlmClientConfig::default()
+    }).expect("каскад");
+    let result = chain.complete(&input(), &json!({})).await.expect("локальный ответ");
+    assert_eq!(result["model"], "qwen3:14b");
+    assert_eq!(taken(&log), ["router", "paid-reserve", "qwen3:14b"]);
+}
+
+#[tokio::test]
 async fn fallback_probe_marks_models_and_reports_health() {
     let log = calls();
     let good = scripted("good", &log, |input: Value, options: Value, _| async move {
@@ -1055,6 +1115,30 @@ async fn router_ai_sends_strict_json_schema_only_to_capable_models() {
     let glm = capturing("z-ai/glm-5.3-flash", &request, true).await;
     assert_eq!(glm.get("response_format"), None);
     assert!(glm["messages"][0]["content"].as_str().unwrap_or("").contains("Верни только полное JSON-значение"));
+}
+
+#[tokio::test]
+async fn openrouter_free_forces_model_and_requires_parameters() {
+    let server = TestServer::replying(Reply::json(200, &json!({ "model": "provider-free", "choices": [{ "message": { "role": "assistant", "content": "{\"ok\":true}" } }] }))).await;
+    let client = RouterAiClient::with_env(
+        RouterAiClientConfig {
+            api_key: Some("sk-or-v1-test".into()),
+            base_url: Some(server.origin.clone()),
+            provider: Some("openrouter"),
+            model: Some("openrouter/free".into()),
+            reasoning: Some(json!({ "effort": "high" })),
+            ..RouterAiClientConfig::default()
+        },
+        |_| None,
+    ).expect("клиент");
+    let request = json!({ "model": "paid/attacker", "messages": messages(), "jsonSchema": director_schema() });
+    let result = client.complete_json(&request, &json!({})).await.expect("ответ");
+    assert_eq!(result, json!({ "ok": true }));
+    let body = server.requests()[0].json();
+    assert_eq!(body["model"], "openrouter/free");
+    assert_eq!(body["provider"], json!({ "require_parameters": true }));
+    assert_eq!(body["response_format"], json!({ "type": "json_schema", "json_schema": director_schema() }));
+    assert!(body.get("reasoning").is_none());
 }
 
 #[tokio::test]

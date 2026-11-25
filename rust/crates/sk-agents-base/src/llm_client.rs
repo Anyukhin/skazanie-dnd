@@ -61,7 +61,7 @@ pub use abort::{AbortController, AbortSignal};
 pub use fake::{FakeHandler, FakeLlm, FakeLlmConfig, FakeReply};
 pub use fallback::{FallbackLlmClient, FallbackLlmClientConfig, FallbackMember};
 pub use image_http::RouterImageTransport;
-pub use router_ai::{RouterAiClient, RouterAiClientConfig};
+pub use router_ai::{RouterAiClient, RouterAiClientConfig, is_openrouter_free_model};
 pub use sse::{parse_router_ai_event_stream, ChunkSource, StreamOptions, StreamResult, VecChunks};
 
 /// `DEFAULT_TIMEOUT_MS`.
@@ -848,7 +848,8 @@ pub(crate) fn with_known_usage<T>(usage: Option<&Value>, result: Result<T, LlmEr
 // ---------------------------------------------------------------------------
 
 /// `llmProviderFor(baseUrl)`: `ohmylama` для хоста `ohmylama.ru` (и его
-/// поддоменов), иначе `routerai`.
+/// поддоменов), иначе `routerai`. Локальный Ollama задаётся явным provider
+/// в `RouterAiClientConfig`, чтобы старые loopback URL не меняли паритет.
 pub fn llm_provider_for(base_url: &str) -> &'static str {
     match reqwest::Url::parse(base_url) {
         Ok(url) => {

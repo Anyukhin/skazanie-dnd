@@ -41,7 +41,7 @@ fn reserve(ledger: &DurableUsageLedger, id: &str, tokens: f64) -> Result<Value, 
 fn durable_quota_reserves_settles_and_survives_restart() {
     let fixture = fixture(100.0);
     let ledger = &fixture.ledger;
-    ledger.reserve(&ReserveRequest { request_id: Some("one".into()), estimated_tokens: 60.0, scope: Some("campaign:a".into()), model: Some("test".into()) }).expect("резерв");
+    ledger.reserve(&ReserveRequest { request_id: Some("one".into()), estimated_tokens: 60.0, scope: Some("campaign:a".into()), model: Some("test".into()), role: None }).expect("резерв");
     assert_eq!(ledger.report().expect("отчёт")["reserved_tokens"], 60);
     ledger.settle("one", Some(&json!({ "prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20, "cost": 0.004 }))).expect("закрытие");
     assert_eq!(
@@ -68,7 +68,7 @@ fn durable_quota_reserves_settles_and_survives_restart() {
 fn expired_and_failed_reservations_release_quota() {
     let fixture = fixture(100.0);
     let ledger = &fixture.ledger;
-    ledger.reserve(&ReserveRequest { request_id: Some("expired".into()), estimated_tokens: 90.0, scope: Some("campaign:secret".into()), model: Some("test".into()) }).expect("резерв");
+    ledger.reserve(&ReserveRequest { request_id: Some("expired".into()), estimated_tokens: 90.0, scope: Some("campaign:secret".into()), model: Some("test".into()), role: None }).expect("резерв");
     fixture.now.fetch_add(1_001, Ordering::SeqCst);
     assert_eq!(ledger.report().expect("отчёт")["reserved_tokens"], 0);
     reserve(ledger, "failed", 90.0).expect("резерв");
@@ -86,7 +86,7 @@ fn repeated_reserve_with_blank_scope_and_model_returns_same_entry() {
     // сравнивался с сырым значением и всегда давал USAGE_IDEMPOTENCY_CONFLICT.
     let fixture = fixture(100.0);
     let ledger = &fixture.ledger;
-    let blank = |scope: &str, model: &str| ReserveRequest { request_id: Some("blank".into()), estimated_tokens: 10.0, scope: Some(scope.into()), model: Some(model.into()) };
+    let blank = |scope: &str, model: &str| ReserveRequest { request_id: Some("blank".into()), estimated_tokens: 10.0, scope: Some(scope.into()), model: Some(model.into()), role: None };
     let first = ledger.reserve(&blank("", "   ")).expect("резерв");
     assert_eq!(first["scope"], "global");
     assert_eq!(first["model"], "unknown");
@@ -285,13 +285,14 @@ async fn metered_request_id_scope_and_model_reach_the_ledger() {
     let fixture = fixture(10_000.0);
     let client = MeteredLLMClient::new(ScriptedClient::new("test/model", 50, vec![completion(json!({}), json!({ "total_tokens": 7 }))]), Arc::clone(&fixture.ledger));
     client
-        .complete(&json!([{ "role": "user", "content": "hi" }]), &json!({ "usageRequestId": "  req   1 ", "usageScope": "campaign:x", "maxTokens": 3 }))
+        .complete(&json!([{ "role": "user", "content": "hi" }]), &json!({ "usageRequestId": "  req   1 ", "usageScope": "campaign:x", "usageRole": "narrator", "maxTokens": 3 }))
         .await
         .expect("вызов");
     let stored: Value = serde_json::from_str(&std::fs::read_to_string(&fixture.file).expect("файл")).expect("json");
     let entry = &stored["requests"]["req 1"];
     assert_eq!(entry["scope"], "campaign:x");
     assert_eq!(entry["model"], "test/model");
+    assert_eq!(entry["role"], "narrator");
     // `[{"role":"user","content":"hi"}]` — 32 байта, плюс 3 токена ответа.
     assert_eq!(entry["estimated_tokens"], 35);
     assert_eq!(entry["total_tokens"], 7);

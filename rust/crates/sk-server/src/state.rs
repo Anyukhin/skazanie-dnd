@@ -79,10 +79,21 @@ impl Metered {
     /// Срок модели каскад берёт у обёрнутого клиента через учёт расхода
     /// (`MeteredLLMClient.timeoutMs`).
     pub fn cascade(clients: Vec<Metered>, selectable: Vec<Metered>, probe_timeout_ms: f64, failure_cooldown_ms: f64) -> Result<Self, LlmError> {
+        Self::cascade_with_provider_fallback(clients, selectable, None, probe_timeout_ms, failure_cooldown_ms)
+    }
+
+    pub fn cascade_with_provider_fallback(
+        clients: Vec<Metered>,
+        selectable: Vec<Metered>,
+        provider_fallback: Option<Metered>,
+        probe_timeout_ms: f64,
+        failure_cooldown_ms: f64,
+    ) -> Result<Self, LlmError> {
         let member = |client: Metered| FallbackMember::new(client.0);
         let cascade = FallbackLlmClient::new(FallbackLlmClientConfig {
             clients: clients.into_iter().map(member).collect(),
             selectable_clients: selectable.into_iter().map(member).collect(),
+            provider_fallback: provider_fallback.map(|client| member(client).as_provider_fallback()),
             failure_cooldown_ms: Some(failure_cooldown_ms),
             probe_timeout_ms: Some(probe_timeout_ms),
             now: None,

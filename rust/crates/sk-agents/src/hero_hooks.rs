@@ -735,7 +735,7 @@ impl HeroHookWeaver {
             "role": "director",
             "jsonSchema": &*sk_story::llm_json_schemas::HERO_HOOKS_JSON_SCHEMA,
         });
-        let raw = match client.client().complete_json(&input, &json!({ "timeoutMs": 30_000 })).await {
+        let raw = match client.client().complete_json(&input, &json!({ "timeoutMs": 30_000, "usageRole": "hero_hooks" })).await {
             Ok(raw) => raw,
             Err(error) => {
                 return json!({

@@ -57,8 +57,9 @@ pub const NPC_PORTRAIT_ROLE_ASSETS: [(&str, &str); 8] = [
 /// Персонажные портреты предзаготовленных миров — часть репозитория, а не
 /// ленивого кеша кампании. Allowlist по полному NPC id не позволяет свободному
 /// тексту игрока подменить URL или выйти за каталог `public/assets`.
-pub const NPC_PORTRAIT_CHARACTER_ASSETS: [(&str, &str); 8] = [
+pub const NPC_PORTRAIT_CHARACTER_ASSETS: [(&str, &str); 9] = [
     ("astohan-ares", "/assets/npcs/astohan/astohan-ares-v1.png"),
+    ("astohan-gedrik", "/assets/npcs/astohan/astohan-gedrik-v1.png"),
     ("astohan-ivara", "/assets/npcs/astohan/astohan-ivara-v1.png"),
     ("astohan-oren", "/assets/npcs/astohan/astohan-oren-v1.png"),
     ("astohan-mira", "/assets/npcs/astohan/astohan-mira-v1.png"),
@@ -568,6 +569,7 @@ pub(crate) async fn generate_metered(request: GenerationRequest<'_>) -> Result<G
                     estimated_tokens: estimated as f64,
                     scope: Some(request.scope.into()),
                     model: Some(request.model.into()),
+                    role: None,
                 })
                 .map_err(ImageServiceError::Ledger)?,
         ),

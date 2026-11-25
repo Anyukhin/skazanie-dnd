@@ -172,7 +172,7 @@ impl NpcMoraleAgent {
             decision.insert("provider".into(), Value::from("deterministic-morale-fallback"));
             return Some(Value::Object(decision));
         };
-        match client.client().complete_json(&Self::model_request(state, enemy), &json!({})).await {
+        match client.client().complete_json(&Self::model_request(state, enemy), &json!({ "usageRole": "npc_morale" })).await {
             Ok(result) => {
                 let mut decision = normalize_decision(Some(&result), fallback, &id);
                 // Модель не может сдать главного противника в плен: сломленный, он улетает.

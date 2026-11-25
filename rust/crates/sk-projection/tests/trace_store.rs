@@ -51,6 +51,28 @@ fn secrets_are_redacted_before_write() {
 }
 
 #[test]
+fn persisted_trace_keeps_only_numeric_token_usage() {
+    let dir = TempDir::new("trace-usage");
+    let store = FileTraceStore::new(&dir.0).expect("хранилище");
+    let saved = store
+        .save(&json!({
+            "turn_id": "turn-usage", "campaign_id": "ROOM-USAGE",
+            "token_usage": {
+                "prompt_tokens": 2473, "completion_tokens": 85, "total_tokens": 2558, "cost": 0,
+                "authorization": "Bearer usage-secret", "extra": "drop-me", "output_tokens": "85",
+            },
+        }))
+        .expect("запись");
+    let expected = json!({ "prompt_tokens": 2473, "completion_tokens": 85, "total_tokens": 2558, "cost": 0 });
+    assert_eq!(saved["token_usage"], expected);
+    let file = dir.0.join("ROOM-USAGE").join("turn-usage.json");
+    let persisted: Value = serde_json::from_str(&std::fs::read_to_string(file).expect("файл")).expect("JSON");
+    assert_eq!(persisted["token_usage"], expected);
+    let encoded = js::stringify(&persisted);
+    assert!(!encoded.contains("usage-secret") && !encoded.contains("drop-me"));
+}
+
+#[test]
 fn recent_window_and_predicate() {
     let dir = TempDir::new("recent");
     let store = FileTraceStore::new(&dir.0).expect("хранилище");

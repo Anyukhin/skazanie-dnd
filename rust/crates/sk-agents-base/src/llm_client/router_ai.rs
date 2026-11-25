@@ -39,6 +39,8 @@ pub struct RouterAiClientConfig {
     pub api_key: Option<String>,
     /// `baseUrl` (по умолчанию `ROUTERAI_BASE_URL`, иначе `https://routerai.ru/api/v1`).
     pub base_url: Option<String>,
+    /// Явный транспорт провайдера (`ollama` для локального сервера).
+    pub provider: Option<&'static str>,
     /// `model` (по умолчанию `DND_AI_MODEL`, иначе `z-ai/glm-5.3-flash`).
     pub model: Option<String>,
     /// `maxTokens` (по умолчанию `Number(DND_AI_MAX_TOKENS) || 1200`).
@@ -56,6 +58,7 @@ impl std::fmt::Debug for RouterAiClientConfig {
             .debug_struct("RouterAiClientConfig")
             .field("api_key", &self.api_key.as_ref().map(|_| "<скрыт>"))
             .field("base_url", &self.base_url)
+            .field("provider", &self.provider)
             .field("model", &self.model)
             .field("max_tokens", &self.max_tokens)
             .field("reasoning", &self.reasoning)
@@ -172,6 +175,14 @@ async fn read_all(mut response: reqwest::Response) -> Result<Vec<u8>, LlmError> 
     }
 }
 
+pub fn is_openrouter_free_model(value: &str) -> bool {
+    value == "openrouter/free" || value.strip_suffix(":free").and_then(|id| id.split_once('/')).is_some_and(|(vendor, name)| {
+        [vendor, name].into_iter().all(|part| !part.is_empty() && part.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"._-".contains(&byte)
+        }))
+    })
+}
+
 impl RouterAiClient {
     /// `new RouterAIClient(config)` с окружением процесса.
     pub fn new(config: RouterAiClientConfig) -> Result<Self, LlmError> {
@@ -192,7 +203,10 @@ impl RouterAiClient {
             }
         });
         let base_url = base_url.strip_suffix('/').map_or_else(|| base_url.clone(), str::to_string);
-        let provider = llm_provider_for(&base_url);
+        let provider = config.provider.unwrap_or_else(|| llm_provider_for(&base_url));
+        if provider == "openrouter" && !is_openrouter_free_model(&model) {
+            return Err(LlmError::llm("Модель OpenRouter должна быть бесплатной", "LLM_NOT_CONFIGURED"));
+        }
         Ok(RouterAiClient {
             api_key,
             model,
@@ -202,7 +216,7 @@ impl RouterAiClient {
             max_tool_calls: positive_integer_number(config.max_tool_calls.unwrap_or(DEFAULT_MAX_TOOL_CALLS as f64), Some(DEFAULT_MAX_TOOL_CALLS), "maxToolCalls")?,
             max_response_bytes: positive_integer_number(config.max_response_bytes.unwrap_or(DEFAULT_MAX_RESPONSE_BYTES as f64), Some(DEFAULT_MAX_RESPONSE_BYTES), "maxResponseBytes")?,
             provider,
-            provider_label: if provider == "ohmylama" { "OhMyLama" } else { "RouterAI" },
+            provider_label: if provider == "ollama" { "Ollama" } else if provider == "openrouter" { "OpenRouter" } else if provider == "ohmylama" { "OhMyLama" } else { "RouterAI" },
             base_url,
             http: build_http_client()?,
         })
@@ -255,13 +269,13 @@ impl RouterAiClient {
     /// Синхронная часть `complete`: всё до первого `await` в JS.
     pub(super) fn prepare(&self, input: &Value, options: &Value, hooks: &CallHooks) -> Result<Prepared, LlmError> {
         let request = normalize_request(input, options)?;
-        if self.api_key.is_empty() {
+        if self.api_key.is_empty() && self.provider != "ollama" {
             return Err(LlmError::llm("ROUTERAI_API_KEY не настроен", "LLM_NOT_CONFIGURED"));
         }
         let own_timeout = Value::from(self.timeout_ms);
         let timeout_ms = positive_or(coalesce(request.get("timeoutMs"), Some(&own_timeout)), self.timeout_ms);
         let mut body = Map::new();
-        let model = if js::truthy(request.get("model")) { js::s(request.get("model")) } else { self.model.clone() };
+        let model = if !["ollama", "openrouter"].contains(&self.provider) && js::truthy(request.get("model")) { js::s(request.get("model")) } else { self.model.clone() };
         body.insert("model".into(), Value::String(model.clone()));
         body.insert("messages".into(), request.get("messages").cloned().unwrap_or(Value::Null));
         let temperature = js::number(request.get("temperature"));
@@ -289,8 +303,14 @@ impl RouterAiClient {
             Some(reasoning) if is_js_object(Some(reasoning)) => Some(reasoning.clone()),
             _ => campaign_reasoning_for(Some(&model), &js::s(request.get("role"))).or_else(|| self.reasoning.clone()),
         };
-        if let Some(reasoning) = reasoning {
-            body.insert("reasoning".into(), reasoning);
+        if self.provider != "openrouter" {
+            if let Some(reasoning) = reasoning {
+                body.insert("reasoning".into(), reasoning);
+            }
+        } else if wants_json(&request) {
+            let mut provider = Map::new();
+            provider.insert("require_parameters".into(), Value::Bool(true));
+            body.insert("provider".into(), Value::Object(provider));
         }
         // Схема ответа роли (`jsonSchema`) уходит моделям, чей маршрут
         // исполняет strict json_schema; остальным — json_object. GLM Flash
@@ -298,7 +318,7 @@ impl RouterAiClient {
         let json = wants_json(&request);
         let json_schema = if json { usable_json_schema(request.get("jsonSchema")) } else { None };
         match json_schema {
-            Some(schema) if supports_json_schema(Some(&model)) => {
+            Some(schema) if self.provider == "ollama" || self.provider == "openrouter" || supports_json_schema(Some(&model)) => {
                 let mut format = Map::new();
                 format.insert("type".into(), Value::String("json_schema".into()));
                 format.insert("json_schema".into(), schema);

@@ -29,6 +29,14 @@ export const NPC_ALREADY_SAID_LIMIT = 6
 /** Подряд одинаковых слов, после которых предложение считается повтором. */
 const REPEAT_WORD_RUN = 6
 
+// Три финальные правды авторской арки нельзя выдавать свободным ответом NPC:
+// они открываются только authored dialogue или подтверждённой находкой.
+const SCENARIO_TRUTH_FACT_IDS = new Set([
+  'fact:secret:scenario:astohan-dragon-hunt:ares-confession',
+  'fact:secret:scenario:astohan-dragon-hunt:stormberg-journal-page',
+  'fact:secret:scenario:astohan-dragon-hunt:camp-gedrik',
+])
+
 const NPC_SOCIAL_RESPONSE_FIELDS = new Set([
   'npc_id', 'reply', 'stance', 'disclosed_fact_ids', 'disclosed_claim_ids',
   'relationship_delta', 'promise', 'confidence',
@@ -75,6 +83,25 @@ function stableId(namespace, ...parts) {
   return `${namespace}:${digest}`
 }
 
+function authorizedScenarioTruthFactIds(state = {}) {
+  const memory = state.worldMemory ?? {}
+  const ids = new Set([
+    ...(Array.isArray(memory.knowledge_ledger) ? memory.knowledge_ledger : []).map((entry) => String(entry?.fact_id ?? '')),
+    ...(Array.isArray(memory.knowledge_revealed) ? memory.knowledge_revealed : []).map((entry) => String(entry?.fact_id ?? '')),
+    ...(Array.isArray(memory.facts) ? memory.facts : [])
+      .filter((fact) => fact?.predicate === 'discovery')
+      .map((fact) => String(fact?.supersedes_fact_id ?? '')),
+    ...Object.values(state.dialogues && typeof state.dialogues === 'object' && !Array.isArray(state.dialogues) ? state.dialogues : {})
+      .flatMap((entry) => Array.isArray(entry?.granted) ? entry.granted.map(String) : []),
+  ])
+  return new Set([...ids].filter((id) => SCENARIO_TRUTH_FACT_IDS.has(id)))
+}
+
+function scenarioTruthFactAllowed(state, factId) {
+  const id = String(factId ?? '')
+  return !SCENARIO_TRUTH_FACT_IDS.has(id) || authorizedScenarioTruthFactIds(state).has(id)
+}
+
 /**
  * Факты, которые NPC знает и может произнести. До 2026-10-10 сюда шли все
  * факты отряда, и любой собеседник пересказывал чужие находки (плейтест
@@ -84,7 +111,9 @@ function stableId(namespace, ...parts) {
  */
 function npcSpeakableFactRecords(state, profile) {
   const allowedIds = npcKnownFactIds(state, profile)
-  return (state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active' && allowedIds.has(String(fact.id)))
+  return (state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active'
+    && allowedIds.has(String(fact.id))
+    && scenarioTruthFactAllowed(state, fact.id))
 }
 
 function npcSpeakableClaimRecords(state, profile) {
@@ -605,7 +634,7 @@ export function conversationLeads(state = {}, profile = {}, message = '', social
     .map((entry) => String(entry?.npc_id ?? '')).filter(Boolean))
   const candidates = []
   for (const fact of state.worldMemory?.facts ?? []) {
-    if (fact?.predicate !== 'gm_secret' || fact.status !== 'active' || revealed.has(String(fact.id))) continue
+    if (fact?.predicate !== 'gm_secret' || fact.status !== 'active' || revealed.has(String(fact.id)) || !scenarioTruthFactAllowed(state, fact.id)) continue
     const meta = npcSecretMeta(fact)
     const topic = leadStems(`${meta.topic} ${fact.summary ?? ''}`)
     const questionScore = stemOverlap(asked, topic)
@@ -1104,18 +1133,32 @@ export class NpcSocialController {
       provider: 'deterministic-social-fallback',
       prompt_version: NPC_SOCIAL_PROMPT_VERSION,
     }
-    const complete = (options = {}) => this.llmClient.completeJson({
-      messages: [
-        { role: 'system', content: promptForModelRole(prompt, this.llmClient, 'npc') },
-        { role: 'user', content: buildDataOnlyContext({ npc_social_brief: briefFor(state, profile, heroId, message, checkOutcome, { leads, justSeen, ...options }) }) },
-      ],
-      temperature: 0.7,
-      maxTokens: 700,
-      // Творческая роль: профиль рассуждений лидера кампании её касается.
-      role: 'npc',
-      // Форма ответа на стороне провайдера; structurallyValidSocialResponse всё равно проверяет.
-      jsonSchema: NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
-    }, { timeoutMs: 20_000 })
+    const tokenUsage = Object.create(null)
+    const model = String(this.llmClient.model ?? '')
+    // У бесплатных маршрутов OpenRouter обязательные рассуждения тоже входят в лимит JSON-ответа.
+    const maxTokens = model === 'openrouter/free' || model.endsWith(':free') ? 1400 : 700
+    const complete = async (options = {}) => {
+      const request = {
+        messages: [
+          { role: 'system', content: promptForModelRole(prompt, this.llmClient, 'npc') },
+          { role: 'user', content: buildDataOnlyContext({ npc_social_brief: briefFor(state, profile, heroId, message, checkOutcome, { leads, justSeen, ...options }) }) },
+        ],
+        temperature: 0.7,
+        maxTokens,
+        // Творческая роль: профиль рассуждений лидера кампании её касается.
+        role: 'npc',
+        // Формат провайдера дополняет локальную проверку.
+        jsonSchema: NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
+      }
+      const completionOptions = { timeoutMs: 20_000, usageRole: 'npc_social' }
+      if (typeof this.llmClient.complete !== 'function') return this.llmClient.completeJson(request, completionOptions)
+      const response = await this.llmClient.complete(request, { ...completionOptions, json: true })
+      for (const [key, value] of Object.entries(response.usage ?? {})) {
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0) tokenUsage[key] = (tokenUsage[key] ?? 0) + value
+      }
+      if (response.provider === 'Ollama' && tokenUsage.provider_cost == null) tokenUsage.provider_cost = 0
+      return response.json
+    }
     try {
       let result = await complete()
       if (!structurallyValidSocialResponse(result)) throw new Error('NPC_SOCIAL_RESPONSE_INVALID_SHAPE')
@@ -1166,6 +1209,7 @@ export class NpcSocialController {
         ...normalizedResult(result, profile, state, heroId, message, turnId, checkOutcome, { leads }),
         context_metadata: contextMetadata,
         provider: this.llmClient.constructor?.name ?? 'llm',
+        ...(Object.keys(tokenUsage).length ? { token_usage: { ...tokenUsage } } : {}),
         prompt_version: NPC_SOCIAL_PROMPT_VERSION,
         ...(repetition ? { repetition } : {}),
       }
@@ -1176,6 +1220,7 @@ export class NpcSocialController {
         provider: 'deterministic-social-fallback',
         prompt_version: NPC_SOCIAL_PROMPT_VERSION,
         provider_error: clean(error?.code ?? error?.name ?? 'LLM_PROVIDER_ERROR', 80),
+        ...(Object.keys(tokenUsage).length ? { token_usage: { ...tokenUsage } } : {}),
         facts_available: facts.length,
       }
     }
