@@ -285,7 +285,9 @@ async fn narrate_body(ctx: &mut RouteCtx, user: Value) -> Result<axum::response:
     let explicit_npc_id = if conversation_only { String::new() } else { explicit_narration_npc_id(&trusted, &user, &player_id, body.get("npc_id"))? };
     let combat = at(Some(&trusted), &["mechanics", "combat"]);
     let combat_actor_id = js::s(get(index_of(get(combat, "initiative"), Some(nullish(get(combat, "active_index"), None).unwrap_or(&json!(0)))), "actor_id"));
-    if !conversation_only && js::truthy(get(combat, "active")) && !combat_actor_id.is_empty() && player_id != combat_actor_id {
+    if !conversation_only && js::truthy(get(combat, "active")) && !combat_actor_id.is_empty()
+        && !sk_rules::combat::turn::is_own_combat_turn(&trusted, Some(&json!(player_id)))
+    {
         return Err(ApiError::coded(StatusCode::CONFLICT, format!("Сейчас ходит другой участник: {combat_actor_id}"), "NOT_ACTIVE_ACTOR").into());
     }
     let death = at(Some(&trusted), &["mechanics", "death"]);

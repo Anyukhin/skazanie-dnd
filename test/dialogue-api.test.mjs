@@ -79,6 +79,21 @@ test('два игрока обсуждают и спрашивают вне св
     assert.ok(room.body.state.messages.some((message) => message.text === 'Могу ли я атаковать?'))
   }
 
+  await t.test('в своей групповой фазе второй игрок может атаковать словами до первого', async () => {
+    const groupState = {
+      ...state,
+      sessionCode: 'GROUP-DIALOGUE-API',
+      mechanics: { combat: { ...state.mechanics.combat, group_initiative: true } },
+    }
+    const campaign = await request('/api/campaigns', admin.cookie, { code: groupState.sessionCode, name: groupState.campaign, state: groupState })
+    assert.equal(campaign.status, 201, JSON.stringify(campaign.body))
+    const attack = await send(users[1], {
+      campaign_id: groupState.sessionCode, action: 'Атакую Стража', request_kind: 'action', idempotency_key: 'group-phase-attack',
+    })
+    assert.equal(attack.status, 200, JSON.stringify(attack.body))
+    assert.ok(attack.body.mechanics.some((entry) => entry.event_type === 'AttackResolved' && entry.actor_id === 'hero2'))
+  })
+
   await t.test('повтор ключа перехода после двух голосов потребляет решение ровно один раз', async () => {
     const travelState = { ...state, sessionCode: 'TRANSITION-API', enemies: [], mechanics: { combat: { active: false } },
       campaignConcept: { preset: 'one_evening', arc: buildCampaignArcPlan('transition-clock') },

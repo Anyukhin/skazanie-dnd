@@ -104,7 +104,7 @@ import {
   campaignRulesetMetadata,
   campaignRulesetSettings,
 } from './campaign-ruleset.mjs'
-import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
+import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, isOwnCombatTurn, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { activeTurnActorIds, CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation, isMechanicalTrace } from './trace-store.mjs'
@@ -6290,7 +6290,7 @@ async function handleHttpRequest(req, res) {
       if (!canUseHero(user, playerId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
       const explicitNpcId = conversationOnly ? '' : explicitNarrationNpcId(trustedState, user, playerId, body.npc_id)
       const combatActorId = String(trustedState.mechanics?.combat?.initiative?.[trustedState.mechanics?.combat?.active_index ?? 0]?.actor_id ?? '')
-      if (!conversationOnly && trustedState.mechanics?.combat?.active && combatActorId && playerId !== combatActorId) {
+      if (!conversationOnly && trustedState.mechanics?.combat?.active && combatActorId && !isOwnCombatTurn(trustedState, playerId)) {
         return json(res, 409, { error: `Сейчас ходит другой участник: ${combatActorId}`, code: 'NOT_ACTIVE_ACTOR' })
       }
       if (!conversationOnly && trustedState.mechanics?.death?.campaign_status === 'party_defeated') {

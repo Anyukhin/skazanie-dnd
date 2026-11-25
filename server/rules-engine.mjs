@@ -10829,7 +10829,7 @@ function lifeDomainCaster(actor) {
   return characterClassKey(actor) === 'cleric' && /life|zhiz|жизн/iu.test(String(normalizedCombatSubclassFor(actor) ?? actor?.subclass ?? ''))
 }
 
-function isOwnCombatTurn(state, id) {
+export function isOwnCombatTurn(state, id) {
   const combat = state.mechanics.combat
   return combat.active && !(combat.turn_completed ?? []).includes(id)
     && (String(combat.initiative[combat.active_index]?.actor_id) === id || initiativeGroupIds(state).includes(id))
