@@ -43,6 +43,7 @@ services:
       AGENT_PORT: 8787
       DND_DATA_DIR: /app
       DND_STORAGE_DIR: /app/storage
+      DND_AI_OLLAMA_BASE_URL: ${DND_AI_OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
       DND_DEFAULT_RULESET_ID: ${DND_DEFAULT_RULESET_ID:-srd_5_2_1}
       DND_DEFAULT_RULESET_VERSION: ${DND_DEFAULT_RULESET_VERSION:-5.2.1}
       # Корневой сертификат антивируса (аналог NODE_EXTRA_CA_CERTS из

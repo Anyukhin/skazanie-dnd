@@ -4,6 +4,9 @@ import { spawn, spawnSync } from 'node:child_process'
 import { cpus } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
+// Тесты включают модель только через собственную заглушку.
+process.env.DND_AI_OLLAMA_MODEL = ''
+
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)))
 const testDir = join(rootDir, 'test')
 const longRunningFile = 'mvp-player-cycle-api.test.mjs'

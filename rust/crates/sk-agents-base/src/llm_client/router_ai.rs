@@ -39,6 +39,8 @@ pub struct RouterAiClientConfig {
     pub api_key: Option<String>,
     /// `baseUrl` (по умолчанию `ROUTERAI_BASE_URL`, иначе `https://routerai.ru/api/v1`).
     pub base_url: Option<String>,
+    /// Явный транспорт провайдера (`ollama` для локального сервера).
+    pub provider: Option<&'static str>,
     /// `model` (по умолчанию `DND_AI_MODEL`, иначе `z-ai/glm-5.3-flash`).
     pub model: Option<String>,
     /// `maxTokens` (по умолчанию `Number(DND_AI_MAX_TOKENS) || 1200`).
@@ -56,6 +58,7 @@ impl std::fmt::Debug for RouterAiClientConfig {
             .debug_struct("RouterAiClientConfig")
             .field("api_key", &self.api_key.as_ref().map(|_| "<скрыт>"))
             .field("base_url", &self.base_url)
+            .field("provider", &self.provider)
             .field("model", &self.model)
             .field("max_tokens", &self.max_tokens)
             .field("reasoning", &self.reasoning)
@@ -192,7 +195,7 @@ impl RouterAiClient {
             }
         });
         let base_url = base_url.strip_suffix('/').map_or_else(|| base_url.clone(), str::to_string);
-        let provider = llm_provider_for(&base_url);
+        let provider = config.provider.unwrap_or_else(|| llm_provider_for(&base_url));
         Ok(RouterAiClient {
             api_key,
             model,
@@ -255,13 +258,13 @@ impl RouterAiClient {
     /// Синхронная часть `complete`: всё до первого `await` в JS.
     pub(super) fn prepare(&self, input: &Value, options: &Value, hooks: &CallHooks) -> Result<Prepared, LlmError> {
         let request = normalize_request(input, options)?;
-        if self.api_key.is_empty() {
+        if self.api_key.is_empty() && self.provider != "ollama" {
             return Err(LlmError::llm("ROUTERAI_API_KEY не настроен", "LLM_NOT_CONFIGURED"));
         }
         let own_timeout = Value::from(self.timeout_ms);
         let timeout_ms = positive_or(coalesce(request.get("timeoutMs"), Some(&own_timeout)), self.timeout_ms);
         let mut body = Map::new();
-        let model = if js::truthy(request.get("model")) { js::s(request.get("model")) } else { self.model.clone() };
+        let model = if self.provider != "ollama" && js::truthy(request.get("model")) { js::s(request.get("model")) } else { self.model.clone() };
         body.insert("model".into(), Value::String(model.clone()));
         body.insert("messages".into(), request.get("messages").cloned().unwrap_or(Value::Null));
         let temperature = js::number(request.get("temperature"));
@@ -298,7 +301,7 @@ impl RouterAiClient {
         let json = wants_json(&request);
         let json_schema = if json { usable_json_schema(request.get("jsonSchema")) } else { None };
         match json_schema {
-            Some(schema) if supports_json_schema(Some(&model)) => {
+            Some(schema) if self.provider == "ollama" || supports_json_schema(Some(&model)) => {
                 let mut format = Map::new();
                 format.insert("type".into(), Value::String("json_schema".into()));
                 format.insert("json_schema".into(), schema);

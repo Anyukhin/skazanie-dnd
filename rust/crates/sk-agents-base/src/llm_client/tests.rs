@@ -89,6 +89,25 @@ fn strict_json_parse_matches_js() {
     finish("strict", cases("strict").len(), failures);
 }
 
+#[tokio::test]
+async fn local_ollama_uses_openai_compatibility_without_router_key() {
+    let server = TestServer::start(Arc::new(|request, _| {
+        let body = request.json();
+        assert_eq!(body["model"], "qwen3:14b");
+        assert_eq!(body["reasoning"], json!({ "effort": "none" }));
+        Reply::json(200, &envelope("локальный ответ"))
+    })).await;
+    let client = RouterAiClient::with_env(RouterAiClientConfig {
+        base_url: Some(server.origin.clone()),
+        provider: Some("ollama"),
+        model: Some("qwen3:14b".into()),
+        reasoning: Some(json!({ "effort": "none" })),
+        ..RouterAiClientConfig::default()
+    }, |_| None).expect("локальный клиент");
+    let result = client.complete(&json!({ "messages": messages(), "reasoning": { "effort": "none" } }), &json!({})).await.expect("ответ");
+    assert_eq!(result["content"], "локальный ответ");
+}
+
 #[test]
 fn validate_tool_calls_matches_js() {
     let mut failures = Vec::new();
@@ -870,6 +889,47 @@ async fn fallback_does_not_retry_aborts_auth_and_foreign_errors() {
     let error = cascade(vec![one]).complete(&input(), &json!({})).await.expect_err("исчерпан");
     assert_eq!(error.to_json(), json!({ "name": "LLMError", "code": "LLM_FALLBACK_EXHAUSTED", "message": "All configured RouterAI models failed", "attempts": [{ "model": "only", "code": "LLM_PROVIDER_ERROR" }] }));
     assert_eq!(FallbackLlmClient::new(FallbackLlmClientConfig::default()).err().map(|error| error.message), Some("FallbackLLMClient requires at least one LLM client".into()));
+}
+
+#[tokio::test]
+async fn fallback_uses_provider_reserve_after_router_auth_failure() {
+    let log = calls();
+    let primary = scripted("router", &log, |_, _, _| async {
+        Err(LlmError::llm("HTTP 402", "LLM_PROVIDER_ERROR").with_detail("status", json!(402)))
+    });
+    let paid_reserve = scripted("paid-reserve", &log, |_, _, _| async {
+        Ok(json!({ "content": "paid reserve must not run", "model": "paid-reserve" }))
+    });
+    let local = scripted("qwen3:14b", &log, |_, _, _| async { answer("локальный ответ", "qwen3:14b") });
+    let chain = FallbackLlmClient::new(FallbackLlmClientConfig {
+        clients: vec![FallbackMember::new(primary), FallbackMember::new(paid_reserve)],
+        provider_fallback: Some(FallbackMember::new(local).as_provider_fallback()),
+        ..FallbackLlmClientConfig::default()
+    }).expect("каскад");
+    let result = chain.complete(&input(), &json!({})).await.expect("локальный ответ");
+    assert_eq!(result["model"], "qwen3:14b");
+    assert_eq!(taken(&log), ["router", "qwen3:14b"]);
+    assert_eq!(result["fallback_used"], true);
+}
+
+#[tokio::test]
+async fn fallback_uses_provider_reserve_after_last_cloud_retryable_failure() {
+    let log = calls();
+    let primary = scripted("router", &log, |_, _, _| async {
+        Err(LlmError::llm("HTTP 503", "LLM_PROVIDER_ERROR").with_detail("status", json!(503)))
+    });
+    let paid_reserve = scripted("paid-reserve", &log, |_, _, _| async {
+        Err(LlmError::llm("HTTP 503", "LLM_PROVIDER_ERROR").with_detail("status", json!(503)))
+    });
+    let local = scripted("qwen3:14b", &log, |_, _, _| async { answer("локальный ответ", "qwen3:14b") });
+    let chain = FallbackLlmClient::new(FallbackLlmClientConfig {
+        clients: vec![FallbackMember::new(primary), FallbackMember::new(paid_reserve)],
+        provider_fallback: Some(FallbackMember::new(local).as_provider_fallback()),
+        ..FallbackLlmClientConfig::default()
+    }).expect("каскад");
+    let result = chain.complete(&input(), &json!({})).await.expect("локальный ответ");
+    assert_eq!(result["model"], "qwen3:14b");
+    assert_eq!(taken(&log), ["router", "paid-reserve", "qwen3:14b"]);
 }
 
 #[tokio::test]

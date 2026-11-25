@@ -31,6 +31,7 @@ const DEFAULT_FALLBACK_MODELS: &str = "google/gemini-2.5-flash-lite,z-ai/glm-5.3
 const DEFAULT_BASE_URL: &str = "https://routerai.ru/api/v1";
 const DEFAULT_LORE_MODEL: &str = "openai/gpt-5.6-luna-pro";
 const DEFAULT_IMAGE_MODEL: &str = "openai/gpt-image-1";
+const DEFAULT_OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 
 /// Все настройки процесса.
 #[derive(Clone)]
@@ -71,6 +72,10 @@ pub struct Config {
     pub ai_daily_token_limit: f64,
     /// `DND_AI_LORE_MODEL || 'openai/gpt-5.6-luna-pro'`.
     pub lore_model: String,
+    /// `DND_AI_OLLAMA_MODEL`: локальная модель OpenAI-compatible Ollama.
+    pub ollama_model: Option<String>,
+    /// `DND_AI_OLLAMA_BASE_URL || http://127.0.0.1:11434/v1`.
+    pub ollama_base_url: String,
     /// `Number(DND_COMBAT_TURN_TIMEOUT_MS || 120000)`.
     pub combat_turn_timeout_ms: f64,
     /// `DND_IMAGE_MODEL || 'openai/gpt-image-1'`.
@@ -169,6 +174,8 @@ impl Config {
         let allowed_ai_models = unique(automatic_ai_models.iter().cloned().chain(SELECTABLE_EXTRA_MODELS.iter().map(|model| model.to_string())));
         let base_url = non_empty(env("ROUTERAI_BASE_URL")).unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
         let base_url = base_url.strip_suffix('/').map_or_else(|| base_url.clone(), str::to_string);
+        let ollama_base_url = non_empty(env("DND_AI_OLLAMA_BASE_URL")).unwrap_or_else(|| DEFAULT_OLLAMA_BASE_URL.to_string());
+        let ollama_base_url = ollama_base_url.strip_suffix('/').map_or_else(|| ollama_base_url.clone(), str::to_string);
         let storage_dir = non_empty(env("DND_STORAGE_DIR")).map_or_else(|| cwd.join("storage"), |dir| absolute(cwd, Path::new(&dir)));
         Self {
             host: non_empty(env("AGENT_HOST")).unwrap_or_else(|| "0.0.0.0".to_string()),
@@ -189,6 +196,8 @@ impl Config {
             ai_failure_cooldown_ms: env_number(env, "DND_AI_FAILURE_COOLDOWN_MS", 120_000.0),
             ai_daily_token_limit: env_number(env, "DND_AI_DAILY_TOKEN_LIMIT", 2_000_000.0),
             lore_model: non_empty(env("DND_AI_LORE_MODEL")).unwrap_or_else(|| DEFAULT_LORE_MODEL.to_string()),
+            ollama_model: non_empty(env("DND_AI_OLLAMA_MODEL")),
+            ollama_base_url,
             combat_turn_timeout_ms: env_number(env, "DND_COMBAT_TURN_TIMEOUT_MS", 120_000.0),
             image_model: non_empty(env("DND_IMAGE_MODEL")).unwrap_or_else(|| DEFAULT_IMAGE_MODEL.to_string()),
             runtime_image_generation: ["on", "true", "1", "yes"].contains(&lowered(env("DND_RUNTIME_IMAGE_GENERATION")).as_str()),
@@ -219,6 +228,11 @@ impl Config {
 
     /// Есть ли ключ модели (`Boolean(apiKey)`); значение не раскрывается.
     pub fn model_configured(&self) -> bool {
+        self.cloud_model_configured() || self.ollama_model.is_some()
+    }
+
+    /// Есть ли облачная модель с ключом, которой можно поручить картинки.
+    pub fn cloud_model_configured(&self) -> bool {
         !self.api_key.is_empty()
     }
 }
@@ -288,5 +302,14 @@ mod tests {
         assert!(config.api_key.is_empty());
         assert!(config.base_url.starts_with("http://127.0.0.1:"));
         assert!(!format!("{config:?}").contains("<скрыт>"));
+    }
+
+    #[test]
+    fn local_ollama_is_an_explicit_text_model_without_cloud_key() {
+        let config = config(&[("DND_AI_OLLAMA_MODEL", "qwen3:14b")]);
+        assert!(config.model_configured());
+        assert!(!config.cloud_model_configured());
+        assert_eq!(config.ollama_model.as_deref(), Some("qwen3:14b"));
+        assert_eq!(config.ollama_base_url, DEFAULT_OLLAMA_BASE_URL);
     }
 }

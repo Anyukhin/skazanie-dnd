@@ -211,6 +211,9 @@ const port = Number(process.env.AGENT_PORT || 8787)
 const host = process.env.AGENT_HOST || '0.0.0.0'
 const apiKey = process.env.ROUTERAI_API_KEY || ''
 const baseUrl = (process.env.ROUTERAI_BASE_URL || 'https://routerai.ru/api/v1').replace(/\/$/, '')
+const ollamaModel = String(process.env.DND_AI_OLLAMA_MODEL ?? '').trim()
+const ollamaBaseUrl = String(process.env.DND_AI_OLLAMA_BASE_URL ?? '').trim() || 'http://127.0.0.1:11434/v1'
+const textModelConfigured = Boolean(apiKey || ollamaModel)
 // Умолчание — по перебору 2026-10-01 (`docs/model-reasoning-sweep-2026-10-01.md`).
 const model = process.env.DND_AI_MODEL || 'openai/gpt-6-luna'
 const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'google/gemini-2.5-flash-lite,z-ai/glm-5.3-flash,deepseek/deepseek-v4-flash,openai/gpt-4.1-nano')
@@ -298,7 +301,14 @@ const rollRegistry = new RollRegistry({
   diceService,
   storageFile: join(storageDir, 'engine', 'roll-registry.json'),
 })
-const configuredLlmClients = allowedAiModels.map((modelId) => new MeteredLLMClient({
+const ollamaClient = ollamaModel ? new MeteredLLMClient({
+  client: new RouterAIClient({
+    apiKey: 'ollama', baseUrl: ollamaBaseUrl, model: ollamaModel, maxTokens,
+    timeoutMs: Math.max(30_000, modelTimeoutMs), ollama: true,
+  }),
+  ledger: usageLedger,
+}) : null
+const configuredLlmClients = (apiKey || !ollamaClient ? allowedAiModels : []).map((modelId) => new MeteredLLMClient({
   client: new RouterAIClient({
     apiKey, baseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
     reasoning: reasoningProfileFor(modelId),
@@ -308,11 +318,13 @@ const configuredLlmClients = allowedAiModels.map((modelId) => new MeteredLLMClie
 const llmClient = new FallbackLLMClient({
   clients: configuredLlmClients.filter(client => automaticAiModels.includes(client.model)),
   selectableClients: configuredLlmClients.filter(client => !automaticAiModels.includes(client.model)),
+  providerFallback: ollamaClient,
   probeTimeoutMs: modelProbeTimeoutMs,
   failureCooldownMs: modelFailureCooldownMs,
 })
 if (apiKey) void llmClient.probe().catch(() => {})
-const sceneArchitect = new SceneArchitectAgent({ llmClient: apiKey ? llmClient : null })
+const textLlmClient = textModelConfigured ? llmClient : null
+const sceneArchitect = new SceneArchitectAgent({ llmClient: textLlmClient })
 const defaultRulesetId = process.env.DND_DEFAULT_RULESET_ID || LEGACY_DEFAULT_RULESET_ID
 const defaultRulesetProfile = rulesetProfile(defaultRulesetId)
 const installedRulePacks = await loadRulePacks([...new Set([...INSTALLED_RULESET_IDS, defaultRulesetId])])
@@ -398,10 +410,10 @@ const postCommitCoordinator = new PostCommitCoordinator({
   },
 })
 const traceStore = new FileTraceStore({ rootDir: join(storageDir, 'turn-traces') })
-const narrator = new Narrator({ llmClient: apiKey ? llmClient : null })
+const narrator = new Narrator({ llmClient: textLlmClient })
 const creativeDirector = new CriticalNarrationCoordinator({ narrator })
-const npcController = new NpcMoraleAgent({ llmClient: apiKey ? llmClient : null })
-const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmClient : null })
+const npcController = new NpcMoraleAgent({ llmClient: textLlmClient })
+const npcSocialController = new NpcSocialController({ llmClient: textLlmClient })
 // Длинная форма — пролог и хроника арки — идёт через отдельную дешёвую модель:
 // замер показал, что Luna в длинной форме не уступает и стоит в разы меньше.
 // Модель меняется переменной DND_AI_LORE_MODEL; без ключа летописец молчит.
@@ -421,15 +433,20 @@ const loreLlmClient = new MeteredLLMClient({
   }),
   ledger: usageLedger,
 })
-const loreAuthor = new LoreAuthor({ llmClient: apiKey ? loreLlmClient : null })
-const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null, loreAuthor, diceService })
-const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
+const loreClient = ollamaClient ? new FallbackLLMClient({
+  clients: apiKey ? [loreLlmClient] : [],
+  providerFallback: ollamaClient,
+  failureCooldownMs: modelFailureCooldownMs,
+}) : apiKey ? loreLlmClient : null
+const loreAuthor = new LoreAuthor({ llmClient: loreClient })
+const campaignBootstrapper = new CampaignBootstrapper({ llmClient: textLlmClient, loreAuthor, diceService })
+const actionAdjudicator = new ActionAdjudicator({ llmClient: textLlmClient })
 const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator, loreAuthor, rollRegistry })
-const directorAgent = new DirectorAgent({ llmClient: apiKey ? llmClient : null })
+const directorAgent = new DirectorAgent({ llmClient: textLlmClient })
 // Рекап зовётся раз на возвращение стола и кешируется по версии состояния,
 // поэтому идёт через общий metered-клиент и попадает в usage-леджер.
 const campaignRecap = new CampaignRecapService({
-  llmClient: apiKey ? llmClient : null,
+  llmClient: textLlmClient,
   cache: new RecapCacheStore({ storageFile: join(storageDir, 'engine', 'campaign-recap.json') }),
   gapHours: Number(process.env.DND_RECAP_GAP_HOURS || DEFAULT_RECAP_GAP_HOURS),
 })
@@ -2872,7 +2889,7 @@ onRoomSaved((campaignId, room) => {
 // так плетение догоняет и героев, собранных до этой правки. Без ключа модели
 // список ждущих пуст и ничего не происходит; ошибка модели или коммита запрос
 // игрока не задевает — стадия упадёт в лог и повторится позже.
-const heroHookWeaver = new HeroHookWeaver({ llmClient: apiKey ? llmClient : null })
+const heroHookWeaver = new HeroHookWeaver({ llmClient: textLlmClient })
 const heroHookJobs = new Set()
 
 async function weaveHeroHooksFor({ campaignId }) {
@@ -3034,7 +3051,7 @@ const gameOrchestrator = new GameOrchestrator({
   // одного вопроса появилось бы два разных ответа.
   unknownActionHandler: autonomousCampaign,
   // Ответ «что мы знаем» голосом ведущего; без ключа — серверный ответ.
-  loreVoice: new LoreVoice({ llmClient: apiKey ? llmClient : null }),
+  loreVoice: new LoreVoice({ llmClient: textLlmClient }),
   rollRegistry,
 })
 
@@ -3967,10 +3984,10 @@ async function handleHttpRequest(req, res) {
     }
   }
   if (req.url === '/api/health') return json(res, 200, {
-    configured: Boolean(apiKey),
-    provider: 'RouterAI',
-    model,
-    fallbackModels,
+    configured: textModelConfigured,
+    provider: apiKey || !ollamaModel ? 'RouterAI' : 'Ollama',
+    model: apiKey || !ollamaModel ? model : ollamaModel,
+    fallbackModels: !ollamaModel ? fallbackModels : apiKey ? [...fallbackModels, ollamaModel] : [],
     models: llmClient.health(),
     imageModel,
     engineMode: 'enforce',
@@ -6566,7 +6583,9 @@ await releaseOrphanRollReservations()
 server.keepAliveTimeout = 65_000
 server.headersTimeout = 66_000
 server.listen(port, host, () => {
-  console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} + ${fallbackModels.length} fallback models` : 'демо-режим'}`)
+  const modelLabel = apiKey ? `${model} + ${fallbackModels.length} резервных моделей${ollamaModel ? ` + Ollama ${ollamaModel}` : ''}`
+    : ollamaModel ? `Ollama ${ollamaModel}` : 'демо-режим'
+  console.log(`[Сказание] Сервер: http://${host}:${port} · ${modelLabel}`)
   // После рестарта активной кампании NPC может потребовать заметного CPU ещё до
   // первого await. Сначала даём HTTP принять health-check, затем возобновляем
   // фоновые часы; игровое состояние и durable-дедлайны от этой паузы не меняются.
