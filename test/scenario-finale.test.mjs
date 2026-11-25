@@ -149,13 +149,16 @@ test('подписанное признание Ареса открывает д
   await run.travel('astohan-quiet-watch-camp')
   run.discover('camp-gedrik')
   await run.travel('astohan-stormberg')
+  const unsigned = run.apply({ command_type: 'ChooseDialogueOption', actor_id: hero.id, npc_id: 'astohan-ares', option_id: 'confession' }, player, maxDice())
+  assert.ok(unsigned.events.some((event) => event.event_type === 'KnowledgeRevealed'), 'от устного признания остаётся улика, но ещё нет подписи')
   const dialogue = dialogueOptionsFor(run.state, 'astohan-ares', hero.id)
   const confession = dialogue?.options.find((option) => option.id === 'signed-confession')
-  assert.ok(confession, 'вариант подписанного признания появляется только после двух улик')
+  assert.ok(confession, 'уже известное устное признание не скрывает получение подписи')
 
   const chosen = run.apply({ command_type: 'ChooseDialogueOption', actor_id: hero.id, npc_id: 'astohan-ares', option_id: 'signed-confession' }, player, minDice())
   assert.ok(chosen.events.some((event) => event.event_type === 'DialogueOptionChosen'))
   assert.ok(!chosen.events.some((event) => event.event_type === 'DieRolled'), 'письменное признание не бросает кубик')
+  assert.ok(!dialogueOptionsFor(run.state, 'astohan-ares', hero.id)?.options.some((option) => option.id === 'signed-confession'))
   const aresFactId = scenarioClueFactId(campaignScenario(run.state), 'ares-confession')
   assert.ok(run.state.worldMemory.knowledge_revealed.some((entry) => entry.fact_id === aresFactId))
 
@@ -188,7 +191,7 @@ test('подписанное признание после неудачной п
   await run.travel('astohan-stormberg')
   run.apply({ command_type: 'ChooseDialogueOption', actor_id: hero.id, npc_id: 'astohan-ares', option_id: 'signed-confession' }, player, minDice())
   await run.toLair()
-  const concluded = run.apply({ command_type: 'NegotiateScenarioTreaty', actor_id: hero.id }, player, minDice())
+  const concluded = run.apply({ command_type: 'ChooseDialogueOption', actor_id: hero.id, npc_id: SARGAT, option_id: 'signed-treaty' }, player, minDice())
   assert.ok(concluded.events.some((event) => event.event_type === 'ScenarioTreatyConcluded'))
 })
 

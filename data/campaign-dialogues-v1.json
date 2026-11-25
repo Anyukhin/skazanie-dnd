@@ -162,21 +162,24 @@
           "label": "Нам пора.",
           "reply": "— Идите. И возвращайтесь живыми — мёртвые мне не докладывают.",
           "ends": true
-      },
-      {
-        "id": "signed-confession",
-        "label": "Попросить Ареса подписать признание о Вулканисе.",
-        "requires": {
-          "clues_all": [
-            "camp-gedrik",
-            "stormberg-journal-page"
-          ]
         },
-        "sets": [
-          "ares-signed-confession"
-        ],
-        "reply": "Арес читает признание Гедрика и страницу журнала, затем ставит подпись. — Это моя вина тоже. Я не отдавал приказа разбить кладку Вулканиса, но принял славу и тридцать лет молчал. Я напишу правду своей рукой — пусть она станет ценой мира с сыном дракона.",
-        "reveal": "ares-confession"
+        {
+          "id": "signed-confession",
+          "label": "Попросить Ареса подписать признание о Вулканисе.",
+          "requires": {
+            "flags_none": [
+              "ares-signed-confession"
+            ],
+            "clues_all": [
+              "camp-gedrik",
+              "stormberg-journal-page"
+            ]
+          },
+          "sets": [
+            "ares-signed-confession"
+          ],
+          "reply": "Арес читает признание Гедрика и страницу журнала, затем ставит подпись. — Это моя вина тоже. Я не отдавал приказа разбить кладку Вулканиса, но принял славу и тридцать лет молчал. Я напишу правду своей рукой — пусть она станет ценой мира с сыном дракона.",
+          "reveal": "ares-confession"
         }
       ]
     },
@@ -1075,20 +1078,20 @@
             "reply": "Жар в пасти дракона разгорается ярче."
           }
         },
-      {
-        "id": "signed-treaty",
-        "label": "Мы приносим подписанное признание Ареса. Уходи с равнин.",
-        "requires": {
-          "flags": [
-            "ares-signed-confession"
-          ]
+        {
+          "id": "signed-treaty",
+          "label": "Мы приносим подписанное признание Ареса. Уходи с равнин.",
+          "requires": {
+            "flags": [
+              "ares-signed-confession"
+            ]
+          },
+          "reply": "Саргат читает подпись Ареса и долго молчит. Затем складывает крылья: — Этого достаточно. Я уйду с равнин.",
+          "action": {
+            "command_type": "NegotiateScenarioTreaty",
+            "proof": "ares-signed-confession"
+          }
         },
-        "reply": "Саргат читает подпись Ареса и долго молчит. Затем складывает крылья: — Этого достаточно. Я уйду с равнин.",
-        "action": {
-          "command_type": "NegotiateScenarioTreaty",
-          "proof": "ares-signed-confession"
-        }
-      },
         {
           "id": "farewell",
           "label": "Хватит разговоров.",

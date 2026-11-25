@@ -177,11 +177,11 @@ const AUTHORED_EVENTS: [&str; 7] = [
 
 /// `dialogueActionChecks(action)` над действием из команды.
 fn action_checks(action: &Value) -> bool {
-    match action.get("command_type").and_then(Value::as_str) {
-        Some("ReleaseCursedKnight" | "NegotiateScenarioTreaty") => true,
-        Some("ResolveScenarioInformant") => action.get("choice").and_then(Value::as_str) == Some("turn"),
-        _ => false,
-    }
+    sk_story::campaign_dialogues::dialogue_action_uses_check(
+        action.get("command_type").and_then(Value::as_str).unwrap_or_default(),
+        action.get("choice").and_then(Value::as_str),
+        action.get("proof").and_then(Value::as_str),
+    )
 }
 
 /// `{ skill, dc, success, total }` проверки варианта.

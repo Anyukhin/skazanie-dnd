@@ -187,6 +187,32 @@ test('договор через диалог сразу завершает ка�
   assert.equal(afterRestart.state.mechanics.campaign_lifecycle.ending?.id, 'treaty')
 })
 
+test('диалог о подписанном признании завершает кампанию без броска', { timeout: runnerTimeout(180_000) }, async (t) => {
+  const code = 'SIGNED-TREATY-HTTP'
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-signed-treaty-' })
+  const { client: admin } = await setupAdmin(server)
+  const state = await lairState(code)
+  state.dialogues = { 'astohan-ares': { flags: ['ares-signed-confession'] } }
+  await createCampaign(admin, { code, state })
+  const { client: player } = await addPlayer(server, admin, code, { heroIds: [HERO_ID] })
+  const { state: before } = expectStatus(await player.get(`/api/rooms/${code}`))
+  const option = before.scene_dialogues[SARGAT].options.find((entry) => entry.id === 'signed-treaty')
+  assert.ok(option, 'в диалоге доступно письменное признание')
+  assert.equal(option.check, undefined)
+
+  const result = expectStatus(await sendCommand(player, code, 'signed-treaty-dialogue', {
+    command_type: 'ChooseDialogueOption',
+    actor_id: HERO_ID,
+    npc_id: SARGAT,
+    option_id: option.id,
+  }))
+  assert.ok(result.mechanics.some((event) => event.event_type === 'ScenarioTreatyConcluded'))
+  assert.ok(result.mechanics.every((event) => event.event_type !== 'AbilityCheckResolved'))
+  const { state: after } = expectStatus(await player.get(`/api/rooms/${code}`))
+  assert.equal(after.mechanics.campaign_lifecycle.status, 'completed')
+  assert.equal(after.mechanics.campaign_lifecycle.ending.id, 'treaty')
+})
+
 test('старое активное сохранение с treaty.concluded закрывается перед первым запросом Директора', { timeout: runnerTimeout(180_000) }, async (t) => {
   const code = 'TREATY-OLD'
   const server = await startTestServer(t, { dice: MAX_DICE, storagePrefix: 'skazanie-treaty-old-' })

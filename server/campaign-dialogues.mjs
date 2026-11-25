@@ -364,7 +364,8 @@ function dialogueActionOpen(state, item, hero, progress) {
   if (type === 'NegotiateScenarioTreaty') {
     const rules = scenarioTreatyRules(state)
     if (!rules || rules.concluded || !rules.truth_revealed || scenarioLocationId(state) !== rules.boss_location_id) return false
-    return !(state?.scenario_attention?.treaty?.attempts ?? []).map(String).includes(hero)
+    return item.action?.proof === 'ares-signed-confession'
+      || !(state?.scenario_attention?.treaty?.attempts ?? []).map(String).includes(hero)
   }
   // Кошель и вещь оружейной — раз на героя, каким бы путём он их ни взял:
   // фразой, другим вариантом или этим.
@@ -396,8 +397,10 @@ export function dialogueOptionsFor(state, npcId, heroId) {
     // Из группы герой выбирает один вариант: остальные для него закрыты.
     .filter((item) => !(item.group && dialogue.options.some((other) => other.group === item.group && other.id !== item.id
       && (progress.chosen[other.id] ?? []).includes(hero))))
-    // Рассказанное второй раз не спрашивают: тайну успеха отряд уже знает.
-    .filter((item) => !factKnownToParty(state, dialogueRevealFactId(state, item.success)))
+    // Разовый вариант может закрепить новое действие (например, подпись)
+    // даже когда его рассказ уже известен отряду.
+    .filter((item) => item.success.sets.some((flag) => item.requires.flags_none.includes(flag))
+      || !factKnownToParty(state, dialogueRevealFactId(state, item.success)))
     .filter((item) => !item.action || dialogueActionOpen(state, item, hero, progress))
     .map((item) => ({
       id: item.id,
