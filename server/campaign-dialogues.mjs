@@ -67,7 +67,7 @@ const INFORMANT_CHOICES = new Set(['expose', 'release', 'turn'])
 /**
  * Бросает ли команда проверку сама: тогда вариант задаёт навык, а исход — её
  * бросок. Упокоение рыцаря, договор и перевербовка осведомителя.
- * @param {{ command_type: string, choice?: string }} action
+ * @param {{ command_type: string, choice?: string, proof?: string }} action
  */
 export function dialogueActionChecks(action) {
   return action.command_type === 'ReleaseCursedKnight' || (action.command_type === 'NegotiateScenarioTreaty' && action.proof !== 'ares-signed-confession')
