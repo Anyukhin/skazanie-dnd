@@ -48,7 +48,7 @@ import { MapStore } from './map-store.mjs'
 import { RATE_WINDOW_MS, SlidingWindowCounter } from './rate-window.mjs'
 import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
-import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
+import { FallbackLLMClient, RouterAIClient, openRouterFreeModels } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
 import { createRouterImageGenerator } from './image-generation.mjs'
 import { ArchitectUsageStore, DEFAULT_ARCHITECT_ALERT_THRESHOLD, architectAlertText } from './architect-usage.mjs'
@@ -211,15 +211,28 @@ const port = Number(process.env.AGENT_PORT || 8787)
 const host = process.env.AGENT_HOST || '0.0.0.0'
 const apiKey = process.env.ROUTERAI_API_KEY || ''
 const baseUrl = (process.env.ROUTERAI_BASE_URL || 'https://routerai.ru/api/v1').replace(/\/$/, '')
+const testOpenRouterBaseUrl = process.env.DND_AI_OPENROUTER_BASE_URL ?? ''
+const testOpenRouterUrl = process.env.NODE_ENV === 'test' && URL.canParse(testOpenRouterBaseUrl)
+  ? new URL(testOpenRouterBaseUrl)
+  : null
+const localOpenRouterStub = testOpenRouterUrl && ['http:', 'https:'].includes(testOpenRouterUrl.protocol)
+  && ['127.0.0.1', 'localhost', '[::1]'].includes(testOpenRouterUrl.hostname)
+const openRouterKey = process.env.NODE_ENV !== 'test' || localOpenRouterStub
+  ? String(process.env.OPENROUTER_API_KEY ?? '').trim()
+  : ''
+const freeModels = openRouterKey ? openRouterFreeModels(process.env.DND_AI_OPENROUTER_MODELS) : []
+const openRouterBaseUrl = localOpenRouterStub ? testOpenRouterUrl.href : 'https://openrouter.ai/api/v1'
+const textApiKey = openRouterKey || apiKey
+const textBaseUrl = openRouterKey ? openRouterBaseUrl : baseUrl
 const ollamaModel = String(process.env.DND_AI_OLLAMA_MODEL ?? '').trim()
 const ollamaBaseUrl = String(process.env.DND_AI_OLLAMA_BASE_URL ?? '').trim() || 'http://127.0.0.1:11434/v1'
-const textModelConfigured = Boolean(apiKey || ollamaModel)
+const textModelConfigured = Boolean(textApiKey || ollamaModel)
 // Умолчание — по перебору 2026-10-01 (`docs/model-reasoning-sweep-2026-10-01.md`).
-const model = process.env.DND_AI_MODEL || 'openai/gpt-6-luna'
-const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'google/gemini-2.5-flash-lite,z-ai/glm-5.3-flash,deepseek/deepseek-v4-flash,openai/gpt-4.1-nano')
+const model = freeModels[0] || process.env.DND_AI_MODEL || 'openai/gpt-6-luna'
+const fallbackModels = openRouterKey ? freeModels.slice(1) : [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'google/gemini-2.5-flash-lite,z-ai/glm-5.3-flash,deepseek/deepseek-v4-flash,openai/gpt-4.1-nano')
   .split(',').map((value) => value.trim()).filter((value) => value && value !== model))].slice(0, 5)
 const automaticAiModels = [model, ...fallbackModels]
-const allowedAiModels = Object.freeze([...new Set([...automaticAiModels, ...SELECTABLE_EXTRA_MODELS])])
+const allowedAiModels = Object.freeze(openRouterKey ? automaticAiModels : [...new Set([...automaticAiModels, ...SELECTABLE_EXTRA_MODELS])])
 const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
 const modelTimeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS || 9_000)
 const modelProbeTimeoutMs = Number(process.env.DND_AI_PROBE_TIMEOUT_MS || 15_000)
@@ -308,9 +321,10 @@ const ollamaClient = ollamaModel ? new MeteredLLMClient({
   }),
   ledger: usageLedger,
 }) : null
-const configuredLlmClients = (apiKey || !ollamaClient ? allowedAiModels : []).map((modelId) => new MeteredLLMClient({
+const configuredLlmClients = (textApiKey || !ollamaClient ? allowedAiModels : []).map((modelId) => new MeteredLLMClient({
   client: new RouterAIClient({
-    apiKey, baseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
+    apiKey: textApiKey, baseUrl: textBaseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
+    openRouterFree: Boolean(openRouterKey),
     reasoning: reasoningProfileFor(modelId),
   }),
   ledger: usageLedger,
@@ -322,7 +336,7 @@ const llmClient = new FallbackLLMClient({
   probeTimeoutMs: modelProbeTimeoutMs,
   failureCooldownMs: modelFailureCooldownMs,
 })
-if (apiKey) void llmClient.probe().catch(() => {})
+if (apiKey && !openRouterKey) void llmClient.probe().catch(() => {})
 const textLlmClient = textModelConfigured ? llmClient : null
 const sceneArchitect = new SceneArchitectAgent({ llmClient: textLlmClient })
 const defaultRulesetId = process.env.DND_DEFAULT_RULESET_ID || LEGACY_DEFAULT_RULESET_ID
@@ -433,7 +447,7 @@ const loreLlmClient = new MeteredLLMClient({
   }),
   ledger: usageLedger,
 })
-const loreClient = ollamaClient ? new FallbackLLMClient({
+const loreClient = openRouterKey ? textLlmClient : ollamaClient ? new FallbackLLMClient({
   clients: apiKey ? [loreLlmClient] : [],
   providerFallback: ollamaClient,
   failureCooldownMs: modelFailureCooldownMs,
@@ -3985,9 +3999,9 @@ async function handleHttpRequest(req, res) {
   }
   if (req.url === '/api/health') return json(res, 200, {
     configured: textModelConfigured,
-    provider: apiKey || !ollamaModel ? 'RouterAI' : 'Ollama',
-    model: apiKey || !ollamaModel ? model : ollamaModel,
-    fallbackModels: !ollamaModel ? fallbackModels : apiKey ? [...fallbackModels, ollamaModel] : [],
+    provider: openRouterKey ? 'OpenRouter' : apiKey || !ollamaModel ? 'RouterAI' : 'Ollama',
+    model: textApiKey || !ollamaModel ? model : ollamaModel,
+    fallbackModels: !ollamaModel ? fallbackModels : textApiKey ? [...fallbackModels, ollamaModel] : [],
     models: llmClient.health(),
     imageModel,
     engineMode: 'enforce',
@@ -6583,7 +6597,7 @@ await releaseOrphanRollReservations()
 server.keepAliveTimeout = 65_000
 server.headersTimeout = 66_000
 server.listen(port, host, () => {
-  const modelLabel = apiKey ? `${model} + ${fallbackModels.length} резервных моделей${ollamaModel ? ` + Ollama ${ollamaModel}` : ''}`
+  const modelLabel = textApiKey ? `${model} + ${fallbackModels.length} резервных моделей${ollamaModel ? ` + Ollama ${ollamaModel}` : ''}`
     : ollamaModel ? `Ollama ${ollamaModel}` : 'демо-режим'
   console.log(`[Сказание] Сервер: http://${host}:${port} · ${modelLabel}`)
   // После рестарта активной кампании NPC может потребовать заметного CPU ещё до
