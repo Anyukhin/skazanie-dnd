@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { Map as MapIcon, X } from 'lucide-react'
+import { memoryTransportRequestInit } from './ai-client'
 import { CombatLabBoard } from './CombatLabBoard'
 import { useDialogEscape } from './app-shared'
 import type { GameState, SerializedTacticalMap, WorldMapLocation } from './types'
@@ -65,11 +66,11 @@ export function MapImportModal({ code, locations, currentLocationId, currentLoca
   }, [locations, currentLocationId, currentLocationName])
 
   const request = async (mode: 'preview' | 'apply') => {
-    const response = await fetch(`/api/campaigns/${encodeURIComponent(code)}/map-import`, {
+    const response = await fetch(`/api/campaigns/${encodeURIComponent(code)}/map-import`, memoryTransportRequestInit({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode, slab, location_id: locationId, ...(mode === 'apply' ? { idempotency_key: applyKey.current } : {}) }),
-    })
+    }))
     const body = await response.json().catch(() => null) as Record<string, unknown> | null
     if (!response.ok || !body) throw new Error(String(body?.error || 'Не удалось разобрать слэб'))
     return body
@@ -120,11 +121,11 @@ export function MapImportModal({ code, locations, currentLocationId, currentLoca
     setDone('')
     if (!rebuildKey.current) rebuildKey.current = `map-rebuild:${crypto.randomUUID()}`
     try {
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(code)}/map-import`, {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(code)}/map-import`, memoryTransportRequestInit({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'rebuild', text: description, preserve_layout: preserveLayout, idempotency_key: rebuildKey.current }),
-      })
+      }))
       const body = await response.json().catch(() => null) as Record<string, unknown> | null
       if (!response.ok || !body) throw new Error(String(body?.error || 'Не удалось перестроить карту'))
       const state = body.state as GameState | undefined

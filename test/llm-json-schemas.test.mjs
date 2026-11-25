@@ -8,8 +8,13 @@ import test from 'node:test'
 import { DIRECTOR_INTENT_TYPES, normalizeDirectorIntent } from '../server/autonomous-campaign.mjs'
 import { DirectorAgent } from '../server/director-agent.mjs'
 import { ENCOUNTER_DIFFICULTIES, ENCOUNTER_THEMES } from '../server/encounter-assembler.mjs'
+import { ActionAdjudicator } from '../server/action-adjudicator.mjs'
+import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
+import { SceneArchitectAgent } from '../server/scene-architect.mjs'
+import { interpretFreeAction } from '../server/free-action-adjudication.mjs'
 import { FakeLLM, RouterAIClient, usableJsonSchema } from '../server/llm-client.mjs'
 import {
+  ACTION_ADJUDICATOR_JSON_SCHEMA,
   CAMPAIGN_CREATION_JSON_SCHEMA,
   DIRECTOR_INTENT_JSON_SCHEMA,
   DIRECTOR_SCENE_RESOLUTIONS,
@@ -17,11 +22,22 @@ import {
   NPC_PROMISE_DIRECTIONS,
   NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
   NPC_SOCIAL_STANCES,
+  SCENE_ARCHITECT_JSON_SCHEMA,
 } from '../server/llm-json-schemas.mjs'
+import { ENVIRONMENT_HAZARD_IDS, IMPROVISED_EFFECT_IDS } from '../server/improvised-effects.mjs'
+import { FREE_ACTION_ACTIVITY_KINDS, FREE_ACTION_DURATION_CLASSES, FREE_ACTION_SKILLS } from '../server/free-action-adjudication.mjs'
+import { GM_SECRET_SKILLS } from '../server/world-memory.mjs'
 import { STRUCTURED_OUTPUT_MODELS, supportsJsonSchema } from '../server/model-style-profiles.mjs'
 import { NpcSocialController } from '../server/npc-social-controller.mjs'
 
-const ALL_SCHEMAS = [DIRECTOR_INTENT_JSON_SCHEMA, NPC_SOCIAL_RESPONSE_JSON_SCHEMA, CAMPAIGN_CREATION_JSON_SCHEMA, HERO_HOOKS_JSON_SCHEMA]
+const ALL_SCHEMAS = [
+  DIRECTOR_INTENT_JSON_SCHEMA,
+  NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
+  CAMPAIGN_CREATION_JSON_SCHEMA,
+  SCENE_ARCHITECT_JSON_SCHEMA,
+  ACTION_ADJUDICATOR_JSON_SCHEMA,
+  HERO_HOOKS_JSON_SCHEMA,
+]
 
 /** Минимальная проверка значения по подмножеству JSON Schema, которое используют схемы ролей. */
 function conforms(schema, value) {
@@ -185,6 +201,68 @@ test('Директор прикладывает схему к запросу и 
   assert.equal(result.intent.type, 'open_social_scene')
   assert.equal(llm.requests[0].jsonSchema, DIRECTOR_INTENT_JSON_SCHEMA)
   assert.equal(llm.requests[0].role, 'director')
+})
+
+const sceneArchitectSample = {
+  title: 'Глава · Старая дорога', location: 'Старая дорога', mood: 'Тревожно',
+  objective: 'Найти след', transition: 'Отряд идёт по дороге.', arrival: 'Дорога выводит к воротам.',
+  hook: 'След ведёт дальше.', theme: 'дорога', danger: 'средняя', outcome: 'Нить продолжается.',
+  objective_status: 'unresolved', carry_unresolved: true,
+  map: {
+    layout: 'open', scale: 'site', pattern: 'natural', material: 'grass', width: 26, height: 18,
+    openness: 0.6, water: 0, featureCount: 4,
+    design: { topology: 'linear', climate: 'temperate', architecture: 'wood', density: 'sparse', building_use: 'dwelling', landmarks: [] },
+  },
+  levels: [], shop_intent: null, secrets: [],
+}
+
+const actionAdjudicatorSample = {
+  route: 'check', destination: '', npc_hint: '', goal_summary: 'Осмотреть дорогу',
+  approach_summary: 'Смотрю на следы', obstacle: 'слабый свет', activity_kind: 'routine',
+  duration_class: 'brief', ability: 'wis', skill: 'perception', plausibility: 'plausible', risk: 'none',
+  required_means: [], action_cost: 'free', effect: 'none', effect_target: '', hazard: '', prop_id: '',
+  target_id: '', item_id: '', proficiency: 'proficient', consequence_type: 'time', success_detail: '',
+  surface_detail: '', failure_detail: '',
+}
+
+test('схемы Архитектора и арбитра повторяют закрытые словари и не пропускают механику', () => {
+  assert.deepEqual(SCENE_ARCHITECT_JSON_SCHEMA.schema.properties.map.properties.design.properties.building_use.enum,
+    ['dwelling', 'tavern', 'shop', 'manor', 'smithy', 'barracks', 'mill'])
+  assert.deepEqual(ACTION_ADJUDICATOR_JSON_SCHEMA.schema.properties.activity_kind.enum, [...FREE_ACTION_ACTIVITY_KINDS])
+  assert.deepEqual(ACTION_ADJUDICATOR_JSON_SCHEMA.schema.properties.duration_class.enum, [...FREE_ACTION_DURATION_CLASSES])
+  assert.deepEqual(ACTION_ADJUDICATOR_JSON_SCHEMA.schema.properties.skill.enum, [...FREE_ACTION_SKILLS])
+  assert.deepEqual(ACTION_ADJUDICATOR_JSON_SCHEMA.schema.properties.effect.enum, [...IMPROVISED_EFFECT_IDS])
+  assert.deepEqual(ACTION_ADJUDICATOR_JSON_SCHEMA.schema.properties.hazard.enum, ['', ...ENVIRONMENT_HAZARD_IDS])
+  assert.deepEqual(SCENE_ARCHITECT_JSON_SCHEMA.schema.properties.secrets.items.properties.skills.items.enum, [...GM_SECRET_SKILLS])
+  assert.ok(conforms(SCENE_ARCHITECT_JSON_SCHEMA.schema, sceneArchitectSample))
+  assert.ok(conforms(ACTION_ADJUDICATOR_JSON_SCHEMA.schema, actionAdjudicatorSample))
+  assert.equal(conforms(ACTION_ADJUDICATOR_JSON_SCHEMA.schema, { ...actionAdjudicatorSample, damage: 20 }), false)
+})
+
+test('три production-роли прикладывают strict-схему, а ответ арбитра вне контракта уходит в fallback', async () => {
+  const bootstrapLlm = new FakeLLM([{ content: '{}' }])
+  await new CampaignBootstrapper({ llmClient: bootstrapLlm }).create({
+    code: 'SCHEMA-CAMPAIGN', world: {}, players: [{ id: 'hero', character: 'Ада', role: 'разведчик' }],
+  })
+  assert.equal(bootstrapLlm.requests[0].role, 'campaign_creator')
+  assert.equal(bootstrapLlm.requests[0].jsonSchema, CAMPAIGN_CREATION_JSON_SCHEMA)
+
+  const architectLlm = new FakeLLM([sceneArchitectSample])
+  await new SceneArchitectAgent({ llmClient: architectLlm }).plan({
+    action: 'Уходим по дороге', decision: 'Уходим по дороге', state: { scene: { location: 'Старая дорога' } },
+  })
+  assert.equal(architectLlm.requests[0].role, 'scene_architect')
+  assert.equal(architectLlm.requests[0].jsonSchema, SCENE_ARCHITECT_JSON_SCHEMA)
+
+  const adjudicatorLlm = new FakeLLM([{ ...actionAdjudicatorSample, risk: 'not-a-risk' }])
+  const fallback = interpretFreeAction('Осматриваю дорогу')
+  const reading = await new ActionAdjudicator({ llmClient: adjudicatorLlm }).read(
+    { players: [{ id: 'hero', character: 'Ада', abilities: { wis: 10 }, inventory: [] }], scene: { location: 'Старая дорога' } },
+    'hero', 'Осматриваю дорогу', fallback,
+  )
+  assert.equal(adjudicatorLlm.requests[0].role, 'action_adjudicator')
+  assert.equal(adjudicatorLlm.requests[0].jsonSchema, ACTION_ADJUDICATOR_JSON_SCHEMA)
+  assert.match(reading.source, /after-agent-error$/u)
 })
 
 function capturingClient(model) {

@@ -42,6 +42,7 @@ use sk_scene_base::scene_map_design::{normalize_scene_map_design, world_location
 use sk_scene_base::scene_requirements::scene_map_requirements_for;
 use sk_society::campaign_stories::validate_campaign_mode;
 use sk_story::campaign_loop_policy::build_campaign_arc_plan;
+use sk_story::llm_json_schemas::CAMPAIGN_CREATION_JSON_SCHEMA;
 use sk_tactical::tactical_map::{cell_at, deserialize_tactical_map, legacy_cells_from_tactical_map, reachable_cells, serialize_tactical_map, TacticalMap, SIZE_CLASSES};
 use sk_tactics::security::build_data_only_context;
 use sk_themes::scene_themes::{is_live_theme, resolve_scene_theme, SCENE_THEME_IDS};
@@ -1243,6 +1244,8 @@ impl CampaignBootstrapper {
                 ],
                 "temperature": 0.8,
                 "maxTokens": 4800,
+                "role": "campaign_creator",
+                "jsonSchema": &*CAMPAIGN_CREATION_JSON_SCHEMA,
             });
             let mut attempt = 0;
             while attempt < 2 && generated_by != "ai-storyteller" {

@@ -333,6 +333,8 @@ struct View {
     hero_ids: Vec<String>,
     actor_id: String,
     controls_party: bool,
+    /// Capability negotiated on the stream handshake and retained on reconnect.
+    memory_transport_version: i64,
     /// Хеш карты, которую соединение действительно отправило.
     map_hash: String,
 }
@@ -502,7 +504,14 @@ impl LiveStreams {
         }
         let hero_ids = crate::access::campaign_hero_ids(&self.accounts, user, campaign).map_err(ViewError::Failed)?;
         let mut view = connection.view();
-        view.user = user.clone();
+        let memory_transport_version = view.memory_transport_version;
+        let mut scoped_user = user.clone();
+        if memory_transport_version == 2 && user.get("role").and_then(Value::as_str) != Some("admin") {
+            if let Some(object) = scoped_user.as_object_mut() {
+                object.insert("memory_transport_version".into(), Value::from(2));
+            }
+        }
+        view.user = scoped_user;
         view.user_id = js::string(user.get("id"));
         view.controls_party = user.get("role").and_then(Value::as_str) == Some("admin");
         if let Some(state) = state {
@@ -1044,7 +1053,8 @@ impl LiveStreams {
         // Администратор ведёт весь отряд, но за его аккаунтом герои не
         // закреплены, поэтому heroIds пуст и присутствие показывало «0 в сети».
         let controls_party = user.get("role").and_then(Value::as_str) == Some("admin");
-        let view = View { user: user.clone(), user_id: js::string(user.get("id")), hero_ids, actor_id, controls_party, map_hash: String::new() };
+        let memory_transport_version = user.get("memory_transport_version").and_then(Value::as_i64).unwrap_or(1);
+        let view = View { user: user.clone(), user_id: js::string(user.get("id")), hero_ids, actor_id, controls_party, memory_transport_version, map_hash: String::new() };
         // Одна ограниченная очередь на соединение для всех кадров:
         // `room`/`presence` схлопываются до последнего, переполнение закрывает
         // поток — переподключение получит полное разрешённое состояние.

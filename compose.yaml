@@ -8,6 +8,10 @@ services:
       AGENT_HOST: 0.0.0.0
       AGENT_PORT: 8787
       DND_STORAGE_DIR: /app/storage
+      # Node должен использовать системное хранилище CA внутри контейнера.
+      # Значение по умолчанию сохраняет это поведение и при ручном `docker
+      # compose up`, когда Start-DnD.ps1 не запускался.
+      NODE_USE_SYSTEM_CA: ${NODE_USE_SYSTEM_CA:-1}
       DND_DEFAULT_RULESET_ID: ${DND_DEFAULT_RULESET_ID:-srd_5_2_1}
       DND_DEFAULT_RULESET_VERSION: ${DND_DEFAULT_RULESET_VERSION:-5.2.1}
     ports:

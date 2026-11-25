@@ -1,5 +1,14 @@
 import type { AiHealth, AiTurnResult, CharacterCreationCatalog, DiceRollEvent, GameState, PendingCheck, PlayerRequestKind, RollResult, RulesetProfileDescriptor } from './types'
 
+const MEMORY_TRANSPORT_HEADER = 'X-Memory-Transport'
+export const MEMORY_TRANSPORT_VERSION = 'v2'
+
+export function memoryTransportRequestInit(init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers)
+  headers.set(MEMORY_TRANSPORT_HEADER, MEMORY_TRANSPORT_VERSION)
+  return { ...init, headers }
+}
+
 type SharedDiceRollResponse = {
   roll: DiceRollEvent
   version: number
@@ -93,7 +102,7 @@ export async function fetchWithTimeout(
     controller.abort()
   }, Math.max(1, timeoutMs))
   try {
-    return await fetch(input, { ...init, signal: controller.signal })
+    return await fetch(input, memoryTransportRequestInit({ ...init, signal: controller.signal }))
   } catch (error) {
     if (timedOut) throw new RequestTimeoutError(timeoutMessage)
     throw error
@@ -290,11 +299,11 @@ export async function rollDice(check: Pick<PendingCheck, 'check_id' | 'playerId'
 }
 
 export async function rollSharedDie(sessionCode: string, playerId: string, sides = 20): Promise<SharedDiceRollResponse> {
-  const response = await fetch(`/api/rooms/${encodeURIComponent(sessionCode)}/dice`, {
+  const response = await fetch(`/api/rooms/${encodeURIComponent(sessionCode)}/dice`, memoryTransportRequestInit({
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ playerId, sides }),
-  })
+  }))
   if (!response.ok) {
     const details = await response.json().catch(() => ({})) as { error?: string; code?: string }
     throw new ApiRequestError(details.error || 'Кость укатилась со стола', response.status, details.code)

@@ -154,6 +154,7 @@ import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer }
 import { withCombatForecast } from './combat-forecast-view.mjs'
 import { withWeaponAttackSummaries } from './weapon-attack-view.mjs'
 import { compactStateForTransport } from './reveal-transport.mjs'
+import { MEMORY_TRANSPORT_VERSION, memoryTransportV2For, withMemoryTransportCapability } from './memory-transport.mjs'
 import { isPartySummon } from './combat-spells.mjs'
 import { assertCampaignPlayable, lifecycleActionForCommit, lifecycleEventForAction } from './campaign-lifecycle.mjs'
 import { campaignRewindEvent, planCampaignControl } from './campaign-controls.mjs'
@@ -475,7 +476,7 @@ function json(res, status, body) {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(data),
     'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Memory-Transport',
     'Access-Control-Allow-Credentials': 'true',
     'Cache-Control': 'no-store',
   })
@@ -499,7 +500,15 @@ function sessionCookie(req, token = '', expired = false) {
 }
 
 function requireUser(req, res) {
-  const user = userForToken(cookies(req).skazanie_session)
+  const requestedVersion = (() => {
+    try {
+      const parsed = new URL(req.url || '/', 'http://skazanie.local')
+      const query = parsed.searchParams.get('memory_transport')
+      const header = req.headers['x-memory-transport']
+      return query === 'v2' || String(header ?? '').toLowerCase() === 'v2' ? MEMORY_TRANSPORT_VERSION : 1
+    } catch { return 1 }
+  })()
+  const user = withMemoryTransportCapability(userForToken(cookies(req).skazanie_session), requestedVersion)
   if (!user) json(res, 401, { error: 'Нужно войти в аккаунт' })
   return user
 }
@@ -2431,11 +2440,12 @@ function revalidateCampaignStreams(campaignId, { state = null, maxAgeMs = 0 } = 
         revokeCampaignStream(connection, 'access_lost')
         continue
       }
-      const heroIds = campaignHeroIds(user, normalized).map(String)
-      connection.user = user
-      connection.userId = String(user.id)
+      const currentUser = withMemoryTransportCapability(user, connection.memoryTransportVersion)
+      const heroIds = campaignHeroIds(currentUser, normalized).map(String)
+      connection.user = currentUser
+      connection.userId = String(currentUser.id)
       connection.heroIds = heroIds
-      connection.controlsParty = user.role === 'admin'
+      connection.controlsParty = currentUser.role === 'admin'
       if (state) {
         const actorId = heroIds.find((id) => state.players?.some((player) => String(player.id) === id)) ?? ''
         // Сменился актёр — клиентский кэш карты принадлежал прежней проекции:
@@ -3945,7 +3955,7 @@ async function handleHttpRequest(req, res) {
     : null
   return runWithCampaignAiSettings(requestAiSettings, async () => {
   applySecurityHeaders(res)
-  if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'http://127.0.0.1:4173', 'Access-Control-Allow-Headers': 'Content-Type, X-Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Credentials': 'true' }); return res.end() }
+  if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'http://127.0.0.1:4173', 'Access-Control-Allow-Headers': 'Content-Type, X-Idempotency-Key, X-Memory-Transport', 'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Credentials': 'true' }); return res.end() }
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method || '') && !originAllowed(req)) return json(res, 403, { error: 'Запрос с другого источника отклонён' })
   const characterCreationCatalogMatch = requestPath.match(/^\/api\/rulesets\/([a-z0-9_]+)\/character-creation$/u)
   if (characterCreationCatalogMatch && req.method === 'GET') {
@@ -4241,6 +4251,7 @@ async function handleHttpRequest(req, res) {
       heroIds,
       actorId,
       controlsParty,
+      memoryTransportVersion: memoryTransportV2For(user) ? MEMORY_TRANSPORT_VERSION : 1,
       res,
       closed: false,
       close: null,

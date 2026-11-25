@@ -7,6 +7,11 @@ $ProjectRoot = if ($env:DND_PROJECT_ROOT) {
 }
 Set-Location -LiteralPath $ProjectRoot
 
+# RouterAI использует HTTPS. Флаг действует для прямого запуска Node на Windows
+# и участвует в подстановке Compose для JS-сервиса. Rust-путь его не использует:
+# дополнительный корень для rustls задаётся через DND_EXTRA_CA_CERTS.
+$env:NODE_USE_SYSTEM_CA = '1'
+
 $TunnelStateDirectory = Join-Path $ProjectRoot 'storage\generated\.tunnel'
 $TunnelStatePath = Join-Path $TunnelStateDirectory 'PUBLIC_LINK.txt'
 $PublicLinkPath = Join-Path $ProjectRoot 'PUBLIC_LINK.txt'

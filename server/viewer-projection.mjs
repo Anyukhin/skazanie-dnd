@@ -37,6 +37,7 @@ import { weatherForViewer } from './weather.mjs'
 import { footprintCellsFor, footprintSizeFor } from './actor-footprint.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
+import { compactWorldMemoryForTransport, memoryTransportV2For } from './memory-transport.mjs'
 import { officesForViewer } from './world-offices.mjs'
 import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
 import { normalizeCityOverview, normalizeWorldMapBackground, normalizeWorldMapLocationLore } from './world-map.mjs'
@@ -2101,11 +2102,11 @@ export function campaignStateForViewer(state, user, actorId = '') {
     scene,
     adventure: publicAdventureFor(visible.adventure),
     worldMap: publicWorldMapFor(visible.worldMap ?? state.worldMap),
-    worldMemory: worldMemoryForViewer(state.worldMemory, {
+    worldMemory: compactWorldMemoryForTransport(worldMemoryForViewer(state.worldMemory, {
       playerId: String(actorId ?? ''),
       isAdmin: false,
       isPartyMember: true,
-    }),
+    }), memoryTransportV2For(user)),
     social: npcSocialForViewer(state.social, {
       playerId: String(actorId ?? ''),
       isAdmin: false,

@@ -34,7 +34,7 @@ pub fn json(status: StatusCode, body: &Value) -> Response<Body> {
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json; charset=utf-8"));
     headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static(DEV_CLIENT_ORIGIN));
-    headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Content-Type"));
+    headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Content-Type, X-Memory-Transport"));
     headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
@@ -378,7 +378,7 @@ pub fn preflight() -> Response<Body> {
     *response.status_mut() = StatusCode::NO_CONTENT;
     let headers = response.headers_mut();
     headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static(DEV_CLIENT_ORIGIN));
-    headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Content-Type, X-Idempotency-Key"));
+    headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Content-Type, X-Idempotency-Key, X-Memory-Transport"));
     headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE, OPTIONS"));
     headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
     response

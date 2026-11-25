@@ -196,6 +196,8 @@ function mountSession({ campaign = 'A', accountId = 'account-a', onAccessRevoked
     fetchWithTimeout: client.fetchWithTimeout,
     generateItemImage: async () => ({ url: '', model: 'test' }),
     isStateVersionConflictError: client.isStateVersionConflictError,
+    MEMORY_TRANSPORT_VERSION: client.MEMORY_TRANSPORT_VERSION,
+    memoryTransportRequestInit: client.memoryTransportRequestInit,
     narrateWithAgent: client.narrateWithAgent,
     newIdempotencyKey: client.newIdempotencyKey,
     publishNarrationPreview: client.publishNarrationPreview,

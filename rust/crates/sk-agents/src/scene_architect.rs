@@ -16,6 +16,7 @@ use serde_json::{json, Map, Value};
 use sk_core::{js, re, text};
 
 use crate::director_agent::RoleClient;
+use sk_story::llm_json_schemas::SCENE_ARCHITECT_JSON_SCHEMA;
 
 /// `SCENE_ARCHITECT_AGENT_ID`.
 pub const SCENE_ARCHITECT_AGENT_ID: &str = "scene_architect";
@@ -1295,6 +1296,8 @@ impl SceneArchitectAgent {
             ],
             "temperature": 0.45,
             "maxTokens": 1000,
+            "role": "scene_architect",
+            "jsonSchema": &*SCENE_ARCHITECT_JSON_SCHEMA,
         })
     }
 }

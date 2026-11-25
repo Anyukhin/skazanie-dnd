@@ -4,6 +4,9 @@ title DnD - Skazanie
 chcp 65001 >nul
 cd /d "%~dp0"
 set "DND_PROJECT_ROOT=%~dp0"
+rem RouterAI: доверяем системному хранилищу CA на Windows. Start-DnD.ps1
+rem повторяет этот флаг для прямого запуска PowerShell и передаёт его в Compose.
+set "NODE_USE_SYSTEM_CA=1"
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$script = Get-Content -LiteralPath '%~dp0Start-DnD.ps1' -Raw -Encoding UTF8; & ([ScriptBlock]::Create($script))"
 set "LAUNCH_EXIT=%ERRORLEVEL%"
 if not "%LAUNCH_EXIT%"=="0" (

@@ -12,6 +12,7 @@ import { buildDataOnlyContext } from './security.mjs'
 import { SCENE_THEME_IDS } from './scene-themes.mjs'
 import { worldLocationById } from './world-map.mjs'
 import { normalizeGmSecrets } from './world-memory.mjs'
+import { SCENE_ARCHITECT_JSON_SCHEMA } from './llm-json-schemas.mjs'
 
 /**
  * Один идентификатор роли на код и на новые трассы. Прежнее имя
@@ -855,6 +856,8 @@ export class SceneArchitectAgent {
         ],
         temperature: 0.45,
         maxTokens: 1000,
+        role: 'scene_architect',
+        jsonSchema: SCENE_ARCHITECT_JSON_SCHEMA,
       }, { timeoutMs: 20_000 })
       const constraint = knownDestinationConstraint({
         state,

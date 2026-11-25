@@ -31,9 +31,10 @@ async function request(baseUrl, path, { method = 'GET', cookie = '', body, key =
 
 const sessionCookie = (result) => result.response.headers.get('set-cookie')?.split(';')[0]
 
-async function openRoomStream(baseUrl, campaignId, cookie, signal) {
-  const response = await fetch(`${baseUrl}/api/campaigns/${campaignId}/stream`, {
-    headers: { Cookie: cookie, Accept: 'text/event-stream' }, signal,
+async function openRoomStream(baseUrl, campaignId, cookie, signal, compact = false) {
+  const url = compact ? `${baseUrl}/api/campaigns/${campaignId}/stream?memory_transport=v2` : `${baseUrl}/api/campaigns/${campaignId}/stream`
+  const response = await fetch(url, {
+    headers: { Cookie: cookie, Accept: 'text/event-stream', ...(compact ? { 'X-Memory-Transport': 'v2' } : {}) }, signal,
   })
   assert.equal(response.status, 200)
   return { reader: response.body.getReader(), decoder: new TextDecoder(), buffer: '', queued: [] }
@@ -79,10 +80,12 @@ const SECRET = 'ТАЙНА-ТОЛЬКО-ДЛЯ-ПЕРВОГО-ГЕРОЯ'
 test('живой поток отдаёт каждому игроку только его знание', { timeout: runnerTimeout(90_000) }, async (t) => {
   const ownerAbort = new AbortController()
   const guestAbort = new AbortController()
+  const reconnectAbort = new AbortController()
   // Потоки обрываются раньше остановки сервера: этот t.after стоит до запуска.
   t.after(() => {
     ownerAbort.abort()
     guestAbort.abort()
+    reconnectAbort.abort()
   })
 
   const server = await startTestServer(t, { storagePrefix: 'skazanie-stream-isolation-', setupToken: 'isolation-setup' })
@@ -126,8 +129,8 @@ test('живой поток отдаёт каждому игроку тольк�
     })).status, 200)
   }
 
-  const ownerStream = await openRoomStream(baseUrl, 'ISOLAT', firstCookie, ownerAbort.signal)
-  const guestStream = await openRoomStream(baseUrl, 'ISOLAT', secondCookie, guestAbort.signal)
+  const ownerStream = await openRoomStream(baseUrl, 'ISOLAT', firstCookie, ownerAbort.signal, true)
+  const guestStream = await openRoomStream(baseUrl, 'ISOLAT', secondCookie, guestAbort.signal, true)
   await nextRoomEvent(ownerStream, (event) => event.state.presence.online_hero_ids.length === 2)
   await nextRoomEvent(guestStream, (event) => event.state.presence.online_hero_ids.length === 2)
 
@@ -178,6 +181,12 @@ test('живой поток отдаёт каждому игроку тольк�
     false,
     'чужой личный секрет уехал второму игроку живым потоком',
   )
+  assert.equal(Object.hasOwn(ownerView.state.worldMemory, 'knowledge_revealed'), false, 'v2 SSE не должен возвращать alias')
+  assert.equal(Object.hasOwn(guestView.state.worldMemory, 'knowledge_revealed'), false, 'v2 SSE не должен возвращать alias')
+
+  const reconnected = await openRoomStream(baseUrl, 'ISOLAT', firstCookie, reconnectAbort.signal, true)
+  const reconnectView = await nextRoomEvent(reconnected, (event) => event.state?.worldMemory)
+  assert.equal(Object.hasOwn(reconnectView.state.worldMemory, 'knowledge_revealed'), false, 'reconnect сохраняет capability v2')
 
   // Общая часть мира при этом одинакова: изоляция режет знание, а не сцену.
   assert.equal(ownerView.state.scene?.location, guestView.state.scene?.location)
