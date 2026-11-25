@@ -27,6 +27,7 @@ export const NPC_PORTRAIT_ROLE_ASSETS = Object.freeze({
 // тексту игрока подменить URL или выйти за каталог `public/assets`.
 export const NPC_PORTRAIT_CHARACTER_ASSETS = Object.freeze({
   'astohan-ares': '/assets/npcs/astohan/astohan-ares-v1.png',
+  'astohan-gedrik': '/assets/npcs/astohan/astohan-gedrik-v1.png',
   'astohan-ivara': '/assets/npcs/astohan/astohan-ivara-v1.png',
   'astohan-oren': '/assets/npcs/astohan/astohan-oren-v1.png',
   'astohan-mira': '/assets/npcs/astohan/astohan-mira-v1.png',

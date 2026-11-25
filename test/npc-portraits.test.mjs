@@ -122,7 +122,7 @@ test('предзаготовленный NPC получает свой камп�
     generator: async () => { calls += 1; return { bytes: WEBP } },
   })
   const ids = Object.keys(NPC_PORTRAIT_CHARACTER_ASSETS)
-  assert.equal(ids.length, 8)
+  assert.equal(ids.length, 9)
   for (const id of ids) {
     const authored = publicNpcPortraitProfile({
       id, name: id, role: 'named NPC', public_summary: 'Авторский персонаж.', tags: [],
