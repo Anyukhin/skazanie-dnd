@@ -45,7 +45,7 @@ use sk_character::encounter_rewards::{
 use sk_combat_content::scene_hazard_narration::scene_hazard_narration;
 use sk_core::indexmap::IndexMap;
 use sk_core::{clock, game, hash, js, re, text, v8sort, RuleError};
-use sk_director::campaign_lifecycle::{build_deterministic_epilogue, build_epilogue_narration_brief, campaign_can_advance_arc, campaign_can_auto_complete};
+use sk_director::campaign_lifecycle::{build_deterministic_epilogue, build_epilogue_narration_brief, campaign_can_advance_arc, campaign_can_auto_complete, treaty_ends_adventure};
 use sk_director::scene_memory::quest_title_from_objective;
 use sk_encounters::agent_context::{agent_context_metadata, AgentContextOptions};
 use sk_infra::roll_registry::RollRegistry;
@@ -1552,6 +1552,23 @@ impl AutonomousCampaignOrchestrator {
         Ok(Some(js::spread(&committed, json!({ "epilogue_provider": provider }))))
     }
 
+    /// Договор в бою сначала фиксирует штатный исход встречи, затем закрывает
+    /// авторский сценарий. В мирной сцене достаточно сразу записать эпилог.
+    pub async fn settle_accepted_treaty(&self, campaign_id: &str, key: &str, state: &Value) -> OrchestratorResult<Option<Value>> {
+        if !is_str(at(Some(state), &["mechanics", "campaign_lifecycle", "status"]), "active") || !treaty_ends_adventure(state) { return Ok(None); }
+        let mut encounter_completion = None;
+        if scenario_encounter_end_reason(state) == Some("parley")
+            && (game::combat_active(state) || js::s(at(Some(state), &["mechanics", "encounter", "outcome"])) == "parley")
+        {
+            let completion = self.complete_encounter(campaign_id, Some(&json!("parley"))).await?;
+            if is_str(at(completion.get("state"), &["mechanics", "campaign_lifecycle", "status"]), "completed") {
+                return Ok(Some(completion));
+            }
+            encounter_completion = Some(completion);
+        }
+        Ok(self.complete_campaign_if_ready(campaign_id, key).await?.or(encounter_completion))
+    }
+
     /// `recordIntent(campaignId, intent, idempotencyKey, authorization, proofFactIds)`.
     pub fn record_intent(&self, campaign_id: &str, intent: &Value, idempotency_key: &str, authorization: Option<&Value>, proof_fact_ids: &[Value]) -> OrchestratorResult<Value> {
         let loaded = self.load(campaign_id)?;
@@ -1623,6 +1640,25 @@ impl AutonomousCampaignOrchestrator {
         }
         let existing_intent_commit = self.by_key_json(campaign_id, &format!("{key}:intent"))?;
         let mut loaded = self.load(campaign_id)?;
+        // Восстановление после остановки между договором и шагом Директора.
+        // Терминальный сценарий закрывается до записи нового намерения, чтобы
+        // stale active save не успел создать следующую встречу.
+        if is_str(at(Some(&loaded.state), &["mechanics", "campaign_lifecycle", "status"]), "active")
+            && treaty_ends_adventure(&loaded.state)
+        {
+            if let Some(completion) = self.settle_accepted_treaty(campaign_id, &key, &loaded.state).await? {
+                loaded = self.load(campaign_id)?;
+                return Ok(json!({
+                    "intent": proposed,
+                    "authorization": { "policy": "director-intent-policy-v1", "reason": "campaign_completion_recovery", "replaced": false },
+                    "results": [completion],
+                    "state": loaded.state,
+                    "state_version": loaded.state_version,
+                    "admin_commands": 0,
+                    "recovered_completion": true,
+                }));
+            }
+        }
         let existing_intent_record = existing_intent_commit.as_ref().and_then(|commit| list(commit.get("events")).iter().find(|entry| type_is(entry, "DirectorIntentRecorded"))).and_then(|entry| entry.get("payload")).cloned();
         let existing_intent = get(existing_intent_record.as_ref(), "intent").filter(|value| js::truthy(Some(value))).cloned();
         let existing_outcome_commit = self.by_key_json(campaign_id, &format!("{key}:director-outcome"))?;

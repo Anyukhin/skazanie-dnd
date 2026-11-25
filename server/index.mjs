@@ -5184,6 +5184,19 @@ async function handleHttpRequest(req, res) {
         replayedIntent = duplicate.events.find((event) => event.event_type === 'DirectorIntentRecorded')?.payload?.intent ?? null
       }
       let loaded = await autonomousCampaign.load(campaignId)
+      const treatyCompletion = await autonomousCampaign.settleAcceptedTreaty(campaignId, key, loaded.state)
+      if (treatyCompletion?.state) {
+        const projected = persistAuthoritativeProjection(campaignId, treatyCompletion.state, treatyCompletion.events ?? [])
+        const state = projected?.state ?? treatyCompletion.state
+        return json(res, 200, {
+          intent: null,
+          director_trace: { mode: 'treaty-epilogue-recovery' },
+          reward: null,
+          state_version: treatyCompletion.state_version,
+          admin_commands: 0,
+          state: viewerStateFor(state, user, ownedViewerActorId(state, user, campaignId)),
+        })
+      }
       assertCampaignPlayable(loaded.state)
       assertDirectorAdvanceReady(campaignId, loaded.state)
       if (!replayedIntent && loaded.state.agentInteraction?.status === 'open') {

@@ -381,6 +381,12 @@ export function buildDeterministicEpilogue(state, outcomeOrOptions = undefined) 
   ].filter(Boolean).join(' ').slice(0, 8_000)
 }
 
+/** Принятый договор закрывает авторское приключение. Постоянный мир может играть дальше. */
+export function treatyEndsAdventure(state = {}) {
+  return state?.scenario_attention?.treaty?.concluded === true
+    && campaignModeFor(state) !== 'persistent' && Boolean(campaignScenario(state))
+}
+
 export function campaignCanAutoComplete(state = {}) {
   if (campaignModeFor(state) === 'persistent') return false
   const lifecycle = normalizeCampaignLifecycle(state?.mechanics?.campaign_lifecycle, state?.mechanics?.death?.campaign_status)

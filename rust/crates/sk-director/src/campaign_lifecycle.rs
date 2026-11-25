@@ -568,6 +568,13 @@ pub fn build_deterministic_epilogue(state: &Value, outcome_or_options: Option<&V
     head16(&joined.join(" "), 8_000)
 }
 
+/// Договор закрывает авторское приключение; постоянный мир продолжает игру.
+pub fn treaty_ends_adventure(state: &Value) -> bool {
+    state["scenario_attention"]["treaty"]["concluded"].as_bool() == Some(true)
+        && campaign_mode_for(state) != "persistent"
+        && campaign_scenario(state).is_some()
+}
+
 /// `campaignCanAutoComplete(state)`: кульминация с разрешённой главной нитью
 /// (или развязка сценария) — кампания может закончиться сама.
 pub fn campaign_can_auto_complete(state: &Value) -> DirectorResult<bool> {

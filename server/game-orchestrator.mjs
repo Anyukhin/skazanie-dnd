@@ -44,6 +44,7 @@ import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedC
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
 import { agentContextMetadata, campaignConceptForAgent, heroCardForAgent, npcKnownByName, sceneContextForAgent } from './agent-context.mjs'
 import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
+import { treatyEndsAdventure } from './campaign-lifecycle.mjs'
 import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { sceneCanonFor } from './scene-canon.mjs'
@@ -70,6 +71,11 @@ function emptyEffects() {
 }
 
 const DIALOGUE_RESPONSE_PLAN_VERSION = 'dialogue-response-plan/v1'
+
+function treatyCompletionPending(state) {
+  return state?.mechanics?.campaign_lifecycle?.status === 'active'
+    && treatyEndsAdventure(state)
+}
 
 function dialogueVerification(mode, upstream = '') {
   return {
@@ -2679,6 +2685,34 @@ export class GameOrchestrator {
     }
     const loaded = await this.eventStore.load(campaignId)
     const authoritativeState = normalizeCampaignState(loaded.state)
+    // Договор — терминальный исход сценария. Если процесс остановился между
+    // коммитом договора и эпилогом, закрываем активное сохранение до разбора
+    // новой заявки, чтобы оно не успело породить следующую встречу.
+    if (treatyCompletionPending(authoritativeState)
+      && typeof this.unknownActionHandler?.settleAcceptedTreaty === 'function') {
+      const completion = await this.unknownActionHandler.settleAcceptedTreaty(campaignId, idempotencyKey, authoritativeState)
+      if (completion?.state && Number(completion.state_version) > Number(authoritativeState.state_version)) {
+        const events = completion.events ?? []
+        const epilogue = events.find((event) => event.event_type === 'CampaignCompleted')?.payload?.epilogue
+          ?? completion.epilogue
+          ?? 'Кампания завершена.'
+        return {
+          narration: String(epilogue),
+          effects: eventsToClientEffects(events),
+          provider: 'deterministic-campaign-completion',
+          model: 'deterministic',
+          turn_id: turnId,
+          engine_mode: mode,
+          state_version: completion.state_version,
+          mechanics: events,
+          visible_state_changes: projectVisibleState(visibleChanges(events), viewer) ?? [],
+          authoritative_state: completion.state,
+          verification: dialogueVerification('world_narration', 'campaign-completion'),
+          turn_consumed: false,
+          idempotent_replay: Boolean(completion.duplicate),
+        }
+      }
+    }
     // Questions and discussion may inspect a pending clarification, but never
     // resurrect one from an older room version after another commit. Action
     // continuations keep the explicit stale-version error below.
@@ -3499,6 +3533,18 @@ export class GameOrchestrator {
       campaignId, idempotencyKey, committed, message, rulesContext,
       checkCommand: planCheckCommand && !socialRequest && planCheckCommand.command_type === 'MakeAbilityCheck' ? planCheckCommand : null,
     })
+    if (treatyCompletionPending(committed.state)
+      && typeof this.unknownActionHandler?.settleAcceptedTreaty === 'function') {
+      const completion = await this.unknownActionHandler.settleAcceptedTreaty(campaignId, idempotencyKey, committed.state)
+      if (completion?.state && Number(completion.state_version) > Number(committed.state_version)) {
+        committed = {
+          ...committed,
+          state: completion.state,
+          state_version: completion.state_version,
+          events: [...(committed.events ?? []), ...(completion.events ?? [])],
+        }
+      }
+    }
     const mainEvents = committed.events ?? engineResult.events
     const committedEvents = [...precedingEvents, ...mainEvents]
     const publicCommittedEvents = mechanicsForViewer(sharedNarrationEvents(committedEvents, committed.state), input.user ?? {}, playerId, committed.state)

@@ -37,6 +37,7 @@ use axum::http::{HeaderMap, StatusCode};
 use serde_json::{json, Map, Value};
 use sk_agents::director_agent::{DirectorAgent, RoleClient};
 use sk_core::{js, text};
+use sk_director::campaign_lifecycle::treaty_ends_adventure;
 use sk_encounters::encounter_assembler::DEADLY_ENCOUNTER_WARNING;
 
 use crate::access::{assigned_campaign_hero_ids, campaign_hero_values, can_access_room, can_use_hero, require_admin, require_user, viewer_state_for};
@@ -385,6 +386,28 @@ async fn run_advance(core: Rc<GameCore>, step: Advance) -> Result<Value, Caught>
         replayed_intent = duplicate.events.iter().find(|event| is_type(event, "DirectorIntentRecorded")).and_then(|event| at(Some(event), &["payload", "intent"])).filter(|intent| !intent.is_null()).cloned();
     }
     let mut loaded = set.autonomous.load(&campaign_id).map_err(orchestrator_failure)?;
+    // Старое сохранение могло остановиться сразу после принятого договора.
+    // Закрываем сценарий до выбора нового намерения Директора.
+    if js::s(at(Some(&loaded.state), &["mechanics", "campaign_lifecycle", "status"])) == "active"
+        && treaty_ends_adventure(&loaded.state)
+    {
+        if let Some(completion) = set.autonomous.settle_accepted_treaty(&campaign_id, &key, &loaded.state).await.map_err(orchestrator_failure)? {
+            let completion_state = match completion.get("state").cloned() {
+                Some(state) => state,
+                None => set.autonomous.load(&campaign_id).map_err(orchestrator_failure)?.state,
+            };
+            let completion_events = array(completion.get("events")).to_vec();
+            persist_authoritative_projection(&core, &campaign_id, &completion_state, &completion_events, None, PersistOptions::default())?;
+            return Ok(json!({
+                "intent": Value::Null,
+                "director_trace": { "mode": "treaty-epilogue-recovery" },
+                "reward": Value::Null,
+                "state_version": completion.get("state_version"),
+                "admin_commands": 0,
+                "state": viewer(&completion_state, &user, &hero_ids)?,
+            }));
+        }
+    }
     playable(&loaded.state)?;
     assert_director_advance_ready(&app, &campaign_id, &loaded.state).await?;
     let interaction = loaded.state.get("agentInteraction");
