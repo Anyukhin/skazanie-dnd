@@ -59,6 +59,7 @@ import { WorldMapView } from './WorldMapView'
 import { PartyPage } from './PartyPage'
 import { MobileTabBar, type MobilePane } from './MobileTabBar'
 import { LeaveLocationPicker, SceneTransitionBanner, sceneTransitionNotice, type SceneTransitionNotice } from './SceneTransitionOverlay'
+import { sceneChapter } from './scene-chapter'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
 import { boardMapArtForTheme, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
 import {
@@ -442,7 +443,7 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
           застава», «Линия Древа · …»), а счётчик глав вечерней арки при этом
           живёт отдельно: над «Главой 1» стояло «Глава 2». Тогда номер арки не
           печатается. */}
-      <div className="scene-title"><span>{/^(?:Глава|Линия|Пролог|Финал|Эпилог)(?=\s|$)/u.test(String(title ?? '')) ? '' : `Глава ${chapter} ◆ `}Сцена {turn} ◆ {location}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
+      <div className="scene-title"><span>{sceneChapter(title, chapter).inTitle ? '' : `Глава ${chapter} ◆ `}Сцена {turn} ◆ {location}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
       {/* Время суток и погода стоят рядом с названием места: это часть ответа
           на вопрос «где мы», а не отдельная панель. */}
       <SceneWeather weather={weather} />
