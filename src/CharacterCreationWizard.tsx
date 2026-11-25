@@ -17,6 +17,7 @@ import type { PhbCharacterOptionsValue } from './PhbCharacterOptions'
 import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
 import { validateClassChoices } from '../server/character-creation-class-options.mjs'
 import type { AstohanPilotBuild } from './astohan-pilot-builds'
+import { pilotCreationChoicesFor } from './pilot-build-choices.mjs'
 import { pilotImportAlreadyStarted } from './pilot-import-state.mjs'
 import {
   abilityPreview,
@@ -603,19 +604,10 @@ export function CharacterCreationWizard({
     const background = catalog.backgrounds?.options.find((entry) => entry.id === recipe.background)
     const backgroundEquipment = catalog.starter_equipment?.backgrounds?.find((entry) => entry.background_id === recipe.background)
     const classEntry = catalog.classes.find((entry) => entry.id === recipe.class)
+    const pilotChoices = pilotCreationChoicesFor(catalog, recipe)
     const recipeStarter = recipe.starter_equipment as unknown as Record<string, string>
     const starterEquipmentChoices = Object.fromEntries((classEntry?.starter_equipment?.choice_groups ?? []).map((group) => [group.id, [recipeStarter[group.id]].filter(Boolean)]))
     const backgroundEquipmentChoices = defaultChoiceRecord(backgroundEquipment?.choice_groups)
-    const backgroundTools = (background?.toolChoice?.options ?? []).slice(0, background?.toolChoice?.count ?? 0).map((entry) => entry.id)
-    const speciesLanguageIds = new Set([
-      ...(species?.languages ?? []),
-      ...species?.choice_groups?.filter((group) => group.kind === 'language').flatMap((group) => group.options.slice(0, group.count).map((entry) => entry.id)) ?? [],
-    ])
-    const backgroundLanguages = (catalog.backgrounds?.language_options ?? [])
-      .filter((entry) => !speciesLanguageIds.has(entry.id))
-      .slice(0, background?.languageChoiceCount ?? 0)
-      .map((entry) => entry.id)
-    const classChoices = recipe.class === 'monk' ? { tool_or_instrument: { kind: 'artisan_tool', id: 'smiths_tools' } } : {}
     setDraft((current) => ({
       ...current,
       abilityMethod: 'standard_array',
@@ -630,18 +622,18 @@ export function CharacterCreationWizard({
       backgroundId: recipe.background,
       backgroundAbilityMode: catalog.backgrounds?.ability_modes?.[0]?.id ?? 'none',
       backgroundAbilities: [],
-      backgroundTools,
-      backgroundLanguages,
-      backgroundReplacementSkills: [],
+      backgroundTools: pilotChoices.backgroundTools,
+      backgroundLanguages: pilotChoices.backgroundLanguages,
+      backgroundReplacementSkills: pilotChoices.backgroundReplacementSkills,
       backgroundEquipmentChoices,
-      backgroundReplacementTools: [],
+      backgroundReplacementTools: pilotChoices.backgroundReplacementTools,
       abilities: recommendedStandardArray(recipe.class, catalog.ability_policy.standard_array),
       classSkillIds: [...recipe.class_skills],
       selectedFeatureIds: recipe.class === 'fighter' ? [...recipe.features] : [],
       starterEquipmentChoices,
       knownSpellIds: [],
       preparedSpellIds: [],
-      phb: { schema_version: 1, classChoices },
+      phb: { schema_version: 1, classChoices: pilotChoices.classChoices },
       character: /^Место героя \d+$/u.test(String(current.character ?? '').trim()) ? '' : current.character || '',
     }))
     setSelectedPilotBuild(recipe)
