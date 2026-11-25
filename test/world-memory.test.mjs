@@ -15,6 +15,7 @@ import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import {
   applyWorldMemoryEvent,
   diagnoseWorldMemory,
+  freeActionDiscoveryCommands,
   hasFailedDiscoveryCheck,
   narratorFailureDetailFor,
   normalizeWorldMemory,
@@ -24,6 +25,43 @@ import {
   worldMemoryEvent,
   worldMemoryForViewer,
 } from '../server/world-memory.mjs'
+
+test('авторская улика поиска остаётся в текущей локации при совпадающей заготовке другой сцены', () => {
+  const state = {
+    campaignConcept: { arc: { version: 'skazanie:scenario-arc-v1' } },
+    scene: { location: 'Пепельная застава', location_id: 'astohan-ash-watch' },
+    worldMemory: normalizeWorldMemory({
+      entities: [
+        { id: 'location:ash-watch', kind: 'location', name: 'Пепельная застава', visibility: 'public' },
+        { id: 'location:stormberg', kind: 'location', name: 'Штормберг', visibility: 'public' },
+      ],
+      facts: [
+        { id: 'fact:secret:scenario:astohan-dragon-hunt:ash-gate', subject_id: 'location:ash-watch', predicate: 'gm_secret', visibility: 'gm_only', status: 'active',
+          object: '{"topic":"ворота заставы следы когтей","skills":["perception"],"holder":""}',
+          summary: 'Засов ворот снят изнутри, а следы когтей начинаются уже за стенами.' },
+        { id: 'fact:secret:ivara-report', subject_id: 'location:stormberg', predicate: 'gm_secret', visibility: 'gm_only', status: 'active',
+          object: '{"topic":"донесение сожженная застава","skills":["perception"],"holder":"Маршал Ивара Тейн"}',
+          summary: 'В донесении о Пепельной заставе сказано, что ворота открыли изнутри, а следы когтей начинаются уже за стенами.' },
+      ],
+    }),
+  }
+  const check = {
+    checkEvent: { event_id: 'lada-gate-check', payload: { success: true, skill: 'perception' } },
+    skill: 'perception',
+  }
+  const [command] = freeActionDiscoveryCommands(state, {
+    ...check,
+    actionText: 'Лада осматривает распахнутые ворота и выжженную землю у входа. Ищу следы, по которым можно понять, кто открыл ворота перед пожаром.',
+  })
+  assert.equal(command?.fact?.supersedes_fact_id, 'fact:secret:scenario:astohan-dragon-hunt:ash-gate')
+  assert.equal(command?.fact?.subject_id, 'location:ash-watch')
+  assert.deepEqual(freeActionDiscoveryCommands(state, { ...check,
+    actionText: 'Осматриваю обгоревший сундук', goalSummary: 'Разглядеть следы на воротах',
+  }), [], 'цель, сформулированная моделью, не подменяет объект осмотра')
+  assert.deepEqual(freeActionDiscoveryCommands(state, { ...check,
+    actionText: 'Осматриваю донесение о сожжённой заставе',
+  }), [], 'донесение из Штормберга недоступно для осмотра на заставе')
+})
 
 test('модельная деталь провала discovery-проверки не попадает рассказчику', () => {
   const secret = 'Засов ворот снят изнутри, а не выбит; следы когтей начинаются уже за стенами. Дракона впустил кто-то из своих.'

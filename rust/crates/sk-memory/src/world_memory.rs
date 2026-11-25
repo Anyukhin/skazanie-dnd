@@ -400,16 +400,23 @@ struct Candidate<'a> {
 /// Какой секрет открывает удачная проверка (`secretRevealCommand`). Сначала —
 /// по теме заявки и подходящему навыку; общий поиск без темы даёт ближайший
 /// секрет того же навыка в этой локации. Секрет заменяется фактом отряда.
-fn secret_reveal_command(state: &Value, source_event_id: &str, skill: Option<&Value>, action_text: &str, topical_only: bool) -> Option<Value> {
+fn secret_reveal_command(state: &Value, source_event_id: &str, skill: Option<&Value>, action_text: &str, goal_summary: &str, topical_only: bool) -> Option<Value> {
     let memory = get(Some(state), "worldMemory");
     let normalized_skill = dashed(skill);
+    let arc = get(get(Some(state), "campaignConcept"), "arc");
+    let authored_scenario = is_str(get(arc, "version"), "skazanie:scenario-arc-v1");
+    let inquiry = if authored_scenario { action_text.to_string() } else { format!("{action_text} {goal_summary}") };
     let location = scene_location(state);
     let here_ids: HashSet<String> = array(get(memory, "entities"))
         .iter()
-        .filter(|entity| !location.is_empty() && lower(&text(get(Some(entity), "name"), 160)) == location)
+        .filter(|entity| !location.is_empty() && (!authored_scenario || is_str(get(Some(entity), "kind"), "location")) && lower(&text(get(Some(entity), "name"), 160)) == location)
         .map(|entity| string(get(Some(entity), "id")))
         .collect();
-    let spoken = secret_stems(action_text);
+    let mut spoken = secret_stems(&inquiry);
+    if authored_scenario {
+        let place = secret_stems(&location);
+        spoken.retain(|stem| !place.contains(stem));
+    }
     let search_skill = has_str(&SEARCH_SKILLS, &normalized_skill);
     let candidates: Vec<Candidate> = array(get(memory, "facts"))
         .iter()
@@ -418,7 +425,7 @@ fn secret_reveal_command(state: &Value, source_event_id: &str, skill: Option<&Va
         .filter(|fact| !secret_already_told(state, fact))
         .map(|fact| {
             let meta = parse_secret_meta(get(Some(fact), "object"));
-            let topic = secret_stems(&format!("{} {}", meta.topic, tpl(get(Some(fact), "summary"))));
+            let topic = if authored_scenario { secret_stems(&meta.topic) } else { secret_stems(&format!("{} {}", meta.topic, tpl(get(Some(fact), "summary")))) };
             Candidate {
                 exact: meta.skills.contains(&normalized_skill),
                 // Искать глазами, руками и по следам — родственные способы.
@@ -430,7 +437,7 @@ fn secret_reveal_command(state: &Value, source_event_id: &str, skill: Option<&Va
                 meta,
             }
         })
-        .filter(|entry| entry.exact || entry.related)
+        .filter(|entry| (entry.exact || entry.related) && (!authored_scenario || entry.here))
         .collect();
     // Свидетельство хранителя по теме открывается, только если герой
     // обращается к самому хранителю.
@@ -438,7 +445,7 @@ fn secret_reveal_command(state: &Value, source_event_id: &str, skill: Option<&Va
         let holder = first_word(&entry.meta.holder);
         let length = jstext::len(&holder);
         let prefix = head(&lower(&holder), 3.max(length.saturating_sub(1)));
-        length >= 3 && lower(action_text).contains(&prefix)
+        length >= 3 && lower(&inquiry).contains(&prefix)
     };
     // Обыск руками и глазами свидетельства не находит, даже если хранитель
     // назван в той же заявке.
@@ -453,7 +460,7 @@ fn secret_reveal_command(state: &Value, source_event_id: &str, skill: Option<&Va
     // Общий поиск открывает тайну этого места сперва своим навыком, затем
     // родственным; свидетельство хранителя общий осмотр не открывает.
     let searchable: Vec<&Candidate> = candidates.iter().filter(|entry| !testimony_of_holder(entry.fact, &entry.meta)).collect();
-    let general = if topical.is_none() && !topical_only && general_search(action_text) {
+    let general = if !authored_scenario && topical.is_none() && !topical_only && general_search(&inquiry) {
         searchable.iter().find(|entry| entry.here && entry.exact).or_else(|| searchable.iter().find(|entry| entry.here && entry.related)).copied()
     } else {
         None
@@ -700,7 +707,7 @@ pub fn thorough_search_outcome(state: &Value, input: &Value) -> Option<Value> {
     if hostile {
         return None;
     }
-    let secret = secret_reveal_command(state, &source_event_id, Some(&Value::String(normalized_skill)), &action_text, false);
+    let secret = secret_reveal_command(state, &source_event_id, Some(&Value::String(normalized_skill)), &action_text, "", false);
     let found = secret.is_some();
     Some(json!({ "commands": secret.into_iter().collect::<Vec<_>>(), "found": found, "minutes": THOROUGH_SEARCH_MINUTES }))
 }
@@ -854,14 +861,15 @@ fn discovery_commands_for(state: &Value, input: &Value) -> Vec<Value> {
             return vec![reaction];
         }
     }
-    let spoken_text = format!("{} {}", param_text(input, "actionText"), param_text(input, "goalSummary"));
+    let action = param_text(input, "actionText");
+    let goal = param_text(input, "goalSummary");
     // Секрет мастера важнее безликой «зацепки».
-    if let Some(secret) = secret_reveal_command(state, &source_event_id, skill, &spoken_text, true) {
+    if let Some(secret) = secret_reveal_command(state, &source_event_id, skill, &action, &goal, true) {
         return vec![secret];
     }
     // Ответ на заданный вопрос, названный арбитром до броска, — находка отряда.
     let detail = success_detail_command(state, &source_event_id, success_detail, "detail");
-    let secret = if unrolled { None } else { secret_reveal_command(state, &source_event_id, skill, &spoken_text, false) };
+    let secret = if unrolled { None } else { secret_reveal_command(state, &source_event_id, skill, &action, &goal, false) };
     if detail.is_some() || secret.is_some() {
         return detail.into_iter().chain(secret).collect();
     }
@@ -872,6 +880,7 @@ fn discovery_commands_for(state: &Value, input: &Value) -> Vec<Value> {
     if skill_name == "insight" {
         return Vec::new();
     }
+    let spoken_text = format!("{action} {goal}");
     let lead = present_npc_lead(state, &spoken_text);
     let spoken = topic_stems(&spoken_text);
     let memory = get(Some(state), "worldMemory");

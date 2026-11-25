@@ -89,6 +89,36 @@ fn successful_search_without_secret_names_the_knowing_npc() {
     assert!(free_action_discovery_commands(&state, &unrelated).is_empty(), "без связи со сценой находка не выдумывается");
 }
 
+#[test]
+fn authored_scenario_search_stays_in_current_location() {
+    let state = json!({
+        "campaignConcept": { "arc": { "version": "skazanie:scenario-arc-v1" } },
+        "scene": { "location": "Пепельная застава", "location_id": "astohan-ash-watch" },
+        "worldMemory": normalize_world_memory(&json!({ "entities": [
+            { "id": "location:ash-watch", "kind": "location", "name": "Пепельная застава", "visibility": "public" },
+            { "id": "location:stormberg", "kind": "location", "name": "Штормберг", "visibility": "public" }
+        ], "facts": [
+            { "id": "fact:secret:scenario:astohan-dragon-hunt:ash-gate", "subject_id": "location:ash-watch", "predicate": "gm_secret", "visibility": "gm_only", "status": "active",
+              "object": "{\"topic\":\"ворота заставы следы когтей\",\"skills\":[\"perception\"],\"holder\":\"\"}",
+              "summary": "Засов ворот снят изнутри, а следы когтей начинаются уже за стенами." },
+            { "id": "fact:secret:ivara-report", "subject_id": "location:stormberg", "predicate": "gm_secret", "visibility": "gm_only", "status": "active",
+              "object": "{\"topic\":\"донесение сожженная застава\",\"skills\":[\"perception\"],\"holder\":\"Маршал Ивара Тейн\"}",
+              "summary": "В донесении о Пепельной заставе сказано, что ворота открыли изнутри, а следы когтей начинаются уже за стенами." }
+        ] }))
+    });
+    let found = free_action_discovery_commands(&state, &json!({
+        "checkEvent": check("perception", "lada-gate-check"), "skill": "perception",
+        "actionText": "Лада осматривает распахнутые ворота и выжженную землю у входа. Ищу следы, по которым можно понять, кто открыл ворота перед пожаром."
+    }));
+    assert_eq!(found[0]["fact"]["supersedes_fact_id"], "fact:secret:scenario:astohan-dragon-hunt:ash-gate");
+    assert_eq!(found[0]["fact"]["subject_id"], "location:ash-watch");
+    let unrelated = free_action_discovery_commands(&state, &json!({
+        "checkEvent": check("perception", "lada-chest-check"), "skill": "perception",
+        "actionText": "Осматриваю обгоревший сундук", "goalSummary": "Разглядеть следы на воротах"
+    }));
+    assert!(unrelated.is_empty(), "цель модели не подменяет объект осмотра");
+}
+
 /// Кампания заготовок из `test/gm-secrets.test.mjs`, сведённая к памяти.
 fn gm_secrets_state() -> Value {
     let place = "location:mytar";
