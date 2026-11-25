@@ -51,11 +51,12 @@ NpcSocialController.prototype.respond = async function respond(input) {
     const client = this.llmClient
     const proxy = new Proxy(client, {
       get(target, property) {
-        if (property !== 'completeJson') return Reflect.get(target, property, target)
+        const method = Reflect.get(target, property, target)
+        if ((property !== 'complete' && property !== 'completeJson') || typeof method !== 'function') return method
         return async (request, options) => {
-          record.calls.push(recordedCall('completeJson', request, options))
+          record.calls.push(recordedCall(property, request, options))
           try {
-            const value = await target.completeJson(request, options)
+            const value = await method.call(target, request, options)
             record.script.push(value === undefined ? { undef: true } : { value: plain(value) })
             return value
           } catch (error) {

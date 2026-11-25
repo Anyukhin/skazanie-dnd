@@ -155,19 +155,9 @@ fn filterable(value: Option<&Value>) -> R<&[Value]> {
     }
 }
 
-/// Исключения, которые JS бросает раньше этого модуля в
-/// `ensureNpcSocialState` (`for…of` по `state.merchants` и сущностям памяти).
-/// Перенос `sk-social` мусор не отвергает, поэтому граница повторена здесь.
-fn social_iteration_guard(state: &Value) -> R<()> {
-    iterable(get(Some(state), "merchants"))?;
-    iterable(get(world_memory(state), "entities"))?;
-    Ok(())
-}
-
-/// То же для `npcKnownFactIds`: после нормализации — `filter` по сущностям
+/// В `npcKnownFactIds` после нормализации — `filter` по сущностям
 /// (`locationEntitiesById`) и `for…of` по фактам (`partyPlaceByFact`).
 fn known_fact_ids_guard(state: &Value) -> R<()> {
-    social_iteration_guard(state)?;
     filterable(get(world_memory(state), "entities"))?;
     iterable(get(world_memory(state), "facts"))?;
     Ok(())
@@ -983,7 +973,6 @@ pub fn conversation_leads(state: &Value, profile: &Value, message: Option<&Value
     let social = match social {
         Some(social) => social,
         None => {
-            social_iteration_guard(state)?;
             owned = social_state(state);
             &owned
         }
@@ -1817,7 +1806,6 @@ impl NpcSocialController {
         let check = field("checkOutcome").filter(|value| js::truthy(Some(value)));
         let just_seen = Some(field("justSeen").unwrap_or(&empty_text));
 
-        social_iteration_guard(state)?;
         let social = social_state(state);
         let Some(persisted) = arr(get(Some(&social), "npcs")).iter().find(|npc| is_str(get(Some(npc), "id"), &npc_id)) else {
             return Ok(None);
@@ -1855,10 +1843,10 @@ impl NpcSocialController {
             Ok((mut out, repetition)) => {
                 out.insert("context_metadata".into(), context_metadata);
                 out.insert("provider".into(), str_value(self.provider()));
-                out.insert("prompt_version".into(), str_value(NPC_SOCIAL_PROMPT_VERSION));
                 if !token_usage.is_empty() {
                     out.insert("token_usage".into(), Value::Object(token_usage));
                 }
+                out.insert("prompt_version".into(), str_value(NPC_SOCIAL_PROMPT_VERSION));
                 if let Some(repetition) = repetition {
                     out.insert("repetition".into(), str_value(repetition));
                 }

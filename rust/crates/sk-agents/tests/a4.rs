@@ -52,13 +52,19 @@ fn block_on<F: Future>(future: F) -> F::Output {
 
 struct Scripted {
     model: Option<String>,
+    records_complete: bool,
     replies: Mutex<Vec<Value>>,
     calls: Mutex<Vec<Value>>,
 }
 
 impl Scripted {
-    fn new(script: &Value, model: &Value) -> Arc<Self> {
-        Arc::new(Self { model: model.as_str().map(String::from), replies: Mutex::new(script.as_array().cloned().unwrap_or_default()), calls: Mutex::new(Vec::new()) })
+    fn new(case: &Value) -> Arc<Self> {
+        Arc::new(Self {
+            model: case["model"].as_str().map(String::from),
+            records_complete: case["calls"][0]["method"] == "complete",
+            replies: Mutex::new(case["script"].as_array().cloned().unwrap_or_default()),
+            calls: Mutex::new(Vec::new()),
+        })
     }
 
     fn calls(&self) -> Value {
@@ -89,11 +95,7 @@ impl LlmClient for Scripted {
         self.model.clone()
     }
 
-    fn complete<'a>(&'a self, _input: &'a Value, _options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
-        Box::pin(async { Err(LlmError { name: "Error".into(), code: None, message: "complete не ожидается".into(), details: Map::new(), provider_usage: None }) })
-    }
-
-    fn complete_json<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
+    fn complete<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
         let mut input = input.clone();
         if let Some(messages) = input.get_mut("messages").and_then(Value::as_array_mut) {
             for message in messages {
@@ -103,9 +105,23 @@ impl LlmClient for Scripted {
                 }
             }
         }
-        self.calls.lock().unwrap().push(json!({ "method": "completeJson", "input": input, "options": options }));
-        let answer = self.answer();
+        let mut options = options.as_object().cloned().expect("параметры вызова");
+        let json_mode = options.shift_remove("json").expect("режим ответа");
+        assert_eq!(json_mode, true);
+        // JS-заглушки с одним completeJson возвращают разобранный ответ.
+        // Сверяем их с тем же запросом Rust и упаковываем результат complete.
+        let (method, answer) = if self.records_complete {
+            options.insert("json".into(), json_mode);
+            ("complete", self.answer())
+        } else {
+            ("completeJson", self.answer().map(|value| json!({ "json": value })))
+        };
+        self.calls.lock().unwrap().push(json!({ "method": method, "input": input, "options": options }));
         Box::pin(async move { answer })
+    }
+
+    fn complete_json<'a>(&'a self, _input: &'a Value, _options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
+        Box::pin(async { panic!("контроллер должен вызывать complete") })
     }
 
     fn probe(&self) -> LlmFuture<'_, Result<Value, LlmError>> {
@@ -199,7 +215,7 @@ fn respond_matches_js() {
             upstream.push(label);
             continue;
         }
-        let client = case["hasClient"].as_bool().unwrap_or(false).then(|| Scripted::new(&case["script"], &case["model"]));
+        let client = case["hasClient"].as_bool().unwrap_or(false).then(|| Scripted::new(case));
         let mut controller = NpcSocialController::new(client.as_ref().map(|client| Arc::clone(client) as Arc<dyn LlmClient>));
         if let Some(name) = case["className"].as_str() {
             controller = controller.with_provider_name(name);
