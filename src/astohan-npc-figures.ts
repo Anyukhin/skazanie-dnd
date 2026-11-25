@@ -213,9 +213,10 @@ function applyStyle(root: THREE.Object3D, style: AstohanNpcStyle, orientation: '
 /** Ивара и Мира открыто описаны как женщины. Их базовая модель выбирается
  * по имени/роли, пока ручной modelKey не отменил автоматический выбор. */
 export function astohanNpcModelKey(input: Pick<ActorModelInput, 'kind' | 'label' | 'archetype'>): string | null {
-  if (input.kind === 'enemy' && astohanNpcStyle(input) === 'sargat') return 'dragon'
-  if (input.kind !== 'neutral') return null
+  if (input.kind !== 'neutral' && input.kind !== 'enemy') return null
   const style = astohanNpcStyle(input)
+  if (style === 'sargat') return 'dragon'
+  if (input.kind !== 'neutral') return null
   return style === 'ivara' || style === 'mira' ? 'hero-female' : null
 }
 

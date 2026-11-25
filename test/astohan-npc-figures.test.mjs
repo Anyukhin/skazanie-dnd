@@ -39,6 +39,7 @@ test('пилотный ростер покрывает Ареса, Орена, �
   const expected = new Map([['Король Арес', 'ares'], ['Орен Фаль', 'oren'], ['Гедрик Сол', 'gedrik'], ['Саргат', 'sargat']])
   for (const [label, style] of expected) assert.equal(figures.astohanNpcStyle({ label, archetype: '' }), style)
   assert.equal(figures.astohanNpcModelKey({ kind: 'enemy', label: 'Саргат', archetype: 'dragon' }), 'dragon')
+  assert.equal(figures.astohanNpcModelKey({ kind: 'neutral', label: 'Саргат', archetype: 'молодой красный дракон' }), 'dragon')
 })
 
 test('частичные совпадения имён и общая роль не раскрывают чужой NPC', () => {
