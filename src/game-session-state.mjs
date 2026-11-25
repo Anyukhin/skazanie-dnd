@@ -90,14 +90,14 @@ export function activeInitiativeIndex(combat) {
 /**
  * Участники, которым сервер разрешил действовать в текущей фазе. В групповой
  * инициативе это несколько героев, а после завершения одного участника список
- * приходит уже без него. Старые ответы без `turn_clock` остаются совместимы и
+ * приходит уже без него. Старые ответы без состава фазы остаются совместимы и
  * показывают только указатель очереди.
  */
 export function currentTurnActorIds(state) {
   const combat = state.mechanics?.combat
   if (!combat?.active || !combat.initiative?.length) return state.activePlayerId ? [state.activePlayerId] : []
   const initiativeIds = new Set(combat.initiative.map((entry) => String(entry?.actor_id ?? '')).filter(Boolean))
-  const projected = state.turn_clock?.actor_ids
+  const projected = state.turn_phase_actor_ids
   if (Array.isArray(projected) && projected.length) {
     const ids = projected.map(String).filter((id) => initiativeIds.has(id))
     if (ids.length) return ids
@@ -158,6 +158,7 @@ export function mergeTacticalCommandState(current, authoritative, result, reques
     ...authoritative,
     engine_mode: authoritative.engine_mode ?? current.engine_mode,
     turn_clock: authoritative.turn_clock ?? null,
+    turn_phase_actor_ids: authoritative.turn_phase_actor_ids,
     players,
     enemies: authoritative.enemies ?? current.enemies,
     actors: authoritative.actors ?? current.actors,
@@ -199,6 +200,7 @@ export function mergeAuthoritativeState(current, result) {
     merchants: authoritative.merchants ?? current.merchants,
     mechanics: authoritative.mechanics,
     turn_clock: authoritative.turn_clock ?? null,
+    turn_phase_actor_ids: authoritative.turn_phase_actor_ids,
     messages: authoritative.messages ?? current.messages,
     engine_mode: authoritative.engine_mode ?? result.engine_mode ?? current.engine_mode,
     state_version: authoritative.state_version ?? result.state_version,

@@ -1940,10 +1940,7 @@ export function useGameSession(options: {
 
   const finishMapTurn = useCallback((actorId?: string) => {
     const current = stateRef.current
-    const actor = actorId && currentTurnActorIds(current).includes(actorId)
-      ? actorId
-      : currentTurnActorIds(current)[0] ?? currentTurnActorId(current)
-    return executeTacticalCommand({ command_type: 'EndTurn', actor_id: actor }, 'Завершить ход')
+    return executeTacticalCommand({ command_type: 'EndTurn', actor_id: actorId ?? currentTurnActorId(current) }, 'Завершить ход')
   }, [executeTacticalCommand])
 
   const resolveHeroDeath = useCallback((playerId: string, resolution: 'resurrect' | 'replace', replacementName?: string) => {

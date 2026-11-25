@@ -190,21 +190,6 @@ export function combatTurnClockForState(rawState, clock) {
   return clock
 }
 
-/**
- * Публичный состав фазы. Координатор хранит один actor в своих часах, чтобы
- * авто-пропуск переходил к следующему участнику. Клиентам групповой
- * инициативы нужен весь оставшийся союзный состав, иначе соседний игрок не
- * увидит, что его герой уже может действовать.
- */
-export function publicTurnClockForState(rawState, clock) {
-  const publicClock = combatTurnClockForState(rawState, clock)
-  if (!publicClock) return null
-  const state = normalizeCampaignState(rawState)
-  return state.mechanics?.combat?.group_initiative === true
-    ? { ...publicClock, actor_ids: activeTurnActorIds(state) }
-    : publicClock
-}
-
 async function commitTimedOutTurn({ campaignId, eventStore, rulesEngine, loaded, clock }) {
   const combat = loaded.state.mechanics.combat
   const eligibleActorIds = new Set(activeTurnActorIds(loaded.state))

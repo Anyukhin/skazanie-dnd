@@ -82,28 +82,29 @@ test('ход: в бою — участник инициативы, вне боя
   assert.equal(activeInitiativeIndex(undefined), 0)
 })
 
-test('групповая фаза берётся из server-projected turn_clock и сужается после хода союзника', () => {
+test('серверный состав групповой фазы сужается после хода союзника', () => {
   const grouped = gameState({
     activePlayerId: 'hero-a',
     mechanics: { combat: { active: true, active_index: 0, initiative: [{ actor_id: 'hero-a' }, { actor_id: 'hero-b' }, { actor_id: 'goblin' }] } },
-    turn_clock: { actor_ids: ['hero-a', 'hero-b'], round: 1, active_index: 0, turn_id: 'event:e1', started_at: '2026-11-24T00:00:00.000Z', deadline_at: '2026-11-24T00:02:00.000Z', duration_ms: 120000 },
+    turn_phase_actor_ids: ['hero-a', 'hero-b'],
   })
   assert.deepEqual(currentTurnActorIds(grouped), ['hero-a', 'hero-b'])
   assert.equal(currentTurnActorId(grouped), 'hero-a')
-  const afterHeroA = { ...grouped, activePlayerId: 'hero-a', turn_clock: { ...grouped.turn_clock, actor_ids: ['hero-b'] } }
+  const afterHeroA = { ...grouped, activePlayerId: 'hero-a', turn_phase_actor_ids: ['hero-b'] }
   assert.deepEqual(currentTurnActorIds(afterHeroA), ['hero-b'])
   assert.equal(currentTurnActorId(afterHeroA), 'hero-b')
 })
 
-test('ответ комнаты сохраняет выбранного героя внутри групповой фазы', () => {
+test('ответ команды сохраняет выбранного героя в групповой фазе даже без часов хода', () => {
   const current = gameState({
     activePlayerId: 'hero-b',
     players: [{ id: 'hero-a' }, { id: 'hero-b' }],
     mechanics: { combat: { active: true, active_index: 0, initiative: [{ actor_id: 'hero-a' }, { actor_id: 'hero-b' }] } },
-    turn_clock: { actor_ids: ['hero-a', 'hero-b'], round: 1, active_index: 0, turn_id: 'event:e1', started_at: '2026-11-24T00:00:00.000Z', deadline_at: '2026-11-24T00:02:00.000Z', duration_ms: 120000 },
+    turn_phase_actor_ids: ['hero-a', 'hero-b'],
   })
   const next = mergeTacticalCommandState(current, { ...current, activePlayerId: 'hero-a' }, {}, 'request')
   assert.equal(next.activePlayerId, 'hero-b')
+  assert.deepEqual(currentTurnActorIds(next), ['hero-a', 'hero-b'])
 })
 
 test('twoPhaseCheckCommandFor: закрытый список, у предмета сцены — только молитва', () => {

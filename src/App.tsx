@@ -1827,7 +1827,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onLeaveLocation={proposeLeaveLocation}
             leaveLocationDisabled={travelBlocked}
             onOpenMerchant={openMerchant}
-            onFinishTurn={() => finishMapTurn(activePlayer.id)}
+            onFinishTurn={() => finishMapTurn(mapActorId)}
             onFreeAction={(text, kind) => isAdventureContinuation(text, { requestKind: kind ?? 'action' }) && awaitsDecisionContinuation(state.agentInteraction)
               ? continueSceneInteraction()
               // «Продолжим» на промежуточной точке маршрута — обычная заявка:

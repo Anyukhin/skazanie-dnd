@@ -804,6 +804,17 @@ impl StreamRegistry for LiveStreams {
 
 // --- присутствие и рассылка комнаты ------------------------------------------
 
+/// Ответ команды передаёт клиенту состав групповой фазы сразу после хода.
+pub fn attach_group_turn_phase(state: &mut Value) -> Result<(), Failure> {
+    if state.pointer("/mechanics/combat/active").and_then(Value::as_bool) == Some(true)
+        && state.pointer("/mechanics/combat/group_initiative").and_then(Value::as_bool) == Some(true)
+    {
+        let ids = sk_turns::combat_turn_coordinator::active_turn_actor_ids(state)?;
+        state["turn_phase_actor_ids"] = js::strings_value(ids);
+    }
+    Ok(())
+}
+
 /// `stateWithLivePresence(state, campaignId)` (2602–2632): полная сверка
 /// потоков по этому состоянию, затем присутствие — только по соединениям с
 /// живой сессией и доступом. С заглушкой реестра потоков нет: герои не в сети.
@@ -828,9 +839,9 @@ fn live_presence(core: &GameCore, state: &Value, campaign_id: &str, normalized: 
     let typing = live.map(|live| live.typing_actor_ids(campaign_id)).unwrap_or_default();
     let clock = live.and_then(|live| live.turn_clock_for(campaign_id));
     let turn_clock = if normalized {
-        sk_turns::combat_turn_coordinator::public_turn_clock_for_normalized_state(state, clock.as_ref())
+        sk_turns::combat_turn_coordinator::combat_turn_clock_for_normalized_state(state, clock.as_ref())
     } else {
-        sk_turns::combat_turn_coordinator::public_turn_clock_for_state(state, clock.as_ref())?
+        sk_turns::combat_turn_coordinator::combat_turn_clock_for_state(state, clock.as_ref())?
     };
     let players = state.get("players").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
     if connections.iter().any(|connection| connection.view().controls_party) {
@@ -865,7 +876,9 @@ fn live_presence(core: &GameCore, state: &Value, campaign_id: &str, normalized: 
         }),
     );
     next.insert("turn_clock".into(), turn_clock.unwrap_or(Value::Null));
-    Ok(Value::Object(next))
+    let mut next = Value::Object(next);
+    attach_group_turn_phase(&mut next)?;
+    Ok(next)
 }
 
 /// Собранный кадр комнаты одной рассылки: для кого и с какой картой.

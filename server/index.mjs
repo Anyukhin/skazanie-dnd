@@ -106,7 +106,7 @@ import {
 } from './campaign-ruleset.mjs'
 import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
-import { CombatTurnCoordinator, publicTurnClockForState } from './combat-turn-coordinator.mjs'
+import { activeTurnActorIds, CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation, isMechanicalTrace } from './trace-store.mjs'
 import { claimStorageWriter } from './backup-service.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
@@ -2612,6 +2612,12 @@ async function directorResumeKeyForInteraction(campaignId, interactionId) {
   return { key: intentKey }
 }
 
+function stateWithGroupTurnPhase(state) {
+  const combat = state?.mechanics?.combat
+  if (!combat?.active || combat.group_initiative !== true) return state
+  return { ...state, turn_phase_actor_ids: activeTurnActorIds(state) }
+}
+
 function stateWithLivePresence(state, campaignId) {
   if (!state || typeof state !== 'object') return state
   // Аудит PR #131, LIVE-01/02: присутствие считается только по соединениям с
@@ -2626,7 +2632,7 @@ function stateWithLivePresence(state, campaignId) {
     for (const player of state.players ?? []) onlineHeroIds.add(String(player.id))
   }
   return {
-    ...state,
+    ...stateWithGroupTurnPhase(state),
     players: (state.players ?? []).map((player) => ({
       ...player,
       online: onlineHeroIds.has(String(player.id)),
@@ -2638,7 +2644,7 @@ function stateWithLivePresence(state, campaignId) {
       online_hero_ids: [...onlineHeroIds].sort(),
       typing_actor_ids: typingActorIds,
     },
-    turn_clock: publicTurnClockForState(state, combatTurnCoordinator.clockFor(campaignId)),
+    turn_clock: combatTurnClockForState(state, combatTurnCoordinator.clockFor(campaignId)),
   }
 }
 
@@ -5948,7 +5954,12 @@ async function handleHttpRequest(req, res) {
       const merchantView = merchantCommand && responseState
         ? merchantViewFor(responseState, merchantCommand.merchant_id, merchantCommand.actor_id)
         : undefined
-      const responsePayload = { ...result, authoritative_state: responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: latestRoom?.version ?? room.version }
+      const responsePayload = {
+        ...result,
+        authoritative_state: stateWithGroupTurnPhase(responseState),
+        ...(merchantView ? { merchant_view: merchantView } : {}),
+        room_version: latestRoom?.version ?? room.version,
+      }
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
       await finishFailedRollReservation(rollReservation, error)
@@ -6460,7 +6471,9 @@ async function handleHttpRequest(req, res) {
         request_kind: requestKind,
         narration: canonicalNarration,
         ...(journalNarrationId ? { narration_message_id: journalNarrationId } : {}),
-        ...(result.authoritative_state ? { authoritative_state: journaled?.state ?? projected?.state ?? result.authoritative_state } : {}),
+        ...(result.authoritative_state ? {
+          authoritative_state: stateWithGroupTurnPhase(journaled?.state ?? projected?.state ?? result.authoritative_state),
+        } : {}),
         // Narration can outlive a concurrent room PUT. Returning the snapshot
         // version captured at request start would move the client's optimistic
         // locking cursor backwards and make it lose the completed turn.

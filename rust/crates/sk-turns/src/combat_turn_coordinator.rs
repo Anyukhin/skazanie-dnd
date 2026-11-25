@@ -334,26 +334,6 @@ pub fn combat_turn_clock_for_normalized_state(state: &Value, clock: Option<&Valu
     clock_for_normalized_state(state, clock)
 }
 
-/// Публичная форма часов перечисляет всех ещё не завершивших участников
-/// групповой фазы. Внутренний clock остаётся привязан к одному владельцу
-/// дедлайна, чтобы авто-пропуск переходил к следующему участнику.
-pub fn public_turn_clock_for_state(raw_state: &Value, clock: Option<&Value>) -> Result<Option<Value>, Halt> {
-    let state = normalize_campaign_state_cow(raw_state)?;
-    Ok(public_turn_clock_for_normalized_state(&state, clock))
-}
-
-/// [`public_turn_clock_for_state`] для уже нормализованного состояния.
-pub fn public_turn_clock_for_normalized_state(state: &Value, clock: Option<&Value>) -> Option<Value> {
-    let clock = clock.filter(|clock| js::truthy(Some(clock)))?;
-    let mut public_clock = clock_for_normalized_state(state, clock)?;
-    if js::is_true(get(combat_of(state), "group_initiative")) {
-        if let Value::Object(object) = &mut public_clock {
-            object.insert("actor_ids".into(), js::strings_value(active_ids_normalized(state)));
-        }
-    }
-    Some(public_clock)
-}
-
 fn clock_for_normalized_state(state: &Value, clock: &Value) -> Option<Value> {
     let combat = combat_of(state);
     if !js::truthy(get(combat, "active")) || js::number(get(Some(clock), "round")) != number_or(get(combat, "round"), 1.0) || js::number(get(Some(clock), "active_index")) != number_or(get(combat, "active_index"), 0.0) {

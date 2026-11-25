@@ -186,6 +186,8 @@ test('удар из исследования открывает бой по HTTP
   const groupStart = await strike('group-strike-1', 'sentinel', 'OPEN-GROUP')
   assertStatus(groupStart, 200, log)
   assert.equal(eventOf(groupStart.body, 'CombatStarted')?.payload.group_initiative, true)
+  assert.deepEqual(groupStart.body.authoritative_state.turn_phase_actor_ids, [currentActor(groupStart.body.authoritative_state)],
+    'ответ команды сразу возвращает участников групповой фазы')
 
   // Нейтральный NPC: та же команда атаки игрока, цель — король из авторской
   // сцены. HTTP пропускает NPC сцены как цель, остальное решает движок.
