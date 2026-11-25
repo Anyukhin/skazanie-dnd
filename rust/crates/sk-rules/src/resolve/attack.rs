@@ -27,7 +27,7 @@ use crate::constants::AMMUNITION_SPENT_EVENT_SCHEMA_VERSION;
 use crate::core::{ability_modifier, coalesce, command_with, command_with_rules, condition_ids_for, event_from, incapacitating_condition_for, monster_trait_for, npc_world_events_from, slice_utf16, spread_value};
 use crate::dice_record::RulesDice;
 use crate::pause::{rule, resistance_choices_object, Fault, Interrupt, Pause, ProtectiveReactionArgs, Flow};
-use crate::preview_attack::{attack_swing_shape, condition_id_values, swing_condition_modifiers, SwingOptions};
+use crate::preview_attack::{attack_swing_shape, condition_id_values, is_strength_melee_attack, swing_condition_modifiers, SwingOptions};
 use crate::reactions::{
     absorb_elements_condition_events, absorb_elements_damage_payload, ally_attack_reaction_for, ally_attack_reaction_option, protective_attack_reaction_options, reaction_options_after_attack, shield_condition_event,
     silvery_barbs_reaction_for, uncanny_dodge_damage_payload, AllyReactionKind, AttackReactionOptions, ProtectiveAttackOptions,
@@ -225,9 +225,7 @@ pub fn make_attack(r: &mut Resolve<'_>) -> Flow {
         if distance < 5.0 || distance > range {
             return Err(rule("Цель находится вне дальности атаки", "TARGET_OUT_OF_RANGE"));
         }
-        if range > 5.0 {
-            crate::geometry::forced::assert_clear_actor_trajectory(&state, &actor_id, &target_id, actor_at, target_at, blind_allowed)?;
-        }
+        crate::geometry::forced::assert_clear_actor_trajectory(&state, &actor_id, &target_id, actor_at, target_at, blind_allowed)?;
     }
     let mut modifier = match profile_ref {
         Some(profile) => js::number(profile.get("modifier")),
@@ -916,7 +914,12 @@ pub fn make_attack(r: &mut Resolve<'_>) -> Flow {
             r.events.push(event_from(&command, "DieRolled", Some(Value::Object(rolled)), Some(&json!([]))));
             item_rider_rolls.push((rider.clone(), roll));
         }
-        let rage_bonus = if actor_conditions.contains("raging") && js::number(Some(coalesce(&[at(profile_ref, "range_feet")]).unwrap_or(&Value::from(5)))) <= 5.0 {
+        let rage_attack = if game::uses_2014(&state) {
+            is_strength_melee_attack(profile_ref)
+        } else {
+            js::number(Some(coalesce(&[at(profile_ref, "range_feet")]).unwrap_or(&Value::from(5)))) <= 5.0
+        };
+        let rage_bonus = if actor_conditions.contains("raging") && rage_attack {
             if level >= 9 {
                 3
             } else {

@@ -77,7 +77,7 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/commands$/)` и `POST` (5531–5532).
-    vec![Route::post(5564, Matcher::path_template("/api/campaigns/{id}/commands"), campaign_commands)]
+    vec![Route::post(5625, Matcher::path_template("/api/campaigns/{id}/commands"), campaign_commands)]
 }
 
 /// Коды сбоя хранилища, на которые `catch` отвечает 500 (5923).

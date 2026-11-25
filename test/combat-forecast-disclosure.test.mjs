@@ -1,8 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
+import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { withCombatForecast } from '../server/combat-forecast-view.mjs'
+import { actorTrajectoryDetails } from '../server/rules/tactical-geometry.mjs'
+import { createTacticalMap, serializeTacticalMap, setDoor, setEdge } from '../server/tactical-map.mjs'
+import { dice } from './kit/dice.mjs'
 
 // Скрытая КД и публичный прогноз (U01 из исследования PR #136). До правки две
 // одинаковые проекции врага давали 65% и 40% при скрытой КД 13 и 18, а знание
@@ -134,3 +137,28 @@ test('враг с id `__proto__` — неизвестный ключ, а не Ty
   assert.ok(view.combatForecast.targets.goblin.length > 0)
   assert.deepEqual(Object.keys(view.combatForecast.targets), ['goblin'])
 })
+
+for (const passage of ['open', 'wall', 'closed']) {
+  test(`соседняя цель: команда ближнего удара учитывает преграду (${passage})`, () => {
+    const initial = fixture(13)
+    const map = createTacticalMap({ width: 2, height: 2, fill: { material: 'stone', passable: true, revealed: true } })
+    if (passage === 'wall') setEdge(map, 0, 0, 1, 0, { kind: 'wall' })
+    else setDoor(map, { id: 'door', x: 0, y: 0, dir: 'e', state: passage })
+    const state = normalizeCampaignState({ ...initial, scene: { ...initial.scene, map: serializeTacticalMap(map), cells: [] } })
+    assert.equal(actorTrajectoryDetails(state, 'hero', 'goblin', { x: 0, y: 0 }, { x: 1, y: 0 })[0]?.blocked, passage !== 'open')
+
+    const attack = () => resolveCommand({
+      command_type: 'MakeAttack', actor_id: 'hero', target_id: 'goblin', item_id: 'sword',
+    }, state, { diceService: dice(passage === 'open' ? [14, 4] : []) })
+    const shot = swordShot(state)
+    assert.equal(shot.distance_feet, 5)
+    assert.equal(shot.in_range, passage === 'open')
+    assert.equal(shot.unreachable_reason, passage === 'open' ? null : 'линия удара перекрыта')
+    assert.equal(shot.critical_chance, passage === 'open' ? 5 : null)
+    if (passage === 'open') {
+      assert.equal(attack().events.find((event) => event.event_type === 'AttackResolved')?.payload.hit, true)
+    } else {
+      assert.throws(attack, { code: 'TRAJECTORY_BLOCKED' })
+    }
+  })
+}
