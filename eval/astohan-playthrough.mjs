@@ -8,7 +8,7 @@
  *  - заводит владельца и игроков по приглашениям — по аккаунту на героя;
  *  - создаёт кампанию из авторского мира `astohan-plains` так же, как мастер
  *    создания на сайте (редакция 2014, стартовый уровень 7);
- *  - создаёт героев (по умолчанию воин, жрица, маг, плут) импортом и
+ *  - создаёт героев (по умолчанию воин, варвар, монах, паладин) импортом и
  *    поэтапным повышением до 7-го уровня, выборы уровня — из серверного каталога;
  *  - играет сценарий: поручение Ареса, принятие задания голосованием, торговля,
  *    улики из заготовок ведущего, реальные фразы игроков из
@@ -22,11 +22,13 @@
  *
  *   node eval/astohan-playthrough.mjs                 # без модели, 3–15 мин до развязки
  *   node eval/astohan-playthrough.mjs --seed 7        # повторяемые кости
- *   node eval/astohan-playthrough.mjs --party fighter,cleric   # быстрый прогон вдвоём
+ *   node eval/astohan-playthrough.mjs --party fighter,paladin  # быстрый прогон вдвоём
  *   node eval/astohan-playthrough.mjs --tactics bot            # прежняя простая тактика бота
  *   node eval/astohan-playthrough.mjs --live          # с моделью из .env, бюджет и темп
  *   node eval/astohan-playthrough.mjs --live --judge  # плюс оценка текста моделью-судьёй
  *   node eval/astohan-playthrough.mjs --minutes 20 --out tmp/astohan-playtest/run1
+ *   node eval/astohan-playthrough.mjs --impl rust --direct-route --seed 2 # явный путь отряда через Митглайд
+ *   node eval/astohan-playthrough.mjs --impl rust --finale-combat --seed 2 # отдельный бой в логове
  *   SKAZANIE_RUST_SERVER_BIN=… node eval/astohan-playthrough.mjs --impl rust --seed 7   # бинарь переноса
  *
  * Итог — `<out>/report.md` (оценка и находки), `<out>/transcript.md`
@@ -42,14 +44,19 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { abilityScoreChoiceLevelsFor, classSkillRuleFor, featureChoiceGroupsFor, normalizedClassSkillProficiencies } from '../server/character-progression.mjs'
-import { characterCreationChoicesComplete } from '../server/character-lifecycle.mjs'
+import { characterCreationChoicesComplete, createCharacterSlot } from '../server/character-lifecycle.mjs'
+import { astohanPilotBuildCatalog, stagedCommandsForPilotBuild } from '../server/astohan-pilot-builds.mjs'
+import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
 import { combatClassCatalogInfo, combatSubclassOptionsFor, normalizedCombatSubclassFor } from '../server/combat-actions.mjs'
 import { combatSpellsFor, spellSelectionRulesFor } from '../server/combat-spells.mjs'
-import { movementForActor, movementStepCostFor, normalizeCampaignState, previewApproachAttack } from '../server/rules-engine.mjs'
+import { movementForActor, movementStepCostFor, normalizeCampaignState, previewApproachAttack, resolveCommands } from '../server/rules-engine.mjs'
 import { occupiedPositions, shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
+import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import { footprintCellsFor } from '../server/actor-footprint.mjs'
 import { planHeroCombatCommand } from '../server/party-tactics.mjs'
 import { isDirectorPartyDecision } from '../src/director-continuation.mjs'
+import { pilotImportDocument } from '../test/kit/astohan-pilot.mjs'
+import { fixedDice } from '../test/kit/dice.mjs'
 import { findNarratorCliches } from '../server/narrator-craft-quality.mjs'
 import { measureNarratorCraft } from './narrator-craft-metrics.mjs'
 import { freePort, rustCutoverAudit, spawnRustStand, standImpl } from './stand-server.mjs'
@@ -66,10 +73,17 @@ const LIVE = flag('live')
 // `--visit a,b` — дойти до мест по очереди и остановиться, оставив хранилище:
 // так карту места смотрят глазами в браузере (`docs/astohan-scenario.md`).
 const VISIT = option('visit', '').split(',').map((entry) => entry.trim()).filter(Boolean)
+const FINALE_COMBAT = flag('finale-combat')
+const DIRECT_ROUTE = flag('direct-route')
+if (Number(FINALE_COMBAT) + Number(DIRECT_ROUTE) + Number(VISIT.length > 0) > 1) {
+  throw new Error('Выберите один режим: --finale-combat, --direct-route или --visit')
+}
 const KEEP = flag('keep') || VISIT.length > 0
+const RUN_MODE = FINALE_COMBAT ? 'finale-combat' : DIRECT_ROUTE ? 'direct-route' : VISIT.length ? 'visit' : 'campaign'
 // Судья тратит вызовы модели, поэтому включается только явно.
 const JUDGE = flag('judge')
-const PARTY = option('party', 'fighter,cleric,wizard,rogue').split(',').map((entry) => entry.trim()).filter(Boolean)
+const PILOT_BUILDS = astohanPilotBuildCatalog()
+const PARTY = option('party', PILOT_BUILDS.builds.map((recipe) => recipe.id).join(',')).split(',').map((entry) => entry.trim()).filter(Boolean)
 // Тактика героев в бою: `server` — серверная автотактика (`planHeroCombatCommand`,
 // та же, что у автономных героев и стенда боёв 7-го уровня: ячейки всех
 // кругов, умения классов, реакции), `bot` — прежняя простая лестница бота
@@ -90,7 +104,9 @@ const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP
 const CODE = 'ASTOHAN-RUN'
 const TEMPLATE_ID = 'astohan-plains'
 const RULESET_ID = 'dnd_5e_2014'
-const START_LEVEL = 7
+const START_LEVEL = PILOT_BUILDS.target_level
+const LAIR = 'astohan-vulkanis-brazier'
+const SARGAT = 'astohan-sargat'
 const DEADLINE = Date.now() + MINUTES * 60_000
 const startedAt = Date.now()
 const base = `http://127.0.0.1:${PORT}`
@@ -142,6 +158,7 @@ const stats = {
 /** Текст рассказчика за прогон: для метрик, выборки и судьи. */
 const narrations = []
 let currentStage = 'startup'
+let playStarted = false
 
 function finding(severity, kind, message, context = {}) {
   const entry = { severity, kind, stage: currentStage, at_s: Math.round((Date.now() - startedAt) / 1000), message, ...context }
@@ -205,6 +222,7 @@ process.on('exit', () => { try { child?.kill() } catch { /* уже остано�
 // HTTP с замерами
 
 async function request(path, { method = 'GET', account, body, key, timeoutMs = 120_000 } = {}) {
+  if (playStarted && account === accounts.admin && method !== 'GET') throw new Error(`Команда ведущего во время партии: ${method} ${path}`)
   const started = Date.now()
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const controller = new AbortController()
@@ -336,28 +354,6 @@ async function command(actorId, commandValue, label = commandValue.command_type,
 // Создание героев: импорт первого уровня и поэтапное повышение до седьмого
 
 const HERO_PLANS = {
-  fighter: {
-    name: 'Торвальд', characterClass: 'fighter', role: 'Воин · ур. 1', species: 'Холмовой дварф',
-    document: {
-      character: 'Торвальд', name: 'Владелец', role: 'Воин · ур. 1', characterClass: 'fighter', species: 'Холмовой дварф',
-      background: 'Солдат', backgroundId: 'soldier', backgroundChoices: { tools: ['dice_set'], languages: [] },
-      speciesChoices: { 'artisan-tool': ['smiths_tools'] },
-      starterEquipmentChoices: { armor: ['chain-mail'], 'melee-loadout': ['longsword-shield'], secondary: ['light-crossbow'], pack: ['explorers-pack'] },
-      level: 1, experience: 0,
-      abilities: { str: 15, dex: 14, con: 15, int: 12, wis: 11, cha: 8 },
-      abilityGeneration: {
-        policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2, method: 'standard_array',
-        baseScores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
-        originBonusProfileId: 'dwarf-hill', originBonuses: { str: 0, dex: 0, con: 2, int: 0, wis: 1, cha: 0 }, speciesOptionId: 'dwarf-hill',
-      },
-      baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['athletics', 'perception'],
-      selectedFeatureIds: ['fighting-style-defense'], knownSpellIds: [], preparedSpellIds: [],
-    },
-    skills: ['athletics', 'perception', 'survival', 'intimidation', 'insight'],
-    subclass: ['Чемпион'],
-    asi: ['str', 'con'],
-    cantrips: [], spells: [],
-  },
   cleric: {
     name: 'Ильва', characterClass: 'cleric', role: 'Жрец · ур. 1', species: 'Холмовой дварф',
     document: {
@@ -398,6 +394,7 @@ const HERO_PLANS = {
       baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['insight', 'investigation'], selectedFeatureIds: [],
       knownSpellIds: ['fire-bolt', 'mage-hand', 'ray-of-frost', 'magic-missile', 'shield', 'mage-armor', 'sleep', 'thunderwave', 'burning-hands'],
       preparedSpellIds: ['magic-missile', 'shield', 'mage-armor', 'sleep'],
+      phbCreation: { schema_version: 1, classChoices: {} },
     },
     skills: ['insight', 'investigation', 'arcana', 'history'],
     subclass: ['Школа Воплощения'],
@@ -409,7 +406,7 @@ const HERO_PLANS = {
     name: 'Шорох', characterClass: 'rogue', role: 'Плут · ур. 1', species: 'Легконогий полурослик',
     document: {
       character: 'Шорох', name: 'Четвёртый игрок', role: 'Плут · ур. 1', characterClass: 'rogue', species: 'Легконогий полурослик',
-      background: 'Преступник', backgroundId: 'criminal', backgroundChoices: { tools: ['dice_set'], languages: [] },
+      background: 'Преступник', backgroundId: 'criminal', backgroundChoices: { tools: ['dice_set'], languages: [], replacementTools: ['smiths_tools'] },
       starterEquipmentChoices: { primary: ['rapier'], secondary: ['shortbow'], pack: ['burglars-pack'] },
       level: 1, experience: 0,
       abilities: { str: 8, dex: 17, con: 14, int: 12, wis: 13, cha: 11 },
@@ -420,6 +417,7 @@ const HERO_PLANS = {
       },
       baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['acrobatics', 'perception', 'sleight_of_hand', 'investigation'],
       selectedFeatureIds: [], knownSpellIds: [], preparedSpellIds: [],
+      phbCreation: { schema_version: 1, classChoices: { expertise: ['acrobatics', 'perception'] } },
     },
     skills: ['acrobatics', 'perception', 'sleight_of_hand', 'investigation'],
     subclass: ['Вор'],
@@ -427,6 +425,9 @@ const HERO_PLANS = {
     cantrips: [], spells: [],
   },
 }
+
+const PILOT_NAMES = { fighter: 'Торвальд', barbarian: 'Лада', monk: 'Мирра', paladin: 'Рейна' }
+for (const recipe of PILOT_BUILDS.builds) HERO_PLANS[recipe.id] = { name: PILOT_NAMES[recipe.id], recipe }
 
 /** Недостающие выборы текущего уровня — тем же каталогом, что и проверка сервера. */
 function pendingChoices(actor, plan, rulesetId) {
@@ -477,14 +478,24 @@ function pendingChoices(actor, plan, rulesetId) {
   return commands
 }
 
-async function buildHero(account, plan) {
+async function buildHero(account, plan, catalog) {
   const actorId = account.heroId
-  const imported = await command(actorId, { command_type: 'ImportCharacter', document: { schema: 'skazanie.character', schema_version: 1, character: plan.document } }, `Импорт: ${plan.name}`)
+  const document = plan.recipe ? pilotImportDocument(catalog, plan.recipe, plan.name)
+    : { schema: 'skazanie.character', schema_version: 1, character: plan.document }
+  const imported = await command(actorId, { command_type: 'ImportCharacter', document }, `Импорт: ${plan.name}`)
   if (imported.status !== 200) {
     finding('blocker', 'character-import', `${plan.name}: импорт отклонён ${imported.body?.code ?? imported.status} — ${short(imported.body?.error ?? imported.text, 300)}`)
     return false
   }
-  for (let guard = 0; guard < 40; guard += 1) {
+  for (const step of plan.recipe ? stagedCommandsForPilotBuild(plan.recipe, actorId) : []) {
+    const result = await command(actorId, step, `${plan.name}: ${step.command_type}`)
+    if (result.status !== 200) {
+      finding('blocker', 'pilot-build', `${plan.name}: ${step.command_type} отклонён ${result.body?.code ?? result.status} — ${short(result.body?.error ?? result.text, 240)}`)
+      return false
+    }
+    if (step.command_type === 'LevelUp') stats.levelUps += 1
+  }
+  for (let guard = 0; !plan.recipe && guard < 40; guard += 1) {
     const state = await room(account)
     const actor = heroOf(state, actorId)
     if (!actor.characterSetupRequired && Number(actor.level) >= START_LEVEL) break
@@ -580,7 +591,7 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
       const skill = String(check.skill ?? '').replace(/_/gu, '-')
       if (rolled.body.success && DISCOVERY_SKILLS.has(skill)) {
         const facts = (final?.mechanics ?? []).filter((event) => event.event_type === 'WorldFactRecorded')
-        if (facts.length) { stats.discoveries += 1; note(`> 🔎 находка: ${facts.map((event) => short(event.payload?.object ?? event.payload?.value ?? event.payload?.text ?? JSON.stringify(event.payload), 160)).join(' | ')}`) }
+        if (facts.length) { stats.discoveries += 1; note(`> 🔎 находка: ${facts.map((event) => short(event.payload?.fact?.summary ?? JSON.stringify(event.payload), 160)).join(' | ')}`) }
         else { stats.discoveryEmpty += 1; finding('major', 'empty-success', `успех ${check.label} (${rolled.body.total} против ${rolled.body.difficulty}) не записал находку: «${short(action, 90)}»`) }
       }
       break
@@ -835,7 +846,7 @@ async function playCombat(label) {
   const ended = (state.battleLog ?? []).findLast((entry) => entry.type === 'combat-end')
   const heroesUp = state.players.filter(isUp).length
   if (!state.mechanics.combat.active) {
-    if ((state.enemies ?? []).every((enemy) => !isUp(enemy))) stats.combatWins += 1
+    if (['enemies_defeated', 'fled'].includes(ended?.reason)) stats.combatWins += 1
     note(`- итог боя: раундов ${maxRound}, ${ended?.reason ?? ended?.text ?? '?'}, героев на ногах ${heroesUp}/${heroIds().length}`)
   }
   const tally = {}
@@ -854,8 +865,8 @@ async function playCombat(label) {
   for (const actorId of heroIds()) {
     if (state.mechanics.death?.heroes?.[actorId]?.status === 'dead') {
       stats.heroDeaths += 1
-      finding('minor', 'hero-died', `${heroOf(state, actorId)?.character} погиб в бою «${label}» — воскрешаю`)
-      await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
+      finding('minor', 'hero-died', `${heroOf(state, actorId)?.character} погиб в бою «${label}»`)
+      if (!FINALE_COMBAT) await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
     }
   }
   return room()
@@ -873,7 +884,7 @@ async function heroTurnActions(state, actorId) {
   const me = heroOf(state, actorId)
   const fate = state.mechanics.death?.heroes?.[actorId]
   if (fate?.status === 'dead') {
-    await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
+    if (!FINALE_COMBAT) await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
     return
   }
   if (isUp(me)) {
@@ -895,7 +906,7 @@ async function heroTurnActions(state, actorId) {
   if (!combat.active || combat.reaction_window) return
   if (String(combat.initiative[combat.active_index]?.actor_id) !== actorId) return
   const ended = await command(actorId, { command_type: 'EndTurn' }, 'Завершить ход')
-  if (ended.status !== 200 && ended.body?.code === 'HERO_DEAD_UNRESOLVED') await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
+  if (!FINALE_COMBAT && ended.status !== 200 && ended.body?.code === 'HERO_DEAD_UNRESOLVED') await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
   else if (ended.status !== 200) finding('major', 'end-turn-refused', `EndTurn ${actorId}: ${ended.body?.code} — ${short(ended.body?.error, 200)}`)
 }
 
@@ -1656,7 +1667,7 @@ async function playUntilFinale() {
     const arc = state.autonomy?.pacing ?? {}
     // По сценарию финал — логово Саргата, а не номер главы.
     const finale = state.campaignConcept?.arc?.scenario_id
-      ? state.scene?.location_id === 'astohan-vulkanis-brazier'
+      ? state.scene?.location_id === LAIR
       : Number(state.adventure?.chapter) >= Number(state.campaignConcept?.arc?.target_scenes ?? 99)
     const action = idleDirector >= 3 ? 'Перейти дальше' : finale || arc.phase === 'climax' ? 'Ищем бой с Саргатом и его слугами' : idleDirector === 1 ? 'Ищем бой с теми, кто разорил эти земли' : 'Продолжить приключение'
     const before = state.state_version
@@ -1917,7 +1928,7 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
   const md = [
     `# Прогон «Асстоханские равнины» — ${STAMP}${IMPL === 'rust' ? ' · сервер Rust' : ''}`,
     '',
-    `Режим: **${LIVE ? 'с моделью' : 'без модели'}**${SEED != null ? `, сид костей ${SEED}` : ''} · длительность ${minutes} мин · исход кампании **${scorecard.status}** · итоговая оценка **${scorecard.overall}/10**`,
+    `Режим: **${LIVE ? 'с моделью' : 'без модели'}**${SEED != null ? `, сид костей ${SEED}` : ''} · ${RUN_MODE} · длительность ${minutes} мин · исход кампании **${scorecard.status}** · итоговая оценка **${scorecard.overall}/10**`,
     `Блокеров ${scorecard.blockers}, критичных ${scorecard.critical}, серьёзных ${scorecard.major}, мелких ${findings.length - scorecard.blockers - scorecard.critical - scorecard.major}.`,
     '',
     '## Критерии цели «Первый вечер без ведущего»',
@@ -1987,13 +1998,75 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
     }),
   ].join('\n') + '\n')
   writeFileSync(join(OUT, 'transcript.md'), `# Хроника прогона ${STAMP}\n${transcript.join('\n')}\n`)
-  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, impl: IMPL, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, narration: { quality, judge }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
+  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, impl: IMPL, live: LIVE, mode: RUN_MODE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, narration: { quality, judge }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
   const serverErrors = logs.split('\n').filter((line) => /error|ошибк|exception|unhandled/iu.test(line) && !/ROUTERAI|api[_-]?key/iu.test(line)).slice(0, 60)
   writeFileSync(join(OUT, 'server-errors.log'), serverErrors.join('\n'))
 }
 
 // ---------------------------------------------------------------------------
 // Прогон
+
+async function lairOpening() {
+  let state = await new CampaignBootstrapper().create({
+    code: CODE, partyName: 'Пепельный отряд', worldTemplateId: TEMPLATE_ID,
+    players: accounts.players.map((account, index) => createCharacterSlot({ id: account.heroId, index })),
+    rulesetId: RULESET_ID, startLevel: START_LEVEL, campaignMode: 'adventure',
+  })
+  const architect = new SceneArchitectAgent()
+  for (const location of ROUTE_PLAN) {
+    const { sceneArgs } = await architect.plan({ state, decision: `Идём в ${location}`, destinationLocationId: location })
+    state = resolveCommands([{ command_type: 'AdvanceScene', command_id: `finale-opening-${location}`, scene_args: sceneArgs }], state, {
+      diceService: fixedDice(10), context: { isAdmin: true },
+    }).state
+  }
+  if (state.scene?.location_id !== LAIR) throw new Error('Не удалось подготовить карту Жаровни')
+  // В отдельном бою прежние карты не понадобятся. Импорт ограничен 1 МБ.
+  return { ...state, locationMaps: {} }
+}
+
+async function playFinaleCombat() {
+  stage('Изолированный бой: Жаровня Вулканиса')
+  const state = await room()
+  await trackScene(state)
+  if (state.scene?.location_id !== LAIR || state.mechanics.combat?.active || lifecycleStatus(state) !== 'active') {
+    throw new Error('Начальное состояние должно быть в логове до начала боя')
+  }
+  await director('Ищем бой с Саргатом и его слугами')
+  await settleInteraction('finale-combat')
+  const started = await room(accounts.admin)
+  const boss = started.enemies.find((enemy) => enemy.id === SARGAT)
+  if (!started.mechanics.combat?.active || !(boss?.hp > 0) || boss.hp !== boss.maxHp) {
+    throw new Error('Режиссёр не запустил бой с Саргатом с полными ОЗ')
+  }
+  note(`- Саргат начинает бой с ${boss.hp}/${boss.maxHp} ОЗ; отряд: ${started.players.map((hero) => `${hero.character} ${hero.hp}/${hero.maxHp} ОЗ`).join(', ')}`)
+  const ended = await playCombat('Саргат')
+  // Победа и бегство возвращают игрокам кнопку продолжения после боя.
+  if (!ended.mechanics.combat.active && lifecycleStatus(ended) === 'active') {
+    await director('Продолжить приключение')
+  }
+}
+
+async function followDirectRoute() {
+  const waypoints = ['astohan-ash-watch', 'astohan-mittlayd', 'astohan-obsidian-pass', LAIR]
+  for (const target of waypoints) {
+    stage(`Дорога: ${target}`)
+    let state = await room()
+    for (let hop = 0; hop < 8 && state.scene?.location_id !== target && timeLeft() > 0; hop += 1) {
+      await travelTo(target)
+      const after = await room()
+      if (state.scene?.location_id === after.scene?.location_id && state.state_version === after.state_version) break
+      state = after
+      await trackScene(state)
+    }
+    if (state.scene?.location_id !== target) throw new Error(`Отряд не дошёл до ${target}: ${state.scene?.location}`)
+    await trackScene(state)
+    if (target === 'astohan-ash-watch') {
+      await say(accounts.guest.heroId, 'Осматриваю распахнутые ворота и выжженную землю у входа. Ищу следы, по которым можно понять, кто открыл ворота перед пожаром.', { label: 'ворота заставы' })
+    }
+    if (target === 'astohan-mittlayd') await talkThroughDialogues('mittlayd')
+  }
+  await playUntilFinale()
+}
 
 async function main() {
   stage('Подготовка')
@@ -2010,14 +2083,17 @@ async function main() {
   }
   accounts.owner = accounts.players[0]
   accounts.guest = accounts.players[1]
-  const created = await request('/api/campaigns', { method: 'POST', account: accounts.owner, body: {
-    code: CODE, name: 'Асстоханские равнины',
-    bootstrap: { partyName: 'Пепельный отряд', world: {}, worldTemplateId: TEMPLATE_ID, slotCount: PARTY.length, startLevel: START_LEVEL, rulesetId: RULESET_ID, campaignMode: 'adventure' },
+  const creator = FINALE_COMBAT ? accounts.admin : accounts.owner
+  const created = await request('/api/campaigns', { method: 'POST', account: creator, body: {
+    code: CODE, name: FINALE_COMBAT ? 'Асстохан: изолированный бой' : 'Асстоханские равнины',
+    ...(FINALE_COMBAT ? { state: await lairOpening() } : {
+      bootstrap: { partyName: 'Пепельный отряд', world: {}, worldTemplateId: TEMPLATE_ID, slotCount: PARTY.length, startLevel: START_LEVEL, rulesetId: RULESET_ID, campaignMode: 'adventure' },
+    }),
   } })
   if (created.status !== 201) throw new Error(`Кампания не создана: ${created.status} ${created.text.slice(0, 400)}`)
   note(`Кампания «${created.body.state.campaign}», старт в «${created.body.state.scene.location}», редакция ${created.body.state.ruleset_id}, мир ${created.body.state.worldMap?.locations?.length} мест, отряд: ${PARTY.join(', ')}`)
-  for (const account of accounts.players.slice(1)) {
-    const invite = await request(`/api/campaigns/${CODE}/invites`, { method: 'POST', account: accounts.owner, body: { hero_ids: [account.heroId] } })
+  for (const account of accounts.players.slice(FINALE_COMBAT ? 0 : 1)) {
+    const invite = await request(`/api/campaigns/${CODE}/invites`, { method: 'POST', account: creator, body: { hero_ids: [account.heroId] } })
     const joined = await request(`/api/campaigns/${CODE}/join`, { method: 'POST', account, body: { invite_token: invite.body?.token } })
     if (joined.status !== 200) throw new Error(`Игрок ${account.name} не вошёл: ${joined.status} ${joined.text.slice(0, 300)}`)
   }
@@ -2025,11 +2101,14 @@ async function main() {
   await checkGuestProjection('до первой реплики')
 
   stage('Создание героев 7-го уровня')
+  const catalog = await request(`/api/rulesets/${RULESET_ID}/character-creation`, { account: accounts.owner })
+  if (catalog.status !== 200) throw new Error(`Каталог создания героя: ${catalog.status}`)
   const built = []
-  for (const account of accounts.players) built.push(await buildHero(account, account.plan))
+  for (const account of accounts.players) built.push(await buildHero(account, account.plan, catalog.body))
   if (!built.every(Boolean)) throw new Error('Герои не созданы — дальше прогон не имеет смысла')
 
-  await openingScene()
+  playStarted = true
+  if (!FINALE_COMBAT) await openingScene()
   if (VISIT.length) {
     for (const target of VISIT) {
       for (let hop = 0; hop < 6 && (await room()).worldMap?.currentLocationId !== target; hop += 1) {
@@ -2045,15 +2124,21 @@ async function main() {
 Кампания ${CODE}, вход владельца — player1@astohan.test`)
     return room()
   }
-  if (await travelTo('astohan-ash-watch')) await trackScene(await room())
-  let final = await playUntilFinale()
+  if (FINALE_COMBAT) await playFinaleCombat()
+  else if (DIRECT_ROUTE) await followDirectRoute()
+  else {
+    if (await travelTo('astohan-ash-watch')) await trackScene(await room())
+    await playUntilFinale()
+  }
 
   stage('Проверки целостности')
   await checkIdempotency()
   await checkGuestProjection('в конце прогона')
   if (stats.restarts === 0) await restartAndCompare('в конце')
-  final = await room()
-  if (lifecycleStatus(final) === 'active') {
+  const final = await room()
+  if (lifecycleStatus(final) === 'active' && FINALE_COMBAT) {
+    finding('blocker', 'finale-combat-unresolved', 'Бой с Саргатом не привёл к эпилогу после обычного продолжения')
+  } else if (lifecycleStatus(final) === 'active') {
     finding('major', 'not-completed', `за ${MINUTES} мин кампания не дошла до финала: глава ${final.adventure?.chapter}, «${final.scene?.location}», фаза ${final.autonomy?.pacing?.phase ?? '?'}`)
   } else {
     note(`\n### Эпилог\n${final.mechanics.campaign_lifecycle?.epilogue ?? '—'}`)
@@ -2087,4 +2172,4 @@ console.log(`\nИтог: ${scorecard.status}, оценка ${scorecard.overall}/
 console.log(`Отчёт: ${relative(ROOT, join(OUT, 'report.md'))}`)
 if (!KEEP) rmSync(storage, { recursive: true, force: true })
 else console.log(`Хранилище оставлено: ${storage}`)
-process.exit(fatal ? 1 : 0)
+process.exit(fatal || ((DIRECT_ROUTE || FINALE_COMBAT) && scorecard.status !== 'completed') ? 1 : 0)

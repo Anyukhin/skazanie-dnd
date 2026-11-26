@@ -11,7 +11,7 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { palaceFixture } from './shared-npc-consequence-fixture.mjs'
+import { palaceFixture, palaceMeleePoint } from './shared-npc-consequence-fixture.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
@@ -192,10 +192,8 @@ test('удар из исследования открывает бой по HTTP
   // Нейтральный NPC: та же команда атаки игрока, цель — король из авторской
   // сцены. HTTP пропускает NPC сцены как цель, остальное решает движок.
   const palace = await palaceFixture({ kingHp: 20, witnesses: false })
-  const cellsByKey = new Map(palace.state.scene.cells.map((cell) => [`${cell.x},${cell.y}`, cell]))
-  const near = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-    .map(([dx, dy]) => ({ x: palace.kingPoint.x + dx, y: palace.kingPoint.y + dy }))
-    .find((point) => cellsByKey.get(`${point.x},${point.y}`)?.type === 'floor')
+  const near = palaceMeleePoint(palace)
+  assert.ok(near, 'у короля есть открытая клетка рядом')
   const palaceState = {
     ...palace.state,
     sessionCode: 'OPEN-NPC',

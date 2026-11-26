@@ -3522,7 +3522,7 @@
       "body_norm": {
         "request_kind": "action",
         "narration": "Проверка «Восприятие» завершилась неудачей. Старые ворота. Голоса из соседних дворов.",
-        "provider": "deterministic",
+        "provider": "deterministic-mechanics",
         "model": "orchestrated",
         "narration_message_id": "narration-51aeea8ffa05d2620d35",
         "idempotent_replay": false,
@@ -3590,16 +3590,6 @@
       "status": 0,
       "body_norm": [
         {
-          "event": "narration.start",
-          "payload": {
-            "message_id": "narration-51aeea8ffa05d2620d35",
-            "text": "",
-            "phase": "start",
-            "replace": true,
-            "replayed": false
-          }
-        },
-        {
           "event": "narration.complete",
           "payload": {
             "message_id": "narration-51aeea8ffa05d2620d35",
@@ -3626,7 +3616,7 @@
       "body_norm": {
         "request_kind": "action",
         "narration": "Проверка «Восприятие» завершилась неудачей. Старые ворота. Голоса из соседних дворов.",
-        "provider": "deterministic",
+        "provider": "deterministic-mechanics",
         "model": "orchestrated",
         "narration_message_id": "narration-51aeea8ffa05d2620d35",
         "idempotent_replay": true,

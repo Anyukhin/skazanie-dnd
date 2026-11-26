@@ -1004,7 +1004,7 @@ pub fn audit_spell_acceptance_in(root: &Path, options: SpellAcceptanceOptions) -
     let mut fingerprints = Map::new();
     for path in [CATALOG_PATH, OVERRIDES_PATH, "server/combat-spells.mjs", "server/rules-engine.mjs", "data/rule_packs/dnd_5e_2014/manifest.yaml", "server/spell-acceptance-audit.mjs"] {
         let text = read(root, path).map_err(|error| error.message)?;
-        fingerprints.insert(path.into(), Value::from(sha256(&text)));
+        fingerprints.insert(path.into(), Value::from(spell_evidence_text_sha256(&text)));
     }
     let longstrider_inspection = inspect_longstrider_evidence(Some(&longstrider_evidence), &longstrider_dependency_fingerprints(root)?);
     let options_2014 = json!({ "rulesetId": "dnd_5e_2014" });

@@ -105,6 +105,10 @@ pub fn swing_condition_modifiers(state: &Value, attacker_id: &str, target_id: &s
     )
 }
 
+pub(crate) fn is_strength_melee_attack(profile: Option<&Value>) -> bool {
+    at(profile, "kind").and_then(Value::as_str) == Some("melee") && at(profile, "ability").and_then(Value::as_str).unwrap_or("str") == "str"
+}
+
 /// `attackSwingShape(state, attackerId, targetId, profile, options)`:
 /// преимущество, помеха и их причины.
 pub fn attack_swing_shape(state: &Value, attacker_id: &str, target_id: &str, profile: Option<&Value>, options: SwingOptions) -> SwingShape {
@@ -144,7 +148,7 @@ pub fn attack_swing_shape(state: &Value, attacker_id: &str, target_id: &str, pro
     add(&mut advantage_sources, js::truthy(at(profile, "advantage")), "свойство атаки");
     add(&mut advantage_sources, attacker_conditions.contains("helped"), "помощь союзника");
     add(&mut advantage_sources, attacker_conditions.contains("hidden"), "атака из укрытия");
-    add(&mut advantage_sources, attacker_conditions.contains("reckless"), "безрассудная атака");
+    add(&mut advantage_sources, attacker_conditions.contains("reckless") && (!game::uses_2014(state) || is_strength_melee_attack(profile)), "безрассудная атака");
     add(&mut advantage_sources, attacker_conditions.contains("steady-aim"), "точный прицел");
     add(&mut advantage_sources, active_true_strike_for(state, attacker_id, target_id), "верный удар");
     add(&mut advantage_sources, attacker_conditions.contains("silvery-fortune"), "серебряная удача");
@@ -234,7 +238,7 @@ pub fn attack_forecast(state: &Value, attacker_id: &str, target_id: &str, option
     let modifier = js::safe_int(profile.get("modifier"), 0) + condition_numeric_bonus(state, attacker_id, "attackBonus");
     let range_feet = js::safe_int(profile.get("range_feet"), 5);
     let in_range = distance_feet.is_some_and(|distance| distance >= 5.0 && distance <= range_feet as f64);
-    let blocked_trajectory = in_range && range_feet > 5 && !has_clear_actor_trajectory(state, attacker_id, target_id, actor_at, target_at, false);
+    let blocked_trajectory = in_range && !has_clear_actor_trajectory(state, attacker_id, target_id, actor_at, target_at, false);
     let swing = attack_swing_shape(state, attacker_id, target_id, Some(&profile), SwingOptions { actor_at, target_at, distance_feet, ..SwingOptions::default() });
     let hit_chance = d20_hit_chance(armor_class - modifier as f64, swing.advantage, swing.disadvantage);
     let melee = profile.get("kind").and_then(Value::as_str) == Some("melee");

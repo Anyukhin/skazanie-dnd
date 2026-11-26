@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
-import { campaignScenario, scenarioClueFactId } from '../server/campaign-scenario.mjs'
+import { campaignScenario, scenarioClueFactId, scenarioEnding } from '../server/campaign-scenario.mjs'
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import { normalizeCampaignState, resolveCommands } from '../server/rules-engine.mjs'
 import { fixedDice } from './kit/dice.mjs'
@@ -309,4 +309,34 @@ test('договор в уже начатом бою через обычную �
   assert.equal(journal.events.filter((event) => event.event_type === 'CampaignCompleted').length, 1)
   assert.equal(journal.events.filter((event) => event.event_type === 'EncounterOutcomeRecorded' && event.payload?.outcome === 'parley').length, 1)
   assert.equal(journal.state.mechanics.campaign_lifecycle.ending.id, 'treaty')
+})
+
+test('Директор записывает четыре авторские развязки из подтверждённых исходов финала', { timeout: runnerTimeout(120_000) }, async (t) => {
+  const server = await startTestServer(t)
+  const { client: admin } = await setupAdmin(server)
+  const lair = await lairState()
+  for (const [outcome, ending] of [
+    ['enemies_defeated', 'slain'], ['fled', 'banished'], ['parley', 'treaty'], ['party_incapacitated', 'defeat'],
+  ]) {
+    const code = `FINALE-${ending.toUpperCase()}`
+    const state = structuredClone(lair)
+    state.sessionCode = code
+    state.mechanics.encounter = { id: 'boss', status: 'ended', outcome, enemy_ids: [SARGAT], difficulty: 'deadly', location: lair.scene.location }
+    state.autonomy.encounter_outcomes = [{ encounter_id: 'boss', outcome }]
+    await createCampaign(admin, { code, state })
+    const { client: player } = await addPlayer(server, admin, code, { heroIds: [HERO_ID] })
+    const initial = await readJournal(server, code)
+    assert.equal(scenarioEnding(initial.state)?.id, ending, outcome)
+    const { state: result } = expectStatus(await admin.post(`/api/campaigns/${code}/autonomy/advance`, {
+      idempotency_key: 'complete-finale', actor_id: HERO_ID, player_action: 'Подводим итог встречи с Саргатом',
+    }))
+    assert.equal(result.mechanics.campaign_lifecycle.ending?.id, ending, outcome)
+    const { state: room } = expectStatus(await player.get(`/api/rooms/${code}`))
+    assert.equal(room.mechanics.campaign_lifecycle.ending?.id, ending)
+    assert.notEqual(room.agentInteraction?.status, 'open', outcome)
+    const replay = await readJournal(server, code, { useSnapshots: false })
+    assert.deepEqual(replay.state.mechanics.campaign_lifecycle, result.mechanics.campaign_lifecycle)
+    assert.equal(replay.events.filter((event) => event.event_type === 'CampaignCompleted').length, 1)
+    assert.ok(!replay.events.some((event) => event.event_type === 'EncounterCreated'), outcome)
+  }
 })
