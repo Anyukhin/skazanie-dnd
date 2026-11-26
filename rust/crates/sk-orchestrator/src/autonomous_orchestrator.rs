@@ -567,6 +567,16 @@ fn hero_name_for_text(state: &Value, actor_id: &str) -> String {
     }
 }
 
+/// `castableSpellNames(state, actorId)`: заклинания, которые герой может
+/// сотворить; `None` — у героя нет списка карточек (аудит 2026-11-26).
+/// Карточки не хранятся (урок 2): записанные или выведенные из каталога.
+fn castable_spell_names(state: &Value, actor_id: &str) -> Option<Vec<String>> {
+    let hero = list(get(Some(state), "players")).iter().find(|entry| js::string(get(Some(entry), "id")) == actor_id)?;
+    let spells = sk_rules::derived::read(Some(state), hero, sk_rules::derived::COMBAT_SPELLS)?;
+    let spells = spells.as_array()?;
+    Some(spells.iter().filter(|spell| !js::is_false(get(Some(spell), "prepared")) && !clean(get(Some(spell), "name"), 80).is_empty()).map(|spell| clean(get(Some(spell), "name"), 80)).collect())
+}
+
 fn quests(state: &Value) -> &[Value] {
     list(at(Some(state), &["worldMemory", "quests"]))
 }
@@ -2645,6 +2655,7 @@ impl AutonomousCampaignOrchestrator {
                         in_combat: js::is_true(at(Some(state), &["mechanics", "combat", "active"])),
                         npc_names,
                         onward: next_world_map_destination(state).unwrap_or_default(),
+                        spell_names: castable_spell_names(state, &actor_id),
                     },
                 )
             } else {

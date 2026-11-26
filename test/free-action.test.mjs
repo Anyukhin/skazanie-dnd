@@ -1111,6 +1111,42 @@ test('нераспознанное действие без модели: уто�
   assert.equal(mundaneActionOutcome('Поднимаю шишку с пола', { inCombat: true }), null, 'в бою действие стоит часть хода — прежнее уточнение')
 })
 
+test('аудит 2026-11-26: нераспознанная заявка без модели получает ответ по существу, а не «Чего герой хочет добиться»', async () => {
+  const { mundaneActionOutcome, interpretFreeAction, hasRecognizedFreeActionApproach } = await import('../server/free-action-adjudication.mjs')
+  const context = { heroName: 'Шорох', npcNames: ['Ирия Трижды-Певшая'] }
+
+  const hostile = mundaneActionOutcome('Нападаю на Ирию', context)
+  assert.equal(hostile.kind, 'hostile')
+  assert.match(hostile.narration, /^Здесь пока нет врагов/u)
+  assert.match(hostile.narration, /Запугивание/u)
+  assert.equal(mundaneActionOutcome('Убиваю первого встречного без причины', context).kind, 'hostile')
+  for (const peaceful of ['Бью в колокол, чтобы поднять тревогу', 'Режу верёвку ножом', 'Отдаю душу богам']) {
+    assert.notEqual(mundaneActionOutcome(peaceful, context)?.kind, 'hostile', peaceful)
+  }
+
+  const noMagic = mundaneActionOutcome('Призываю метеоритный дождь на город', { ...context, spellNames: [] })
+  assert.equal(noMagic.kind, 'unknown_spell')
+  assert.match(noMagic.narration, /^Шорох не владеет магией/u)
+  const wizard = mundaneActionOutcome('Призываю метеоритный дождь на город', { heroName: 'Мира', spellNames: ['Огненный снаряд', 'Волшебная стрела'] })
+  assert.match(wizard.narration, /^Такого заклинания Мира не знает\. Сотворить можно: Огненный снаряд, Волшебная стрела\./u)
+  assert.notEqual(mundaneActionOutcome('Творю «Волшебную стрелу» над дверью', { heroName: 'Мира', spellNames: ['Волшебная стрела'] })?.kind, 'unknown_spell',
+    'названное своё заклинание — не отказ (корень имени совпадает)')
+  assert.equal(mundaneActionOutcome('Призываю метеоритный дождь на город', context).kind, 'flavor', 'без списка заклинаний ответа о магии нет')
+
+  assert.equal(mundaneActionOutcome('фываолдж', context).kind, 'unreadable')
+  assert.notEqual(mundaneActionOutcome('Поднимаю шишку с пола', context).kind, 'unreadable')
+  assert.equal(mundaneActionOutcome('Летаю над крышами, размахивая руками', context).kind, 'impossible')
+
+  // Новые шаблоны подходов: лазание, следы, карманная кража — Ловкость рук.
+  assert.equal(interpretFreeAction('Лезу по стене на крышу, чтобы осмотреться сверху').skill, 'athletics')
+  assert.equal(interpretFreeAction('Проверяю, не натоптал ли кто-нибудь у порога').skill, 'perception')
+  assert.equal(interpretFreeAction('Вытаскиваю кошелёк у Ирии').skill, 'sleight-of-hand')
+  assert.equal(interpretFreeAction('Краду ключ с пояса у стражника, пока он отвернулся').skill, 'sleight-of-hand')
+  assert.equal(interpretFreeAction('Крадусь вдоль стены к воротам').skill, 'stealth', 'прятки остаются Скрытностью')
+  assert.equal(interpretFreeAction('Сталкиваю бочку на врага').skill, 'athletics')
+  assert.equal(hasRecognizedFreeActionApproach('Лезу по стене'), true)
+})
+
 test('движок отклонил проход уже после броска — ход доигран без перемещения и с ответом', async () => {
   // Замер 2026-10-10: «Борин толкает дверь маяка и входит» после удачной
   // Атлетики падало 400 PATH_BLOCKED без единого слова ведущего.

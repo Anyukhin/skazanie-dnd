@@ -345,8 +345,13 @@ const APPROACH_PATTERNS = Object.freeze([
   { test: /(?:отвле[кч]|переключ\p{L}*\s+внимани|шум\p{L}*\s+приманк)/iu, ability: 'cha', skill: 'performance', plausibility: 'plausible', risk: 'minor', obstacle: 'внимание собеседника' },
   { test: /(подпира|баррикад|завал|подпер|держ\p{L}+\s+двер)/iu, ability: 'str', skill: 'athletics', plausibility: 'plausible', risk: 'minor', obstacle: 'дверь' },
   { test: /(взлам|выбива|выломать|ломаю)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'преграда' },
-  { test: /(опрокид|сбива|толка|рывк|поднож|жаровн|спотык|оступить)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'противник' },
+  { test: /(опрокид|сбива|толка|рывк|поднож|жаровн|спотык|оступить|сталкива|столкн|спихива)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'противник' },
   { test: /(поджиг|зажиг|подпал|факел\p{L}*\s+к)/iu, ability: 'dex', skill: 'sleight-of-hand', plausibility: 'plausible', risk: 'serious', obstacle: 'огонь' },
+  // Карманная кража — Ловкость рук против бдительности владельца (PHB, гл. 7),
+  // а не Скрытность: «Краду ключ с пояса у стражника» шло проверкой
+  // Скрытности, а «Вытаскиваю кошелёк у Ирии» — в «Чего Шорох хочет
+  // добиться» (аудит 2026-11-26). Стоит до прятания: там тоже «крад».
+  { test: /(?<![\p{L}\p{M}])(?:вытаскива\p{L}*|вытащ\p{L}*|стаскива\p{L}*|стащ\p{L}*|стяну\p{L}*|стягива\p{L}*|срез\p{L}*|срежу|обчищ\p{L}*|обчист\p{L}*|краду|украду|украсть|ворую|своровать|тащу)(?![\p{L}\p{M}])[^.!?]{0,60}?(?:кошел\p{L}*|кошел[её]к|кошель\p{L}*|карман\p{L}*|ключ\p{L}*|с\s+пояса|из\s+сумк\p{L}*|кисет\p{L}*)/iu, ability: 'dex', skill: 'sleight-of-hand', plausibility: 'plausible', risk: 'serious', obstacle: 'бдительность владельца' },
   // «Скрыва» — с начала слова: «раскрывает тетрадь» и «вскрывает замок» не
   // прятки; «тихо» — только с движением: «тихо говорит Борину» — реплика.
   // Без модели вопрос хозяйке «раскрывает тетрадь… «Скажите…»» получал
@@ -360,13 +365,16 @@ const APPROACH_PATTERNS = Object.freeze([
   // такая заявка уходила в «Чего Борин хочет добиться…», и вопрос попадал в
   // летопись голосом рассказчика (замер 10, 2026-10-10).
   { test: /(?<![\p{L}\p{M}])(?:простук\p{L}*|ощупыва\p{L}*|обшари\p{L}*|тайник\p{L}*|тайничок\p{L}*)/iu, ability: 'int', skill: 'investigation', plausibility: 'plausible', risk: 'none', obstacle: 'тайник' },
-  { test: /(осматр|разгляд|изуча|ищу\s+след|обыск)/iu, ability: 'wis', skill: 'perception', plausibility: 'trivial', risk: 'none', obstacle: 'обстановка' },
+  // «Натоптал ли кто у порога», «нет ли отпечатков» — поиск следов теми же
+  // словами, что у игроков (аудит 2026-11-26), а не «Чего герой хочет добиться».
+  { test: /(осматр|разгляд|изуча|ищу\s+след|обыск|натопт|отпечат)/iu, ability: 'wis', skill: 'perception', plausibility: 'trivial', risk: 'none', obstacle: 'обстановка' },
   // Наблюдение за чем-то, что может случиться: «смотрим на маяк — загорится
   // ли огонь?», «следим за дверью». Это вопрос миру, и без модели ответ даёт
   // Восприятие, а не «Чего герой хочет добиться» (плейтест 2026-10-10).
   { test: /(?<![\p{L}\p{M}])(?:наблюда\p{L}*|след(?:им|ит|ю|ят)\s+за|слежу\s+за|смотр\p{L}*\s+(?:на|в|за)\s|вгляд\p{L}*|высматр\p{L}*|караул\p{L}*|не\s+свод\p{L}*\s+(?:глаз|взгляд\p{L}*))/iu, ability: 'wis', skill: 'perception', plausibility: 'plausible', risk: 'none', obstacle: 'то, что происходит вокруг' },
   { test: /(вспомина|припомин|знаю\s+ли|что\s+известно)/iu, ability: 'int', skill: 'history', plausibility: 'trivial', risk: 'none', obstacle: 'память' },
-  { test: /(залез|взбира|караб|подтягива)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'высота' },
+  // «Лезу по стене на крышу» — то же лазание, что «залезаю» (аудит 2026-11-26).
+  { test: /(?:залез|взбира|караб|подтягива|(?<![\p{L}\p{M}])(?:лезу|полезу|влезаю|влезу)(?![\p{L}\p{M}]))/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'высота' },
   { test: /(?<![\p{L}\p{M}])(?:вс|с|за|пере|под|вы|при|от)?прыг|(?<![\p{L}\p{M}])(?:прыж|соскоч|перескоч)/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'serious', obstacle: 'разрыв' },
 ])
 
@@ -497,7 +505,49 @@ export function hasRecognizedFreeActionApproach(text = '') {
 }
 
 // Заведомо не по силам смертному: целый замок, гора, полёт без магии.
-const IMPOSSIBLE_FEAT = /(?<![\p{L}])(?:(?:весь|всю|целый|целую|целиком)\s+(?:замок|город|гору|дом|крепость|башню|корабль|лес|мост|стену)|(?:поднимаю|поднять|поднимает|переворачиваю|сдвигаю)\s+(?:замок|гору|крепость|башню|город)|взлетаю|улетаю|лечу\s+(?:над|по\s+небу|в\s+небо))(?![\p{L}])/iu
+const IMPOSSIBLE_FEAT = /(?<![\p{L}])(?:(?:весь|всю|целый|целую|целиком)\s+(?:замок|город|гору|дом|крепость|башню|корабль|лес|мост|стену)|(?:поднимаю|поднять|поднимает|переворачиваю|сдвигаю)\s+(?:замок|гору|крепость|башню|город)|взлетаю|улетаю|лечу\s+(?:над|по\s+небу|в\s+небо)|лета(?:ю|ем)\s+(?:над|по\s+небу|в\s+небе))(?![\p{L}])/iu
+
+// Удар или убийство вне боя: без модели судья не знает, кто здесь враг, и
+// прежде спрашивал «Чего Торвальд хочет добиться: «Нападаю на Ирию»?» (аудит
+// 2026-11-26). Мирного собеседника бой сам не делает врагом — ответ называет
+// это прямо и предлагает давление без драки.
+// «Бью в колокол», «режу хлеб», «отдам душу» — не нападение: двусмысленные
+// глаголы не входят, а «бью» и «ударяю» исключают удар в предмет-сигнал.
+const HOSTILE_ACT = /(?<![\p{L}\p{M}])(?:нападаю|нападу|нападаем|атакую|атакуем|убиваю|убью|убиваем|зарежу|пыряю|заколю|задушу|(?:бью|ударяю|ударю)(?!\s+(?:в\s+(?:колокол|барабан|ладош|набат|гонг|бубен|щит)|тревог|челом|себя|по\s+столу)))(?![\p{L}\p{M}])/iu
+
+// Заклинание словами, которого нет у героя: «Призываю метеоритный дождь на
+// город» у плута 1-го уровня получало то же «Чего хочет добиться» (аудит).
+const SPELL_ACT = /(?<![\p{L}\p{M}])(?:призываю|колдую|наколдовываю|творю|сотворяю|кастую|(?:читаю|накладываю|произношу|применяю)\s+заклинани\p{L}*)(?![\p{L}\p{M}])/iu
+
+// Набор букв подряд с клавиатуры («фываолдж») — не заявка. Четыре соседние
+// клавиши одного ряда в русских словах почти не встречаются.
+const KEYBOARD_ROWS = Object.freeze(['йцукенгшщзхъ', 'фывапролджэ', 'ячсмитьбю', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'])
+
+function keyboardMash(value) {
+  const words = value.toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}+/gu) ?? []
+  if (!words.length || words.length > 3) return false
+  return words.some((word) => {
+    for (let index = 0; index + 4 <= word.length; index += 1) {
+      const chunk = word.slice(index, index + 4)
+      if (KEYBOARD_ROWS.some((row) => row.includes(chunk) || row.includes([...chunk].reverse().join('')))) return true
+    }
+    return false
+  })
+}
+
+// Основа слова без окончания: «Волшебную стрелу» называет «Волшебную стрелу».
+function spellWordStem(word) {
+  const letters = [...word]
+  return letters.length > 5 ? letters.slice(0, -2).join('') : letters.slice(0, Math.max(3, letters.length - 1)).join('')
+}
+
+function mentionedSpellName(value, spellNames) {
+  const words = value.toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}+/gu) ?? []
+  return spellNames.some((name) => {
+    const parts = (clean(name, 80).toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}+/gu) ?? []).filter((part) => [...part].length >= 3)
+    return parts.length > 0 && parts.every((part) => words.some((word) => word.startsWith(spellWordStem(part))))
+  })
+}
 
 /**
  * Свободное действие, которое запасной разбор без модели не узнал по шаблонам.
@@ -512,16 +562,36 @@ const IMPOSSIBLE_FEAT = /(?<![\p{L}])(?:(?:весь|всю|целый|целую
  * получает честный ответ. В бою возвращается `null`: там действие стоит часть
  * хода, и прежнее уточнение остаётся.
  *
- * @param {{ heroName?: string, inCombat?: boolean, npcNames?: string[], onward?: string }} context
- * @returns {{ kind: 'impossible'|'flavor', narration: string } | null}
+ * Нападение на мирных, заклинание, которого у героя нет, и набор букв тоже
+ * получают ответ по существу (аудит 2026-11-26): `spellNames` — заклинания,
+ * которые герой может сотворить; `undefined` — список неизвестен, и ответ о
+ * заклинании не даётся.
+ *
+ * @param {{ heroName?: string, inCombat?: boolean, npcNames?: string[], onward?: string, spellNames?: string[] }} context
+ * @returns {{ kind: 'impossible'|'hostile'|'unknown_spell'|'unreadable'|'flavor', narration: string } | null}
  */
-export function mundaneActionOutcome(text = '', { heroName = '', inCombat = false, npcNames = [], onward = '' } = {}) {
+export function mundaneActionOutcome(text = '', { heroName = '', inCombat = false, npcNames = [], onward = '', spellNames = undefined } = {}) {
   const value = clean(text, 1_000)
   if (!value || inCombat) return null
   const hero = clean(heroName, 80) || 'Герой'
   const quote = value.replace(/[.!?…]+$/u, '')
+  if (keyboardMash(value)) {
+    return { kind: 'unreadable', narration: `Ведущий не разобрал заявку «${quote}». Скажите словами, что делает ${hero}: например, «осматриваю комнату», «спрашиваю хозяйку о слухах» или «иду к воротам». Попытка ничего не расходует.` }
+  }
   if (IMPOSSIBLE_FEAT.test(value)) {
     return { kind: 'impossible', narration: `${hero} примеривается — «${quote}», — но это не по силам ни одному смертному. Какой способ мир позволит: рычаг, заклинание, помощь отряда? Попытка ничего не расходует.` }
+  }
+  if (HOSTILE_ACT.test(value)) {
+    return { kind: 'hostile', narration: `Здесь пока нет врагов, и мирный человек сам не станет противником: «${quote}» бой не начинает. Надавить можно и без драки — пригрозить (Запугивание), потребовать ответа или обезоружить хитростью. Если отряд решил драться всерьёз, схватку начинает ведущий. Попытка ничего не расходует.` }
+  }
+  if (Array.isArray(spellNames) && SPELL_ACT.test(value) && !mentionedSpellName(value, spellNames)) {
+    const known = spellNames.map((name) => clean(name, 60)).filter(Boolean)
+    return {
+      kind: 'unknown_spell',
+      narration: known.length
+        ? `Такого заклинания ${hero} не знает. Сотворить можно: ${known.slice(0, 8).join(', ')}${known.length > 8 ? ' и другие' : ''}. Назовите заклинание из списка или опишите, чего добиться без магии. Попытка ничего не расходует.`
+        : `${hero} не владеет магией: заклинаний у героя нет. Опишите, как добиться своего руками, словом или снаряжением. Попытка ничего не расходует.`,
+    }
   }
   const options = [
     'осмотреть место внимательнее',
@@ -963,6 +1033,9 @@ const APPROACH_VERB = /(?<![\p{L}\p{M}])(?:подхож\p{L}*|подход(?:и�
 const APPROACH_TARGET = /(?:^|\s)(?:к|ко)\s+([^,.;:!?«»"()]{2,60})/iu
 const APPROACH_REMAINDER = /(?:,|\s+и\s+|\s+чтобы\s+|\s+—\s+)/u
 
+// «Ближайший человек», «первый встречный» — без имени, по месту на карте.
+const NEARBY_PERSON_PHRASE = /(?:ближайш\p{L}*\s+(?:человек|прохож|местн|посетител|жител|горожан|селянин|селянк)\p{L}*|первому\s+встречн\p{L}*)/iu
+
 /** Предметы, к которым подходят словами: основа слова → вид пропса на карте. */
 const APPROACH_PROP_TARGETS = Object.freeze([
   { stems: ['баркас', 'лодк', 'шлюпк', 'ялик', 'челн'], asset: /(?:rowboat|boat|skiff|canoe)/u },
@@ -1111,6 +1184,16 @@ export function freeActionApproachPlan(state = {}, actorId = '', text = '') {
       const label = clean(target.character ?? target.name, 80)
       return ready('actor', label, [at], approachCellsAround(map, [at], occupied))
     }
+  }
+  // «Подхожу к ближайшему человеку» — ближайший из здешних по карте, а не
+  // «Чего Шорох хочет добиться» (аудит 2026-11-26).
+  if (!people.length && NEARBY_PERSON_PHRASE.test(request.phrase)) {
+    const nearest = presentSceneNpcs(state)
+      .map((npc) => ({ npc, at: npcPlacementFor(state, npc.id) }))
+      .filter((entry) => Number.isFinite(entry.at?.x) && Number.isFinite(entry.at?.y))
+      .map((entry) => ({ ...entry, distance: Math.max(Math.abs(entry.at.x - from.x), Math.abs(entry.at.y - from.y)) }))
+      .sort((left, right) => left.distance - right.distance || clean(left.npc.id).localeCompare(clean(right.npc.id), 'en'))[0]
+    if (nearest) return ready('actor', clean(nearest.npc.name, 80), [nearest.at], approachCellsAround(map, [nearest.at], occupied))
   }
   // Вещь на карте: ближайшая из подходящих по виду и уже раскрытых.
   const propTarget = APPROACH_PROP_TARGETS.find((entry) => entry.stems.some((stem) => words.some((word) => word.startsWith(stem))))

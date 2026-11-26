@@ -1147,6 +1147,55 @@ function actsBeyondSpeech(message) {
 /** Передача вещи с репликой остаётся передачей: «отдаю Лине верёвку: «Держи»». */
 const SPEECH_HANDOVER_PATTERN = /(?<![\p{L}\p{M}])(?:переда|отда|вруча|протягива)\p{L}*/iu
 
+/**
+ * Отыгрыш без цели и броска: песня, пляска, молитва, тост, байка, обещание.
+ * Без модели «Пою похабную песню во всё горло» и «Обещаю старосте, что
+ * найду пропавших» получали «Чего Торвальд хочет добиться» (аудит
+ * 2026-11-26). Живой ведущий отвечает на такое реакцией сцены.
+ */
+const PERFORMANCE_PATTERN = /(?<![\p{L}\p{M}])(?:пою|спою|поём|споём|напева\p{L}*|запева\p{L}*|горланю|горланим|играю\s+на\s+\p{L}+|наигрыва\p{L}*|танцую|пляшу|пляшем|молюсь|помолюсь|молимся|произношу\s+тост|поднимаю\s+(?:кружку|бокал|кубок|тост)|рассказываю\s+(?:байку|анекдот|историю|сказку|легенду)|травлю\s+байк\p{L}*|шучу|насвистыва\p{L}*|декламиру\p{L}*|обещаю|клянусь|даю\s+слово)(?![\p{L}\p{M}])/iu
+
+/** Чем отыгрыш звучит в сцене — для запасного текста без модели. */
+function performanceNoun(message) {
+  const value = String(message ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  if (/(?:обещаю|клянусь|даю\s+слово)/u.test(value)) return 'Обещание'
+  if (/(?:молюсь|помолюсь|молимся)/u.test(value)) return 'Молитва'
+  if (/(?:тост|кружку|бокал|кубок)/u.test(value)) return 'Тост'
+  if (/(?:танцую|пляшу|пляшем)/u.test(value)) return 'Пляска'
+  if (/(?:байк|анекдот|историю|сказку|легенду|шучу)/u.test(value)) return 'Рассказ'
+  if (/(?:декламиру)/u.test(value)) return 'Декламация'
+  if (/(?:насвистыва)/u.test(value)) return 'Свист'
+  return /(?:играю\s+на|наигрыва)/u.test(value) ? 'Музыка' : 'Песня'
+}
+
+const PERFORMANCE_SOUND = Object.freeze({
+  'Песня': 'Песня разносится вокруг',
+  'Музыка': 'Музыка разносится вокруг',
+  'Молитва': 'Молитва звучит негромко',
+  'Тост': 'Тост звучит громко',
+  'Пляска': 'Пляска не остаётся незамеченной',
+  'Рассказ': 'Рассказ звучит над сценой',
+  'Обещание': 'Обещание звучит твёрдо',
+  'Декламация': 'Стихи звучат над сценой',
+  'Свист': 'Свист разносится вокруг',
+})
+
+/**
+ * «Подхожу к ближайшему человеку и спрашиваю о слухах», «Предлагаю местным
+ * помощь в обмен на ночлег»: собеседник — кто-то из здешних, а не уточнение
+ * «Чего герой хочет добиться» (аудит 2026-11-26).
+ */
+const NEARBY_PERSON_PATTERN = /(?:ближайш\p{L}*\s+(?:человек\p{L}*|прохож\p{L}*|местн\p{L}*|посетител\p{L}*|жител\p{L}*)|(?<![\p{L}\p{M}])местн(?:ым|ых|ому|ого|ой)(?![\p{L}\p{M}])|кого-нибудь\s+из\s+(?:местных|здешних)|(?<![\p{L}\p{M}])здешн(?:им|их)(?![\p{L}\p{M}]))/iu
+const NEARBY_SOCIAL_VERB = /(?<![\p{L}\p{M}])(?:спрашива\p{L}*|расспрашива\p{L}*|предлага\p{L}*|прошу|обраща\p{L}*|заговарива\p{L}*|узна[юё]\p{L}*)(?![\p{L}\p{M}])/iu
+
+function nearbySocialNpcId(message, state) {
+  if (!NEARBY_PERSON_PATTERN.test(String(message ?? '')) || !NEARBY_SOCIAL_VERB.test(String(message ?? ''))) return ''
+  const location = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+  const present = (state?.social?.npcs ?? []).find((npc) => npc?.id && npc?.available !== false && npc?.visibility !== 'gm_only'
+    && (!location || !npc?.location || String(npc.location).trim().toLocaleLowerCase('ru') === location))
+  return present ? String(present.id) : ''
+}
+
 /** Сколько шагов одной заявки ведущий исполняет подряд без вопроса. */
 const PLAN_STEP_LIMIT = 4
 
@@ -1410,6 +1459,14 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
       const nearby = (state?.social?.npcs ?? []).find((npc) => npc?.available !== false && npc?.name
         && (!location || !npc?.location || String(npc.location).trim().toLocaleLowerCase('ru') === location))
       return nearby ? `${nearby.name} оборачивается на голос.` : `${freeActionHeroName(events, state)} говорит негромко — так, чтобы слышали только свои.`
+    }
+    // Песня, тост, обещание без кавычек — тоже сцена, а не пустой ответ.
+    if (PERFORMANCE_PATTERN.test(String(message ?? ''))) {
+      const location = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+      const nearby = (state?.social?.npcs ?? []).find((npc) => npc?.available !== false && npc?.name && npc?.visibility !== 'gm_only'
+        && (!location || !npc?.location || String(npc.location).trim().toLocaleLowerCase('ru') === location))
+      const sound = PERFORMANCE_SOUND[performanceNoun(message)] ?? PERFORMANCE_SOUND['Песня']
+      return nearby ? `${sound} — ${nearby.name} оборачивается.` : `${sound}; рядом только свои.`
     }
   }
   if (!roleplaySpeech && !unconfirmedPassage && unconfirmedFreeActionDisclosure({ freeAction, message, events })) {
@@ -3143,6 +3200,18 @@ export class GameOrchestrator {
         intent = { ...intent, intent: 'social', targets: [addressee.id], missing_information: [], requires_clarification: false }
       } else if (addressee?.kind === 'hero') {
         intent = { ...intent, intent: 'improvised_action', roleplay_speech: !actsBeyondSpeech(message), targets: [], missing_information: [], requires_clarification: false }
+      }
+    }
+    // Песня, тост, молитва, обещание в сцену — отыгрыш без броска; просьба к
+    // «ближайшему человеку» или «местным» — разговор с кем-то из здешних.
+    if (!input.commands && !explicitNpcId && originalState.mechanics?.combat?.active !== true
+      && ['improvised_action', 'explore', 'unknown', 'social'].includes(String(intent.intent))
+      && !(intent.intent === 'social' && (intent.targets ?? []).length)) {
+      const nearbyNpcId = nearbySocialNpcId(message, visibleState)
+      if (nearbyNpcId && !PERFORMANCE_PATTERN.test(message)) {
+        intent = { ...intent, intent: 'social', targets: [nearbyNpcId], missing_information: [], requires_clarification: false }
+      } else if (intent.roleplay_speech !== true && PERFORMANCE_PATTERN.test(message) && !actsBeyondSpeech(message)) {
+        intent = { ...intent, intent: 'improvised_action', roleplay_speech: true, targets: [], missing_information: [], requires_clarification: false }
       }
     }
     let socialRequest = null

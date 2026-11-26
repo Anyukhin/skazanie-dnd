@@ -145,6 +145,19 @@ function heroNameForText(state, actorId) {
   return clean(hero?.character || hero?.name, 80) || 'герой'
 }
 
+/**
+ * Имена заклинаний, которые герой может сотворить (подготовленные и
+ * заговоры), для честного ответа на заклинание, которого у него нет.
+ * `undefined` — список неизвестен: ответа о заклинании тогда нет.
+ */
+function castableSpellNames(state, actorId) {
+  const hero = (state?.players ?? []).find((entry) => String(entry?.id) === String(actorId))
+  if (!Array.isArray(hero?.combatSpells)) return undefined
+  return hero.combatSpells
+    .filter((spell) => spell?.prepared !== false && clean(spell?.name, 80))
+    .map((spell) => clean(spell.name, 80))
+}
+
 function openQuest(state, requestedId = '') {
   return (state.worldMemory?.quests ?? []).find((quest) => quest.id === requestedId && quest.status === 'active')
     ?? (state.worldMemory?.quests ?? []).find((quest) => quest.status === 'active' && !quest.clock?.triggered)
@@ -1810,6 +1823,7 @@ export class AutonomousCampaignOrchestrator {
           .filter((npc) => npc?.available !== false && npc?.visibility !== 'gm_only' && clean(npc?.location, 180).toLocaleLowerCase('ru') === sceneLocation)
           .map((npc) => npc.name),
         onward: nextWorldMapDestination(loaded.state) ?? '',
+        spellNames: castableSpellNames(loaded.state, actorId),
       })
       return {
         context_metadata: actionContextMetadata,

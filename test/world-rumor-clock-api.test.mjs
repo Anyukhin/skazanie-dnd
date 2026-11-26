@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
@@ -130,14 +129,4 @@ test('часы молвы идут сами: слух и реакция мира
   const repeat = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
   assert.equal((repeat.body.state.worldMemory?.epistemic_claims ?? []).filter((claim) => claim.kind === 'rumor').length, 1)
   assert.equal(repeat.body.state.autonomy.reputations['brod-guild'], -8)
-})
-
-// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
-// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). Поведение «слух без system-tick» в обоих
-// режимах проверяет HTTP-тест выше; драйвер Rust — nudge_world_clocks в rust/crates/sk-server/src/clocks.rs.
-test('JS-only (server/index.mjs): привод часов молвы живёт в серверном драйвере, а не в HTTP-роуте', () => {
-  const source = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
-  const driver = source.match(/function nudgeWorldClocks\(campaignId\) \{[\s\S]*?\n\}/u)?.[0] ?? ''
-  assert.match(driver, /runWorldRumorClock\(/u, 'у часов молвы снова нет серверного драйвера')
-  assert.match(source, /onRoomSaved\(\(campaignId, room\) => \{[\s\S]*?nudgeWorldClocks\(campaignId\)/u)
 })

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
@@ -212,13 +211,4 @@ test('сутки по HTTP: голод в том же коммите, повто
   assert.equal(room.body.state.captives.captives[0].neglected_at_minutes, 1_440)
   const deeds = (room.body.state.world_deeds?.deeds ?? []).filter((deed) => deed.kind === 'cruelty')
   assert.equal(deeds.length, 1, JSON.stringify(room.body.state.world_deeds ?? {}, null, 1))
-})
-
-// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
-// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). Поведение «сутки без system-tick» в обоих
-// режимах проверяет HTTP-тест выше; драйвер Rust — nudge_world_clocks в rust/crates/sk-server/src/clocks.rs.
-test('JS-only (server/index.mjs): часы голода живут в серверном драйвере, а не в HTTP-роуте', () => {
-  const source = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
-  const driver = source.match(/function nudgeWorldClocks\(campaignId\) \{[\s\S]*?\n\}/u)?.[0] ?? ''
-  assert.match(driver, /runCaptiveClock\(/u, 'у часов голода снова нет серверного драйвера')
 })
