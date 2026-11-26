@@ -311,6 +311,11 @@ test('Режиссёр материализует присутствующего
   assert.deepEqual(created.enemies[0].legendary.actions.map((action) => action.id), ['tail-sweep', 'wing-buffet'], 'дыхание — особое действие с перезарядкой, а не легендарное')
 
   const active = result.events.reduce(applyGameEvent, state)
+  assert.deepEqual(
+    npcMechanicsFor(active, 'astohan-sargat').action_profiles.find((profile) => profile.id === 'sargat-bite').on_hit,
+    { damage_expression: '1d6', damage_type: 'fire' },
+    'укус молодого красного дракона имеет дополнительный огненный урон',
+  )
   assert.equal(active.mechanics.combat.active, true)
   assert.equal(active.enemies[0].id, 'astohan-sargat')
   assert.equal(npcProfileAtWorldTime(active.social.npcs.find((npc) => npc.id === 'astohan-sargat'), active).available, false)
@@ -325,6 +330,34 @@ test('Режиссёр материализует присутствующего
     scene: { ...active.scene, cells: Array.from({ length: 12 * 8 }, (_, index) => ({ x: index % 12, y: Math.floor(index / 12), type: 'floor', revealed: true })) },
     mechanics: { ...active.mechanics, conditions: { ...active.mechanics.conditions, 'astohan-sargat': [] } },
   })
+  const bite = resolveCommand({
+    command_type: 'MakeAttack', command_id: 'sargat-bite-rider', actor_id: 'astohan-sargat', target_id: 'hero', action_id: 'sargat-bite', server_authoritative: true,
+  }, alert, { diceService: dice([15, 4, 4, 3]), context: { serverAuthoritativeCombat: true, isNpcScheduler: true } })
+  const biteDamage = bite.events.filter((event) => event.event_type === 'DamageApplied' && event.target_ids.includes('hero'))
+  assert.equal(biteDamage.length, 2, 'укус имеет основной и дополнительный компонент урона')
+  assert.deepEqual(biteDamage.map((event) => [event.payload.damage_type, event.payload.raw_amount]).sort(), [['fire', 3], ['piercing', 14]])
+  assert.ok(bite.events.some((event) => event.event_type === 'DamageApplied' && event.payload.secondary_damage === true && event.payload.damage_type === 'fire'))
+  const criticalBite = resolveCommand({
+    command_type: 'MakeAttack', command_id: 'sargat-bite-critical', actor_id: 'astohan-sargat', target_id: 'hero', action_id: 'sargat-bite', server_authoritative: true,
+  }, { ...alert, ruleset_id: 'dnd_5e_2014', ruleset_version: '2014.1.0' }, { diceService: dice([20, 1, 1, 1, 1, 2, 2]), context: { serverAuthoritativeCombat: true, isNpcScheduler: true } })
+  const criticalDamage = criticalBite.events.filter((event) => event.event_type === 'DamageApplied' && event.target_ids.includes('hero'))
+  assert.deepEqual(criticalDamage.map((event) => [event.payload.damage_type, event.payload.raw_amount]).sort(), [['fire', 4], ['piercing', 10]])
+  const criticalFireRoll = criticalBite.events.find((event) => event.event_type === 'DieRolled' && event.payload.damage_type === 'fire')
+  assert.ok(criticalFireRoll, 'критический rider бросает отдельную огненную кость')
+  assert.equal(criticalFireRoll.payload.expression, '2d6')
+  const miss = resolveCommand({
+    command_type: 'MakeAttack', command_id: 'sargat-bite-miss', actor_id: 'astohan-sargat', target_id: 'hero', action_id: 'sargat-bite', server_authoritative: true,
+  }, alert, { diceService: dice([1]), context: { serverAuthoritativeCombat: true, isNpcScheduler: true } })
+  assert.equal(miss.events.some((event) => event.event_type === 'DamageApplied' && event.target_ids.includes('hero')), false, 'промах не наносит основной или rider-урон')
+  const resistant = normalizeCampaignState({
+    ...alert,
+    players: alert.players.map((player) => ({ ...player, damage_resistances: ['fire'] })),
+  })
+  const resistanceBite = resolveCommand({
+    command_type: 'MakeAttack', command_id: 'sargat-bite-resistance', actor_id: 'astohan-sargat', target_id: 'hero', action_id: 'sargat-bite', server_authoritative: true,
+  }, resistant, { diceService: dice([15, 4, 4, 3]), context: { serverAuthoritativeCombat: true, isNpcScheduler: true } })
+  const resistanceDamage = resistanceBite.events.filter((event) => event.event_type === 'DamageApplied' && event.target_ids.includes('hero'))
+  assert.deepEqual(resistanceDamage.map((event) => [event.payload.damage_type, event.payload.applied_amount]).sort(), [['fire', 1], ['piercing', 14]])
   const opening = planNpcTurn(alert, 'astohan-sargat')
   assert.deepEqual(opening.map((command) => [command.command_type, command.action_id ?? null]).find(([type]) => type === 'UseMonsterAction'),
     ['UseMonsterAction', 'fire-breath'], JSON.stringify(opening.map((command) => command.command_type)))

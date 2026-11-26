@@ -41,11 +41,11 @@ const ROOM_METHODS: &[Method] = &[Method::GET, Method::PUT];
 pub fn routes() -> Vec<Route> {
     vec![
         // `parsedUrl.pathname.match(/^\/api\/rooms\/([A-Za-z0-9-]+)$/)` (6010), GET 6069 и PUT 6083.
-        Route::new(6043, Methods::Set(ROOM_METHODS), Matcher::path_template("/api/rooms/{id}"), room_route),
+        Route::new(6115, Methods::Set(ROOM_METHODS), Matcher::path_template("/api/rooms/{id}"), room_route),
         // `req.url?.match(/^\/api\/rooms\/([A-Za-z0-9-]+)\/dice$/)` и `POST` (6011–6012).
-        Route::post(6044, Matcher::raw_template("/api/rooms/{id}/dice"), public_die),
+        Route::post(6116, Matcher::raw_template("/api/rooms/{id}/dice"), public_die),
         // `req.url === '/api/roll' && req.method === 'POST'` (6094).
-        Route::post(6129, Matcher::raw("/api/roll"), issue_roll),
+        Route::post(6201, Matcher::raw("/api/roll"), issue_roll),
     ]
 }
 

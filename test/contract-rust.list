@@ -57,6 +57,7 @@ test/party-decision-roll-api.test.mjs  #общий бросок: серверн�
 # в /autonomy/advance (С18.4); narrate-retry-recovery и tactical-command-recovery — клиентские, без сервера.
 test/narration-stream-api.test.mjs       # SSE рассказа: изоляция, replay при переподключении, канонический финал
 test/narrate-room-version-race.test.mjs  # room_version ответа перечитывается после хода; PUT комнаты — 410
+test/impossible-free-action-api.test.mjs # недоступное действие закрывает уточнение и не расходует ход
 test/party-interaction-api.test.mjs      # карточка голосования Режиссёра, голос вне своего хода
 test/solo-party-exit-api.test.mjs        # соло-стол уходит без карточки, ID карты до Архитектора, отказ от задания
 test/quest-abandonment-api.test.mjs      # отказ от задания голосованием и переход сцены, replay/restart
@@ -92,6 +93,11 @@ test/protection-from-energy-http.test.mjs  # «Защита от энергии�
 test/restore-rehearsal-api.test.mjs        # бэкап и восстановление storage с командами; аудит восстановленного — auditStorage (С19.4)
 test/room-projection-equivalence.test.mjs  # комната после команд совпадает с журналом
 test/scene-interactions.test.mjs           # предметы сцены через /commands (и модульные проверки)
+test/astohan-scene-clues-api.test.mjs      # авторские улики через /commands и свободный ввод /narrate
+test/lore-testimony-api.test.mjs           # ответ хранителя сохраняет сроки и атрибуцию свидетельства
+test/gm-fallback-api.test.mjs              # свидетельство NPC и уточнение способа без модели
+test/scenario-treaty-completion-api.test.mjs # договор с Саргатом: эпилог в том же HTTP-шаге и без нового боя
+test/lockpick-command-api.test.mjs          # кнопки взлома двери и сундука, экспертиза по правилам 2014
 test/spell-components-api.test.mjs         # компоненты заклинаний
 test/spell-reaction-http.test.mjs          # реакция «Искусная острота» с получателем
 test/spell-source-activation-api.test.mjs  # заклинание из предмета
@@ -167,6 +173,7 @@ test/legacy-import-rust.test.mjs  # rooms/campaigns/settings/heroes/me как у
 # С19.4 (2026-10-25): последние HTTP-тесты вне списка — через кит, зелёные в обоих режимах.
 test/test-kit.test.mjs                 # сам набор: кости и сбои данными, журнал читается и портится подкомандой бинаря
 test/campaign-dialogues-api.test.mjs   # диалог с Аресом: ответ в летописи, повтор, чужой герой, подделка ответа
+test/authored-dialogue-narrate-api.test.mjs # авторская реплика через /api/narrate, проверка доступности и повтор после ухода NPC
 test/stream-live-access-api.test.mjs   # живой поток закрывается после logout, истечения сессии и снятия доступа
 test/stream-backpressure-api.test.mjs  # медленный читатель: комнаты схлопнуты до последней
 test/combat-critical-turn-api.test.mjs # крит врага без модели: конец хода на строке боя (кости данными)

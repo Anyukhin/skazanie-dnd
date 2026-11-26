@@ -125,10 +125,15 @@ assert.equal(report.craft_sha256, hash(craft), 'Промпт изменился;
 if (report.run_config) assert.deepEqual(report.run_config, { repeats, reasoning_overrides: reasoningOverrides, catalog_sha256: hash(readFileSync(catalogPath)) }, 'Параметры изменились; используй новый файл отчёта')
 else assert.ok(repeats === 1 && Object.keys(reasoningOverrides).length === 0, 'Для новых параметров нужен новый отчёт')
 const save = () => writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`)
-let calls = report.samples.length + report.probes.length
-const totalEstimate = () => [...report.samples, ...report.probes].reduce((sum, sample) => sum + (sample.catalog_cost_rub ?? 0), 0)
-let reservedEstimate = [...report.samples, ...report.probes].reduce((sum, sample) => sum + (sample.cost_ceiling_rub ?? 0), 0)
-function reserve(model, messages) {
+// В прежних отчётах сохранён только последний запрос каждого ответа.
+report.requests ??= [...report.samples, ...report.probes].map(sample => ({
+  model: sample.model, case_id: sample.case_id ?? sample.id, legacy_last_attempt: true,
+  cost_ceiling_rub: sample.cost_ceiling_rub, catalog_cost_rub: sample.catalog_cost_rub,
+}))
+let calls = report.requests.length
+const totalEstimate = () => report.requests.reduce((sum, call) => sum + (call.catalog_cost_rub ?? 0), 0)
+let reservedEstimate = report.requests.reduce((sum, call) => sum + (call.cost_ceiling_rub ?? 0), 0)
+function reserve(model, messages, context) {
   assert.ok(calls < maxCalls, 'Достигнут лимит запросов')
   const pricing = catalog.data.find(entry => entry.id === model).pricing
   // Консервативный запас: вход не длиннее числа UTF-8 байт; выход <= max_tokens.
@@ -136,7 +141,10 @@ function reserve(model, messages) {
   assert.ok(reservedEstimate + ceiling < budgetRub, `Достигнут оценочный лимит ${budgetRub} рублей`)
   reservedEstimate += ceiling
   calls += 1
-  return { pricing, ceiling }
+  const call = { model, ...context, cost_ceiling_rub: ceiling }
+  report.requests.push(call)
+  save()
+  return { pricing, ceiling, call }
 }
 function cost(usage, pricing) {
   if (!(Number(usage?.prompt_tokens) > 0) || !Number.isFinite(Number(usage?.completion_tokens))) return null
@@ -161,28 +169,34 @@ for (const profile of args.includes('--probe-only') ? [] : profiles) {
           if (profile.endsWith('no-examples')) messages[0].content = messages[0].content.replace(/CURATED_STYLE_EXAMPLES[^]*?(?=Верни только готовое повествование)/u, '')
           if (profile.startsWith('craft')) messages[0].content += `\n${craft}`
           let reservation
-          try { reservation = reserve(model, messages) }
+          try { reservation = reserve(model, messages, { case_id: entry.id, profile, repeat }) }
           catch (error) { reservationError = error; throw error }
           const { pricing, ceiling } = reservation
           const start = performance.now()
-          captured = { requested_at: new Date().toISOString(), messages, parameters: {
+          const attempt = { requested_at: new Date().toISOString(), messages, parameters: {
             temperature: request.temperature, frequency_penalty: request.frequencyPenalty,
             presence_penalty: request.presencePenalty, max_tokens: 1200, reasoning, stream: true, timeout_ms: timeoutMs,
           }, pricing, cost_ceiling_rub: ceiling, first_delta_ms: null, delta_count: 0, partial_text: '' }
+          captured = attempt
           try {
             const completion = await client.complete({ ...request, messages, timeoutMs, onDelta: delta => {
-              captured.first_delta_ms ??= Math.round(performance.now() - start)
-              captured.delta_count += 1
-              captured.partial_text += delta
+              attempt.first_delta_ms ??= Math.round(performance.now() - start)
+              attempt.delta_count += 1
+              attempt.partial_text += delta
               request.onDelta?.(delta)
             } })
-            Object.assign(captured, { raw_text: completion.content, response_model: completion.model,
+            Object.assign(attempt, { raw_text: completion.content, response_model: completion.model,
               usage: completion.usage, catalog_cost_rub: cost(completion.usage, pricing), ok: true })
             return completion
           } catch (error) {
-            Object.assign(captured, { ok: false, error_code: error.code ?? error.name, status: error.status ?? null })
+            Object.assign(attempt, { ok: false, error_code: error.code ?? error.name, status: error.status ?? null })
             throw error
-          } finally { captured.latency_ms = Math.round(performance.now() - start) }
+          } finally {
+            attempt.latency_ms = Math.round(performance.now() - start)
+            const { messages: _messages, partial_text: _partialText, ...record } = attempt
+            Object.assign(reservation.call, record)
+            save()
+          }
         },
       }
       const narrator = new Narrator({ llmClient: wrapper })
@@ -198,7 +212,7 @@ for (const profile of args.includes('--probe-only') ? [] : profiles) {
       const accepted = captured.ok && !result.provider.startsWith('deterministic')
       report.samples.push({ model, profile, repeat, case_id: entry.id, ...captured, render_ms: renderMs, progress,
         first_verified_text_ms: progress[0]?.elapsed_ms ?? (result.verification.valid ? renderMs : null),
-        accepted, fits_default_deadline: captured.ok && captured.latency_ms < 12000,
+        accepted, fits_default_deadline: captured.ok && renderMs <= 12000,
         final_text: result.narration, final_provider: result.provider, verification: result.verification, feedback })
       save()
       console.log(JSON.stringify({ call: calls, model, profile, repeat, case: entry.id, ok: captured.ok,
@@ -221,7 +235,7 @@ if (args.includes('--probe-only')) {
   if (models.includes('z-ai/glm-5.3-flash')) variants.push({ model: 'z-ai/glm-5.3-flash', id: 'json-reasoning-off', reasoning: { enabled: false } })
   for (const variant of variants) {
     if (report.probes.some(probe => probe.model === variant.model && probe.id === variant.id)) continue
-    const { pricing, ceiling } = reserve(variant.model, messages)
+    const { pricing, ceiling, call } = reserve(variant.model, messages, { probe_id: variant.id })
     const start = performance.now()
     const sample = { ...variant, messages, requested_at: new Date().toISOString(), cost_ceiling_rub: ceiling }
     try {
@@ -233,6 +247,7 @@ if (args.includes('--probe-only')) {
       })
     } catch (error) { Object.assign(sample, { ok: false, error_code: error.code ?? error.name, status: error.status ?? null }) }
     sample.latency_ms = Math.round(performance.now() - start)
+    Object.assign(call, { ok: sample.ok, usage: sample.usage, catalog_cost_rub: sample.catalog_cost_rub, latency_ms: sample.latency_ms })
     report.probes.push(sample)
     save()
     console.log(JSON.stringify({ model: sample.model, id: sample.id, ok: sample.ok, schema_valid: sample.schema_valid, ms: sample.latency_ms, status: sample.status }))

@@ -76,6 +76,16 @@ test('совпавшее поручение передаёт силу своим
   assert.ok(result.includes('fact:caves-tracks'), result.join(', '))
 })
 
+test('kind-фильтр применяется до лимита после графового усиления', () => {
+  const unfiltered = retrieveWorldMemory(memory(), PLAYER, { query: 'новости по делу о пропавших рыбаках', limit: 1 })
+  assert.deepEqual(unfiltered.map((entry) => entry.kind), ['quest'])
+
+  const facts = retrieveWorldMemory(memory(), PLAYER, {
+    query: 'новости по делу о пропавших рыбаках', limit: 1, kind: 'fact',
+  })
+  assert.deepEqual(facts.map((entry) => [entry.kind, entry.id]), [['fact', 'fact:caves-tracks']])
+})
+
 test('служебные слова вопроса не совпадают с записями', () => {
   const result = ids(retrieveWorldMemory(memory(), PLAYER, { query: 'что это?', limit: 5, whenUnmatched: 'none' }))
   // «что» и «это» — служебные; значимых слов нет, поэтому это пустой вопрос.

@@ -191,6 +191,7 @@ export type AgentInteraction = {
   destinationLocationId?: string
   questAbandonment?: { schemaVersion: 1; questId: string }
   questAcceptance?: { schemaVersion: 1; questId: string }
+  scenarioTreaty?: { schemaVersion: 1; actorId: string }
   resolutionPrompt: string
   createdAt: number
   expiresAt?: number
@@ -373,6 +374,7 @@ export type CombatSpell = {
   damageTypes?: string[]
   halfOnSave?: boolean
   healing?: string
+  revivesDead?: boolean
   addAbilityModifier?: boolean
   saveAbility?: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
   conditions?: string[]

@@ -543,12 +543,12 @@ pub fn sanitize_player_combat_command(caller: &Caller<'_>, state: &Value, input:
         "OperateDoor" => {
             let intent = s_or(get(source, "intent"), "open");
             put(&mut command, "door_id", sliced(nn(get(source, "door_id"), get(source, "doorId")), 120));
-            put(&mut command, "intent", if ["open", "close", "force"].contains(&intent.as_str()) { intent } else { "open".into() });
+            put(&mut command, "intent", if ["open", "close", "force", "lockpick"].contains(&intent.as_str()) { intent } else { "open".into() });
         }
         "OperateSceneObject" => {
             let intent = s_or(get(source, "intent"), "inspect");
             put(&mut command, "prop_id", sliced(nn(get(source, "prop_id"), get(source, "propId")), 120));
-            put(&mut command, "intent", if ["inspect", "open", "take", "use", "pray"].contains(&intent.as_str()) { intent } else { "inspect".into() });
+            put(&mut command, "intent", if ["inspect", "open", "lockpick", "take", "use", "pray"].contains(&intent.as_str()) { intent } else { "inspect".into() });
             put(&mut command, "approach", "hand");
         }
         "UseLevelTransition" => put(&mut command, "prop_id", sliced(nn(get(source, "prop_id"), get(source, "propId")), 120)),
@@ -604,6 +604,17 @@ fn cast_spell(mut command: Map<String, Value>, input: &Value) -> GuardResult<Val
         }
         targets = Some(unique);
     }
+    let missile_targets = nn(get(source, "missile_target_ids"), get(source, "missileTargetIds"));
+    if js::present(missile_targets) && spell_id != "magic-missile" {
+        return Err(policy_error("Распределение дротиков разрешено только для «Волшебной стрелы»", "INVALID_MISSILE_TARGETS"));
+    }
+    if let Some(Value::Array(items)) = missile_targets.as_ref() {
+        if items.is_empty() || items.len() > 64 || items.iter().any(|id| !matches!(id, Value::String(text) if !text::trim(text).is_empty() && len16(text) <= 120)) {
+            return Err(policy_error("Нужен непустой список целей дротиков", "INVALID_MISSILE_TARGETS"));
+        }
+    } else if js::present(missile_targets) {
+        return Err(policy_error("Нужен список целей дротиков", "INVALID_MISSILE_TARGETS"));
+    }
     let casting_resource = get(source, "casting_resource");
     if js::present(casting_resource) && !casting_resource.and_then(Value::as_str).is_some_and(is_casting_resource) {
         return Err(policy_error("Неверный источник применения заклинания", "INVALID_CASTING_RESOURCE"));
@@ -621,6 +632,10 @@ fn cast_spell(mut command: Map<String, Value>, input: &Value) -> GuardResult<Val
         put(&mut command, "target_ids", js::strings_value(targets));
     } else if !target.is_empty() {
         put(&mut command, "target_id", target);
+    }
+    if let Some(Value::Array(_items)) = missile_targets.as_ref() {
+        // В отличие от обычного target_ids, порядок и повторы здесь значимы.
+        put_raw(&mut command, "missile_target_ids", missile_targets);
     }
     if js::truthy(spell_option) {
         put_raw(&mut command, "spell_option", spell_option);
@@ -656,10 +671,20 @@ fn combat_action(mut command: Map<String, Value>, input: &Value) -> GuardResult<
     if js::present(beneficiary) && !beneficiary.and_then(Value::as_str).is_some_and(|text| !text::trim(text).is_empty() && len16(text) <= 120) {
         return Err(policy_error("Неверный получатель бонуса реакции", "INVALID_REACTION_BENEFICIARY"));
     }
+    let wake_spell = nn(get(source, "wake_spell_id"), get(source, "wakeSpellId"));
+    if js::present(wake_spell) && action_id != "awaken" {
+        return Err(policy_error("Выбор пробуждаемого эффекта разрешён только для действия «Разбудить»", "INVALID_WAKE_SPELL"));
+    }
+    if js::present(wake_spell) && !wake_spell.as_ref().and_then(|value| value.as_str()).is_some_and(|spell| matches!(spell, "sleep" | "hypnotic-pattern")) {
+        return Err(policy_error("Неверный эффект для действия «Разбудить»", "INVALID_WAKE_SPELL"));
+    }
     let action = action_id.as_str();
     put(&mut command, "action_id", action_id.clone());
     if !target.is_empty() {
         put(&mut command, "target_id", target);
+    }
+    if js::present(wake_spell) {
+        put_raw(&mut command, "wake_spell_id", wake_spell);
     }
     if action == "cast:silvery-barbs" {
         if let Some(Value::String(beneficiary)) = beneficiary {

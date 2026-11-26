@@ -1180,8 +1180,9 @@ type ProjectileEndpoint = { targetId?: string; to: BoardPoint; toActor: SpellEff
 export function projectileEndpoints(cue: Extract<SpellAnimationCue, { kind: 'projectile' }>, actors: readonly SpellEffectActor[]) {
   const fromActor = actorPoint(actors, cue.actorId)
   const from = cue.from ?? fromActor
-  const targets: ProjectileEndpoint[] = cue.targetIds.length
-    ? cue.targetIds.flatMap((targetId, index) => {
+  const projectileIds = cue.projectileTargetIds?.length ? cue.projectileTargetIds : cue.targetIds
+  const targets: ProjectileEndpoint[] = projectileIds.length
+    ? projectileIds.flatMap((targetId, index) => {
       const toActor = actorPoint(actors, targetId)
       const to = (index === 0 ? cue.to : undefined) ?? toActor
       return to ? [{ targetId, to, toActor }] : []
@@ -2100,6 +2101,54 @@ function drawAura(
   }
 }
 
+/** Неподвижный Страж веры в точке сотворения. Арена остаётся видимой в
+ * отдельном рендерере области, а силуэт помогает найти сам источник эффекта. */
+function drawGuardianOfFaith(
+  context: BoardContext2D,
+  scene: BoardScene,
+  effect: Extract<PersistentSpellEffect, { kind: 'area' }>,
+  detail: SpellEffectDetail,
+) {
+  const anchor = effect.center ?? effect.cells?.[0]
+  if (!visiblePoint(scene, anchor)) return
+  const center = pointCenter(anchor!, scene.cellSize, scene)
+  const size = scene.cellSize
+  const radius = Math.max(size * .55, (effect.sizeFeet / 5) * size)
+  const stone = '#8b91a6', edge = '#f1d58b', shadow = '#3a4158'
+  context.save()
+  context.globalAlpha = detail === 'minimal' ? .56 : .78
+  drawRing(context, center, radius, edge, .72, Math.max(2, size * .045), [Math.max(3, size * .11), Math.max(2, size * .06)])
+  context.fillStyle = shadow
+  context.strokeStyle = stone
+  context.lineWidth = Math.max(2, size * .055)
+  // Голова, плащ и щит. Положение фиксировано и не зависит от анимации.
+  context.beginPath()
+  context.arc(center.x, center.y - size * .48, size * .13, 0, Math.PI * 2)
+  context.fill()
+  context.beginPath()
+  context.moveTo(center.x - size * .25, center.y + size * .37)
+  context.lineTo(center.x - size * .16, center.y - size * .22)
+  context.lineTo(center.x + size * .16, center.y - size * .22)
+  context.lineTo(center.x + size * .25, center.y + size * .37)
+  context.closePath()
+  context.fill(); context.stroke()
+  context.beginPath()
+  context.moveTo(center.x - size * .26, center.y - size * .05)
+  context.lineTo(center.x - size * .48, center.y + size * .07)
+  context.lineTo(center.x - size * .43, center.y + size * .39)
+  context.lineTo(center.x - size * .22, center.y + size * .29)
+  context.closePath()
+  context.fill(); context.stroke()
+  context.beginPath()
+  context.moveTo(center.x + size * .22, center.y - size * .10)
+  context.lineTo(center.x + size * .22, center.y + size * .45)
+  context.strokeStyle = edge; context.lineWidth = Math.max(1, size * .035)
+  context.moveTo(center.x + size * .17, center.y + size * .04)
+  context.lineTo(center.x + size * .31, center.y - size * .08)
+  context.stroke()
+  context.restore()
+}
+
 function drawHealingRise(
   context: BoardContext2D,
   center: { x: number; y: number },
@@ -2340,6 +2389,10 @@ export function createPersistentSpellEffectsRenderer(
     for (const effect of effects) {
       const profile = spellVisualProfile(effect.spellId ?? '', { school: effect.school })
       if (effect.kind === 'area') {
+        if (effect.spellId === 'guardian-of-faith') {
+          drawGuardianOfFaith(context, scene, effect, options.detail ?? (options.reducedMotion ? 'minimal' : 'reduced'))
+          continue
+        }
         const carrier = actorPoint(actors, effect.actorId)
         const cue: Extract<SpellAnimationCue, { kind: 'burst' }> = {
           id: effect.id,

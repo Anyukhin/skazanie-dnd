@@ -1,3 +1,4 @@
+import { createLibraryLeaf } from './board3d-library-leaf'
 import * as THREE from 'three'
 
 import {
@@ -12,6 +13,7 @@ import {
   terrainKeysFor,
   propDrawingFor,
   visiblePropsOnBoard,
+  zoneOfCell,
   TILE_CELLS,
   type BoardPalette,
   type BoardScene,
@@ -20,11 +22,11 @@ import {
 } from './board-render'
 import type { TacticalCell, TacticalEdge, TacticalMap, TacticalProp } from './types'
 import { cellAt, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
-import { createEnvironmentModels } from './board3d-props'
+import { createEnvironmentModels, STORY_FRESCO_PROP_IDS } from './board3d-props'
 import { loadPropModelAssets, type PropModelAssets } from './prop-model-assets'
 import { LIGHT_SOURCE_ASSETS, lightSourceAssetId } from './board-lighting'
 import { batchEnvironmentMeshes } from './board3d-batching'
-import { BOARD3D_FIRE_LIGHT, fireFlicker, fireLightFor } from './board3d-graphics'
+import { BOARD3D_FIRE_LIGHT, fireFlicker, fireLightFor, zoneDarkness } from './board3d-graphics'
 import { createFireGlow, flameAnchor, type FireGlowDetail, type FirePoint } from './board3d-fire'
 import { createSeeThrough, type SeeThrough } from './board3d-see-through'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
@@ -33,10 +35,11 @@ import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun
 import { createBridgeRails, createFogCapGeometry, createGrassTufts, createRockClusters, createTileGroundGeometry, createLavaMaterial, createLavaSurfaceGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, lavaGlowPoints, landscapeWantsModels, structuralBridgeRolesForMap, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
 import { acquireLandscapeKit, type LandscapeKitHandle } from './landscape-model-assets'
 import { SURROUNDINGS_MODEL_ASSETS, createSurroundings, surroundingsGroundFloor, surroundingsModelFromTemplate, type SurroundingsModel, type SurroundingsModels } from './board3d-surroundings'
+import type { BoardBackdropStyle } from './board3d-distant-terrain'
 import { landscapeModelsOf } from './landscape-model-assets'
 import { propModelFor } from './prop-model-catalog'
 import { loadGraphicsStylePack, peekGraphicsStylePack, type GraphicsStylePack } from './board3d-style'
-import { buildStyledEdges, doorState, edgeCenter, edgeFloorHeight, edgeSideCell, edgeVisible, packHasWallLooks, structuralEdgeRolesForMap, wallEdgeEndpoints, wallEndpointKey, type StyledEdges } from './board3d-walls'
+import { buildStyledEdges, createPortalWedgeGeometry, doorState, edgeCenter, edgeFloorHeight, edgeSideCell, edgeVisible, libraryPortalBlocks, libraryPortalContext, libraryPortalMetrics, packHasWallLooks, structuralEdgeRolesForMap, wallEdgeEndpoints, wallEndpointKey, type StyledEdges } from './board3d-walls'
 import { buildStyledFloors, buildStyledTerrainSides, floorKeyForCell } from './board3d-floor-tiles'
 import type { FloorReliefLevel } from './board3d-floor-relief'
 import { structuralLoadProps, structuralTemplate, type StructuralRole } from './board3d-structural'
@@ -52,11 +55,13 @@ const BOARD3D_WALL_DETAIL_LIMIT = 24
 /** Canvas-фактура не должна занимать больше этого размера по стороне. */
 export const BOARD3D_MAX_GROUND_CANVAS = 4096
 const TERRAIN_MANIFEST_URL = '/assets/maps/terrain/terrain-tiles.json'
+const STORY_FRESCO_ATLAS_URL = '/assets/maps/story/astohan-cliffs-frescoes-v1.webp'
 
 export type Board3DOptions = {
   lighting?: boolean
   /** Окрестности за краем карты (`board3d-surroundings.ts`); по умолчанию включены. */
   surroundings?: boolean
+  backdropStyle?: BoardBackdropStyle
   pointLightShadows?: boolean
   palette?: BoardPalette
   /** Режим видимости только визуального слоя крыш; по умолчанию — cutaway. */
@@ -143,6 +148,32 @@ type Instance = {
   sx: number
   sy: number
   sz: number
+}
+
+function loadStoryFrescoAtlas(signal: AbortSignal): Promise<THREE.Texture | null> {
+  if (typeof window === 'undefined' || typeof Image === 'undefined' || signal.aborted) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    const image = new Image()
+    let settled = false
+    const finish = (texture: THREE.Texture | null) => {
+      if (settled) { texture?.dispose(); return }
+      settled = true
+      signal.removeEventListener('abort', abort)
+      resolve(texture)
+    }
+    const abort = () => finish(null)
+    signal.addEventListener('abort', abort, { once: true })
+    image.decoding = 'async'
+    image.onload = () => {
+      if (!image.naturalWidth || !image.naturalHeight || signal.aborted) { finish(null); return }
+      const texture = new THREE.Texture(image)
+      texture.colorSpace = THREE.SRGBColorSpace
+      texture.needsUpdate = true
+      finish(texture)
+    }
+    image.onerror = () => finish(null)
+    image.src = STORY_FRESCO_ATLAS_URL
+  })
 }
 
 type EdgePiece = Instance & { color: string }
@@ -342,6 +373,72 @@ function addInstancedPieces(
   return meshes
 }
 
+function addFallbackLibraryPortal(resources: OwnedResources, map: TacticalMap, parent: THREE.Object3D, edge: TacticalEdge, palette: BoardPalette, wallHeight: number, thickness: number) {
+  const center = edgeCenter(edge)
+  const along = edge.dir === 's' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1)
+  const across = new THREE.Vector3().crossVectors(along, new THREE.Vector3(0, 1, 0))
+  const frame = new THREE.Matrix4().makeBasis(along, new THREE.Vector3(0, 1, 0), across)
+  frame.setPosition(center.x, edgeFloorHeight(map, edge), center.z)
+  const group = new THREE.Group()
+  group.name = 'library-portal-fallback'
+  group.applyMatrix4(frame)
+  const tint = new THREE.Color('#97918a')
+  const stone = material(resources, tint.getStyle(), { roughness: .92, metalness: 0 })
+  const { centerY, postHeight } = libraryPortalMetrics(wallHeight)
+  const rowHeight = postHeight / 3
+  const postGeometry = ownGeometry(resources, new THREE.BoxGeometry(.20, rowHeight - .028, thickness + .11))
+  const postOffset = (position: [number, number, number], shade: number) => {
+    const object = new THREE.Mesh(postGeometry, stone)
+    object.name = 'library-portal-fallback-post'
+    object.position.set(...position)
+    object.scale.set(1, 1, 1)
+    const postMaterial = stone.clone() as THREE.MeshStandardMaterial
+    postMaterial.color.multiplyScalar(shade)
+    object.material = postMaterial
+    resources.materials.add(postMaterial)
+    object.castShadow = true
+    object.receiveShadow = true
+    group.add(object)
+  }
+  for (const side of [-1, 1]) for (let row = 0; row < 3; row += 1) postOffset([side * .56, row * rowHeight + rowHeight / 2, 0], .94 + ((side + row + 3) % 4) * .025)
+  const footGeometry = ownGeometry(resources, new THREE.BoxGeometry(.28, .15, thickness + .18))
+  for (const side of [-1, 1]) mesh(resources, group, 'library-portal-base', footGeometry, stone, [side * .56, .075, 0])
+  const impostGeometry = ownGeometry(resources, new THREE.BoxGeometry(.30, .13, thickness + .12))
+  for (const side of [-1, 1]) {
+    const impost = new THREE.Mesh(impostGeometry, stone)
+    impost.name = 'library-portal-fallback-impost'
+    impost.position.set(side * .53, centerY - .07, 0)
+    impost.castShadow = true
+    impost.receiveShadow = true
+    group.add(impost)
+  }
+  const blocks = libraryPortalBlocks(wallHeight)
+  const wedgeMaterial = material(resources, '#ffffff', { roughness: .92 })
+  const wedges = new THREE.InstancedMesh(ownGeometry(resources, createPortalWedgeGeometry()), wedgeMaterial, blocks.length)
+  wedges.name = 'library-portal-fallback-wedges'
+  for (const [index, block] of blocks.entries()) {
+    const local = new THREE.Matrix4().compose(
+      new THREE.Vector3(...block.position),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, block.rotationZ)),
+      new THREE.Vector3(block.size[0], block.size[1], thickness + block.size[2]),
+    )
+    wedges.setMatrixAt(index, local)
+    wedges.setColorAt(index, tint.clone().multiplyScalar(block.shade))
+  }
+  wedges.instanceMatrix.needsUpdate = true
+  if (wedges.instanceColor) wedges.instanceColor.needsUpdate = true
+  wedges.castShadow = true
+  wedges.receiveShadow = true
+  group.add(wedges)
+  const state = doorState(map, edge)
+  const { radius } = libraryPortalMetrics(wallHeight)
+  const leaf = createLibraryLeaf(state, edge.dir === 'e', centerY, radius,
+    material(resources, palette.doorFrame), material(resources, palette.rail), resources.geometries)
+  leaf.name = `door-leaf:${edge.x},${edge.y},${edge.dir}:${state}`
+  group.add(leaf)
+  parent.add(group)
+}
+
 function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE.Group, palette: BoardPalette, detail: LandscapeDetail = 'reduced') {
   // На «Экономном» стена — гладкий блок цвета кладки, без отдельных камней.
   const dressed = detail !== 'minimal'
@@ -481,6 +578,10 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
 
     if (edge.kind !== 'door') continue
     const state = doorState(map, edge)
+    if (libraryPortalContext(map, edge)) {
+      addFallbackLibraryPortal(resources, map, doorGroup, edge, palette, BOARD3D_WALL_HEIGHT, BOARD3D_WALL_THICKNESS)
+      continue
+    }
     const frameMaterial = material(resources, palette.doorFrame)
     const leafMaterial = material(resources, boardFillColor({ kind: 'door', state }, palette, false))
     const frameWidth = 0.09
@@ -756,8 +857,8 @@ function paintTerrainCanvas(resources: OwnedResources, map: TacticalMap, palette
 /** Огонь за стеклом: у фонаря и люстры виден ореол, но не язык пламени и не искры. */
 const ENCLOSED_FIRES: ReadonlySet<string> = new Set(['lamp_post', 'lantern_wall', 'chandelier'])
 
-function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null, darkness = 0, seeThrough: SeeThrough | null = null, detail: FireGlowDetail = 'reduced') {
-  const library = createEnvironmentModels(palette, assets, { seeThrough })
+function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null, darkness = 0, seeThrough: SeeThrough | null = null, detail: FireGlowDetail = 'reduced', storyFrescoAtlas: THREE.Texture | null = null) {
+  const library = createEnvironmentModels(palette, assets, { seeThrough, storyFrescoAtlas })
   const propsGroup = new THREE.Group()
   propsGroup.name = 'props'
   const lightGroup = new THREE.Group()
@@ -782,7 +883,7 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
       }
     }
     propsGroup.add(model)
-    const sourceId = lightSourceAssetId(prop.assetId)
+    const sourceId = lightSourceAssetId(prop.assetId, prop.state)
     // Источник света не отбрасывает тень сам: иначе чаша жаровни кладёт под
     // себя тёмный диск от собственного огня.
     if (sourceId) model.traverse((object) => { if ((object as THREE.Mesh).isMesh) object.castShadow = false })
@@ -791,27 +892,40 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
     if (propDrawingFor(prop.assetId).flat) model.traverse((object) => { if ((object as THREE.Mesh).isMesh) object.castShadow = false })
     // Видимое пламя — у каждого горящего источника, даже сверх числа огней
     // сцены; опрокинутая и разбитая утварь не горит.
-    const anchor = lighting && sourceId && prop.state !== 'toppled' && prop.state !== 'broken' ? flameAnchor(model) : null
-    if (anchor && sourceId) firePoints.push({ ...anchor, share: LIGHT_SOURCE_ASSETS[sourceId].strength / BOARD3D_FIRE_LIGHT.referenceStrength, enclosed: ENCLOSED_FIRES.has(sourceId) })
-    // В сумраке огней больше и они сильнее: они — главный свет подземелья.
-    if (!lighting || !sourceId || lights.length >= 4 + Math.round(4 * darkness)) continue
+    if (!lighting || !sourceId) continue
+    const anchor = flameAnchor(model)
+    if (!anchor) continue
     const profile = LIGHT_SOURCE_ASSETS[sourceId]
-    const fire = fireLightFor(profile, darkness)
+    const zone = zoneOfCell(map, cellAt(map, Math.floor(prop.x), Math.floor(prop.y)))
+    const localDarkness = zone ? zoneDarkness(zone) : darkness
+    const candle = sourceId === 'candle' || sourceId === 'candelabra'
+    firePoints.push({
+      ...anchor, share: profile.strength / BOARD3D_FIRE_LIGHT.referenceStrength,
+      enclosed: ENCLOSED_FIRES.has(sourceId), candle, darkness: localDarkness,
+    })
+    // В сумраке огней больше и они сильнее: они — главный свет подземелья.
+    if (lights.length >= 4 + Math.round(4 * darkness)) continue
+    const fire = fireLightFor(profile, localDarkness)
     const light = new THREE.PointLight(palette.lightWarm, fire.intensity, fire.distance, fire.decay)
+    if (candle) light.color.lerp(new THREE.Color('#ffecd0'), .55)
     light.name = 'fire-light'
     // Огонь дышит вокруг этой яркости (`fireFlicker`, кадр сцены).
     light.userData.baseIntensity = fire.intensity
     light.position.copy(model.position)
-    // Огонь чуть выше чаши: иначе сама чаша отбрасывает на пол ломаное кольцо тени.
-    // Точку света не переносим к видимому огню (`flameAnchor`): у настенного
-    // факела она оказалась бы над срезом стены и выжгла кладку.
-    light.position.y += (Number(model.userData.lightHeight) || .55) * model.scale.y + .22
+    if (model.getObjectByName('flame-socket')) {
+      light.position.x = anchor.x
+      light.position.z = anchor.z
+    }
+    // У настенного факела свет остаётся ниже верхней грани среза стены.
+    light.position.y = prop.mount?.kind === 'wall' || sourceId === 'torch_wall' || sourceId === 'lantern_wall'
+      ? model.position.y + (Number(model.userData.lightHeight) || .55) * model.scale.y + .22
+      : anchor.y + .16
     light.castShadow = pointLightShadows && lights.length < 4
     // Край светового пятна мягкий: грубая кубическая карта давала ломаные тени.
     light.shadow.mapSize.set(512, 512)
     light.shadow.radius = 4
     light.shadow.camera.near = .1
-    light.shadow.camera.far = Math.min(8, profile.radius)
+    light.shadow.camera.far = fire.distance
     // Карта 256 на кубе даёт крупный тексель: без смещения стены и пол
     // покрываются полосами самозатенения («акне»).
     light.shadow.bias = -.002
@@ -1017,13 +1131,15 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   // Модели окрестностей приходят позже (набор местности, деревья и утёсы
   // стиль-пака): до них — заменители, по приходу окрестности пересобираются.
   const surroundingsEnabled = options.surroundings !== false
+  const darkness = Math.max(0, Math.min(1, options.darkness ?? 0))
+  let backdropStyle = options.backdropStyle ?? 'landscape'
   let surroundingsModels: SurroundingsModels = {}
   const surroundingsOwned: THREE.BufferGeometry[] = []
-  let surroundings = surroundingsEnabled ? createSurroundings(map, landscapeDetail) : null
+  let surroundings = surroundingsEnabled ? createSurroundings(map, landscapeDetail, surroundingsModels, backdropStyle, darkness) : null
   if (surroundings) groundGroup.add(surroundings.group)
   const rebuildSurroundings = () => {
     if (!surroundingsEnabled || disposed) return
-    const next = createSurroundings(map, landscapeDetail, surroundingsModels)
+    const next = createSurroundings(map, landscapeDetail, surroundingsModels, backdropStyle, darkness)
     if (surroundings) { groundGroup.remove(surroundings.group); surroundings.dispose() }
     surroundings = next
     if (surroundings) groundGroup.add(surroundings.group)
@@ -1105,11 +1221,12 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   }
 
   const roofTextureReady = () => { if (!disposed) options.onReady?.() }
-  let roofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: options.roofMode, stylePack: initialPack, structuralAssets, onTexture: roofTextureReady })
+  const roofOptions = { wallHeight: BOARD3D_WALL_HEIGHT, cutawayShade: options.lighting !== false && landscapeDetail !== 'minimal', onTexture: roofTextureReady }
+  let roofs = createBoard3DRoofs(map, palette, { ...roofOptions, mode: options.roofMode, stylePack: initialPack, structuralAssets })
   group.add(roofs.group)
   const edgeLayer = new THREE.Group()
   edgeLayer.name = 'edge-layer'
-  const styledEdgeOptions = { wallHeight: BOARD3D_WALL_HEIGHT, thickness: BOARD3D_WALL_THICKNESS, structuralAssets: structuralAssets as PropModelAssets | null, onTexture: () => { if (!disposed) options.onReady?.() } }
+  const styledEdgeOptions = { wallHeight: BOARD3D_WALL_HEIGHT, thickness: BOARD3D_WALL_THICKNESS, stoneCourses: landscapeDetail !== 'minimal', structuralAssets: structuralAssets as PropModelAssets | null, onTexture: roofTextureReady }
   if (packHasWallLooks(initialPack)) {
     styledEdges = buildStyledEdges(map, initialPack, styledEdgeOptions)
     group.add(styledEdges.group)
@@ -1117,10 +1234,11 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     addEdgeScene(resources, map, edgeLayer, palette, options.landscapeDetail ?? 'reduced')
     group.add(edgeLayer)
   }
-  const darkness = Math.max(0, Math.min(1, options.darkness ?? 0))
   // Окно в кронах над фигурками: общие uniform-ы на все деревья сцены.
   const seeThrough = createSeeThrough()
-  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness, seeThrough, landscapeDetail)
+  let storyFrescoTexture: THREE.Texture | null = null
+  const storyFrescoAbort = new AbortController()
+  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness, seeThrough, landscapeDetail, storyFrescoTexture)
   let propAssets: PropModelAssets | null = null
   const propAbort = new AbortController()
   // Пакет стиля нужен и полу, и предметам: один запрос на оба.
@@ -1134,6 +1252,18 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   let resolvedStylePack = initialPack
   if (typeof window !== 'undefined') {
     const visibleProps = visiblePropsOnBoard(map)
+    if (visibleProps.some((prop) => STORY_FRESCO_PROP_IDS.includes(prop.id))) {
+      void loadStoryFrescoAtlas(storyFrescoAbort.signal).then((texture) => {
+        if (!texture) return
+        if (disposed) { texture.dispose(); return }
+        storyFrescoTexture = texture
+        resources.textures.add(texture)
+        const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, propAssets, darkness, seeThrough, landscapeDetail, storyFrescoTexture)
+        props.dispose()
+        props = replacement
+        options.onReady?.()
+      })
+    }
     void stylePack.then(async (pack) => {
       resolvedStylePack = pack
       if (disposed) return null
@@ -1141,7 +1271,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     }).then((assets) => {
       if (!assets) return
       if (disposed) { assets.dispose(); return }
-      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness, seeThrough, landscapeDetail)
+      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness, seeThrough, landscapeDetail, storyFrescoTexture)
       if (surroundings) {
         const next: SurroundingsModels = { ...surroundingsModels }
         for (const [role, assetIds] of Object.entries(SURROUNDINGS_MODEL_ASSETS) as Array<[keyof typeof SURROUNDINGS_MODEL_ASSETS, readonly string[]]>) {
@@ -1182,8 +1312,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
       }
       if (styledEdges && packHasWallLooks(resolvedStylePack) && loaded(roofRoles)) {
         const nextRoofs = createBoard3DRoofs(map, palette, {
-          wallHeight: BOARD3D_WALL_HEIGHT, mode: roofs.getMode(), stylePack: resolvedStylePack,
-          structuralAssets, onTexture: roofTextureReady,
+          ...roofOptions, mode: roofs.getMode(), stylePack: resolvedStylePack, structuralAssets,
         })
         roofs.dispose()
         roofs = nextRoofs
@@ -1323,7 +1452,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     const nextRocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, landscapeKit, { skipMasonry: true })
     // Крыши того же стиля, в том же режиме, что выбран сейчас.
     const nextRoofs = createBoard3DRoofs(map, palette, {
-      wallHeight: BOARD3D_WALL_HEIGHT, mode: roofs.getMode(), stylePack: pack, structuralAssets, onTexture: roofTextureReady,
+      ...roofOptions, mode: roofs.getMode(), stylePack: pack, structuralAssets,
     })
     roofs.dispose()
     roofs = nextRoofs
@@ -1372,6 +1501,9 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
       loadTexture: (url, onLoad) => loader.load(url, (texture) => { onLoad?.(texture); if (!disposed) options.onReady?.() }),
       relief: landscapeDetail === 'minimal' ? null : options.floorRelief ?? null,
       onRelief: (key, geometry) => {
+        // Травинки получают ту же сетку высот, что и PBR-пол. Это пересаживает
+        // корни в впадины без второго плоского слоя поверх рельефа.
+        grass?.setSurfaceGeometry?.(key, geometry)
         // Объёмный пол опускает швы ниже прежнего пола: под ним прежний пол
         // вырезается, иначе его рисунок проступал бы в швах. Слой сетки и
         // тумана остаётся на всей карте.
@@ -1419,6 +1551,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     group.removeFromParent()
     disposed = true
     propAbort.abort()
+    storyFrescoAbort.abort()
     props.dispose()
     propAssets?.dispose()
     styledFloors?.dispose()
@@ -1468,6 +1601,11 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     setSeeThroughTargets: (points: ReadonlyArray<{ x: number; y: number; z: number; radius?: number }>) => seeThrough.setTargets(points),
     setRoofMode: (mode: Board3DRoofMode) => roofs.setMode(mode),
     getRoofMode: () => roofs.getMode(),
+    setBackdropStyle(next: BoardBackdropStyle) {
+      if (backdropStyle === next || disposed) return
+      backdropStyle = next
+      if (surroundings && surroundings.group.userData.biome !== 'rock') rebuildSurroundings()
+    },
     dispose,
   }
 }

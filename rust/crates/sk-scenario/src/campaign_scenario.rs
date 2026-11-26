@@ -17,7 +17,7 @@
 //! правил, ни от политики Режиссёра. Поля каталога, которые JS копирует как
 //! есть (`id`, `title`, `kind`), в каталоге — строки и читаются как строки.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use serde::Serialize;
@@ -341,6 +341,7 @@ fn validate_scenario(scenario: &Value) -> Result<(), String> {
     };
     let mut location_ids = HashSet::new();
     let mut clue_ids = HashSet::new();
+    let mut inspect_prop_ids = HashSet::new();
     for location in locations {
         let location = Some(location);
         let id = js::s(field(location, "location_id"));
@@ -395,6 +396,25 @@ fn validate_scenario(scenario: &Value) -> Result<(), String> {
             let grants = field(secret, "grants_catalog_id");
             if js::present(grants) && !scenario_item_id(&js::s(grants)) {
                 return invalid(format!("{sid}/{secret_id}: находка выдаёт предмет каталога сценария"));
+            }
+            if let Some(raw_inspect_prop_ids) = field(secret, "inspect_prop_ids") {
+                match raw_inspect_prop_ids {
+                    Value::Array(ids) if !ids.is_empty() && ids.iter().all(|prop_id| {
+                        let prop_id = clean(Some(prop_id), 200);
+                        !prop_id.is_empty() && prop_id.starts_with(&format!("{id}:"))
+                    }) => {
+                        if clean(field(secret, "inspect_label"), 120).is_empty() {
+                            return invalid(format!("{sid}/{secret_id}: inspect_label — подпись предмета"));
+                        }
+                        for prop_id in ids {
+                            let prop_id = clean(Some(prop_id), 200);
+                            if !inspect_prop_ids.insert(prop_id.clone()) {
+                                return invalid(format!("{sid}/{secret_id}: предмет {prop_id} уже привязан к другой тайне"));
+                            }
+                        }
+                    }
+                    _ => return invalid(format!("{sid}/{secret_id}: inspect_prop_ids — непустой список предметов этого места")),
+                }
             }
         }
     }
@@ -589,6 +609,26 @@ pub fn parse_scenario_catalog(text: &str) -> ContentResult<Vec<Value>> {
 /// ловит проверка при старте сервера ([`check_scenario_catalog`]).
 static SCENARIOS: LazyLock<ContentResult<Vec<Value>>> = LazyLock::new(|| parse_scenario_catalog(SCENARIO_CATALOG));
 
+/// Индекс авторских предметов, которые открывают тайну. Ключи заимствованы из
+/// встроенного каталога, поэтому промах по обычному пропу не создаёт строк и
+/// не клонирует JSON. Клон результата появляется только для четырёх известных
+/// предметов Асстохана на границе правил.
+static SCENARIO_INSPECTION_INDEX: LazyLock<HashMap<&'static str, HashMap<&'static str, (&'static Value, &'static Value)>>> = LazyLock::new(|| {
+    let mut index = HashMap::new();
+    for scenario in scenarios() {
+        for location in array(scenario.get("locations")) {
+            let Some(location_id) = location.get("location_id").and_then(Value::as_str) else { continue };
+            let entries = index.entry(location_id).or_insert_with(HashMap::new);
+            for secret in array(location.get("secrets")) {
+                for prop_id in array(secret.get("inspect_prop_ids")).iter().filter_map(Value::as_str) {
+                    entries.insert(prop_id, (scenario, secret));
+                }
+            }
+        }
+    }
+    index
+});
+
 fn scenarios() -> &'static [Value] {
     match &*SCENARIOS {
         Ok(list) => list,
@@ -757,9 +797,11 @@ pub fn scenario_location_npcs(state: &Value, location_id: &str) -> Vec<Value> {
             profile.insert("beliefs".into(), cleaned(npc.get("beliefs"), 200));
             profile.insert("known_fact_ids".into(), js::strings_value(scenario_clue_fact_ids_known_by(Some(scenario), &id)));
             profile.insert("visibility".into(), json!("party"));
-            profile.insert("available".into(), json!(true));
-            profile.insert("tags".into(), cleaned(npc.get("tags"), 40));
-            profile.insert("schedule".into(), json!([]));
+            profile.insert("available".into(), Value::Bool(!js::is_false(npc.get("available"))));
+            // Якоря authored-реквизита несут полный `location_id:prop_id`,
+            // поэтому предел совпадает с лимитом тега в `npc-social`.
+            profile.insert("tags".into(), cleaned(npc.get("tags"), 60));
+            profile.insert("schedule".into(), Value::Array(array(npc.get("schedule")).to_vec()));
             profile.insert("inventory".into(), json!([]));
             Value::Object(profile)
         })
@@ -787,6 +829,59 @@ pub fn scenario_secrets_for(state: &Value, location_id: &str) -> Vec<Value> {
             Value::Object(entry)
         })
         .collect()
+}
+
+/// Сценарная тайна, к которой привязан осматриваемый предмет карты.
+///
+/// Полный id предмета хранится в `inspect_prop_ids` карточки тайны. Возвращаем
+/// только серверные данные тайны, которые нужны обработчику осмотра и событию
+/// `KnowledgeRevealed`. Само поле привязки в проекцию не попадает.
+pub fn scenario_inspection_for_prop(state: &Value, location_id: &str, prop_id: &str) -> Option<Value> {
+    let scenario = campaign_scenario(state)?;
+    let (indexed_scenario, secret) = SCENARIO_INSPECTION_INDEX.get(location_id)?.get(prop_id).copied()?;
+    if indexed_scenario.get("id") != scenario.get("id") || indexed_scenario.get("version") != scenario.get("version") {
+        return None;
+    }
+    inspection_value(&scenario, secret, prop_id)
+}
+
+/// То же сопоставление для построения affordance карты до появления состояния
+/// кампании у клиента. Используется только для заранее известных авторских
+/// карт, поэтому не расширяет общий каталог ассетов сцены.
+pub fn scenario_inspection_for_location_prop(location_id: &str, prop_id: &str) -> Option<Value> {
+    let (scenario, secret) = SCENARIO_INSPECTION_INDEX.get(location_id)?.get(prop_id).copied()?;
+    inspection_value(scenario, secret, prop_id)
+}
+
+/// То же сопоставление с явной проверкой активной сюжетной арки. Проекция
+/// получает только этот вариант, чтобы произвольная карта с похожим id не
+/// получила кнопку, которую Rules Engine затем отвергнет.
+pub fn scenario_inspection_for_scenario_location_prop(scenario_id: &str, location_id: &str, prop_id: &str) -> Option<Value> {
+    let (scenario, secret) = SCENARIO_INSPECTION_INDEX
+        .get(location_id)
+        .and_then(|props| props.get(prop_id))
+        .copied()?;
+    if js::s(scenario.get("id")) != scenario_id.trim() {
+        return None;
+    }
+    inspection_value(scenario, secret, prop_id)
+}
+
+fn inspection_value(scenario: &Value, secret: &Value, prop_id: &str) -> Option<Value> {
+    let prop_id = head(prop_id, 200);
+    if prop_id.is_empty() {
+        return None;
+    }
+    let mut result = Map::new();
+    result.insert("fact_id".into(), Value::String(clue_fact_id_of(scenario, secret.get("id"))));
+    insert_raw(&mut result, "clue_id", secret.get("id"));
+    insert_raw(&mut result, "clue", secret.get("clue"));
+    insert_raw(&mut result, "topic", secret.get("topic"));
+    insert_raw(&mut result, "label", secret.get("inspect_label"));
+    let alias = clean(secret.get("inspect_alias"), 120);
+    if !alias.is_empty() { result.insert("alias".into(), Value::String(alias)); }
+    result.insert("prop_id".into(), Value::String(prop_id));
+    Some(Value::Object(result))
 }
 
 /// Найденные тайны сценария по их id в данных (`ash-gate`, `camp-gedrik`):
@@ -1636,6 +1731,29 @@ mod tests {
         let mut ending_ids: Vec<&str> = array(scenarios[0].get("endings")).iter().filter_map(|e| e["id"].as_str()).collect();
         ending_ids.sort_unstable();
         assert_eq!(ending_ids, ["banished", "defeat", "slain", "treaty"]);
+    }
+
+    #[test]
+    fn authored_inspection_props_open_their_clues() {
+        let journal = scenario_inspection_for_location_prop("astohan-ash-watch", "astohan-ash-watch:burnt-journal").expect("журнал");
+        assert_eq!(journal["clue_id"], "ash-journal");
+        assert_eq!(journal["prop_id"], "astohan-ash-watch:burnt-journal");
+        let diary = scenario_inspection_for_location_prop("astohan-forgotten-cliffs", "astohan-forgotten-cliffs:executioner-diary").expect("дневник");
+        assert_eq!(diary["clue_id"], "cliffs-diary");
+        let desk = scenario_inspection_for_location_prop("astohan-forgotten-cliffs", "astohan-forgotten-cliffs:executioner-desk").expect("стол палача");
+        assert_eq!(desk["clue_id"], "cliffs-diary");
+        for prop_id in [
+            "astohan-forgotten-cliffs:fresco-1",
+            "astohan-forgotten-cliffs:fresco-2",
+            "astohan-forgotten-cliffs:fresco-3",
+        ] {
+            assert_eq!(scenario_inspection_for_location_prop("astohan-forgotten-cliffs", prop_id).as_ref().map(|value| &value["clue_id"]), Some(&json!("cliffs-frescoes")));
+        }
+        let maid = scenario_location_npcs(&json!({
+            "campaignConcept": {"arc": {"version": SCENARIO_ARC_VERSION, "scenario_id": "astohan-dragon-hunt", "scenario_version": 1}},
+        }), "astohan-forgotten-cliffs");
+        assert_eq!(maid.iter().find(|npc| npc["id"] == "astohan-cliffs-maid").map(|npc| npc["known_fact_ids"].clone()), Some(json!(["fact:secret:scenario:astohan-dragon-hunt:cliffs-maid"])));
+        assert!(scenario_inspection_for_location_prop("astohan-ash-watch", "astohan-forgotten-cliffs:fresco-1").is_none());
     }
 
     #[test]

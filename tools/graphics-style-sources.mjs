@@ -521,7 +521,7 @@ const EXPANSION_PROPS = {
   wall_ivy_wide: [{"name":"extra_wall_ivy_wide","parts":[{"kit":"mvmk/Prop_Vine4","center":true}],"maxHeight":0.65}],
   cart: [{"name":"extra_merchant_wagon","parts":[{"kit":"mvmk/Prop_Wagon","center":true,"yaw":90}]}],
   key_bundle: [{"name":"extra_key_bundle","parts":[{"kit":"fpmk/Key_Gold","center":true,"at":[-0.12,0,0],"scale":2.2,"yaw":35},{"kit":"fpmk/Key_Metal","center":true,"at":[0.12,0,0.03],"scale":2.2,"yaw":-20}],"maxHeight":0.1}],
-  coin_pouch: [{"name":"extra_coin_pouch","parts":[{"kit":"fpmk/Pouch_Large","center":true,"scale":1.2,"yaw":12}],"maxHeight":0.28}],
+  coin_pouch: [{"name":"extra_coin_pouch","parts":[{"kit":"fpmk/Pouch_Large","center":true,"scale":1.2,"yaw":12}],"maxHeight":0.115}],
 }
 // Ранее доступные варианты телеги и знамени остаются рядом с новыми.
 PROPS.cart = [ref('quaternius/stall_cart_empty.glb')]

@@ -1758,14 +1758,18 @@ function neighbourActivation(memory, named, hubs) {
  * Пустой вопрос в обоих режимах возвращает записи по порядку id.
  *
  * `neighbours: false` отключает шаг по графу (для замеров и отладки).
+ * `kind` ограничивает вид выдаваемых записей. Видимые поручения и связи
+ * участвуют в ранжировании, даже если запрошены только факты.
  */
-export function retrieveWorldMemory(input, viewer = {}, { query = '', limit = 8, asOfMinutes: requestedTime, neighbours = true, whenUnmatched = 'all' } = {}) {
+export function retrieveWorldMemory(input, viewer = {}, { query = '', limit = 8, asOfMinutes: requestedTime, neighbours = true, whenUnmatched = 'all', kind = null } = {}) {
   const memory = worldMemoryForViewer(input, { ...viewer, ...(requestedTime == null ? {} : { asOfMinutes: requestedTime }) })
   const queryProfile = stemProfile(tokenize(query))
   const maximum = Math.max(1, Math.min(30, integer(limit, 8)))
+  const matchesKind = (record) => !kind || kind === record.kind
   const strip = ({ search, anchors, hub, lexical, exact, ...record }) => clone(record)
   const records = retrievalRecords(memory)
   const unordered = () => records
+    .filter(matchesKind)
     .sort((left, right) => left.id.localeCompare(right.id, 'en'))
     .slice(0, maximum)
     .map((record) => strip({ ...record, score: 0 }))
@@ -1785,7 +1789,7 @@ export function retrieveWorldMemory(input, viewer = {}, { query = '', limit = 8,
       ...record,
       score: record.lexical + Math.max(0, ...record.anchors.map((entityId) => activation.get(entityId) ?? 0)),
     }))
-    .filter((record) => record.score > 0)
+    .filter((record) => record.score > 0 && matchesKind(record))
     .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id, 'en'))
     .slice(0, maximum)
     .map(strip)

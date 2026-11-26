@@ -239,7 +239,16 @@ fn check_point_target(v: &mut Validation<'_>, spell: &Value, from: Point, maximu
     let cells = crate::tactical_geometry::tactical_cell_map(state);
     let cell = cells.get(&crate::tactical_geometry::key_of(to)).copied();
     let kind = field(spell, "kind").and_then(Value::as_str);
-    let needs_empty = matches!(kind, Some("summon" | "teleport"));
+    let needs_empty = matches!(kind, Some("summon" | "teleport")) || field(spell, "id").and_then(Value::as_str) == Some("guardian-of-faith");
+    if field(spell, "id").and_then(Value::as_str) == Some("guardian-of-faith") {
+        let occupied_by_actor = sk_core::game::list_actors(state).into_iter().any(|actor| {
+            sk_core::game::actor_position(state, &sk_core::game::actor_id(actor))
+                .is_some_and(|position| ((position.x as f64) - to.x).abs() < f64::EPSILON && ((position.y as f64) - to.y).abs() < f64::EPSILON)
+        });
+        if occupied_by_actor {
+            return Err(rule("Стражу нужна свободная клетка", "INVALID_DESTINATION"));
+        }
+    }
     if !crate::tactical_geometry::is_walkable_cell(cell) || (needs_empty && !crate::geometry::footprint::actor_footprint_fits(state, &actor_id, to, crate::geometry::footprint::FitOptions::default())) {
         return Err(rule("Выбранная клетка недоступна", "INVALID_DESTINATION"));
     }
@@ -354,6 +363,20 @@ fn check_creature_targets(v: &mut Validation<'_>, spell: &Value, from: Point, ma
     };
     if requested.len() as i64 > maximum {
         return Err(rule("Слишком много целей для этого уровня ячейки", "TOO_MANY_SPELL_TARGETS"));
+    }
+    if field(spell, "id").and_then(Value::as_str) == Some("magic-missile") {
+        if let Some(raw) = command.get("missile_target_ids").filter(|value| !value.is_null()) {
+            let Some(ids) = raw.as_array() else {
+                return Err(rule("Нужно передать список целей дротиков", "INVALID_MISSILE_TARGETS"));
+            };
+            let expected = crate::spells::slots::spell_projectile_count(spell, Some(&Value::from(slot_level))) as usize;
+            if ids.len() != expected {
+                return Err(rule(format!("Нужно назначить ровно {expected} дротика(а)"), "INVALID_MISSILE_TARGETS"));
+            }
+            if ids.iter().any(|id| !requested.contains(&js::s(Some(id)))) {
+                return Err(rule("Дротик назначен на непроверенную цель", "INVALID_MISSILE_TARGETS"));
+            }
+        }
     }
     let separation = js::safe_int(field(spell, "maxTargetSeparationFeet"), 0).max(0);
     let anchor = (field(spell, "targetSeparationAnchor").and_then(Value::as_str) == Some("primary") && separation > 0).then(|| requested.first().cloned()).flatten();

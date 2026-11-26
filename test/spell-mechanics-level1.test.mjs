@@ -3,17 +3,20 @@ import test from 'node:test'
 
 import { combatSpellFor, combatSpellsFor, spellCatalogInfo } from '../server/combat-spells.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
+import { materializeCatalogItem } from '../server/item-catalog.mjs'
+import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
+import { dice as testDice } from './kit/dice.mjs'
 
 function dice(values = []) {
   let id = 0
   return new DiceService({ rng: new SequenceDiceRng(values), idFactory: () => `level1-roll-${++id}`, now: () => '2026-07-13T12:00:00.000Z' })
 }
 
-function stateFor(characterClass = 'wizard', level = 3) {
+function stateFor(characterClass = 'wizard', level = 3, rulesetId = undefined) {
   const cells = Array.from({ length: 40 }, (_, index) => ({ x: index % 8, y: Math.floor(index / 8), type: 'floor', revealed: true }))
   return normalizeCampaignState({
     sessionCode: 'LEVEL1-SPELLS',
+    ...(rulesetId ? { ruleset_id: rulesetId } : {}),
     partyMemberIds: ['caster', 'ally'],
     players: [
       { id: 'caster', character: 'Заклинатель', characterClass, level, hp: 20, maxHp: 20, armor: 10, speed: 30, proficiency: 2, abilities: { str: 10, dex: 14, con: 14, int: 16, wis: 16, cha: 16 }, inventory: [], x: 1, y: 1 },
@@ -34,8 +37,8 @@ test('каталог консервативно разделяет partial, heur
   const wizard = stateFor('wizard').players[0]
   const info = spellCatalogInfo()
   assert.equal(info.verifiedMechanics, 0)
-  assert.equal(info.partialMechanics, 249)
-  assert.equal(info.heuristicMechanics, 183)
+  assert.equal(info.partialMechanics, 250)
+  assert.equal(info.heuristicMechanics, 182)
   // Семь карточек заблокированы **с названной причиной**, а не «пока не
   // размечены»: у падения, полёта и левитации у движка нет высоты, у
   // обнаружения и опознания — скрытого слоя, который можно было бы раскрыть.
@@ -73,6 +76,54 @@ test('Волшебная стрела автоматически наносит 
   assert.equal(applyAll(initial, result.events).enemies.find((enemy) => enemy.id === 'strong').hp, 14)
 })
 
+test('Волшебная стрела раздаёт дротики выбранным целям и сохраняет их по событиям', () => {
+  const initial = stateFor('wizard', 3)
+  const result = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'magic-missile', target_id: 'weak', target_ids: ['weak', 'strong'], slot_level: 1, server_authoritative: true }, initial, { diceService: dice([3, 2]), context: { serverAuthoritativeCombat: true } })
+  const damage = result.events.filter((event) => event.event_type === 'DamageApplied')
+  assert.equal(result.events.filter((event) => event.event_type === 'DieRolled' && event.payload?.purpose === 'spell_damage:magic-missile').length, 1)
+  assert.deepEqual(damage.map((event) => [event.target_ids[0], event.payload.projectile_count]), [['weak', 2], ['strong', 1]])
+  assert.deepEqual(damage.map((event) => event.payload.raw_amount), [8, 4])
+  assert.equal(damage.reduce((sum, event) => sum + event.payload.raw_amount, 0), 12)
+  const after = applyAll(initial, result.events)
+  assert.deepEqual(replayEvents(initial, result.events), after)
+  assert.equal(after.enemies.find((enemy) => enemy.id === 'weak').hp, 0)
+  assert.equal(after.enemies.find((enemy) => enemy.id === 'strong').hp, 26)
+})
+
+test('Повышенная Волшебная стрела увеличивает и число дротиков, и предел выбранных целей', () => {
+  const initial = stateFor('wizard', 3)
+  const result = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'magic-missile', target_id: 'weak', target_ids: ['weak', 'strong'], slot_level: 2, server_authoritative: true }, initial, { diceService: dice([3, 2]), context: { serverAuthoritativeCombat: true } })
+  assert.deepEqual(result.events.filter((event) => event.event_type === 'DamageApplied').map((event) => event.payload.projectile_count), [2, 2])
+  assert.equal(result.events.filter((event) => event.event_type === 'DamageApplied').reduce((sum, event) => sum + event.payload.raw_amount, 0), 16)
+})
+
+test('Явное распределение дротиков допускает повторы и отклоняет подмену цели', () => {
+  const initial = stateFor('wizard', 3)
+  const result = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'magic-missile', target_id: 'weak', target_ids: ['weak', 'strong'], missile_target_ids: ['weak', 'weak', 'weak', 'strong'], slot_level: 2, server_authoritative: true }, initial, { diceService: dice([3, 2]), context: { serverAuthoritativeCombat: true } })
+  assert.deepEqual(result.events.filter((event) => event.event_type === 'DamageApplied').map((event) => [event.target_ids[0], event.payload.projectile_count]), [['weak', 3], ['strong', 1]])
+  const before = structuredClone(initial)
+  assert.throws(
+    () => resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'magic-missile', target_id: 'weak', target_ids: ['weak', 'strong'], missile_target_ids: ['weak', 'strong', 'missing', 'strong'], slot_level: 2, server_authoritative: true }, initial, { diceService: dice([3]), context: { serverAuthoritativeCombat: true } }),
+    (error) => error.code === 'INVALID_MISSILE_TARGETS',
+  )
+  assert.deepEqual(initial, before, 'отказ распределения не списывает ячейку и действие')
+  assert.throws(
+    () => resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'magic-missile', target_id: 'weak', target_ids: ['weak', 'strong'], missile_target_ids: ['weak', 'strong'], slot_level: 2, server_authoritative: true }, initial, { diceService: dice([3]), context: { serverAuthoritativeCombat: true } }),
+    (error) => error.code === 'INVALID_MISSILE_TARGETS',
+  )
+})
+
+test('Волшебная стрела пропускает заявленную цель, которой явно назначено ноль дротиков', () => {
+  const initial = stateFor()
+  const command = { command_type: 'CastSpell', actor_id: 'caster', spell_id: 'magic-missile', target_id: 'weak', target_ids: ['weak', 'strong'], missile_target_ids: ['strong', 'strong', 'strong'], slot_level: 1, server_authoritative: true }
+  const result = resolveCommand(command, initial, { diceService: testDice([3]), context: { serverAuthoritativeCombat: true } })
+  const damage = result.events.filter((event) => event.event_type === 'DamageApplied')
+  assert.deepEqual(damage.map((event) => [event.target_ids[0], event.payload.projectile_count]), [['strong', 3]])
+  const after = applyAll(initial, result.events)
+  assert.deepEqual(after.enemies.map((enemy) => enemy.hp), [5, 18])
+  assert.deepEqual(replayEvents(initial, result.events), after)
+})
+
 test('непроверенное заклинание отклоняется до серверного разрешения хода', () => {
   const initial = stateFor('wizard', 3)
   const before = structuredClone(initial)
@@ -102,6 +153,38 @@ test('Щит открывается реакцией на Волшебную с�
   const after = applyAll(waiting, shield.events)
   assert.equal(after.players[0].hp, 20)
   assert.ok(after.mechanics.conditions.caster.some((condition) => condition.id === 'shielded'))
+})
+
+test('Щит одной цели не отменяет дротики Волшебной стрелы по второй цели', () => {
+  const initial = stateFor('wizard', 3)
+  const enemy = initial.enemies.find((candidate) => candidate.id === 'strong')
+  Object.assign(enemy, { characterClass: 'wizard', level: 3, proficiency: 2, knownSpellIds: ['magic-missile'], preparedSpellIds: ['magic-missile'] })
+  initial.mechanics.combat.active_index = 2
+  initial.mechanics.resources.strong = { spell_slots_1: { current: 1, max: 1 } }
+  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'strong', spell_id: 'magic-missile', target_id: 'caster', target_ids: ['caster', 'ally'], server_authoritative: true }, initial, { diceService: dice([3, 2]), context: { serverAuthoritativeCombat: true } })
+  const waiting = applyAll(initial, cast.events)
+  assert.equal(waiting.mechanics.combat.reaction_window.trigger, 'magic-missile-shield-choice')
+  const decline = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'caster', action_id: 'decline-reaction', server_authoritative: true }, waiting, { diceService: dice([3, 2]), context: { serverAuthoritativeCombat: true } })
+  const damage = decline.events.filter((event) => event.event_type === 'DamageApplied')
+  assert.deepEqual(damage.map((event) => event.target_ids[0]), ['caster', 'ally'])
+  assert.deepEqual(damage.map((event) => event.payload.projectile_count), [2, 1])
+})
+
+test('Явный залп 3 + 1 продолжает вторую цель после смешанного Щита', () => {
+  const initial = stateFor('wizard', 3)
+  const enemy = initial.enemies.find((candidate) => candidate.id === 'strong')
+  Object.assign(enemy, { characterClass: 'wizard', level: 3, proficiency: 2, knownSpellIds: ['magic-missile'], preparedSpellIds: ['magic-missile'] })
+  initial.mechanics.combat.active_index = 2
+  initial.mechanics.resources.strong = { spell_slots_2: { current: 1, max: 1 } }
+  const diceService = dice([3, 2])
+  const options = { diceService, context: { serverAuthoritativeCombat: true } }
+  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'strong', spell_id: 'magic-missile', target_id: 'caster', target_ids: ['caster', 'ally'], missile_target_ids: ['caster', 'caster', 'caster', 'ally'], slot_level: 2, server_authoritative: true }, initial, options)
+  const waiting = applyAll(initial, cast.events)
+  assert.equal(waiting.mechanics.combat.reaction_window.trigger, 'magic-missile-shield-choice')
+  const shield = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'caster', action_id: 'cast:shield', server_authoritative: true }, waiting, options)
+  const damage = shield.events.filter((event) => event.event_type === 'DamageApplied')
+  assert.deepEqual(damage.map((event) => [event.target_ids[0], event.payload.projectile_count, event.payload.blocked_by_shield]), [['caster', 3, true], ['ally', 1, false]])
+  assert.equal(damage[0].payload.damage_per_projectile, damage[1].payload.damage_per_projectile, 'одна кость общего залпа используется для обеих целей')
 })
 
 test('Доспех Агатиса даёт временные хиты и отвечает полным холодным уроном на рукопашное попадание', () => {
@@ -161,33 +244,38 @@ test('Доспехи мага и Щит веры участвуют в серв�
   assert.equal(protectedAttack.events.find((event) => event.event_type === 'AttackResolved').payload.hit, false)
 })
 
-test('Скольжение создаёт постоянную труднопроходимую область и повторяет спасбросок при входе', () => {
-  const initial = stateFor('wizard', 3)
-  // «Скольжение» — квадрат 10 фт. При детерминированном якоре чётного куба
-  // точка (1,1) покрывает x=1..2: weak внутри, strong на x=3 снаружи.
-  // Союзник оставлен за пределами квадрата, чтобы последующее перемещение
-  // действительно было входом в область; weak в (2,1) остаётся внутри.
-  initial.players.find((actor) => actor.id === 'ally').x = 1
-  initial.players.find((actor) => actor.id === 'ally').y = 3
-  initial.mechanics.positions.ally = { x: 1, y: 3 }
-  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'grease', to: { x: 1, y: 1 }, server_authoritative: true }, initial, { diceService: dice([1, 1, 1]), context: { serverAuthoritativeCombat: true } })
+for (const rulesetId of ['srd_5_2_1', 'dnd_5e_2014']) test(`Скольжение требует спасброски при сотворении, входе и в конце хода (${rulesetId})`, () => {
+  const initial = stateFor('wizard', 3, rulesetId)
+  initial.players[0].inventory.push(materializeCatalogItem('srd_5_2_1:component-pouch', { id: 'grease-pouch' }))
+  // Квадрат 10 фт в (1,1) покрывает x=1..2, y=1..2. Только weak внутри.
+  const positions = { caster: { x: 0, y: 1 }, ally: { x: 1, y: 3 } }
+  for (const actor of initial.players) Object.assign(actor, positions[actor.id])
+  Object.assign(initial.mechanics.positions, positions)
+  initial.mechanics.combat.initiative.splice(1, 0, { actor_id: 'ally', total: 15 })
+  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'grease', to: { x: 1, y: 1 }, server_authoritative: true }, initial, { diceService: testDice([1]), context: { serverAuthoritativeCombat: true } })
+  const saves = cast.events.filter((event) => event.event_type === 'SpellSavingThrowResolved')
+  assert.deepEqual(saves.map((event) => [event.target_ids[0], event.payload.ability, event.payload.saved]), [['weak', 'dex', false]])
   const greased = applyAll(initial, cast.events)
   assert.ok(greased.mechanics.active_effects.some((effect) => effect.spell_id === 'grease' && effect.difficult_terrain))
   assert.ok(greased.mechanics.conditions.weak.some((condition) => condition.id === 'prone'))
   assert.ok(!(greased.mechanics.conditions.strong ?? []).some((condition) => condition.id === 'prone'))
 
-  greased.mechanics.combat.initiative = [{ actor_id: 'ally', total: 18 }, { actor_id: 'weak', total: 12 }]
-  greased.mechanics.combat.active_index = 0
-  greased.mechanics.combat.action_economy.ally = { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }
-  const move = resolveCommand({ command_type: 'MoveActor', actor_id: 'ally', to: { x: 1, y: 2 }, server_authoritative: true }, greased, { diceService: dice([1]), context: { serverAuthoritativeCombat: true } })
-  const afterMove = applyAll(greased, move.events)
+  const casterEnd = resolveCommand({ command_type: 'EndTurn', actor_id: 'caster', server_authoritative: true }, greased, { diceService: testDice(), context: { serverAuthoritativeCombat: true } })
+  const allyTurn = applyAll(greased, casterEnd.events)
+  const move = resolveCommand({ command_type: 'MoveActor', actor_id: 'ally', to: { x: 1, y: 2 }, server_authoritative: true }, allyTurn, { diceService: testDice([1]), context: { serverAuthoritativeCombat: true } })
+  const afterMove = applyAll(allyTurn, move.events)
   assert.equal(afterMove.mechanics.combat.action_economy.ally.movement_spent, 10)
   assert.ok(afterMove.mechanics.conditions.ally.some((condition) => condition.id === 'prone'))
-  const stand = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'ally', action_id: 'stand-up', server_authoritative: true }, afterMove, { diceService: dice(), context: { serverAuthoritativeCombat: true } })
+  const stand = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'ally', action_id: 'stand-up', server_authoritative: true }, afterMove, { diceService: testDice(), context: { serverAuthoritativeCombat: true } })
   const standing = applyAll(afterMove, stand.events)
   assert.ok(!standing.mechanics.conditions.ally.some((condition) => condition.id === 'prone'))
   assert.equal(standing.mechanics.combat.action_economy.ally.movement_spent, 25)
   assert.equal(standing.mechanics.combat.action_economy.ally.action, true)
+
+  const allyEnd = resolveCommand({ command_type: 'EndTurn', actor_id: 'ally', server_authoritative: true }, standing, { diceService: testDice([1]), context: { serverAuthoritativeCombat: true } })
+  const afterTurn = applyAll(standing, allyEnd.events)
+  assert.ok(afterTurn.mechanics.conditions.ally.some((condition) => condition.id === 'prone'))
+  assert.deepEqual(replayEvents(initial, [...cast.events, ...casterEnd.events, ...move.events, ...stand.events, ...allyEnd.events]), afterTurn)
 })
 
 test('Опутывание создаёт концентрационную труднопроходимую область и снимается вместе с концентрацией', () => {

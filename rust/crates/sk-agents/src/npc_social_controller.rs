@@ -365,6 +365,9 @@ fn npc_facts(state: &Value, profile: &Value, message: Option<&Value>, summary_li
             entry.insert("guarded".into(), Value::Bool(true));
         }
         if let Some(known) = &known {
+            if is_str(get(fact, "predicate"), "rumor") {
+                entry.insert("reported".into(), Value::Bool(true));
+            }
             let supersedes = get(fact, "supersedes_fact_id");
             if is_str(get(fact, "predicate"), "discovery") && !(js::truthy(supersedes) && known.contains(&js::string(supersedes))) {
                 entry.insert("party_finding".into(), Value::Bool(true));
@@ -1404,8 +1407,8 @@ fn fallback_disclosure(
             return Disclosure::say(format!("{name} повторяет: «{}»", clean(get(Some(remembered), "npc_reply"), 500)));
         }
     }
-    if let Some((kind, sentence)) = fallback_answer(profile, message, hooks, facts, &already_said) {
-        return Disclosure::say(if kind == "hook" { format!("{name} подтверждает: «{sentence}»") } else { format!("{name} отвечает: «{sentence}»") });
+    if let Some((fact_id, reply)) = fallback_answer(profile, message, hooks, facts, &already_said) {
+        return Disclosure { reply, claim_ids: Vec::new(), fact_ids: fact_id.into_iter().collect() };
     }
     let summary_of = |claim: &Value| js::s(get(Some(claim), "summary"));
     if let Some(rumor) = claims.iter().find(|claim| is_str(get(Some(claim), "kind"), "rumor") && !already_said(&summary_of(claim))) {
@@ -1464,40 +1467,51 @@ fn fallback_question_stems(profile: &Value, message: Option<&Value>) -> Vec<Stri
 }
 
 /// Лучшее совпавшее с вопросом предложение из публичных зацепок о собеседнике
-/// и открытых фактов: `(kind, sentence)`.
-fn fallback_answer(profile: &Value, message: Option<&Value>, hooks: &[Value], facts: &[Value], already_said: &dyn Fn(&str) -> bool) -> Option<(&'static str, String)> {
+/// и открытых фактов: `(fact_id, reply)`.
+fn fallback_answer(profile: &Value, message: Option<&Value>, hooks: &[Value], facts: &[Value], already_said: &dyn Fn(&str) -> bool) -> Option<(Option<String>, String)> {
     let stems = fallback_question_stems(profile, message);
     if stems.is_empty() {
         return None;
     }
-    let mut candidates: Vec<(&'static str, Option<&Value>)> = hooks.iter().map(|hook| ("hook", get(Some(hook), "text"))).collect();
-    candidates.extend(
-        facts
-            .iter()
-            .filter(|fact| !js::truthy(get(Some(fact), "guarded")) && !js::truthy(get(Some(fact), "party_finding")))
-            .map(|fact| ("fact", get(Some(fact), "summary"))),
-    );
-    let mut best: Option<(&'static str, String, usize)> = None;
-    for (kind, value) in candidates {
+    let hooks = hooks.iter().map(|hook| (None, get(Some(hook), "text"), false));
+    let facts = facts
+        .iter()
+        .filter(|fact| !js::truthy(get(Some(fact), "guarded")) && !js::truthy(get(Some(fact), "party_finding")))
+        .map(|fact| (get(Some(fact), "id").and_then(Value::as_str), get(Some(fact), "summary"), js::truthy(get(Some(fact), "reported"))));
+    let name = js::string(get(Some(profile), "name"));
+    let name_prefix = format!("{} ", lower(&name));
+    let mut best: Option<(Option<String>, String, usize)> = None;
+    for (fact_id, value, reported) in hooks.chain(facts) {
         let mut sentences = answer_sentences(value);
         if sentences.len() > 1 && sentences.last().is_some_and(|last| !text::test(re!(r#"[.!?…»"')]$"#, "u"), last)) {
             sentences.pop();
         }
         for sentence in sentences {
             let words = plain_words_str(&sentence, 2_000);
-            if kind == "fact" && sentence_describes_npc(&words, profile) {
+            let indirect = reported && lower(&sentence).starts_with(&name_prefix);
+            if !indirect && fact_id.is_some() && sentence_describes_npc(&words, profile) {
                 continue;
             }
             let score = stems.iter().filter(|stem| words.iter().any(|word| word.starts_with(stem.as_str()))).count();
             if score < 1 || already_said(&sentence) {
                 continue;
             }
+            let reply = if indirect {
+                let predicate = text::slice(&sentence, (char_len(&name) + 1) as i64, None);
+                format!("{name} говорит, что {predicate}")
+            } else {
+                let verb = if fact_id.is_some() { "отвечает" } else { "подтверждает" };
+                format!("{name} {verb}: «{sentence}»")
+            };
+            if already_said(&reply) {
+                continue;
+            }
             if best.as_ref().is_none_or(|(_, _, top)| score > *top) {
-                best = Some((kind, sentence, score));
+                best = Some((fact_id.map(str::to_string), reply, score));
             }
         }
     }
-    best.map(|(kind, sentence, _)| (kind, sentence))
+    best.map(|(fact_id, reply, _)| (fact_id, reply))
 }
 
 fn promise_within_boundary(promise_text: &str, profile: &Value) -> bool {

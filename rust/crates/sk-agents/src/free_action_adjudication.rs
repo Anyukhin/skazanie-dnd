@@ -302,6 +302,19 @@ fn self_hazard_contact_negation() -> &'static Regex {
     re!(r"(?<![\p{L}\p{M}])не\s+(?:сажусь|сяду|сижу|ложусь|лягу|вхожу|наступаю|трогаю|касаюсь|прикасаюсь|лезу|прыгаю)(?![\p{L}\p{M}])", "iu")
 }
 
+fn direct_fire_contact() -> &'static Regex {
+    re!(r"^[\p{S}\p{M}\s]*(?:я\s+)?(?:(?:осознанно|намеренно|нарочно|специально|осторожно|медленно|сразу|со\s+всего\s+разбега)\s+)*(?:(?:сажусь|сяду|сижу|сесть|ложусь|лягу|вхожу|войти|наступаю|лезу|прыгаю|прыгнуть)\s+(?:(?:прямо|жопой|задом|рукой|ногой)\s+)*(?:в|на)\s+|(?:трогаю|касаюсь|прикасаюсь)\s+(?:(?:кистью|рукой|ногой|пальцем|к)\s+)*)(?:(?:горящ\p{L}*|раскал[её]нн\p{L}*|открыт\p{L}*|сам\p{L}*)\s+)*(?:огонь|огня|огню|пламя|пламени|кост[её]р|костр[ау]|жаровн[июе]|лав[уы]|магм[уы]|трещину\s+с\s+лавой)(?![\p{L}\p{M}])", "iu")
+}
+
+fn fire_is_background(value: &str) -> bool {
+    let operative = text::without_quoted_or_negated_actions(&text::lower(value));
+    let description = re!(r"^(?:я\s+)?(?:вижу|наблюдаю|описываю|представляю|вспоминаю|рассказываю|читаю|пишу)(?![\p{L}\p{M}])|(?<![\p{L}\p{M}])(?:на|в)\s+(?:рисунке|картине|иллюзии|описании|рассказе|сне)(?![\p{L}\p{M}])", "iu");
+    let background = re!(r"(?<![\p{L}\p{M}])(?:(?:у|подле|вблизи|недалеко\s+от|неподал[её]ку\s+от)\s+(?:огня|пламени|костра|жаровни|лавы)|(?:смотрю|глядя)\s+(?:в|на)\s+(?:огонь|пламя|кост[её]р|жаровню|лаву))(?![\p{L}\p{M}])", "iu");
+    let not_attempted = re!(r"^(?:я\s+)?не\s+(?:намерен\p{L}*|планирую|собираюсь|буду|хочу)\s+", "iu");
+    text::test(not_attempted, value) || !text::test(hazard_contact_verbs(), &operative) || text::test(description, &operative)
+        || (!text::test(direct_fire_contact(), &operative) && text::test(background, &operative))
+}
+
 /// `canonicalEnvironmentHazardId(value)`: название опасности по закрытому
 /// серверному каталогу; пустая строка — не опасность.
 pub fn canonical_environment_hazard_id(value: Option<&Value>) -> String {
@@ -348,6 +361,10 @@ fn hazard_relation_for(value: &str, reading: &Value) -> Option<(String, &'static
     if text::test(hazard_avoidance(), &value) {
         return Some((hazard, "avoid"));
     }
+    // Огонь должен быть целью контакта, а не деталью места или реплики.
+    if hazard == "fire" && fire_is_background(&value) {
+        return None;
+    }
     if !text::test(hazard_contact_verbs(), &value) {
         return None;
     }
@@ -385,6 +402,9 @@ fn self_hazard_contact_id(state: &Value, value: &str, reading: &Value, actor_id:
         .filter(|target| !target.is_empty())
         .collect();
     let hazard = hazard_id_mentioned_in(&value);
+    if hazard == "fire" && fire_is_background(&value) {
+        return String::new();
+    }
     let source_ids: Vec<String> = if targets.is_empty() {
         Vec::new()
     } else {
@@ -622,6 +642,16 @@ pub fn resolve_hazard_contact(state: &Value, actor_id: &str, value: &str, readin
         "source": nearby.source,
         "distance": js::num(nearby.distance),
     }))
+}
+
+/// Для прямой заявки наличие видимого и досягаемого источника проверяем до модели.
+pub fn unavailable_hazard_contact_reason(state: &Value, actor_id: &str, value: &str, reading: &Value) -> Option<String> {
+    let value = clean(value, 1_000);
+    if !(text::test(direct_fire_contact(), &value) && !fire_is_background(&value)) && !wall_collision_intent(&value) {
+        return None;
+    }
+    let contact = resolve_hazard_contact(state, actor_id, &value, reading)?;
+    (is_str(contact.get("status"), "unavailable") && is_str(contact.get("relation"), "contact")).then(|| js::s(contact.get("reason")))
 }
 
 /// `confirmedHazardNear(state, actorId, hazardId)`: есть ли у героя рядом
@@ -867,8 +897,20 @@ pub fn has_recognized_free_action_approach(value: &str) -> bool {
     APPROACH_PATTERNS.iter().any(|pattern| text::test(pattern.test, &value))
 }
 
-fn impossible_feat() -> &'static Regex {
-    re!(r"(?<![\p{L}])(?:(?:весь|всю|целый|целую|целиком)\s+(?:замок|город|гору|дом|крепость|башню|корабль|лес|мост|стену)|(?:поднимаю|поднять|поднимает|переворачиваю|сдвигаю)\s+(?:замок|гору|крепость|башню|город)|взлетаю|улетаю|лечу\s+(?:над|по\s+небу|в\s+небо))(?![\p{L}])", "iu")
+/// Прямая заявка на ручное перемещение сооружения или горы.
+pub fn impossible_manual_feat_refusal(value: &str) -> Option<String> {
+    let pattern = re!(r"^(?:я\s+)?(?:(поднимаю|сдвигаю|переворачиваю)|(?:пытаюсь\s+)?(поднять|сдвинуть|перевернуть))\s+((?:весь|целый)\s+(?:замок|город|дом|корабль|мост|лес)|(?:всю|целую)\s+(?:гору|крепость|башню|стену)|(?:замок|город|крепость|башню)\s+целиком|гору|город|крепость|башню)(?:\s+(одной\s+рукой|голыми\s+руками|вручную))?[.!…]*$", "iu");
+    let value = text::lower(&clean(value, 1_000));
+    let feat = pattern.captures(&value).ok()??;
+    let verb = match feat.get(1).map(|form| form.as_str()) {
+        Some("поднимаю") => "поднять",
+        Some("сдвигаю") => "сдвинуть",
+        Some("переворачиваю") => "перевернуть",
+        _ => feat.get(2)?.as_str(),
+    };
+    let target = feat.get(3)?.as_str();
+    let means = feat.get(4).map_or("вручную", |form| form.as_str());
+    Some(format!("Герою не по силам {verb} {target} {means}. Попытка ничего не расходует."))
 }
 
 /// Контекст [`mundane_action_outcome`].
@@ -881,17 +923,36 @@ pub struct MundaneContext {
 }
 
 /// `mundaneActionOutcome(text, { heroName, inCombat, npcNames, onward })`:
-/// уточнение с конкретными способами вместо тупика; в бою — `None`.
+/// уточнение способа при названной цели, вне боя ещё и ответ при неясной цели.
 pub fn mundane_action_outcome(value: &str, context: &MundaneContext) -> Option<Value> {
     let value = clean(value, 1_000);
-    if value.is_empty() || context.in_combat {
+    if value.is_empty() {
         return None;
     }
     let hero = clean(&context.hero_name, 80);
     let hero = if hero.is_empty() { "Герой".to_string() } else { hero };
     let quote = text::replace_first(re!(r"[.!?…]+$", "u"), &value, "");
-    if text::test(impossible_feat(), &value) {
-        return Some(json!({ "kind": "impossible", "narration": format!("{hero} примеривается — «{quote}», — но это не по силам ни одному смертному. Какой способ мир позволит: рычаг, заклинание, помощь отряда? Попытка ничего не расходует.") }));
+    if let Some(narration) = impossible_manual_feat_refusal(&value) {
+        return Some(json!({ "kind": "impossible", "narration": narration }));
+    }
+    let purpose = re!(r"^(.+?)[,\s]+(?:для того[,]?\s+)?чтобы\s+(?=\p{L})([^.!?…]+)$", "iu");
+    if let Ok(Some(captures)) = purpose.captures(&quote) {
+        let approach = captures.get(1)?.as_str();
+        let result = captures.get(2)?.as_str();
+        let attachment = re!(r"(?<![\p{L}])(?:подвеш|подвес|навеш|крепл|закреп|привя|обвя|натяг|натян)\p{L}*", "iu");
+        let trigger = re!(r"(?<![\p{L}])(?:если|когда)\s+[^.!?…]+$", "iu");
+        let question = if text::test(attachment, approach) {
+            match trigger.find(result).ok().flatten() {
+                Some(trigger) => format!("Уточните, как движение передастся предмету, {}. Что герой соединяет с подвижной частью?", trigger.as_str()),
+                None => "Уточните, к чему герой крепит предмет и как крепление даст нужный результат.".to_string(),
+            }
+        } else {
+            "Уточните, какая деталь описанного способа должна привести к этому результату и что для неё есть у героя.".to_string()
+        };
+        return Some(json!({ "kind": "method", "narration": format!("Цель понятна. {question} Попытка ничего не расходует.") }));
+    }
+    if context.in_combat {
+        return None;
     }
     let mut options = vec!["осмотреть место внимательнее".to_string()];
     if !context.npc_names.is_empty() {

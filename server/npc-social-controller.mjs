@@ -131,6 +131,7 @@ function npcFacts(state, profile, message = '', { summaryLimit = 500, spokenAlou
     // Тайна, которую знает только этот собеседник: её не говорят первому
     // встречному. Модель видит пометку, запасной ответ такой факт не зачитывает.
     ...(['public', 'party'].includes(String(record.fact.visibility)) ? {} : { guarded: true }),
+    ...(spokenAloud && record.fact.predicate === 'rumor' ? { reported: true } : {}),
     ...(known && record.fact.predicate === 'discovery' && !(record.fact.supersedes_fact_id && known.has(String(record.fact.supersedes_fact_id)))
       ? { party_finding: true } : {}),
   }))
@@ -883,8 +884,7 @@ function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory 
     if (remembered) return { reply: `${profile.name} повторяет: «${clean(remembered.npc_reply, 500)}»`, claimIds: [], factIds: [] }
   }
   const answer = fallbackAnswer(profile, message, hooks, facts, alreadySaid)
-  if (answer?.kind === 'hook') return { reply: `${profile.name} подтверждает: «${answer.sentence}»`, claimIds: [], factIds: [] }
-  if (answer) return { reply: `${profile.name} отвечает: «${answer.sentence}»`, claimIds: [], factIds: [] }
+  if (answer) return { reply: answer.reply, claimIds: [], factIds: answer.id ? [answer.id] : [] }
   const rumor = claims.find((claim) => claim.kind === 'rumor' && !alreadySaid(claim.summary))
   if (rumor) return { reply: `${profile.name} понижает голос: «${rumor.summary}»`, claimIds: [rumor.id], factIds: [] }
   const belief = claims.find((claim) => !alreadySaid(claim.summary))
@@ -959,15 +959,18 @@ function fallbackQuestionStems(profile, message) {
  * Лучшее совпавшее с вопросом предложение из публичных зацепок о собеседнике и
  * открытых фактов. Тайна (`guarded`) сюда не попадает: её без модели не выдают.
  *
- * @returns {{ kind: 'hook' | 'fact', sentence: string, score: number } | null}
+ * @returns {{ id?: string, reply: string, score: number } | null}
  */
 function fallbackAnswer(profile, message, hooks, facts, alreadySaid) {
   const stems = fallbackQuestionStems(profile, message)
   if (!stems.length) return null
   const candidates = [
     ...hooks.map((hook) => ({ kind: 'hook', text: hook.text })),
-    ...facts.filter((fact) => !fact.guarded && !fact.party_finding).map((fact) => ({ kind: 'fact', text: fact.summary })),
+    ...facts.filter((fact) => !fact.guarded && !fact.party_finding)
+      .map((fact) => ({ kind: 'fact', id: fact.id, text: fact.summary, reported: fact.reported })),
   ]
+  const name = profile.name
+  const namePrefix = `${name.toLocaleLowerCase('ru')} `
   let best = null
   for (const candidate of candidates) {
     const sentences = clean(candidate.text, 1_000).split(/(?<=[.!?…])\s+/u).map((part) => clean(part, 320)).filter(Boolean)
@@ -979,11 +982,16 @@ function fallbackAnswer(profile, message, hooks, facts, alreadySaid) {
       const words = plainWords(sentence)
       // Факт, где собеседник описан со стороны, — проза рассказчика, а не его
       // реплика: король без модели произносил «Он просит остановить дракона,
-      // но отводит взгляд…» о самом себе (браузерный плейтест 2026-10-07).
-      if (candidate.kind === 'fact' && sentenceDescribesNpc(words, profile)) continue
+      // но отводит взгляд…» о самом себе. Известное ему свидетельство, в
+      // котором он назван подлежащим, можно передать косвенной речью.
+      const indirect = candidate.reported && sentence.toLocaleLowerCase('ru').startsWith(namePrefix)
+      if (!indirect && candidate.kind === 'fact' && sentenceDescribesNpc(words, profile)) continue
       const score = stems.filter((stem) => words.some((word) => word.startsWith(stem))).length
       if (score < 1 || alreadySaid(sentence)) continue
-      if (!best || score > best.score) best = { kind: candidate.kind, sentence, score }
+      const reply = indirect ? `${name} говорит, что ${sentence.slice(name.length + 1)}`
+        : `${name} ${candidate.kind === 'hook' ? 'подтверждает' : 'отвечает'}: «${sentence}»`
+      if (alreadySaid(reply)) continue
+      if (!best || score > best.score) best = { id: candidate.id, reply, score }
     }
   }
   return best

@@ -135,10 +135,12 @@ export function normalizePartyDecision(value, { policy = null } = {}) {
   const expiresAt = rawExpiresAt > 0
     ? Math.max(createdAt, rawExpiresAt)
     : createdAt > 0 ? createdAt + decisionPolicy.decisionTtlMs : 0
-  const calculatedRequired = requiredVotesFor(type, activeVoterIds.length || eligibleVoterIds.length)
+  const scenarioTreaty = value.scenarioTreaty?.schemaVersion === 1
+    ? { schemaVersion: 1, actorId: id(value.scenarioTreaty.actorId, 'Переговорщик') } : null
+  const voterCount = scenarioTreaty ? eligibleVoterIds.length : (activeVoterIds.length || eligibleVoterIds.length)
+  const calculatedRequired = requiredVotesFor(type, voterCount)
   const rawRequired = safeNumber(value.requiredVotes ?? value.required_votes, calculatedRequired)
-  const maximumRequired = activeVoterIds.length || eligibleVoterIds.length
-  const requiredVotes = Math.max(0, Math.min(maximumRequired, rawRequired))
+  const requiredVotes = scenarioTreaty ? calculatedRequired : Math.max(0, Math.min(voterCount, rawRequired))
   const destinationLocationId = text(value.destinationLocationId ?? value.destination_location_id, 120)
   return {
     id: decisionId,
@@ -170,11 +172,18 @@ export function normalizePartyDecision(value, { policy = null } = {}) {
       schemaVersion: 1,
       questId: id(value.questAcceptance.questId, 'Задание'),
     } } : {}),
+    ...(scenarioTreaty ? { scenarioTreaty } : {}),
     resolutionPrompt: text(value.resolutionPrompt, 360),
     createdAt,
     expiresAt,
     ...(value.resolutionReason ? { resolutionReason: text(value.resolutionReason, 80) } : {}),
   }
+}
+
+export function scenarioTreatyDecisionApproved(interaction) {
+  return interaction.resolvedOptionId === 'accept' && interaction.resolutionReason === 'quorum'
+    && interaction.requiredVotes > 0
+    && Object.values(interaction.votes).filter((selected) => selected === 'accept').length >= interaction.requiredVotes
 }
 
 /** Исполнимый исход сохранённого решения; подпись кнопки не задаёт механику. */
@@ -480,7 +489,10 @@ export function resolvePartyVote(state, {
     }
   }
   votes[voter] = selected
-  const winner = winnerFor(interaction, context, votes)
+  const majority = winnerFor(interaction, context, votes)
+  const winner = majority
+    ?? (interaction.scenarioTreaty && Object.keys(votes).length === context.activeVoters.length
+      ? interaction.options.find((option) => option.id === 'decline') : null)
   const events = [partyDecisionEvent('PartyVoteCast', voter, context, {
     interaction_id: interaction.id,
     hero_id: voter,
@@ -495,7 +507,7 @@ export function resolvePartyVote(state, {
       resolved_option_id: winner.id,
       votes,
       abstained_voter_ids: context.abstainedVoters,
-      resolution_reason: 'quorum',
+      resolution_reason: majority ? 'quorum' : 'no_quorum',
     }))
   }
   return { events, votes, required: context.required, resolvedOptionId: winner?.id ?? null }
@@ -522,7 +534,7 @@ export function resolvePartyAbstain(state, {
   for (const existingActorId of Object.keys(votes)) {
     if (voterFor(context, existingActorId) === voterId) delete votes[existingActorId]
   }
-  const nextContext = { ...context, activeVoters: activeVoterIds, abstainedVoters: abstainedVoterIds, required: requiredVotesFor(interaction.type, activeVoterIds.length) }
+  const nextContext = { ...context, activeVoters: activeVoterIds, abstainedVoters: abstainedVoterIds, required: interaction.scenarioTreaty ? context.required : requiredVotesFor(interaction.type, activeVoterIds.length) }
   const events = [partyDecisionEvent('PartyDecisionAbstained', actor, nextContext, {
     interaction_id: interaction.id,
     hero_id: actor,
@@ -532,7 +544,10 @@ export function resolvePartyAbstain(state, {
     abstentions: { ...interaction.abstentions, [voterId]: 'explicit' },
     votes,
   })]
-  const winner = activeVoterIds.length ? winnerFor(interaction, nextContext, votes) : interaction.options[0]
+  const winner = interaction.scenarioTreaty
+    ? (activeVoterIds.length < context.required || Object.keys(votes).length === activeVoterIds.length
+      ? interaction.options.find((option) => option.id === 'decline') : null)
+    : activeVoterIds.length ? winnerFor(interaction, nextContext, votes) : interaction.options[0]
   if (winner) {
     events.push(partyDecisionEvent('PartyDecisionResolved', actor, nextContext, {
       interaction_id: interaction.id,
@@ -556,6 +571,8 @@ export function partyDecisionActiveVoterIds(interactionValue, connectedHeroIds =
 
 export function partyDecisionPresenceEvents(state, { activeVoterIds = [] } = {}) {
   const interaction = validatePartyVoteState(state, state?.agentInteraction?.id)
+  // Разрыв соединения не отзывает голос и не меняет кворум договора.
+  if (interaction.scenarioTreaty) return { events: [], activeVoterIds: interaction.activeVoterIds, abstainedVoterIds: interaction.abstainedVoterIds }
   const context = participantContext(interaction)
   const activeNow = new Set(uniqueIds(activeVoterIds))
   const activeVoterIdsAfter = context.activeVoters.filter((voterId) => activeNow.has(voterId))
@@ -598,7 +615,9 @@ export function partyDecisionExpiryEvents(state, { now = Date.now() } = {}) {
   if (!interaction || interaction.status !== 'open' || !interaction.expiresAt || Number(now) < interaction.expiresAt) return { events: [] }
   const context = participantContext(interaction)
   const votes = cleanVotes(interaction, context)
-  const winner = winnerFor(interaction, context, votes, { requireQuorum: false })
+  const winner = interaction.scenarioTreaty
+    ? interaction.options.find((option) => option.id === 'decline')
+    : winnerFor(interaction, context, votes, { requireQuorum: false })
   return {
     events: [partyDecisionEvent('PartyDecisionExpired', null, context, {
       interaction_id: interaction.id,

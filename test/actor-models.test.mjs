@@ -54,6 +54,127 @@ test('точный архетип имеет приоритет над fuzzy-п�
   assert.equal(models.resolveModelProfile({ id: 'bandit-1', label: 'Разбойник', kind: 'enemy', archetype: 'humanoid' }, manifest).profile, 'warrior')
 })
 
+test('сюжетные гражданские Ивара и Мира выбирают женскую GLB, явный ключ сохраняется', () => {
+  assert.equal(models.resolveModelProfile({ id: 'npc-ivara', label: 'Маршал Ивара Тейн', kind: 'neutral', archetype: 'командующая гарнизоном' }, manifest).key, 'hero-female')
+  assert.equal(models.resolveModelProfile({ id: 'npc-mira', label: 'Мира Венн', kind: 'neutral', archetype: 'посланница Редстоуновки' }, manifest).key, 'hero-female')
+  assert.equal(models.resolveModelProfile({ id: 'npc-mira', label: 'Мира Венн', kind: 'neutral', archetype: 'посланница', modelKey: 'hero-male' }, manifest).key, 'hero-male')
+})
+
+test('открытая роль Элдрина выбирает лицо дерева без скрытого actor id', () => {
+  const appearance = { version: 2, profile: 'mage', equipment: 'unknown', loadout: {} }
+  const neutral = models.resolveModelProfile({
+    id: 'opaque-neutral-id', label: 'Элдрин', kind: 'neutral',
+    archetype: 'Великое Древо и бывший волшебник', appearance,
+  }, manifest)
+  const enemy = models.resolveModelProfile({
+    id: 'opaque-combat-id', label: 'Элдрин', kind: 'enemy', archetype: 'plant', appearance,
+  }, manifest)
+  assert.equal(neutral.profile, 'elder-tree')
+  assert.equal(enemy.profile, 'elder-tree')
+  const masked = models.resolveModelProfile({
+    id: 'astohan-eldrin', label: 'Незнакомец', kind: 'enemy', archetype: 'plant',
+    appearance: { ...appearance, profile: 'warrior' },
+  }, manifest)
+  assert.equal(masked.profile, 'warrior')
+  const model = models.createProceduralActorModel({
+    id: 'another-opaque-id', label: 'Элдрин', kind: 'neutral',
+    archetype: 'Великое Древо и бывший волшебник', appearance,
+  }, manifest)
+  assert.equal(model.profile, 'elder-tree')
+  assert.ok(model.getObjectByName('elder-tree-face'))
+  const bounds = new Box3().setFromObject(model)
+  assert.ok(bounds.max.y - bounds.min.y > 1, 'фишка должна оставаться объёмной')
+  model.dispose()
+})
+
+test('публичный Трент выбирает профиль древнего дерева, отдельный от обычного Элдрина', () => {
+  const selected = models.resolveModelProfile({ id: 'opaque-trent', label: 'Трент', kind: 'neutral', archetype: 'страж Дикого леса' }, manifest)
+  assert.equal(selected.profile, 'elder-tree')
+})
+
+test('открытая роль призрачной служанки выбирает полупрозрачный силуэт без скрытого actor id', () => {
+  const input = {
+    id: 'opaque-maid-id',
+    label: 'Призрачная служанка',
+    kind: 'neutral',
+    archetype: 'служанка разрушенной кухни',
+    appearance: { version: 2, profile: 'warrior', equipment: 'unknown', loadout: {} },
+  }
+  const selected = models.resolveModelProfile(input, manifest)
+  assert.equal(selected.profile, 'ghost-maid')
+  const actor = models.createProceduralActorModel(input, manifest)
+  assert.equal(actor.profile, 'ghost-maid')
+  assert.ok(actor.getObjectByName('ghost-maid-skirt'))
+  assert.ok(actor.getObjectByName('ghost-maid-apron'))
+  assert.ok(actor.getObjectByName('ghost-maid-cap-rim'))
+  const bounds = new Box3().setFromObject(actor)
+  assert.ok(bounds.min.y >= -.0001 && bounds.max.y > 1.2)
+  const materials = []
+  actor.traverse(object => { if (object.isMesh) materials.push(...(Array.isArray(object.material) ? object.material : [object.material])) })
+  assert.ok(materials.some(material => material.transparent && material.opacity < .6), 'дух должен быть полупрозрачным')
+  const masked = models.resolveModelProfile({
+    id: 'opaque-maid-id', label: 'Незнакомка', kind: 'neutral',
+    archetype: 'служанка разрушенной кухни',
+    appearance: { version: 2, profile: 'warrior', equipment: 'unknown', loadout: {} },
+  }, manifest)
+  assert.equal(masked.profile, 'warrior')
+  assert.notEqual(models.resolveModelProfile({ ...input, label: 'Незнакомка', appearance: undefined }, manifest).profile, 'ghost-maid')
+  assert.equal(models.resolveModelProfile({ ...input, modelKey: 'hero-female' }, manifest).key, 'hero-female')
+  actor.dispose()
+})
+
+test('основной профиль призрачной служанки использует женский GLB и следит за костями рига', async () => {
+  const previousSelf = globalThis.self
+  const previousCreateImageBitmap = globalThis.createImageBitmap
+  globalThis.self = globalThis
+  globalThis.createImageBitmap = async () => ({ width: 4, height: 4, close() {} })
+  try {
+    const entry = manifest.models.find((item) => item.key === 'ghost-maid')
+    assert.ok(entry?.url, 'manifest должен содержать primary ghost-maid GLB')
+    const bytes = readFileSync(join(fileURLToPath(new URL('../public/', import.meta.url)), entry.url.slice(1)))
+    const input = {
+      id: 'opaque-maid-glb',
+      label: 'Призрачная служанка',
+      kind: 'neutral',
+      archetype: 'служанка разрушенной кухни',
+      appearance: { version: 2, profile: 'warrior', equipment: 'unknown', loadout: {} },
+    }
+    const actor = await models.createActorModel(input, {
+      manifest,
+      fetcher: async () => new Response(bytes, { status: 200, headers: { 'content-type': 'model/gltf-binary' } }),
+    })
+    assert.equal(actor.source, 'glb')
+    assert.equal(actor.modelKey, 'ghost-maid')
+    assert.ok(actor.getObjectByName('Head')?.isBone)
+    assert.ok(actor.getObjectByName('spine_02')?.isBone)
+    assert.ok(actor.getObjectByName('ghost-maid-glb-cap'))
+    assert.ok(actor.getObjectByName('ghost-maid-glb-apron'))
+    assert.equal(actor.getObjectByName('ghost-maid-glb-cap')?.parent?.name, 'Head')
+    assert.equal(actor.getObjectByName('ghost-maid-glb-apron')?.parent?.name, 'pelvis')
+    assert.equal(actor.getObjectByName('ghost-maid-glb-apron-bib')?.parent?.name, 'spine_02')
+    const overlayMaterials = []
+    actor.traverse((object) => {
+      if (object.isMesh && String(object.name).startsWith('ghost-maid-glb-')) overlayMaterials.push(object.material)
+    })
+    assert.ok(overlayMaterials.length >= 3)
+    const bones = []
+    actor.traverse((object) => { if (object.isBone) bones.push(object) })
+    actor.idle?.(0)
+    actor.update(.001)
+    const beforePose = bones.map((bone) => bone.quaternion.toArray().join(',')).join('|')
+    actor.idle?.(.5)
+    actor.update(.001)
+    const afterPose = bones.map((bone) => bone.quaternion.toArray().join(',')).join('|')
+    assert.notEqual(afterPose, beforePose, 'исходный GLB должен сохранять анимацию')
+    actor.dispose()
+  } finally {
+    if (previousSelf === undefined) delete globalThis.self
+    else globalThis.self = previousSelf
+    if (previousCreateImageBitmap === undefined) delete globalThis.createImageBitmap
+    else globalThis.createImageBitmap = previousCreateImageBitmap
+  }
+})
+
 test('пути GLB ограничены локальным каталогом', () => {
   assert.equal(models.safeModelUrl('/assets/models/warrior.glb'), '/assets/models/warrior.glb')
   assert.equal(models.safeModelUrl('warrior.glb'), '/assets/models/warrior.glb')
@@ -1163,13 +1284,15 @@ test('вариант фигурки внутри серверного профи
   const resolve = (input) => models.resolveModelProfile(input, manifest).key
   const hero = (archetype, profile) => ({ id: `h-${archetype}`, label: 'Борен', kind: 'hero', archetype, appearance: { version: 2, profile, equipment: 'unknown', loadout: {} } })
   const enemy = (label, profile) => ({ id: `e-${label}`, label, kind: 'enemy', appearance: { version: 2, profile, equipment: 'unknown', loadout: {} } })
-  // С 2 октября 2026 автоподбор ведёт к героям реалистичных пропорций:
-  // воинские классы — основа под надетые вещи, заклинатели — маг, плут и
-  // следопыт — следопыт. Пола в данных персонажа нет, поэтому по умолчанию
-  // мужской вариант; женский выбирается в меню «Фигурки».
-  for (const archetype of ['fighter', 'paladin', 'barbarian', 'monk']) assert.equal(resolve(hero(archetype, 'warrior')), 'hero-male', archetype)
-  for (const archetype of ['wizard', 'sorcerer', 'warlock', 'cleric', 'druid', 'bard']) assert.equal(resolve(hero(archetype, 'mage')), 'mage-male', archetype)
-  for (const archetype of ['rogue', 'ranger']) assert.equal(resolve(hero(archetype, 'rogue')), 'ranger-male', archetype)
+  // Асстоханский автоподбор различает класс. Ручной выбор пола/модели остаётся
+  // отдельным решением игрока, а публичный профиль не раскрывается через
+  // несовместимую class-specific модель.
+  const classFigures = {
+    fighter: 'hero-male', paladin: 'hero-male', barbarian: 'hero-male', monk: 'hero-male',
+    wizard: 'mage-male', sorcerer: 'mage-male', warlock: 'mage-male', cleric: 'mage-male',
+    druid: 'mage-male', bard: 'mage-male', rogue: 'ranger-male', ranger: 'ranger-male',
+  }
+  for (const [archetype, modelKey] of Object.entries(classFigures)) assert.equal(resolve(hero(archetype, models.resolveModelProfile({ id: 'x', label: archetype, kind: 'hero', archetype }, manifest).profile)), modelKey, archetype)
   // Без серверной внешности (старый формат) — по точному классу.
   assert.equal(resolve({ id: 'legacy', label: 'Борен', kind: 'hero', archetype: 'fighter' }), 'hero-male')
   assert.equal(resolve({ id: 'legacy', label: 'Мирра', kind: 'hero', archetype: 'druid' }), 'mage-male')
@@ -1180,12 +1303,13 @@ test('вариант фигурки внутри серверного профи
   assert.equal(resolve(enemy('Существо', 'warrior')), 'hero-male', 'замаскированный враг не получает вариант')
   // Класс врага профиль не уточняет: читается только показанное имя.
   assert.equal(resolve({ ...enemy('Существо', 'warrior'), archetype: 'barbarian' }), 'hero-male')
-  // Ни один автоматический путь не возвращает записи с auto=false.
+  // Асстоханский class-specific путь может открыть закреплённые ручные GLB
+  // автоматически. Остальные auto=false записи остаются ручным выбором.
   const manual = new Set(manifest.models.filter((entry) => entry.auto === false).map((entry) => entry.key))
   for (const key of manifest.models.map((entry) => entry.key)) if (key.startsWith('kaykit-')) assert.ok(manual.has(key), `${key}: KayKit только ручным выбором`)
   for (const profile of ['warrior', 'mage', 'rogue', 'skeleton', 'goblin', 'beast']) {
     for (const archetype of manifest.models.flatMap((entry) => entry.archetypes ?? [])) {
-      assert.equal(manual.has(resolve(hero(archetype, profile))), false, `${profile}/${archetype}`)
+      if (!Object.hasOwn(classFigures, archetype)) assert.equal(manual.has(resolve(hero(archetype, profile))), false, `${profile}/${archetype}`)
       assert.equal(manual.has(resolve({ id: 'x', label: archetype, kind: 'enemy', archetype })), false, `enemy ${archetype}`)
     }
   }

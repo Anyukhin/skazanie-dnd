@@ -157,6 +157,31 @@ test('свободный текст распознаёт силовое откр
   })
 })
 
+test('свободный поиск выбирает авторскую улику по подписи, даже если assetId не входит в общий каталог', () => {
+  const text = 'Ищу под обломками караулки обгоревший журнал сборщика налогов'
+  const command = nearestSceneObjectCommand({
+    actorPosition: { x: 0, y: 0 },
+    text,
+    props: [
+      { id: 'rubble', assetId: 'rubble_heap', x: 0.5, y: 0.5, footprint: [{ x: 0, y: 0 }] },
+      { id: 'journal', assetId: 'paper_scatter', x: 8.5, y: 0.5, footprint: [{ x: 8, y: 0 }] },
+    ],
+    scenarioClueForProp: (prop) => prop.id === 'journal' ? { label: 'обгоревший журнал' } : null,
+  })
+  assert.deepEqual(command, { command_type: 'OperateSceneObject', prop_id: 'journal', intent: 'inspect', approach: 'hand' })
+})
+
+test('цитата, отказ и осмотр комнаты не читают фреску рядом с героем', () => {
+  const options = {
+    props: [{ id: 'fresco', assetId: 'temple_banner', footprint: [{ x: 5, y: 5 }] }],
+    actorPosition: { x: 5, y: 4 }, scenarioClueForProp: () => ({ label: 'фреска' }),
+  }
+  for (const text of ['Не читаю фреску', 'Как изучать фреску?', 'Осматриваю комнату', 'Ищу кота и говорю «фреска»']) {
+    assert.equal(nearestSceneObjectCommand({ ...options, text }), null, text)
+  }
+  assert.equal(nearestSceneObjectCommand({ ...options, text: 'Изучаю фреску' })?.prop_id, 'fresco')
+})
+
 test('свободный текст находит составные варианты канонического предмета', () => {
   for (const [assetId, text, intent] of [
     ['table_small', 'Осмотреть стол', 'inspect'],

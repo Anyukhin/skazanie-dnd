@@ -25,11 +25,11 @@ use crate::http::json;
 pub fn routes() -> Vec<Route> {
     vec![
         // `requestPath.match(/^\/api\/rulesets\/([a-z0-9_]+)\/character-creation$/u)`.
-        Route::get(3945, Matcher::path_template("/api/rulesets/{ruleset}/character-creation"), character_creation),
-        Route::get(4439, Matcher::path("/api/rules/search"), rules_search),
-        Route::get(4453, Matcher::path("/api/world-templates"), world_templates),
+        Route::get(4002, Matcher::path_template("/api/rulesets/{ruleset}/character-creation"), character_creation),
+        Route::get(4506, Matcher::path("/api/rules/search"), rules_search),
+        Route::get(4520, Matcher::path("/api/world-templates"), world_templates),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/engine-mode$/` и `PATCH`.
-        Route::new(5250, Methods::One(Method::PATCH), Matcher::path_template("/api/campaigns/{id}/engine-mode"), engine_mode),
+        Route::new(5322, Methods::One(Method::PATCH), Matcher::path_template("/api/campaigns/{id}/engine-mode"), engine_mode),
     ]
 }
 

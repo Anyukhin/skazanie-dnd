@@ -47,7 +47,7 @@ import { DiceService } from './dice-service.mjs'
 import { MapStore } from './map-store.mjs'
 import { RATE_WINDOW_MS, SlidingWindowCounter } from './rate-window.mjs'
 import { FileEventStore } from './event-store.mjs'
-import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
+import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator, authoredDialogueRequestFingerprint, authoredNarrationReplayMatches } from './game-orchestrator.mjs'
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
 import { createRouterImageGenerator } from './image-generation.mjs'
@@ -1308,7 +1308,7 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
     return {
       ...base,
       door_id: String(input?.door_id ?? input?.doorId ?? '').slice(0, 120),
-      intent: ['open', 'close', 'force'].includes(intent) ? intent : 'open',
+      intent: ['open', 'close', 'force', 'lockpick'].includes(intent) ? intent : 'open',
     }
   }
   if (type === 'OperateSceneObject') {
@@ -1320,7 +1320,7 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
       // опрокинуть и поджечь разрешает только серверный разбор свободного текста
       // (там за это отвечает `approach`), а молитва — обычная кнопка пропса,
       // которую сервер сам и объявил в его глаголах (`sceneShrineVerbsFor`).
-      intent: ['inspect', 'open', 'take', 'use', 'pray'].includes(intent) ? intent : 'inspect',
+      intent: ['inspect', 'open', 'lockpick', 'take', 'use', 'pray'].includes(intent) ? intent : 'inspect',
       // Силовой подход приходит только от серверного разбора свободного текста.
       // Кнопка не может подменить обычное взаимодействие готовым исходом взлома.
       approach: 'hand',
@@ -1346,6 +1346,14 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
     if (['longstrider', 'chain-lightning'].includes(spellId) && targets && targets.length !== suppliedTargets.length) {
       throw commandPolicyError('Выберите каждую цель только один раз', 'INVALID_SPELL_TARGETS')
     }
+    const suppliedMissiles = input?.missile_target_ids ?? input?.missileTargetIds
+    if (suppliedMissiles != null && spellId !== 'magic-missile') {
+      throw commandPolicyError('Распределение дротиков разрешено только для «Волшебной стрелы»', 'INVALID_MISSILE_TARGETS')
+    }
+    if (suppliedMissiles != null && (!Array.isArray(suppliedMissiles) || suppliedMissiles.length < 1 || suppliedMissiles.length > 64
+      || suppliedMissiles.some((id) => typeof id !== 'string' || !id.trim() || id.length > 120))) {
+      throw commandPolicyError('Нужен непустой список целей дротиков', 'INVALID_MISSILE_TARGETS')
+    }
     const castingResource = input?.casting_resource
     if (castingResource != null && (typeof castingResource !== 'string' || !/^[a-z0-9_:-]{1,120}$/u.test(castingResource))) {
       throw commandPolicyError('Неверный источник применения заклинания', 'INVALID_CASTING_RESOURCE')
@@ -1362,6 +1370,7 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
       ...base,
       spell_id: spellId,
       ...(targets ? { target_ids: targets } : target ? { target_id: target } : {}),
+      ...(suppliedMissiles == null ? {} : { missile_target_ids: suppliedMissiles.map((id) => id.trim()) }),
       ...(spellOption ? { spell_option: spellOption } : {}),
       ...(slotLevel == null ? {} : { slot_level: slotLevel }),
       ...(castingResource == null ? {} : { casting_resource: castingResource }),
@@ -1380,10 +1389,18 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
     if (beneficiary != null && (typeof beneficiary !== 'string' || !beneficiary.trim() || beneficiary.length > 120)) {
       throw commandPolicyError('Неверный получатель бонуса реакции', 'INVALID_REACTION_BENEFICIARY')
     }
+    const wakeSpell = input?.wake_spell_id ?? input?.wakeSpellId
+    if (wakeSpell != null && actionId !== 'awaken') {
+      throw commandPolicyError('Выбор пробуждаемого эффекта разрешён только для действия «Разбудить»', 'INVALID_WAKE_SPELL')
+    }
+    if (wakeSpell != null && (typeof wakeSpell !== 'string' || !['sleep', 'hypnotic-pattern'].includes(wakeSpell))) {
+      throw commandPolicyError('Неверный эффект для действия «Разбудить»', 'INVALID_WAKE_SPELL')
+    }
     return {
       ...base,
       action_id: actionId,
       ...(target ? { target_id: target } : {}),
+      ...(wakeSpell == null ? {} : { wake_spell_id: wakeSpell }),
       ...(actionId === 'cast:silvery-barbs' && beneficiary != null ? { beneficiary_id: beneficiary.trim() } : {}),
       ...(input?.item_id ? { item_id: String(input.item_id).slice(0, 120) } : {}),
       // Исход толчка выбирает игрок; значение сверяет Rules Engine.
@@ -2499,9 +2516,8 @@ function partyVoterIdForAccount(campaignId, userId) {
   return `account:${createHash('sha256').update(String(campaignId).toUpperCase()).update('\0').update(String(userId)).digest('hex').slice(0, 24)}`
 }
 
-function partyVoterSnapshot(campaignId, state, eligibleHeroIds) {
+function partyVoterSnapshot(campaignId, state, eligibleHeroIds, memberships = listCampaignMemberships(campaignId)) {
   const policy = state?.partyDecisionPolicy ?? {}
-  const memberships = listCampaignMemberships(campaignId)
   const ownerByHeroId = new Map()
   for (const membership of memberships) {
     for (const heroId of membership.heroIds ?? []) {
@@ -3020,6 +3036,12 @@ const gameOrchestrator = new GameOrchestrator({
   unknownActionHandler: autonomousCampaign,
   // Ответ «что мы знаем» голосом ведущего; без ключа — серверный ответ.
   loreVoice: new LoreVoice({ llmClient: apiKey ? llmClient : null }),
+  scenarioTreatyVoterSnapshot(campaignId, state, actorId) {
+    const memberships = listCampaignMemberships(campaignId)
+    const owned = new Set(memberships.flatMap((member) => member.heroIds ?? []).map(String))
+    const eligibleHeroIds = partyHeroIds(state).filter((id) => id === actorId || owned.has(id))
+    return { eligibleHeroIds, ...partyVoterSnapshot(campaignId, state, eligibleHeroIds, memberships) }
+  },
   rollRegistry,
 })
 
@@ -3382,13 +3404,24 @@ async function settleCombatContinuation(campaignId, { advanceNpc = true } = {}) 
  * переданная маршрутом реплика. Один список и для полной проекции, и для
  * устаревшей — тогда пишется только летопись.
  */
+function scenarioTreatyChronicleEntry(event) {
+  const payload = event.payload
+  let text = ''
+  if ((event.event_type === 'ScenarioTreatyConcluded' || event.event_type === 'ScenarioTreatyRefused') && payload?.party_decision_id) text = payload.text
+  if (event.event_type === 'PartyDecisionConsumed' && event.house_rule_id === 'skazanie:scenario-treaty-decision:v1') {
+    if (payload?.unavailable) text = payload.unavailable
+    else if (payload?.resolved_option_id === 'decline') text = 'Отряд не согласился на договор с Саргатом. Приключение продолжается.'
+  }
+  return text ? { id: `treaty-decision:${event.event_id}`, speaker: 'narrator', author: 'Рассказчик', text, turnConsumed: false } : null
+}
+
 function journalCandidatesFor(events, journalMessage) {
   const eventsForChronicle = Array.isArray(events) ? events : []
   // Ступени приручения попадают в летопись тем же путём и по той же причине:
   // подход к зверю приходит и с доски, и второй фазой ручного броска, а
   // идентификатор карточки детерминирован (`chronicle:<зверь>:<ступень>`),
   // поэтому повторная проекция того же события её не удваивает.
-  return [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), ...eventsForChronicle.map(questDecisionChronicleEntry), ...eventsForChronicle.map(campaignStoryChronicleEntry), ...eventsForChronicle.map((event) => officeChronicleEntry(event)), journalMessage]
+  return [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), ...eventsForChronicle.map(questDecisionChronicleEntry), ...eventsForChronicle.map(scenarioTreatyChronicleEntry), ...eventsForChronicle.map(campaignStoryChronicleEntry), ...eventsForChronicle.map((event) => officeChronicleEntry(event)), journalMessage]
     .flat()
     .filter((candidate) => candidate?.id && String(candidate.text ?? '').trim())
 }
@@ -3508,6 +3541,30 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
   return null
 }
 
+async function settleScenarioTreatyDecision(campaignId, interactionId, state, committed = null) {
+  if (state.mechanics?.campaign_lifecycle?.status !== 'active' || !state.scenario_attention?.treaty?.concluded) return null
+  const key = `scenario-treaty-decision:${interactionId}`
+  const decision = committed ?? await eventStore.getByIdempotencyKey(campaignId, key)
+  if (!decision?.events.some((event) => event.event_type === 'ScenarioTreatyConcluded')) return null
+  return autonomousCampaign.settleAcceptedTreaty(campaignId, key, state)
+}
+
+async function finishScenarioTreatyDecision(campaignId, state) {
+  const decision = state.agentInteraction
+  if (!decision?.scenarioTreaty || decision.status !== 'resolved'
+    || state.mechanics?.campaign_lifecycle?.status !== 'active') return null
+  const key = `scenario-treaty-decision:${decision.id}`
+  const committed = await authoritativeExecutor.executeCommands({
+    campaignId, idempotencyKey: key, context: { isDirector: true },
+    commands: [{ command_type: 'ResolveScenarioTreatyDecision', interaction_id: decision.id }],
+  })
+  if (!committed.events.some((event) => event.event_type === 'PartyDecisionConsumed' && event.payload?.interaction_id === decision.id)) {
+    throw commandPolicyError('Ключ исполнения уже занят', 'IDEMPOTENCY_CONFLICT')
+  }
+  await settleScenarioTreatyDecision(campaignId, decision.id, committed.state, committed)
+  return committed
+}
+
 async function reconcileCampaignProjection(campaignId) {
   try {
     // Сверка идёт на каждом GET комнаты и рукопожатии потока. Раньше она
@@ -3522,7 +3579,7 @@ async function reconcileCampaignProjection(campaignId) {
       authoritative = await eventStore.load(campaignId)
     }
     const questResolution = await finishQuestDecision({ executor: authoritativeExecutor, campaignId, state: authoritative.state })
-    if (questResolution) authoritative = await eventStore.load(campaignId)
+    if (questResolution || await finishScenarioTreatyDecision(campaignId, authoritative.state)) authoritative = await eventStore.load(campaignId)
     // Состояние головы уже в руках — сверке нужны только checkpoint и события.
     const pending = await eventStore.pendingProjection(campaignId, { withState: false })
     const room = getRoom(campaignId)
@@ -3656,15 +3713,15 @@ async function persistInteractionProjection(campaignId, interaction) {
   const committed = await authoritativeExecutor.commitDerived({
     campaignId,
     idempotencyKey,
-    events: [partyDecisionOpenedEvent(interaction, null, {
+    deriveEvents: (state) => state.agentInteraction ? [] : [partyDecisionOpenedEvent(interaction, null, {
       eligibleHeroIds,
       eligibleVoterIds: voterSnapshot.eligibleVoterIds,
       voterByHeroId: voterSnapshot.voterByHeroId,
-      policy: loaded.state.partyDecisionPolicy,
+      policy: state.partyDecisionPolicy,
     })],
     producerCapability: PARTY_DECISION_CAPABILITY,
   })
-  return persistAuthoritativeProjection(campaignId, committed.state, committed.events)
+  return committed ? persistAuthoritativeProjection(campaignId, committed.state, committed.events) : null
 }
 
 async function expirePartyDecisionIfNeeded(campaignId, now = Date.now()) {
@@ -4336,6 +4393,14 @@ async function handleHttpRequest(req, res) {
       const heroId = String(body.actor_id ?? '')
       if (!canUseHero(user, heroId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту', code: 'ACTOR_FORBIDDEN' })
       const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
+      const assertTreatyVoter = (state) => {
+        const decision = state?.agentInteraction
+        const voter = decision?.voterByActorId?.[heroId]
+        if (decision?.scenarioTreaty && decision.id === partyVoteMatch[2] && voter?.startsWith('account:')
+          && voter !== partyVoterIdForAccount(campaignId, user.id)) {
+          throw commandPolicyError('Этот аккаунт не участвовал при открытии голосования', 'ACTOR_FORBIDDEN')
+        }
+      }
       let committed = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
       if (!committed) {
         const loaded = await eventStore.load(campaignId)
@@ -4352,14 +4417,12 @@ async function handleHttpRequest(req, res) {
           idempotencyKey,
           // Пересобирается против свежего состояния: кворум и разрешение зависят
           // от того, кто ещё в комнате на момент записи.
-          deriveEvents: (state) => (body.abstain === true
-            ? resolvePartyAbstain(state, { interactionId: partyVoteMatch[2], heroId })
-            : resolvePartyVote(state, {
-              interactionId: partyVoteMatch[2],
-              heroId,
-              optionId: body.option_id,
-              eligibleHeroIds: eligible,
-            })).events,
+          deriveEvents: (state) => {
+            assertTreatyVoter(state)
+            return (body.abstain === true
+              ? resolvePartyAbstain(state, { interactionId: partyVoteMatch[2], heroId })
+              : resolvePartyVote(state, { interactionId: partyVoteMatch[2], heroId, optionId: body.option_id, eligibleHeroIds: eligible })).events
+          },
           producerCapability: PARTY_DECISION_CAPABILITY,
         })
       }
@@ -4370,8 +4433,12 @@ async function handleHttpRequest(req, res) {
       if (!recordedVote || (body.abstain !== true && recordedVote.payload.option_id !== body.option_id)) {
         throw commandPolicyError('Ключ уже использован для другого голоса', 'IDEMPOTENCY_CONFLICT')
       }
+      assertTreatyVoter(committed.state)
       const projected = persistAuthoritativeProjection(campaignId, committed.state, committed.events)
-      const latestRoom = await reconcileCampaignProjection(campaignId) ?? projected ?? getRoom(campaignId)
+      let latestRoom = await reconcileCampaignProjection(campaignId) ?? projected ?? getRoom(campaignId)
+      if (await settleScenarioTreatyDecision(campaignId, partyVoteMatch[2], latestRoom.state)) {
+        latestRoom = await reconcileCampaignProjection(campaignId) ?? latestRoom
+      }
       return json(res, 200, {
         version: latestRoom.version,
         updatedAt: latestRoom.updatedAt,
@@ -5137,6 +5204,11 @@ async function handleHttpRequest(req, res) {
         replayedIntent = duplicate.events.find((event) => event.event_type === 'DirectorIntentRecorded')?.payload?.intent ?? null
       }
       let loaded = await autonomousCampaign.load(campaignId)
+      const recovered = await eventStore.getByIdempotencyKey(campaignId, `${key}:campaign-completion`)
+      if (!duplicate && recovered?.events.some((event) => event.event_type === 'CampaignCompleted' && event.payload?.ending?.id === 'treaty')) {
+        return json(res, 200, { duplicate: true, state_version: loaded.state_version, admin_commands: 0,
+          state: viewerStateFor(loaded.state, user, ownedViewerActorId(loaded.state, user, campaignId)) })
+      }
       assertCampaignPlayable(loaded.state)
       assertDirectorAdvanceReady(campaignId, loaded.state)
       if (!replayedIntent && loaded.state.agentInteraction?.status === 'open') {
@@ -6187,7 +6259,9 @@ async function handleHttpRequest(req, res) {
       if (body.request_kind != null && !REQUEST_KINDS.includes(body.request_kind)) {
         return json(res, 400, { error: 'Неизвестный тип реплики', code: 'REQUEST_KIND_INVALID' })
       }
-      const requestKind = body.request_kind == null ? inferRequestKind(action) : normalizeRequestKind(body.request_kind)
+      const requestKind = body.request_kind == null
+        ? body.npc_id != null && body.npc_id !== '' ? 'action' : inferRequestKind(action)
+        : normalizeRequestKind(body.request_kind)
       const conversationOnly = requestKind !== 'action'
       if (conversationOnly && (body.roll || body.confirmed_proposal_id || body.supersedes_check_id || body.supersedes_proposal_id)) {
         return json(res, 400, { error: 'Вопрос и обсуждение не могут подтверждать или изменять игровые действия', code: 'NON_ACTION_EXECUTION_FORBIDDEN' })
@@ -6212,25 +6286,45 @@ async function handleHttpRequest(req, res) {
       const room = await reconcileCampaignProjection(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
-      if (!conversationOnly) assertCampaignPlayable(room.state)
       const trustedState = room.state
       const requestedPlayerId = String(body.actor_id ?? '')
       const playerId = requestedPlayerId || String(trustedState.activePlayerId || '')
       if (!canUseHero(user, playerId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
-      const explicitNpcId = conversationOnly ? '' : explicitNarrationNpcId(trustedState, user, playerId, body.npc_id)
+      const idempotencyKey = String(body.idempotencyKey || body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
+      const requestedNpc = typeof body.npc_id === 'string' ? body.npc_id.trim() : ''
+      const replayRequest = { campaignId, playerId, message: action, npcId: requestedNpc, body }
+      let explicitNpcId = ''
+      let authoredDialogueReplay = false
+      let availabilityError = null
+      if (!conversationOnly) {
+        try {
+          assertCampaignPlayable(trustedState)
+          explicitNpcId = explicitNarrationNpcId(trustedState, user, playerId, body.npc_id)
+        } catch (error) { availabilityError = error }
+      }
       const combatActorId = String(trustedState.mechanics?.combat?.initiative?.[trustedState.mechanics?.combat?.active_index ?? 0]?.actor_id ?? '')
-      if (!conversationOnly && trustedState.mechanics?.combat?.active && combatActorId && playerId !== combatActorId) {
-        return json(res, 409, { error: `Сейчас ходит другой участник: ${combatActorId}`, code: 'NOT_ACTIVE_ACTOR' })
-      }
-      if (!conversationOnly && trustedState.mechanics?.death?.campaign_status === 'party_defeated') {
-        return json(res, 409, { error: 'Все герои погибли. Эта история завершена, продолжать игру в этом мире нельзя', code: 'WORLD_ENDED' })
-      }
-      if (!conversationOnly && trustedState.mechanics?.death?.heroes?.[playerId]?.status === 'dead') {
-        return json(res, 409, { error: 'Сначала воскресите погибшего героя или замените его новым', code: 'HERO_DEAD_UNRESOLVED' })
+      if (!conversationOnly) {
+        const blocked = trustedState.mechanics?.combat?.active && combatActorId && playerId !== combatActorId
+          ? { error: `Сейчас ходит другой участник: ${combatActorId}`, code: 'NOT_ACTIVE_ACTOR' }
+          : trustedState.mechanics?.death?.campaign_status === 'party_defeated'
+            ? { error: 'Все герои погибли. Эта история завершена, продолжать игру в этом мире нельзя', code: 'WORLD_ENDED' }
+            : trustedState.mechanics?.death?.heroes?.[playerId]?.status === 'dead'
+              ? { error: 'Сначала воскресите погибшего героя или замените его новым', code: 'HERO_DEAD_UNRESOLVED' } : null
+        if (availabilityError || blocked) {
+          // Современная запись разговора удостоверяет повтор уже исполненной
+          // заявки, даже если её последствия убрали собеседника из сцены.
+          const validNpcId = body.npc_id == null || body.npc_id === '' || /^[A-Za-z0-9._:-]{1,120}$/u.test(requestedNpc)
+          const duplicate = validNpcId && await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+          authoredDialogueReplay = authoredNarrationReplayMatches(duplicate?.events, replayRequest)
+          if (!authoredDialogueReplay) {
+            if (availabilityError) throw availabilityError
+            return json(res, 409, blocked)
+          }
+          explicitNpcId = requestedNpc
+        }
       }
       if (exceedsRate(`narrate:${user.id}`, 40)) return json(res, 429, { error: 'Слишком много ходов за короткое время' })
       const mode = 'enforce'
-      const idempotencyKey = String(body.idempotencyKey || body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
       const streamMessageId = narrationMessageId(idempotencyKey)
       narrationTransport = {
         campaignId,
@@ -6275,10 +6369,13 @@ async function handleHttpRequest(req, res) {
       const player = trustedState.players?.find((candidate) => String(candidate.id) === playerId)
       let directorResolution = null
       let directorReplay = null
-      if (!conversationOnly && mode === 'enforce' && !explicitNpcId) {
+      if (!conversationOnly && mode === 'enforce' && !explicitNpcId && !authoredDialogueReplay) {
         const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
         const duplicateScene = (duplicate?.events ?? []).find((event) => event.event_type === 'SceneAdvanced')
-        if (duplicateScene) {
+        if (authoredDialogueRequestFingerprint(duplicate?.events)) {
+          authoredDialogueReplay = authoredNarrationReplayMatches(duplicate.events, replayRequest)
+          if (!authoredDialogueReplay) throw commandPolicyError('Этот ключ идемпотентности уже использован для другого игрового действия', 'IDEMPOTENCY_CONFLICT')
+        } else if (duplicateScene) {
           const fingerprint = directorTransitionFingerprint({ campaignId, action })
           if (duplicateScene.payload?.request_fingerprint !== fingerprint) {
             throw commandPolicyError('Этот ключ идемпотентности уже использован для другого перехода сцены', 'IDEMPOTENCY_CONFLICT')
@@ -6306,7 +6403,7 @@ async function handleHttpRequest(req, res) {
           throw commandPolicyError('Нет завершённого решения группы для перехода сцены', 'PARTY_DECISION_REQUIRED')
         }
       }
-      const directorInteraction = !conversationOnly && mode === 'enforce' && !explicitNpcId && !directorResolution && !directorReplay
+      const directorInteraction = !conversationOnly && mode === 'enforce' && !explicitNpcId && !authoredDialogueReplay && !directorResolution && !directorReplay
         ? proposeAgentInteraction(action, trustedState, { actorName: String(player?.character ?? player?.name ?? '') })
         : null
       // Соло-стол не голосует. Бросок судьбы остаётся карточкой и в одиночку:
@@ -6375,6 +6472,7 @@ async function handleHttpRequest(req, res) {
             requestKind,
             idempotencyKey,
             npcId: explicitNpcId,
+            authoredDialogueReplay,
             verifiedRoll,
             manualRoll: body.manual_roll === true,
             confirmedProposalId: typeof body.confirmed_proposal_id === 'string' ? body.confirmed_proposal_id : null,

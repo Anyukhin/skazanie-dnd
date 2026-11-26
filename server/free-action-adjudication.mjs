@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { affirmativeActionText } from './action-wording.mjs'
 import { DIFFICULTY_CLASSES } from './adjudicator.mjs'
 import { actorPosition, findActor, shortestTacticalPath, skillProficiencyForActor } from './rules-engine.mjs'
 import { cellAt, deserializeTacticalMap, doorsReachableFrom, edgeBetween } from './tactical-map.mjs'
@@ -83,6 +84,16 @@ const WALL_BREAK_ACTION = /(?:пролом|пробива|пробить|про�
 const WALL_COLLISION_NON_ACTION = /(?:\?|(?<![\p{L}\p{M}])(?:если|хочу|могу|можно)(?![\p{L}\p{M}]))/iu
 const SELF_HAZARD_CONTACT_VERBS = /(?<![\p{L}\p{M}])(?:сажусь|сяду|сижу|ложусь|лягу|вхожу|наступаю|трогаю|касаюсь|прикасаюсь|лезу|прыгаю)(?![\p{L}\p{M}])/iu
 const SELF_HAZARD_CONTACT_NEGATION = /(?<![\p{L}\p{M}])не\s+(?:сажусь|сяду|сижу|ложусь|лягу|вхожу|наступаю|трогаю|касаюсь|прикасаюсь|лезу|прыгаю)(?![\p{L}\p{M}])/iu
+const DIRECT_FIRE_CONTACT = /^[\p{S}\p{M}\s]*(?:я\s+)?(?:(?:осознанно|намеренно|нарочно|специально|осторожно|медленно|сразу|со\s+всего\s+разбега)\s+)*(?:(?:сажусь|сяду|сижу|сесть|ложусь|лягу|вхожу|войти|наступаю|лезу|прыгаю|прыгнуть)\s+(?:(?:прямо|жопой|задом|рукой|ногой)\s+)*(?:в|на)\s+|(?:трогаю|касаюсь|прикасаюсь)\s+(?:(?:кистью|рукой|ногой|пальцем|к)\s+)*)(?:(?:горящ\p{L}*|раскал[её]нн\p{L}*|открыт\p{L}*|сам\p{L}*)\s+)*(?:огонь|огня|огню|пламя|пламени|кост[её]р|костр[ау]|жаровн[июе]|лав[уы]|магм[уы]|трещину\s+с\s+лавой)(?![\p{L}\p{M}])/iu
+const FIRE_IN_BACKGROUND = /(?<![\p{L}\p{M}])(?:(?:у|подле|вблизи|недалеко\s+от|неподал[её]ку\s+от)\s+(?:огня|пламени|костра|жаровни|лавы)|(?:смотрю|глядя)\s+(?:в|на)\s+(?:огонь|пламя|кост[её]р|жаровню|лаву))(?![\p{L}\p{M}])/iu
+const CONTACT_IN_DESCRIPTION = /^(?:я\s+)?(?:вижу|наблюдаю|описываю|представляю|вспоминаю|рассказываю|читаю|пишу)(?![\p{L}\p{M}])|(?<![\p{L}\p{M}])(?:на|в)\s+(?:рисунке|картине|иллюзии|описании|рассказе|сне)(?![\p{L}\p{M}])/iu
+const CONTACT_NOT_ATTEMPTED = /^(?:я\s+)?не\s+(?:намерен\p{L}*|планирую|собираюсь|буду|хочу)\s+/iu
+
+function fireIsBackground(text) {
+  const operative = affirmativeActionText(text)
+  return CONTACT_NOT_ATTEMPTED.test(text) || !HAZARD_CONTACT_VERBS.test(operative) || CONTACT_IN_DESCRIPTION.test(operative)
+    || (!DIRECT_FIRE_CONTACT.test(operative) && FIRE_IN_BACKGROUND.test(operative))
+}
 
 /** Приводит название опасности к закрытому серверному каталогу. */
 export function canonicalEnvironmentHazardId(value = '') {
@@ -109,6 +120,9 @@ function hazardRelationFor(text, reading = {}) {
   if (SELF_HAZARD_CONTACT_NEGATION.test(value) || WALL_COLLISION_NON_ACTION.test(value)) return { hazard_id: hazardId, relation: 'none' }
   if (HAZARD_NEAR_OR_NONE.test(value)) return { hazard_id: hazardId, relation: 'none' }
   if (HAZARD_AVOIDANCE.test(value)) return { hazard_id: hazardId, relation: 'avoid' }
+  // Огонь должен быть целью контакта. Упоминание огня в словах или в
+  // описании места («сажусь на стул у огня») не разрешает самоурон.
+  if (hazardId === 'fire' && fireIsBackground(value)) return null
   if (!HAZARD_CONTACT_VERBS.test(value)) return null
   // Контакт с опасностью — самоурон. Подстановка другого существа под огонь
   // идёт отдельным эффектом hazard_damage и сюда не попадает.
@@ -133,6 +147,7 @@ function selfHazardContactId(state, text, reading, actorId) {
     || HAZARD_AVOIDANCE.test(value)) return ''
   const targets = [reading.target_id, reading.effect_target].map((target) => String(target ?? '').trim()).filter(Boolean)
   const hazardId = hazardIdMentionedIn(value)
+  if (hazardId === 'fire' && fireIsBackground(value)) return ''
   const sourceIds = targets.length ? nearestHazardAt(state, actorId)
     .filter(candidate => candidate.hazard_id === hazardId)
     .map(candidate => candidate.source?.id).filter(Boolean) : []
@@ -298,6 +313,14 @@ export function resolveHazardContact(state = {}, actorId = '', text = '', readin
     source: nearby.source,
     distance: nearby.distance,
   }
+}
+
+/** Для прямой заявки наличие видимого и досягаемого источника проверяем до модели. */
+export function unavailableHazardContactReason(state, actorId, text, reading) {
+  const value = clean(text, 1_000)
+  if (!(DIRECT_FIRE_CONTACT.test(value) && !fireIsBackground(value)) && !wallCollisionIntent(value)) return null
+  const contact = resolveHazardContact(state, actorId, value, reading)
+  return contact?.status === 'unavailable' && contact.relation === 'contact' ? contact.reason : null
 }
 
 /** Есть ли у указанной видимой цели подтверждённая ближайшая опасность. */
@@ -496,8 +519,20 @@ export function hasRecognizedFreeActionApproach(text = '') {
   return APPROACH_PATTERNS.some((pattern) => pattern.test.test(value))
 }
 
-// Заведомо не по силам смертному: целый замок, гора, полёт без магии.
-const IMPOSSIBLE_FEAT = /(?<![\p{L}])(?:(?:весь|всю|целый|целую|целиком)\s+(?:замок|город|гору|дом|крепость|башню|корабль|лес|мост|стену)|(?:поднимаю|поднять|поднимает|переворачиваю|сдвигаю)\s+(?:замок|гору|крепость|башню|город)|взлетаю|улетаю|лечу\s+(?:над|по\s+небу|в\s+небо))(?![\p{L}])/iu
+// Удерживаемся в пределах прямой заявки на ручное перемещение сооружения
+// или горы. «Поднимаю замок» может означать вещь, а заявка с иным средством
+// должна пройти обычное судейство.
+const IMPOSSIBLE_MANUAL_FEAT = /^(?:я\s+)?(?:(поднимаю|сдвигаю|переворачиваю)|(?:пытаюсь\s+)?(поднять|сдвинуть|перевернуть))\s+((?:весь|целый)\s+(?:замок|город|дом|корабль|мост|лес)|(?:всю|целую)\s+(?:гору|крепость|башню|стену)|(?:замок|город|крепость|башню)\s+целиком|гору|город|крепость|башню)(?:\s+(одной\s+рукой|голыми\s+руками|вручную))?[.!…]*$/iu
+const PURPOSE_CLAUSE = /^(.+?)[,\s]+(?:для того[,]?\s+)?чтобы\s+(?=\p{L})([^.!?…]+)$/iu
+const ATTACHMENT_ACTION = /(?<![\p{L}])(?:подвеш|подвес|навеш|крепл|закреп|привя|обвя|натяг|натян)\p{L}*/iu
+
+export function impossibleManualFeatRefusal(text = '') {
+  const feat = IMPOSSIBLE_MANUAL_FEAT.exec(clean(text, 1_000).toLocaleLowerCase('ru'))
+  if (!feat) return null
+  const [, conjugated, infinitive, target, means] = feat
+  const verb = infinitive ?? { поднимаю: 'поднять', сдвигаю: 'сдвинуть', переворачиваю: 'перевернуть' }[conjugated]
+  return `Герою не по силам ${verb} ${target} ${means ?? 'вручную'}. Попытка ничего не расходует.`
+}
 
 /**
  * Свободное действие, которое запасной разбор без модели не узнал по шаблонам.
@@ -506,23 +541,31 @@ const IMPOSSIBLE_FEAT = /(?<![\p{L}])(?:(?:весь|всю|целый|целую
  * отвечали 8 из 10 («Поднимаю шишку с пола», «Изучить карту…», «Придерживаю
  * дверь щитом и всматриваюсь в воду»): сквозной прогон Асстохана, 2026-10-05.
  *
- * Ответ остаётся уточнением (короткий ответ игрока продолжает заявку), но
- * называет конкретные способы добиться результата из этой сцены и прямо
- * говорит, что жест для атмосферы броска не требует. Заведомо невозможное
- * получает честный ответ. В бою возвращается `null`: там действие стоит часть
- * хода, и прежнее уточнение остаётся.
+ * Уточнение продолжает заявку. Если игрок уже назвал цель, спрашиваем о
+ * способе и условиях. В бою при неясной цели уточнение составляет оркестратор.
  *
  * @param {{ heroName?: string, inCombat?: boolean, npcNames?: string[], onward?: string }} context
- * @returns {{ kind: 'impossible'|'flavor', narration: string } | null}
+ * @returns {{ kind: 'impossible'|'flavor'|'method', narration: string } | null}
  */
 export function mundaneActionOutcome(text = '', { heroName = '', inCombat = false, npcNames = [], onward = '' } = {}) {
   const value = clean(text, 1_000)
-  if (!value || inCombat) return null
+  if (!value) return null
   const hero = clean(heroName, 80) || 'Герой'
   const quote = value.replace(/[.!?…]+$/u, '')
-  if (IMPOSSIBLE_FEAT.test(value)) {
-    return { kind: 'impossible', narration: `${hero} примеривается — «${quote}», — но это не по силам ни одному смертному. Какой способ мир позволит: рычаг, заклинание, помощь отряда? Попытка ничего не расходует.` }
+  const refusal = impossibleManualFeatRefusal(value)
+  if (refusal) return { kind: 'impossible', narration: refusal }
+  const purpose = PURPOSE_CLAUSE.exec(quote)
+  if (purpose) {
+    const [, approach, result] = purpose
+    const trigger = /(?<![\p{L}])(?:если|когда)\s+[^.!?…]+$/iu.exec(result)?.[0]
+    const question = ATTACHMENT_ACTION.test(approach)
+      ? trigger
+        ? `Уточните, как движение передастся предмету, ${trigger}. Что герой соединяет с подвижной частью?`
+        : 'Уточните, к чему герой крепит предмет и как крепление даст нужный результат.'
+      : 'Уточните, какая деталь описанного способа должна привести к этому результату и что для неё есть у героя.'
+    return { kind: 'method', narration: `Цель понятна. ${question} Попытка ничего не расходует.` }
   }
+  if (inCombat) return null
   const options = [
     'осмотреть место внимательнее',
     // Имена списком в скобках: склонять их нечем, а «расспросить Старый Финн» режет слух.

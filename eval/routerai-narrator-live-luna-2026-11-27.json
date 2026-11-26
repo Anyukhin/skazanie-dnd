@@ -1,0 +1,148 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-11-26T22:30:30.282Z",
+  "provider": "RouterAI",
+  "synthetic_only": true,
+  "source_run": {
+    "profile": "craft",
+    "repeats": 1,
+    "reasoning_overrides": {
+      "openai/gpt-6-luna": {
+        "enabled": false
+      }
+    },
+    "catalog_sha256": "28eb8a40f0a1f64c1e894f8b7b22a45cbaf18b5249127f2c2f106ee39a9090d2",
+    "case_ids": [
+      "open-promise"
+    ],
+    "brief_sha256": {
+      "open-promise": "39f228fa73198f2d35c1b35fc19085501ac010160b29ffbfbabfa813e1a5893f"
+    },
+    "source_hashes": {
+      "server/narrator.mjs": "6651d34987d7f5ccf8265b843cee56aa36b594413d72de8611aecd35fc85538f",
+      "server/llm-client.mjs": "2f16a42baeb160b46c29df0b5f73a3ddce390a8325b77873d1cf85e91addb906",
+      "server/model-style-profiles.mjs": "1ea5885eb85b910af514fe7dafd988b7c239c31545c2ea96e23881f45e994536",
+      "server/campaign-ai-context.mjs": "ce2dbb4a883fb27135dfdc96d05901275f56e706f22e65d9e2fdab51877415b1",
+      "server/security.mjs": "1c01a1983ee4da8440e80b5fb77efd4f687384f46e3b62894470f97b50b3da1a",
+      "prompts/narrator/v14.txt": "153359f59d8a04675f4c7ecde1a8945131b1ba8b0d49ae9d7078f706b1e7427f",
+      "prompts/narrator/few-shot-v1.json": "d5db4809f4d5f311d0bd92bbfe97d8be8841294b789dfb5c0291b3afd97ef384"
+    },
+    "addendum_sha256": "d4edd5f1fdbc3a3e9ba33e49c5f68ad5e9efe258d69ad9d06dc0396c9948f39b",
+    "runner_sha256": "d90ba22ea06b1fa2d5f37bbd920ecc3bebfc15731fcebb1173742a55d17a5022"
+  },
+  "models": [
+    "openai/gpt-6-luna"
+  ],
+  "pricing_per_token": {
+    "openai/gpt-6-luna": {
+      "prompt": 0.000010862644,
+      "completion": 0.00005431322,
+      "web_search": 1.0862644,
+      "input_cache_read": 0.0000010862644,
+      "input_cache_write": 0.000013578305
+    }
+  },
+  "totals": {
+    "openai/gpt-6-luna": {
+      "cases": 1,
+      "accepted": 1,
+      "within_12s": 1,
+      "median_render_ms": 6705,
+      "attempts": 2,
+      "prompt_tokens": 12088,
+      "completion_tokens": 72,
+      "total_tokens": 12160,
+      "provider_cost_rub": 0.07556467477650002,
+      "catalog_cost_rub": 0.135218192512
+    }
+  },
+  "requests": [
+    {
+      "id": 1,
+      "model": "openai/gpt-6-luna",
+      "case_id": "open-promise",
+      "response_model": "openai/gpt-6-luna",
+      "ok": true,
+      "requested_at": "2026-11-26T22:30:30.288Z",
+      "latency_ms": 3743,
+      "first_delta_ms": 3255,
+      "parameters": {
+        "temperature": 0.4,
+        "frequency_penalty": 0.35,
+        "presence_penalty": 0.2,
+        "max_tokens": 1200,
+        "reasoning": {
+          "enabled": false
+        },
+        "stream": true,
+        "timeout_ms": 30000
+      },
+      "raw_text": "В трактире посетители торопливо расходятся, а Мира обещала оставить карту старых троп под медной кружкой. Удалось ли ей выполнить обещание, пока не ясно.",
+      "usage": {
+        "total_tokens": 6019,
+        "prompt_tokens": 5974,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 45,
+        "cost": 0.06618328255500001
+      },
+      "catalog_cost_rub": 0.067337530156
+    },
+    {
+      "id": 2,
+      "model": "openai/gpt-6-luna",
+      "case_id": "open-promise",
+      "response_model": "openai/gpt-6-luna",
+      "ok": true,
+      "requested_at": "2026-11-26T22:30:34.034Z",
+      "latency_ms": 2954,
+      "first_delta_ms": 2640,
+      "parameters": {
+        "temperature": 0.4,
+        "frequency_penalty": 0.35,
+        "presence_penalty": 0.2,
+        "max_tokens": 1200,
+        "reasoning": {
+          "enabled": false
+        },
+        "stream": true,
+        "timeout_ms": 30000
+      },
+      "raw_text": "В трактире посетители торопливо расходятся. Под медной кружкой карта пока не подтверждена.",
+      "usage": {
+        "total_tokens": 6141,
+        "prompt_tokens": 6114,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 5967
+        },
+        "completion_tokens": 27,
+        "cost": 0.0093813922215
+      },
+      "catalog_cost_rub": 0.067880662356
+    }
+  ],
+  "samples": [
+    {
+      "model": "openai/gpt-6-luna",
+      "case_id": "open-promise",
+      "attempt_ids": [
+        1,
+        2
+      ],
+      "accepted": true,
+      "render_ms": 6705,
+      "first_verified_text_ms": 3650,
+      "final_text": "В трактире посетители торопливо расходятся. Под медной кружкой карта пока не подтверждена.",
+      "final_provider": "Object",
+      "include_memory": true,
+      "last_prompt_contains_memory_focus": true,
+      "repair_codes": [
+        "PROMISE_RESOLUTION_NOT_IN_BRIEF"
+      ]
+    }
+  ],
+  "note": "Расход включает черновики и правки. provider_cost_rub суммирует usage.cost провайдера. Медиана рассчитана по полной длительности Narrator.render. Ответы, прошедшие проверку, могут содержать смысловые ошибки."
+}

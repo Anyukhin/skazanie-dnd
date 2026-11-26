@@ -140,6 +140,8 @@ export type SpellAnimationCue = CombatAnimationPresentation & SpellAnimationCore
       kind: 'projectile'
       actorId: string
       targetIds: string[]
+      /** Для «Волшебной стрелы» хранит цель каждого отдельного дротика. */
+      projectileTargetIds?: string[]
       from?: BoardPoint
       to?: BoardPoint
       targetGridOrigin?: BoardPoint
@@ -586,9 +588,13 @@ function spellCueFromCast(event: GameEvent, confirmedProjectileCount?: number): 
     ...(family !== spellEffectPalette(spellId).family ? { visualFamily: family } : {}),
   }
   if (profile.kind === 'projectile') {
+    const projectileTargetIds = Array.isArray(payload.missile_target_ids)
+      ? payload.missile_target_ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : undefined
     return {
       ...common,
       kind: 'projectile',
+      ...(projectileTargetIds?.length ? { projectileTargetIds } : {}),
       from: geometry.from,
       to: geometry.to,
       // Сервер кладёт фактическое число снарядов (с учётом ячейки выше) в

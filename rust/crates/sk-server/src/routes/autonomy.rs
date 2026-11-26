@@ -56,9 +56,9 @@ use crate::state::AppState;
 pub fn routes() -> Vec<Route> {
     vec![
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/intents$/` и `POST` (5040–5041).
-        Route::post(5073, Matcher::path_template("/api/campaigns/{id}/autonomy/intents"), intents),
+        Route::post(5140, Matcher::path_template("/api/campaigns/{id}/autonomy/intents"), intents),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/advance$/` и `POST` (5070–5071).
-        Route::post(5103, Matcher::path_template("/api/campaigns/{id}/autonomy/advance"), advance),
+        Route::post(5170, Matcher::path_template("/api/campaigns/{id}/autonomy/advance"), advance),
     ]
 }
 
@@ -385,6 +385,11 @@ async fn run_advance(core: Rc<GameCore>, step: Advance) -> Result<Value, Caught>
         replayed_intent = duplicate.events.iter().find(|event| is_type(event, "DirectorIntentRecorded")).and_then(|event| at(Some(event), &["payload", "intent"])).filter(|intent| !intent.is_null()).cloned();
     }
     let mut loaded = set.autonomous.load(&campaign_id).map_err(orchestrator_failure)?;
+    let recovered = core.events.get_by_idempotency_key(&campaign_id, &format!("{key}:campaign-completion")).map_err(Failure::from)?;
+    if recovered.is_some_and(|commit| commit.events.iter().any(|event| is_type(event, "CampaignCompleted") && event["payload"]["ending"]["id"] == "treaty")) {
+        return Ok(json!({ "duplicate": true, "state_version": loaded.state_version, "admin_commands": 0,
+            "state": viewer(&loaded.state, &user, &hero_ids)? }));
+    }
     playable(&loaded.state)?;
     assert_director_advance_ready(&app, &campaign_id, &loaded.state).await?;
     let interaction = loaded.state.get("agentInteraction");

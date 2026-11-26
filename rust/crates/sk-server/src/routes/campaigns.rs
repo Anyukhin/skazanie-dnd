@@ -39,13 +39,13 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     vec![
-        Route::get(4458, Matcher::path("/api/campaigns"), list_campaigns),
-        Route::get(4486, Matcher::path("/api/heroes"), list_heroes),
-        Route::post(4498, Matcher::path("/api/campaigns"), create_campaign),
+        Route::get(4525, Matcher::path("/api/campaigns"), list_campaigns),
+        Route::get(4553, Matcher::path("/api/heroes"), list_heroes),
+        Route::post(4565, Matcher::path("/api/campaigns"), create_campaign),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/invites$/` и `POST`.
-        Route::post(4835, Matcher::path_template("/api/campaigns/{id}/invites"), create_invite),
+        Route::post(4902, Matcher::path_template("/api/campaigns/{id}/invites"), create_invite),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/join$/` и `POST`.
-        Route::post(4876, Matcher::path_template("/api/campaigns/{id}/join"), join_campaign),
+        Route::post(4943, Matcher::path_template("/api/campaigns/{id}/join"), join_campaign),
     ]
 }
 

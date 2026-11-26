@@ -6,7 +6,8 @@ import { PRIVATE_ITEM_ORIGIN_KINDS, itemViewerCapabilities } from './item-catalo
 import { npcProfileForViewerAt, npcSocialForViewer } from './npc-social.mjs'
 import { suggestedActionsFor } from './action-hints.mjs'
 import { sceneNpcsForViewer } from './npc-positioning.mjs'
-import { sceneObjectLabelFor } from './scene-interactions.mjs'
+import { sceneObjectLabelForProp } from './scene-interactions.mjs'
+import { scenarioSceneObjectClueForScenario } from './campaign-scenario.mjs'
 import { actorAppearanceFor, normalizeAttackVisual, publicAppearanceRecord } from './actor-appearance.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
@@ -284,18 +285,21 @@ function partiallyBlockedCellsFor(map, revealedAt) {
  * @param {unknown} value сериализованная карта из `scene.map`
  * @returns {{map: Record<string, unknown>, hash: string, movementBlockedCells: Set<string>} | null}
  */
-function projectPublicTacticalMap(value) {
+function projectPublicTacticalMap(value, scenarioId = '') {
   if (!value || typeof value !== 'object') return null
-  const cached = publicTacticalMapCache.get(value)
+  const cacheKey = String(scenarioId ?? '')
+  const cached = publicTacticalMapCache.get(value)?.get(cacheKey)
   const fingerprint = tacticalMapFingerprint(value)
   if (cached && sameFingerprint(cached.fingerprint, fingerprint)) return cached.projected
-  const projected = computePublicTacticalMap(value)
-  publicTacticalMapCache.set(value, { fingerprint, projected })
+  const projected = computePublicTacticalMap(value, cacheKey)
+  const entries = publicTacticalMapCache.get(value) ?? new Map()
+  entries.set(cacheKey, { fingerprint, projected })
+  publicTacticalMapCache.set(value, entries)
   return projected
 }
 
 /**
- * @type {WeakMap<object, {fingerprint: unknown[], projected: {map: Record<string, unknown>, hash: string, movementBlockedCells: Set<string>} | null}>}
+ * @type {WeakMap<object, Map<string, {fingerprint: unknown[], projected: {map: Record<string, unknown>, hash: string, movementBlockedCells: Set<string>} | null}>>}
  */
 const publicTacticalMapCache = new WeakMap()
 
@@ -334,7 +338,7 @@ function sameFingerprint(left, right) {
  * @param {object} value сериализованная карта из `scene.map`
  * @returns {{map: Record<string, unknown>, hash: string, movementBlockedCells: Set<string>} | null}
  */
-function computePublicTacticalMap(value) {
+function computePublicTacticalMap(value, scenarioId = '') {
   let map
   try {
     map = deserializeTacticalMap(value)
@@ -428,7 +432,7 @@ function computePublicTacticalMap(value) {
   // 2–4 POI, а обычным словарным объектам восстанавливает её из каталога.
   // Публичная карта материализует affordance для каждого видимого предмета,
   // но ни при каких условиях не переносит ключи детали и награды.
-  materializePropMetadataForTransport(projectedMap, map.props)
+  materializePropMetadataForTransport(projectedMap, map.props, scenarioId)
   return { map: projectedMap, hash: serializedTacticalMapHash(projectedMap), movementBlockedCells }
 }
 
@@ -436,8 +440,8 @@ function computePublicTacticalMap(value) {
  * @param {unknown} value сериализованная карта из `scene.map`
  * @returns {{map: Record<string, unknown>, hash: string} | null}
  */
-export function publicTacticalMapWithHashFor(value) {
-  const projected = projectPublicTacticalMap(value)
+export function publicTacticalMapWithHashFor(value, scenarioId = '') {
+  const projected = projectPublicTacticalMap(value, scenarioId)
   return projected ? { map: projected.map, hash: projected.hash } : null
 }
 
@@ -449,15 +453,19 @@ export function publicTacticalMapWithHashFor(value) {
  * @param {Record<string, any>} projectedMap
  * @param {Array<Loose>} props
  */
-function materializePropMetadataForTransport(projectedMap, props) {
+function materializePropMetadataForTransport(projectedMap, props, scenarioId = '') {
   const projectedProps = Array.isArray(projectedMap.props) ? projectedMap.props : []
   const projectedPropById = new Map(projectedProps.map((prop) => [String(prop.id ?? ''), prop]))
   for (const prop of Array.isArray(props) ? props : []) {
     const projectedProp = projectedPropById.get(String(prop.id ?? ''))
     if (!projectedProp) continue
-    const label = sceneObjectLabelFor(prop.assetId)
+    const label = sceneObjectLabelForProp({ assetId: prop.assetId, locationId: projectedMap.locationId, propId: prop.id, scenarioId })
     if (label) projectedProp.label = label[0].toLocaleUpperCase('ru-RU') + label.slice(1)
     if (prop.interactive === true) projectedProp.interactive = true
+    if (!prop.interaction && scenarioSceneObjectClueForScenario(scenarioId, projectedMap.locationId, prop.id)) {
+      projectedProp.interactive = true
+      projectedProp.interaction = { kind: 'lore', verbs: ['inspect'], pointOfInterest: true }
+    }
     if (!prop.interaction) continue
     projectedProp.interactive = true
     projectedProp.interaction = {
@@ -476,7 +484,7 @@ function materializePropMetadataForTransport(projectedMap, props) {
  * @param {unknown} value
  * @returns {unknown}
  */
-function adminTacticalMapFor(value) {
+function adminTacticalMapFor(value, scenarioId = '') {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value
   try {
     const raw = /** @type {Record<string, any>} */ (value)
@@ -484,16 +492,16 @@ function adminTacticalMapFor(value) {
       ? /** @type {import('./tactical-map.mjs').TacticalMap} */ (raw)
       : deserializeTacticalMap(raw)
     const projectedMap = serializeTacticalMap(map)
-    return materializePropMetadataForTransport(projectedMap, map.props)
+    return materializePropMetadataForTransport(projectedMap, map.props, scenarioId)
   } catch {
     return value
   }
 }
 
 /** @param {Loose} [scene] @returns {Loose} */
-function adminSceneFor(scene = {}) {
+function adminSceneFor(scene = {}, scenarioId = '') {
   if (!scene || typeof scene !== 'object' || Array.isArray(scene)) return scene
-  const map = adminTacticalMapFor(scene.map)
+  const map = adminTacticalMapFor(scene.map, scenarioId)
   return map === scene.map ? scene : { ...scene, map }
 }
 
@@ -519,8 +527,8 @@ function weatherByActorFor(state, { isAdmin = false, actorId = '' } = {}) {
  * @param {unknown} value сериализованная карта из `scene.map`
  * @returns {Record<string, unknown> | null}
  */
-export function publicTacticalMapFor(value) {
-  return publicTacticalMapWithHashFor(value)?.map ?? null
+export function publicTacticalMapFor(value, scenarioId = '') {
+  return publicTacticalMapWithHashFor(value, scenarioId)?.map ?? null
 }
 
 /**
@@ -548,8 +556,8 @@ function publicKnownLevelsFor(value) {
  * @param {unknown} [knownLevels] известные партии этажи текущей локации
  * @returns {Loose & { cells: PublicSceneCell[] }}
  */
-export function publicSceneFor(scene = {}, knownLevels = undefined) {
-  const projected = projectPublicTacticalMap(scene.map)
+export function publicSceneFor(scene = {}, knownLevels = undefined, scenarioId = '') {
+  const projected = projectPublicTacticalMap(scene.map, scenarioId)
   const levels = publicKnownLevelsFor(knownLevels)
   const levelIndex = Number(scene.level?.index)
   const locationId = text(scene.location_id ?? scene.locationId ?? scene.map?.locationId, 180)
@@ -1826,6 +1834,7 @@ function withAdminSuggestedActions(room, actorId) {
  */
 export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
+  const scenarioId = text(state.campaignConcept?.arc?.scenario_id, 120)
   if (user?.role === 'admin') return withAdminSuggestedActions({
     ...state,
     ...(state.world_offices ? { world_offices: officesForViewer(state, { isAdmin: true }) } : {}),
@@ -1835,7 +1844,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
       ...merchant,
       can_trade: merchantTradeAvailabilityFor(state, merchant).can_trade,
     })),
-    scene: adminSceneFor(state.scene),
+    scene: adminSceneFor(state.scene, scenarioId),
     // Ведущий тоже играет на общей доске: renderer читает scene_npcs, а не
     // внутренний npc_world. Фишки собираются тем же путём, что и для игрока.
     scene_npcs: sceneNpcsForViewer(state),
@@ -1970,7 +1979,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // локации едут в `scene.levels` через `publicSceneFor` ниже.
   const publicState = Object.fromEntries(Object.entries(openState).filter(([key]) => PROJECTED_STATE_KEY_SET.has(key)))
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
-  const scene = publicSceneFor(state.scene, state.locationLevels?.[currentLocationId])
+  const scene = publicSceneFor(state.scene, state.locationLevels?.[currentLocationId], scenarioId)
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
     .filter((/** @type {Loose} */ merchant) => merchantTradeAvailabilityFor(state, merchant).can_trade)
     .map(publicMerchantFor)
@@ -2181,6 +2190,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
  * @returns {Loose | null}
  */
 function eventForViewer(event, user, actorId, state = {}) {
+  const scenarioId = text(state.campaignConcept?.arc?.scenario_id, 120)
   if (!knowledgeGateVisible(event.payload?.knowledge_gate, state.worldMemory, viewerFor(state, user, actorId))) return null
   const visible = projectVisibleState(event, viewerFor(state, user, actorId), { forNarrator: true })
   if (!visible) return null
@@ -2207,7 +2217,7 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (visible.event_type === 'SpellAreaCreated' && payload.effect && typeof payload.effect === 'object') {
     const allActors = projectVisibleState([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])], viewerFor(state, user, actorId), { forNarrator: true }) ?? []
     const visibleActorIds = new Set([...allActors, ...sceneNpcsForViewer(state)].map((/** @type {Loose} */ actor) => String(actor.id)))
-    const visibleCellKeys = publicRevealedCellKeys(publicSceneFor(state?.scene))
+    const visibleCellKeys = publicRevealedCellKeys(publicSceneFor(state?.scene, undefined, scenarioId))
     const publicEffect = publicActiveEffectFor(state, /** @type {Loose} */ (payload.effect), visibleCellKeys, visibleActorIds)
     if (!publicEffect) return null
     for (const key of Object.keys(payload)) delete payload[key]
@@ -2220,7 +2230,7 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (['LegendaryActionUsed', 'CombatActionUsed'].includes(visible.event_type) && payload.area && typeof payload.area === 'object') {
     const allActors = projectVisibleState([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])], viewerFor(state, user, actorId), { forNarrator: true }) ?? []
     const visibleActorIds = new Set([...allActors, ...sceneNpcsForViewer(state)].map((/** @type {Loose} */ actor) => String(actor.id)))
-    const visibleCellKeys = publicRevealedCellKeys(publicSceneFor(state?.scene))
+    const visibleCellKeys = publicRevealedCellKeys(publicSceneFor(state?.scene, undefined, scenarioId))
     const from = publicPoint(payload.area.from)
     const to = publicPoint(payload.area.to)
     if (!from || !to || !visibleActorIds.has(String(visible.actor_id))
@@ -2293,7 +2303,7 @@ function eventForViewer(event, user, actorId, state = {}) {
     // Этажи библиотечной карты едут нераскрытыми — игрок увидит этаж, когда
     // поднимется на него, через проекцию сцены.
     delete payload.library_levels
-    payload.scene = publicSceneFor(payload.scene)
+    payload.scene = publicSceneFor(payload.scene, undefined, scenarioId)
     payload.adventure = publicAdventureFor(payload.adventure)
     payload.worldMap = publicWorldMapFor(payload.worldMap)
   }
@@ -2301,7 +2311,7 @@ function eventForViewer(event, user, actorId, state = {}) {
   // игроку как есть означало бы показать весь ярус сразу — карта проходит тот
   // же обезличивающий проектор, что и карта сцены.
   if (visible.event_type === 'MapLevelChanged' && payload.map) {
-    const projectedLevel = publicTacticalMapWithHashFor(payload.map)
+    const projectedLevel = publicTacticalMapWithHashFor(payload.map, scenarioId)
     if (projectedLevel) {
       payload.map = projectedLevel.map
       payload.map_hash = projectedLevel.hash
@@ -2748,7 +2758,7 @@ export function turnExplanationForViewer(explanation, user, actorId = '', state 
 export function sceneTransitionForViewer(transition) {
   if (!transition || typeof transition !== 'object' || Array.isArray(transition)) return transition
   return {
-    scene: publicSceneFor(transition.scene),
+    scene: publicSceneFor(transition.scene, undefined, transition.scenario_id ?? ''),
     adventure: publicAdventureFor(transition.adventure),
     worldMap: publicWorldMapFor(transition.worldMap),
     transition: text(transition.transition, 2_000),
@@ -2777,7 +2787,7 @@ export function turnResultForViewer(result, user, actorId = '') {
   const effects = visible.effects && typeof visible.effects === 'object' && !Array.isArray(visible.effects)
     ? { ...visible.effects }
     : visible.effects
-  if (effects?.scene) effects.scene = sceneTransitionForViewer(effects.scene)
+  if (effects?.scene) effects.scene = sceneTransitionForViewer({ ...effects.scene, scenario_id: result.authoritative_state?.campaignConcept?.arc?.scenario_id ?? '' })
   const enemyIds = new Set((result.authoritative_state?.enemies ?? []).map((/** @type {Loose} */ enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   if (effects?.roll && !rollVisibleFor(effects.roll, user)) {
     delete effects.roll

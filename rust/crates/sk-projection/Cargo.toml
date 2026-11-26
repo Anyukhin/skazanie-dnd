@@ -21,6 +21,7 @@ sk-items = { path = "../sk-items" }
 sk-memory = { path = "../sk-memory" }
 sk-npc-world = { path = "../sk-npc-world" }
 sk-ruleset = { path = "../sk-ruleset" }
+sk-scenario = { path = "../sk-scenario" }
 sk-scene-base = { path = "../sk-scene-base" }
 sk-social = { path = "../sk-social" }
 sk-society = { path = "../sk-society" }

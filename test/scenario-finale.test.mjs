@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
+import { treatyEndsAdventure } from '../server/campaign-lifecycle.mjs'
 import { campaignScenario, scenarioClueFactId, scenarioEncounterEndReason, scenarioEnding, scenarioLocationId } from '../server/campaign-scenario.mjs'
 import { freezeEncounterOutcomePlan } from '../server/encounter-rewards.mjs'
 import { IntentParser } from '../server/intent-parser.mjs'
@@ -139,6 +140,10 @@ test('«Договор» до боя: дракон уходит с равнин,
   assert.ok(concluded.events.some((event) => event.event_type === 'ScenarioTreatyConcluded'))
   assert.equal(run.state.social.npcs.find((npc) => npc.id === SARGAT).available, false, 'дракона в логове больше нет')
   assert.equal(scenarioEnding(run.state)?.id, 'treaty')
+  assert.equal(treatyEndsAdventure(run.state), true)
+  assert.equal(treatyEndsAdventure({ ...run.state, campaignConcept: { ...run.state.campaignConcept, campaign_mode: 'persistent' } }), false,
+    'постоянный мир допускает продолжение после мира с драконом')
+  assert.throws(() => run.apply({ command_type: 'CreateEncounter', difficulty: 'deadly', theme: 'generic', seed: 'after-treaty' }, { isDirector: true }), (error) => error?.code === 'SCENARIO_TREATY_CONCLUDED', 'после договора новая встреча запрещена доменным правилом')
 })
 
 test('«Договор» в бою — только когда дракон ранен; враги уходят, бой кончается договором', async () => {

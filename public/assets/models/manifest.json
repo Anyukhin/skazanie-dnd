@@ -53,6 +53,24 @@
       }
     },
     {
+      "key": "ghost-maid",
+      "name_ru": "Призрачная служанка",
+      "profile": "ghost-maid",
+      "actorIds": [],
+      "archetypes": [],
+      "auto": false,
+      "url": "/assets/models/quaternius/heroes-d7ecad9ee5bd5e3f1283/hero-female.glb",
+      "equipmentUrl": "/assets/models/quaternius/heroes-d7ecad9ee5bd5e3f1283/hero-female.glb",
+      "height": 1.3,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Публичная женская основа Quaternius, поверх которой проект добавляет ghost-maid overlay на кости Head, spine_02 и pelvis."
+      }
+    },
+    {
       "key": "mage-male",
       "name_ru": "Маг",
       "profile": "mage",
@@ -501,13 +519,13 @@
         "wyvern",
         "дракон"
       ],
-      "url": "/assets/models/cethiel/dragon-15190f872082e85af253/dragon.glb",
+      "url": "/assets/models/cethiel/dragon-hd-7177312bcc7c9183dd3e/dragon.glb",
       "height": 2.4,
       "rights": {
         "source": "https://opengameart.org/content/cethiels-dragon-3d",
         "license": "CC0-1.0",
         "attribution": "Drummyfish и Cethiel (по желанию авторов)",
-        "notes": "Cethiel's Dragon 3D: DAE с четырьмя анимациями собраны в GLB, фактура перекрашена в тёмный кармин (Саргат). Исходник, хеши и изменения: /assets/models/cethiel/dragon-15190f872082e85af253/NOTICE.json."
+        "notes": "Детализированная сетка исходного дракона Cethiel/Drummyfish. Лицензия, исходный файл и изменения — /assets/models/cethiel/dragon-hd-7177312bcc7c9183dd3e/NOTICE.json."
       }
     },
     {

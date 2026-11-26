@@ -77,6 +77,25 @@ function resourcesIn(root) {
   return resources
 }
 
+test('в срезе кровля затеняет раскрытую комнату и пропускает основной кадр', () => {
+  const map = mapFor({ hidden: { x: 3, y: 3 } })
+  const roofs = roofs3d.createBoard3DRoofs(map, render.DEFAULT_BOARD_PALETTE, { cutawayShade: true })
+  try {
+    const shadow = roofs.group.getObjectByName('cutaway-ceiling-shadow')
+    assert.ok(shadow?.visible && shadow.castShadow)
+    assert.equal(shadow.material.colorWrite || shadow.material.depthWrite, false)
+    const points = shadow.geometry.attributes.position
+    for (let i = 0; i < points.count; i += 6) {
+      const cell = mapClient.cellAt(map, points.getX(i), points.getZ(i))
+      assert.ok(cell?.revealed && cell.passable && cell.zone)
+    }
+    roofs.setMode('full')
+    assert.equal(shadow.visible, false)
+    roofs.setMode('hidden')
+    assert.equal(shadow.visible, false)
+  } finally { roofs.dispose() }
+})
+
 test('скатная крыша строится из видимой interior-zone и канонического контура стен', () => {
   const controller = roofs3d.createBoard3DRoofs(mapFor(), render.DEFAULT_BOARD_PALETTE, { wallHeight: .68 })
   try {
@@ -88,7 +107,7 @@ test('скатная крыша строится из видимой interior-zo
     assert.ok(meshesNamed(shell, 'roof-slope:').length >= 2, 'у скатной крыши должны быть два наклонных полотна')
     assert.ok(meshesNamed(structure, 'roof-ridge').length > 0, 'у крыши должен быть конёк')
     assert.ok(meshesNamed(structure, 'roof-eave:').length > 0, 'карниз следует контуру рёбер')
-    assert.ok(meshesNamed(structure, 'roof-rafter:').length >= 2, 'в срезе должны оставаться узкие стропила')
+    assert.ok(meshesNamed(structure, 'roof-rafter:').length >= 2, 'полная конструкция получает узкие стропила')
     assert.ok(meshesNamed(upperWalls, 'roof-wall-upper:').length > 0, 'полная высота стены строится по рёбрам')
     const ridge = meshesNamed(structure, 'roof-ridge')[0]
     const rafter = meshesNamed(structure, 'roof-rafter:')[0]
@@ -115,9 +134,12 @@ test('скатная крыша строится из видимой interior-zo
     assert.equal(near.visible, false, 'ближний скат скрыт в срезе')
     assert.equal(upperWalls.visible, false, 'верхняя часть стены скрыта в срезе')
     assert.equal(structure.visible, true, 'узкая конструкция крыши остаётся в срезе')
+    assert.equal(rafter.visible, false, 'поперечное стропило скрыто в срезе, чтобы открыть интерьер')
+    assert.ok(meshesNamed(structure, 'roof-eave:').some((mesh) => mesh.visible), 'карниз у открытой стены остаётся в срезе')
     controller.setMode('full')
     assert.equal(shell.visible, true)
     assert.equal(near.visible, true)
+    assert.equal(rafter.visible, true)
     assert.equal(upperWalls.visible, true)
     assert.ok(new THREE.Box3().setFromObject(upperWalls).max.y >= 1.8, 'полная стена доходит до карниза выше героя')
     controller.setMode('hidden')
@@ -167,7 +189,8 @@ test('полный вид и cutaway держат героя ростом 1.25 �
       controller.setMode('cutaway')
       assert.equal(shells.visible, false, `${seed}: cutaway не закрывает игровое поле сплошным скатом`)
       assert.equal(controller.group.getObjectByName('roof-upper-walls')?.visible, false, `${seed}: cutaway скрывает верхние панели стен`)
-      assert.equal(controller.group.getObjectByName('roof-structures')?.visible, true, `${seed}: cutaway сохраняет стропила`)
+      assert.equal(controller.group.getObjectByName('roof-structures')?.visible, true, `${seed}: cutaway сохраняет карнизный слой`)
+      assert.equal(meshesNamed(controller.group, 'roof-rafter:').every((mesh) => mesh.visible === false), true, `${seed}: cutaway скрывает поперечные стропила`)
     } finally { controller.dispose() }
   }
 })
@@ -185,6 +208,9 @@ test('свод склепа имеет криволинейную оболочк
     const farShell = controller.group.getObjectByName('roof-vault:room:1,1,6,5')
     assert.equal(farShell?.visible, false, 'в cutaway оболочка свода скрывается, структура остаётся')
     assert.equal(ribs.every((mesh) => mesh.userData.board3dRoof === true), true)
+    assert.equal(ribs.every((mesh) => mesh.visible === false), true, 'поперечные рёбра свода скрыты в срезе')
+    controller.setMode('full')
+    assert.equal(ribs.every((mesh) => mesh.visible === true), true, 'полный вид показывает рёбра свода')
   } finally {
     controller.dispose()
   }
@@ -589,9 +615,10 @@ test('Г-образный дом получает одну цельную кры
     assert.equal(meshesNamed(controller.group, 'roof-hip:').length, 1)
     assert.equal(meshesNamed(controller.group, 'roof-pitched:').length, 0, 'прямоугольных кусков нет')
     assert.equal(meshesNamed(controller.group, 'roof-slope:hip').length, 1)
-    assert.ok(meshesNamed(controller.group, 'roof-rafter:hip:').length > 0, 'в срезе видны стропила')
+    assert.ok(meshesNamed(controller.group, 'roof-rafter:hip:').length > 0, 'в полной крыше видны стропила')
     controller.setMode('cutaway')
     assert.equal(controller.group.getObjectByName('roof-shells').visible, false)
+    assert.equal(meshesNamed(controller.group, 'roof-rafter:hip:').every((mesh) => mesh.visible === false), true, 'в срезе стропила вальмы скрыты')
   } finally { controller.dispose() }
 })
 

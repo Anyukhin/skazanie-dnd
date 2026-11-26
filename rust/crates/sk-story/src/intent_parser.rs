@@ -596,9 +596,13 @@ fn honorific_addressed_actors<'a>(address: &str, state: Option<&'a Value>) -> Ve
         .collect()
 }
 
+fn direct_address_pattern() -> &'static Regex {
+    jre!(r#"^([\p{L}\p{M} «»"“”-]{2,80})[:,]\s*(\S[\s\S]*)"#, "iu")
+}
+
 fn directly_addressed_actors<'a>(message: &str, state: Option<&'a Value>) -> Vec<&'a Value> {
     // Прозвище в кавычках — часть обращения: «Силас «Кривой», вы сказали…».
-    let Some(address) = text::capture(jre!(r#"^([\p{L}\p{M} «»"“”-]{2,80})[:,]\s*\S"#, "iu"), message, 1) else {
+    let Some(address) = text::capture(direct_address_pattern(), message, 1) else {
         return Vec::new();
     };
     let address = text::trim(&text::replace_all(jre!(r"\s+", "gu"), &text::replace_all(jre!(r#"[«»"“”]"#, "gu"), &address, " "), " ")).to_string();
@@ -623,6 +627,25 @@ fn directly_addressed_actors<'a>(message: &str, state: Option<&'a Value>) -> Vec
             })
         })
         .collect()
+}
+
+pub fn direct_dialogue_speech(message: &str, visible_state: &Value, selected_npc_id: &str) -> Option<(String, String)> {
+    // Старое досье добавляло имя и роль. Сверяем имя с выбранным видимым NPC.
+    let legacy_speech = (!selected_npc_id.is_empty() && message.starts_with("Обращаюсь к ")).then(|| present_social_actors(Some(visible_state))).and_then(|actors| {
+        let selected = actors.into_iter().find(|actor| js::s(actor.get("id")) == selected_npc_id)?;
+        let name = selected.get("name").and_then(Value::as_str).filter(|name| !name.is_empty())?;
+        let prefix = format!("Обращаюсь к {name}");
+        let after_name = message.strip_prefix(prefix.as_str())?;
+        text::capture(jre!(r"^(?: \([^\r\n]{1,240}?\))?:\s*(\S[\s\S]*)", "u"), after_name, 1)
+    });
+    let speech = legacy_speech.as_deref().unwrap_or(message);
+    if let Some(utterance) = text::capture(direct_address_pattern(), speech, 2) {
+        let targets = directly_addressed_actors(speech, Some(visible_state));
+        if let [npc] = targets.as_slice() {
+            return Some((js::s(npc.get("id")), utterance));
+        }
+    }
+    legacy_speech.map(|utterance| (selected_npc_id.to_string(), utterance))
 }
 
 fn approach_patterns() -> [(&'static str, &'static Regex); 8] {

@@ -1327,7 +1327,7 @@ function cloneCatalogValue(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value))
 }
 
-function classicMonstersForTheme(theme) {
+export function classicMonstersForTheme(theme) {
   const aliases = { 'goblin-minion': 'goblin', 'goblin-warrior': 'goblin', 'gnoll-warrior': 'gnoll', 'warrior-veteran': 'veteran' }
   const slugs = new Set((THEMES[theme] ?? []).map(id => { const slug = id.split(':').at(-1); return aliases[slug] ?? slug }))
   if (theme === 'law') { slugs.add('guard'); slugs.add('veteran') }

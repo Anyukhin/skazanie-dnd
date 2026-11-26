@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import { affirmativeActionText } from './action-wording.mjs'
+export { affirmativeActionText } from './action-wording.mjs'
 
 import { ensureNpcSocialState, npcProfileAtWorldTime } from './npc-social.mjs'
 import { reputationStandingFor } from './reputation-policy.mjs'
@@ -17,12 +19,7 @@ function stableHash(...parts) {
   return createHash('sha256').update(parts.map((part) => clean(part)).join('\0')).digest('hex')
 }
 
-export function affirmativeActionText(message = '') {
-  return clean(message).toLocaleLowerCase('ru')
-    .replace(/«[^»]*»|"[^"]*"|'[^']*'/gu, ' ')
-    .replace(/(?:^|\s)(?:не|ни|без|никогда)\s+(?!только(?:\s|$))(?:буду|хочу|собираюсь)\s+(?:(?:его|её|их|это|так|себя)\s+)?\p{L}+/giu, ' ')
-    .replace(/(?:^|\s)(?:не|ни|без|никогда)\s+(?!только(?:\s|$))\p{L}+/giu, ' ')
-}
+
 
 export function classifyNpcSocialCheck(message) {
   const text = affirmativeActionText(message)

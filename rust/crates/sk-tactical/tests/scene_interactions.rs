@@ -10,6 +10,18 @@ use common::{arg, array, assert_same, parse, stringify};
 use serde_json::{json, Value};
 use sk_tactical::scene_interactions as m;
 
+#[test]
+fn only_an_affirmative_named_inspection_reads_the_fresco() {
+    let props = json!([{ "id": "fresco", "assetId": "temple_banner", "footprint": [{ "x": 5, "y": 5 }] }]);
+    let position = json!({ "x": 5, "y": 4 });
+    let clues = json!({ "fresco": { "label": "фреска" } });
+    let select = |text: &str| m::nearest_scene_object_command_with_scenario(Some(&props), Some(&position), Some(&json!(text)), Some(&clues));
+    for text in ["Не читаю фреску", "Как изучать фреску?", "Осматриваю комнату", "Ищу кота и говорю «фреска»"] {
+        assert!(select(text).is_none(), "{text}");
+    }
+    assert_eq!(select("Изучаю фреску").unwrap()["prop_id"], "fresco");
+}
+
 static FIXTURE: LazyLock<Value> = LazyLock::new(|| parse(include_str!("../fixtures/scene-interactions.json")));
 
 #[test]
@@ -127,6 +139,18 @@ fn metadata_is_deterministic_and_ignores_forged_interaction() {
     assert_eq!(m::interaction_metadata_for_prop("metadata-seed", Some(&props[0]), true).unwrap().kind, "container");
 }
 
+#[test]
+fn authored_clue_props_are_inspectable_only_at_their_location() {
+    let prop = json!({ "id": "astohan-ash-watch:burnt-journal", "assetId": "paper_scatter" });
+    let clue = sk_scenario::campaign_scenario::scenario_inspection_for_location_prop("astohan-ash-watch", "astohan-ash-watch:burnt-journal").expect("улика");
+    let authored = m::scene_interaction_definition_with_clue("authored", std::slice::from_ref(&prop), Some(&json!("astohan-ash-watch:burnt-journal")), Some(&clue)).expect("определение");
+    assert_eq!(authored["kind"], "lore");
+    assert_eq!(authored["verbs"], json!(["inspect"]));
+    assert_eq!(authored["check"], Value::Null);
+    assert_eq!(authored["detail"]["id"], "scenario-clue:ash-journal");
+    assert!(m::scene_interaction_definition("authored", std::slice::from_ref(&prop), Some(&json!("astohan-ash-watch:burnt-journal"))).is_none());
+}
+
 /// Свободный текст распознаёт силовое открытие и выбирает ближайшую бочку;
 /// составные варианты канонического предмета тоже узнаются.
 #[test]
@@ -147,6 +171,19 @@ fn text_picks_nearest_barrel() {
         let command = m::nearest_scene_object_command(Some(&props), Some(&json!({ "x": 0, "y": 0 })), Some(&json!(text))).unwrap();
         assert_eq!(command["intent"], intent);
     }
+}
+
+#[test]
+fn search_picks_authored_clue_by_server_owned_label() {
+    let props = json!([
+        { "id": "rubble", "assetId": "rubble_heap", "x": 0.5, "y": 0.5, "footprint": [{ "x": 0, "y": 0 }] },
+        { "id": "astohan-ash-watch:burnt-journal", "assetId": "paper_scatter", "x": 8.5, "y": 0.5, "footprint": [{ "x": 8, "y": 0 }] },
+    ]);
+    let clues = json!({ "astohan-ash-watch:burnt-journal": { "label": "обгоревший журнал" } });
+    let text = json!("Ищу под обломками караулки обгоревший журнал сборщика налогов");
+    let command = m::nearest_scene_object_command_with_scenario(Some(&props), Some(&json!({ "x": 0, "y": 0 })), Some(&text), Some(&clues)).expect("команда осмотра");
+    assert_eq!(command["prop_id"], "astohan-ash-watch:burnt-journal");
+    assert_eq!(command["intent"], "inspect");
 }
 
 #[test]

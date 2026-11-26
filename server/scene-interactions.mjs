@@ -1,4 +1,6 @@
+import { affirmativeActionText } from './action-wording.mjs'
 import { createHash } from 'node:crypto'
+import { scenarioSceneObjectClueForScenario } from './campaign-scenario.mjs'
 import { serverEncounterLoot } from './loot-tables.mjs'
 import { igniteDefinitionFor, sceneHazardVerbsFor, toppleDefinitionFor } from './scene-hazards.mjs'
 
@@ -222,6 +224,12 @@ export function sceneObjectLabelFor(assetId) {
   return alias ? clean(ASSET_ALIASES_RU[alias]?.[0], 60) : ''
 }
 
+/** Подпись авторской улики по полному id предмета и месту. */
+export function sceneObjectLabelForProp({ assetId = '', locationId = '', propId = '', scenarioId = '' } = {}) {
+  const clue = scenarioSceneObjectClueForScenario(scenarioId, locationId, propId)
+  return clue?.label || sceneObjectLabelFor(assetId)
+}
+
 export function sceneInteractionCatalogEntry(assetId) {
   const alias = assetAlias(assetId)
   if (!alias) return null
@@ -308,17 +316,26 @@ export function sceneInteractionMetadata({ mapSeed = '', props = [] } = {}) {
   ]))
 }
 
-export function sceneInteractionDefinition({ mapSeed = '', props = [], propId = '' } = {}) {
+export function sceneInteractionDefinition({ mapSeed = '', props = [], propId = '', scenarioClue = null } = {}) {
   const prop = (Array.isArray(props) ? props : []).find((candidate) => clean(candidate?.id, 120) === clean(propId, 120))
   if (!prop) return null
   const metadata = sceneInteractionMetadata({ mapSeed, props }).get(clean(prop.id, 120))
+    ?? (scenarioClue ? {
+      kind: 'lore',
+      verbs: ['inspect'],
+      pointOfInterest: true,
+      detailKey: '',
+      rewardKey: '',
+    } : null)
   if (!metadata) return null
   const alias = assetAlias(prop.assetId)
   const seed = `${clean(mapSeed)}:${clean(prop.id)}:${clean(prop.assetId)}`
   const difficulty = 10 + (hashNumber(`${seed}:dc`) % 3) * 2
   const locked = metadata.kind === 'container' && hashNumber(`${seed}:locked`) % 3 === 0
   const trapped = metadata.kind === 'container' && hashNumber(`${seed}:trap`) % 4 === 0
-  const detail = DETAIL_TABLE[metadata.detailKey] ?? DETAIL_TABLE[`${metadata.kind}:0`]
+  const detail = scenarioClue?.clue
+    ? { id: `scenario-clue:${clean(scenarioClue.clue_id, 120)}`, text: clean(scenarioClue.clue, 1_000) }
+    : DETAIL_TABLE[metadata.detailKey] ?? DETAIL_TABLE[`${metadata.kind}:0`]
   // Глаголы обстановки добавляются к обычным операциям, а не заменяют их:
   // стеллаж по-прежнему осматривают, но теперь его ещё можно опрокинуть.
   // Список объявляет сервер — клиент рисует кнопки по нему как и раньше.
@@ -336,7 +353,13 @@ export function sceneInteractionDefinition({ mapSeed = '', props = [], propId = 
     ignite: igniteDefinitionFor(prop.assetId),
     alias,
     initialState: metadata.kind === 'container' ? (locked ? 'locked' : 'closed') : 'idle',
-    check: metadata.kind === 'relic'
+    // Сюжетная улика — это авторский предмет, который игрок осматривает
+    // напрямую. Сервер уже знает, что именно лежит под объектом, поэтому
+    // проверка навыка здесь не должна превращать обязательную улику в
+    // случайный тупик. Обычная обстановка сохраняет прежние проверки.
+    check: scenarioClue
+      ? null
+      : metadata.kind === 'relic'
       ? { ability: 'int', skill: alias === 'altar' || alias === 'statue' ? 'religion' : 'arcana', dc: difficulty, purpose: `scene-object:${metadata.kind}:inspect` }
       : metadata.kind === 'lore' || metadata.kind === 'corpse'
         ? { ability: 'wis', skill: 'investigation', dc: difficulty, purpose: `scene-object:${metadata.kind}:inspect` }
@@ -371,8 +394,8 @@ export function sceneObjectLoot({ mapSeed = '', prop } = {}) {
 }
 
 export function sceneObjectOperationFromText(text) {
-  const normalized = clean(text, 1_000).toLowerCase()
-  if (!normalized) return null
+  const normalized = affirmativeActionText(clean(text, 1_000))
+  if (!normalized || /^(?:как|где|когда|кто|зачем|почему|что|если|спрашиваю|рассказываю|обсуждаю)(?!\p{L})/iu.test(normalized.trim())) return null
   // Молитва стоит первой ветвью: «помолиться у алтаря» содержит «алтарь», но не
   // содержит ни одного глагола обычных операций, а «вознести молитву и осмотреть
   // изваяние» — это всё-таки молитва. Своего слова у неё нет ни у одной другой
@@ -402,7 +425,7 @@ export function sceneObjectOperationFromText(text) {
           ? 'use'
           : /(?<![а-яё])(?:открыть|разбить|сломать|взломать|выломать)/u.test(normalized)
             ? 'open'
-            : /(?<![а-яё])(?:осмотреть|изучить|прочитать|проверить|обыскать)/u.test(normalized)
+              : /(?<![а-яё])(?:осмотр[а-яё]*|осматр[а-яё]*|изуч[а-яё]*|прочит[а-яё]*|чита[а-яё]*|провер[а-яё]*|обыск[а-яё]*|ищ[а-яё]*|найт[а-яё]*|отыск[а-яё]*)/u.test(normalized)
               ? 'inspect'
               : null
   if (!intent) return null
@@ -410,10 +433,15 @@ export function sceneObjectOperationFromText(text) {
   // слова «взломать» в реплике: инструмент и плечо — разные способы, и
   // серверная ветка у них тоже разная.
   const approach = !lockpick && /(?:разбить|сломать|взломать|выломать|ударить|топор)/u.test(normalized) ? 'force' : 'hand'
+  const search = intent === 'inspect' && /(?<![а-яё])(?:ищ(?:у|ем|ет)|найт(?:и|у)|отыскать)/u.test(normalized)
   const aliases = Object.entries(ASSET_ALIASES_RU)
-    .filter(([, words]) => words.some((word) => normalized.includes(word)))
+    .filter(([, words]) => words.some((word) => search
+      ? scenarioLabelMatches(normalized, word)
+      : normalized.includes(word)))
     .map(([alias]) => alias)
-  return { intent, approach, aliases, ...(!aliases.length && NON_PROP_TARGET.test(normalized) ? { namesOtherTarget: true } : {}) }
+  return { intent, approach, aliases,
+    ...(search ? { search: true } : {}),
+    ...(!aliases.length && NON_PROP_TARGET.test(normalized) ? { namesOtherTarget: true } : {}) }
 }
 
 /**
@@ -438,42 +466,72 @@ function propCells(prop) {
   return Number.isFinite(x) && Number.isFinite(y) ? [{ x, y }] : []
 }
 
+function normalizedWords(value) {
+  return clean(value, 1_000).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+    .match(/\p{L}[\p{L}\p{M}0-9-]*/gu) ?? []
+}
+
+function wordStem(value) {
+  const word = String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  if (!/^[а-я]{3,}$/u.test(word)) return word
+  for (const suffix of ['иями', 'ями', 'ами', 'ого', 'ему', 'ому', 'ыми', 'ими', 'ах', 'ях', 'ой', 'ей', 'ом', 'ем', 'а', 'я', 'у', 'ю', 'е', 'ы', 'и']) {
+    if (word.endsWith(suffix) && word.length - suffix.length >= 3) return word.slice(0, -suffix.length)
+  }
+  return word
+}
+
+function scenarioLabelMatches(text, label) {
+  const target = normalizedWords(label)
+  const value = normalizedWords(text)
+  return target.length > 0 && target.every((word) => value.some((candidate) => candidate === word || wordStem(candidate) === wordStem(word)))
+}
+
 export function sceneObjectDistance(prop, actorPosition) {
   const at = { x: Number(actorPosition?.x), y: Number(actorPosition?.y) }
   if (!Number.isSafeInteger(at.x) || !Number.isSafeInteger(at.y)) return Number.POSITIVE_INFINITY
   return Math.min(...propCells(prop).map((cell) => Math.max(Math.abs(cell.x - at.x), Math.abs(cell.y - at.y))), Number.POSITIVE_INFINITY)
 }
 
-export function nearestSceneObjectCommand({ props = [], actorPosition, text } = {}) {
+export function nearestSceneObjectCommand({ props = [], actorPosition, text, scenarioClueForProp } = {}) {
   const operation = sceneObjectOperationFromText(text)
   if (!operation) return null
   // Молитва адресована святыне, где бы ни стояли ворота храма.
   if (operation.namesOtherTarget && operation.intent !== 'pray') return null
+  const clueFor = typeof scenarioClueForProp === 'function' ? scenarioClueForProp : () => null
+  const targetText = affirmativeActionText(text)
   const candidates = (Array.isArray(props) ? props : [])
-    .filter((prop) => sceneInteractionCatalogEntry(prop?.assetId))
+    .map((prop) => {
+      const clue = clueFor(prop)
+      return { prop, clue, clueMatch: Boolean(clue && (scenarioLabelMatches(targetText, clue.label) || scenarioLabelMatches(targetText, clue.alias))) }
+    })
+    .filter(({ prop, clueMatch }) => sceneInteractionCatalogEntry(prop?.assetId) || (operation.intent === 'inspect' && clueMatch))
     // Молиться можно только святыне. Без этого фильтра «помолюсь» у ближайшего
     // сундука уезжало бы движку командой, которую он же и отвергнет: слово
     // молитвы своё, а ближайший поддержанный пропс — какой угодно.
-    .filter((prop) => operation.intent !== 'pray' || isSceneShrineAsset(prop?.assetId))
+    .filter(({ prop }) => operation.intent !== 'pray' || isSceneShrineAsset(prop?.assetId))
     // Замок бывает только у контейнера. Без этого фильтра «вскрыть замок»
     // уезжало бы движку с ближайшей скамьёй в поле `prop_id`: слово отмычки
     // своё, а ближайший поддержанный пропс — какой угодно.
-    .filter((prop) => operation.intent !== 'lockpick' || sceneInteractionCatalogEntry(prop?.assetId)?.kind === 'container')
+    .filter(({ prop }) => operation.intent !== 'lockpick' || sceneInteractionCatalogEntry(prop?.assetId)?.kind === 'container')
     // Глагол обязан быть у предмета: «открыть» у скамьи движок отвергнет, и
     // игрок получал «Для этого объекта такое действие недоступно» вместо
     // обычного разбора своей фразы. Молитву объявляет святыня, а не каталог.
-    .filter((prop) => operation.intent === 'pray' || (sceneInteractionCatalogEntry(prop?.assetId)?.verbs ?? []).includes(operation.intent))
-    .filter((prop) => {
+    .filter(({ prop, clueMatch }) => operation.intent === 'pray'
+      || (sceneInteractionCatalogEntry(prop?.assetId)?.verbs ?? []).includes(operation.intent)
+      || (operation.intent === 'inspect' && clueMatch))
+    .filter(({ prop, clue, clueMatch }) => {
+      if ((operation.search || (clue && operation.intent === 'inspect')) && !clueMatch) return false
       if (!operation.aliases.length) return true
       const alias = assetAlias(prop.assetId)
-      return alias && operation.aliases.includes(alias)
+      return (alias && operation.aliases.includes(alias)) || (operation.intent === 'inspect' && clueMatch)
     })
-    .map((prop) => ({ prop, distance: sceneObjectDistance(prop, actorPosition) }))
+    .map(({ prop, clueMatch }) => ({ prop, clueMatch, distance: sceneObjectDistance(prop, actorPosition) }))
     // Предмет не назван — значит, речь о том, что под рукой. «Смотрю, кто
     // пытается их открыть» про шлюзы не должно открывать сундук через площадь.
     // Святыня исключение: «помолиться» адресовано ей, где бы она ни стояла.
-    .filter((entry) => operation.aliases.length || operation.intent === 'pray' || entry.distance <= 1)
-    .sort((left, right) => left.distance - right.distance || clean(left.prop.id).localeCompare(clean(right.prop.id), 'en'))
+    .filter((entry) => operation.aliases.length || entry.clueMatch || operation.intent === 'pray' || entry.distance <= 1)
+    .sort((left, right) => (operation.intent === 'inspect' ? Number(right.clueMatch) - Number(left.clueMatch) : 0)
+      || left.distance - right.distance || clean(left.prop.id).localeCompare(clean(right.prop.id), 'en'))
   const selected = candidates[0]?.prop
   return selected ? {
     command_type: 'OperateSceneObject',

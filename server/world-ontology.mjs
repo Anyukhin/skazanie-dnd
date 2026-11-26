@@ -64,7 +64,7 @@ export const PREDICATES = Object.freeze({
   }),
   discovery: Object.freeze({
     record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'item', 'event', 'concept'], object: '«clue»',
-    producers: ['world-memory'], consumers: ['campaign-dialogues', 'campaign-scenario', 'game-orchestrator', 'narrator', 'npc-social', 'npc-social-controller', 'player-request-router', 'rules-engine', 'scenario-knight', 'world-memory'],
+    producers: ['rules-engine', 'world-memory'], consumers: ['campaign-dialogues', 'campaign-scenario', 'game-orchestrator', 'narrator', 'npc-social', 'npc-social-controller', 'player-request-router', 'rules-engine', 'scenario-knight', 'world-memory'],
     visibility: 'party',
     description_ru: 'Находка свободного действия: открытая заготовка ведущего, знающий собеседник или улика по теме активного поручения. Рассказчик обязан её назвать; для часов поручения — доказательство; для сценария — найденная улика узла сюжета (по `supersedes_fact_id`). NPC знает находку, только если видел её сам (граница знания `npcKnownFactIds`); находку о себе самом NPC не знает. Собеседнику уходят и последние находки отряда (`table_knows`) — чтобы он не пересказывал их как новость.',
   }),
@@ -265,6 +265,24 @@ export const GENERIC_PREDICATE_CONSUMERS = Object.freeze({
  * не пройдёт молча, даже если её объявить внешней.
  */
 export const EXTERNAL_ONLY_PREDICATES = Object.freeze(['lore', 'quest_progress'])
+
+/**
+ * Старые сохранения могут содержать слух как факт с predicate `rumor`.
+ * Совместимость разрешена только для этого читателя и только как чтение.
+ * Это не добавляет `rumor` в PREDICATES и не разрешает новые записи.
+ */
+/** @type {Readonly<Record<string, readonly string[]>>} */
+export const LEGACY_PREDICATE_READERS = Object.freeze({
+  rumor: Object.freeze(['npc-social-controller']),
+})
+
+/** @param {string} name @param {{ producers: Set<string>, consumers: Set<string> }} entry */
+function isLegacyCompatibilityRead(name, entry) {
+  const readers = LEGACY_PREDICATE_READERS[name]
+  return !entry.producers.size && Array.isArray(readers)
+    && readers.length === entry.consumers.size
+    && readers.every((reader) => entry.consumers.has(reader))
+}
 
 /**
  * Статья словаря для предиката записи: точное имя или семейство `prefix:` с
@@ -497,7 +515,8 @@ export function auditOntology(files) {
     }]
   }))
   /** @param {typeof predicates} table */
-  const consumedWithoutProducer = (table) => [...table].filter(([name, entry]) => entry.consumers.size && !entry.producers.size
+  const consumedWithoutProducer = (table, { allowLegacy = false } = {}) => [...table].filter(([name, entry]) => entry.consumers.size && !entry.producers.size
+    && (!allowLegacy || !isLegacyCompatibilityRead(name, entry))
     && !(name.endsWith(':') ? [...table].some(([other, candidate]) => other.startsWith(name) && candidate.producers.size) : false))
     .map(([name]) => name).sort()
   /** @param {typeof predicates} table */
@@ -506,7 +525,7 @@ export function auditOntology(files) {
     predicates: serialize(predicates),
     relations: serialize(relations),
     gaps: {
-      consumed_but_never_produced: { predicates: consumedWithoutProducer(predicates), relations: consumedWithoutProducer(relations) },
+      consumed_but_never_produced: { predicates: consumedWithoutProducer(predicates, { allowLegacy: true }), relations: consumedWithoutProducer(relations) },
       produced_but_never_consumed: { predicates: producedWithoutConsumer(predicates), relations: producedWithoutConsumer(relations) },
     },
     dynamic: {

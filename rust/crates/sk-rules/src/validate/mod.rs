@@ -24,6 +24,7 @@ mod items;
 mod movement;
 mod objects;
 mod scenario;
+pub use scenario::scenario_treaty_parley;
 mod scene;
 mod social_check;
 mod society;

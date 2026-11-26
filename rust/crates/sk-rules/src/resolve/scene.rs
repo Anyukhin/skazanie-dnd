@@ -405,6 +405,9 @@ fn draft_event(command: &Value, draft: &Value) -> Value {
 
 /// `AdvanceScene` (22485–22620).
 pub fn advance_scene(r: &mut Resolve<'_>) -> Flow {
+    if r.state.get("agentInteraction").and_then(|card| card.get("scenarioTreaty")).is_some() {
+        return Err(rule("Сначала завершите решение о договоре", "PARTY_DECISION_CONFLICT"));
+    }
     expired_summon_events(r);
     if js::truthy(r.command.get("party_decision")) {
         let decision = r.state.get("agentInteraction").cloned().unwrap_or(Value::Null);
@@ -568,6 +571,11 @@ pub fn reveal_area(r: &mut Resolve<'_>) -> Flow {
         _ => Vec::new(),
     };
     r.events.push(event_from(&r.command, "AreaRevealed", Some(json!({ "cells": cells })), Some(&json!([]))));
+    if sk_npc_world::npc_positioning::has_unplaced_anchored_npc(&r.state) {
+        let placement_state = r.project_events()?;
+        let drafts = Value::Array(sk_npc_world::npc_positioning::plan_scene_npc_placement_events(&placement_state));
+        r.events.extend(npc_world_events_from(&r.command, &drafts));
+    }
     Ok(())
 }
 

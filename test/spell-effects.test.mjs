@@ -566,8 +566,8 @@ test('семантические семьи покрывают каталог, �
   const schoolFallback = executable.filter((spell) => effects.spellEffectPalette(spell.id).family === 'school').map((spell) => spell.id)
   const unsupported = catalog.filter((spell) => !isExecutable(spell))
   assert.ok(catalog.length > 400)
-  assert.equal(executable.length, 249, 'исполняемый набор должен совпадать с partial/verified override-карточками')
-  assert.equal(unsupported.length, 190, 'heuristic/ruling-only карточки не входят в реализованный набор')
+  assert.equal(executable.length, 250, 'исполняемый набор должен совпадать с partial/verified override-карточками')
+  assert.equal(unsupported.length, 189, 'heuristic/ruling-only карточки не входят в реализованный набор')
   assert.ok(catalog.every((spell) => allowed.has(effects.spellEffectPalette(spell.id).family)))
   assert.deepEqual(schoolFallback, [], 'каждая executable-карточка должна иметь semantic family')
   for (const family of ['fire', 'cold', 'lightning', 'thunder', 'acid', 'poison', 'necrotic', 'radiant', 'force', 'psychic', 'healing', 'protection', 'control', 'teleport', 'summon', 'earth', 'wind', 'water', 'swarm', 'weapon', 'illusion', 'divination', 'light', 'darkness', 'environment', 'enchantment', 'restoration', 'invisibility', 'flight', 'mobility', 'transmutation', 'communication', 'utility']) {
@@ -708,6 +708,19 @@ test('живой пакет создаёт projectile, burst, beam, aura, channe
   assert.ok(cues.some((cue) => cue.kind === 'channel' && cue.channelType === 'healing' && cue.amount === 7))
   assert.equal(cues.some((cue) => cue.kind === 'impact' && cue.tone === 'healing'), false)
   assert.ok(cues.some((cue) => cue.kind === 'channel' && cue.channelType === 'summon' && cue.position.x === 4))
+})
+
+test('Волшебная стрела сохраняет явное назначение каждого дротика в animation cue', () => {
+  const [cue] = animation.combatAnimationCuesFromEvents([{
+    event_id: 'cast-mm-explicit', command_id: 'mm-explicit', event_type: 'SpellCast', actor_id: 'mage', target_ids: ['goblin', 'orc'],
+    payload: { spell_id: 'magic-missile', kind: 'damage', damage_type: 'force', missile_target_ids: ['goblin', 'goblin', 'goblin', 'orc'] },
+  }, {
+    event_id: 'damage-mm-explicit', command_id: 'mm-explicit', event_type: 'DamageApplied', actor_id: 'mage', target_ids: ['goblin'],
+    payload: { spell_id: 'magic-missile', projectile_count: 4, blocked_by_shield: false, damage_type: 'force' },
+  }])
+  assert.equal(cue.kind, 'projectile')
+  assert.deepEqual(cue.projectileTargetIds, ['goblin', 'goblin', 'goblin', 'orc'])
+  assert.equal(cue.projectileCount, 4)
 })
 
 test('AttackResolved передаёт вид атаки, снимок снаряжения и концы серверной траектории', () => {
@@ -1260,6 +1273,20 @@ test('постоянный renderer показывает радиус ауры �
   render.drawBoardEffects(context, scene(), [persistent])
   assert.ok(context.ops.some((operation) => operation.op === 'arc' && operation.radius > 100))
   assert.ok(context.ops.some((operation) => operation.op === 'fillText' && operation.text === 'К'))
+})
+
+test('постоянный Страж веры показывает силуэт на открытой точке и исчезает в тумане', () => {
+  const context = recordingContext()
+  const renderer = effects.createPersistentSpellEffectsRenderer([
+    { id: 'faith', kind: 'area', spellId: 'guardian-of-faith', center: { x: 3, y: 3 }, shape: 'sphere', sizeFeet: 10 },
+  ], [actor('cleric', 2, 2)], { detail: 'reduced', reducedMotion: true })
+  render.drawBoardEffects(context, scene(), [renderer])
+  assert.ok(context.ops.some(operation => operation.op === 'arc'), 'у стража есть граница области')
+  assert.ok(context.ops.some(operation => operation.op === 'lineTo'), 'у стража есть силуэт оружия или щита')
+  const fog = recordingContext()
+  const hiddenScene = scene(8, 8, [{ x: 3, y: 3 }])
+  render.drawBoardEffects(fog, hiddenScene, [renderer])
+  assert.equal(fog.ops.filter(operation => !['save', 'restore'].includes(operation.op)).length, 0, 'скрытая точка не рисует стража')
 })
 
 test('проекция сохраняет точные клетки области, ауру и актуальную концентрацию', () => {

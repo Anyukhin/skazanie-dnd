@@ -1,0 +1,379 @@
+{
+  "schema_version": 4,
+  "created_at": "2026-11-26T22:23:27.318Z",
+  "runner": "eval/narrator-memory-trial.mjs",
+  "synthetic_only": true,
+  "initial_cloud_attempt": {
+    "provider": "RouterAI",
+    "http_status": 402,
+    "error_code": "LLM_PROVIDER_ERROR",
+    "calls": 3,
+    "models": [
+      "qwen/qwen3.8-27b",
+      "qwen/qwen3-32b",
+      "z-ai/glm-5.3-flash"
+    ],
+    "case_ids": [
+      "decision-n-minus-2"
+    ],
+    "note": "ПЕРВАЯ попытка облачного прогона. Серия остановлена после трёх ответов HTTP 402. Токены и цена провайдером не сообщены. Ключ и заголовки в файл не попали."
+  },
+  "local_trial": {
+    "provider": "Ollama",
+    "model": "qwen3:14b",
+    "quantization": "Q4_K_M",
+    "num_ctx": 16384,
+    "max_tokens": 512,
+    "timeout_ms": 120000,
+    "cases": 10,
+    "calls": 13,
+    "usage": {
+      "prompt_tokens": 75837,
+      "completion_tokens": 316,
+      "total_tokens": 76153,
+      "provider_cost_rub": 0
+    },
+    "parameters": {
+      "think": false,
+      "seed": null
+    },
+    "input_context_check": {
+      "min_tokens_per_call": 5386,
+      "max_tokens_per_call": 6403,
+      "previous_truncation_limit": 2050
+    },
+    "results": [
+      {
+        "case_id": "old-decision-memory",
+        "latency_ms": 717,
+        "include_memory": false,
+        "prompt_has_memory_focus": false,
+        "raw": [
+          {
+            "content": "Проверка «Мудрость» завершилась успехом.",
+            "usage": {
+              "prompt_tokens": 5389,
+              "completion_tokens": 17,
+              "total_tokens": 5406,
+              "provider_cost": 0
+            }
+          }
+        ],
+        "shown": "Проверка «Мудрость» завершилась успехом.",
+        "origin": {
+          "source": "llm",
+          "reason": "generated",
+          "elapsed_ms": 717
+        },
+        "repaired_after": [],
+        "validation": true
+      },
+      {
+        "case_id": "open-promise",
+        "latency_ms": 562,
+        "include_memory": false,
+        "prompt_has_memory_focus": false,
+        "raw": [
+          {
+            "content": "Проверка «Интеллект» завершилась успехом.",
+            "usage": {
+              "prompt_tokens": 5386,
+              "completion_tokens": 17,
+              "total_tokens": 5403,
+              "provider_cost": 0
+            }
+          }
+        ],
+        "shown": "Проверка «Интеллект» завершилась успехом.",
+        "origin": {
+          "source": "llm",
+          "reason": "generated",
+          "elapsed_ms": 562
+        },
+        "repaired_after": [],
+        "validation": true
+      },
+      {
+        "case_id": "past-interaction",
+        "latency_ms": 520,
+        "include_memory": false,
+        "prompt_has_memory_focus": false,
+        "raw": [
+          {
+            "content": "Проверка «Харизма» завершилась успехом.",
+            "usage": {
+              "prompt_tokens": 5388,
+              "completion_tokens": 16,
+              "total_tokens": 5404,
+              "provider_cost": 0
+            }
+          }
+        ],
+        "shown": "Проверка «Харизма» завершилась успехом.",
+        "origin": {
+          "source": "llm",
+          "reason": "generated",
+          "elapsed_ms": 520
+        },
+        "repaired_after": [],
+        "validation": true
+      },
+      {
+        "case_id": "failed-check-hook",
+        "latency_ms": 643,
+        "include_memory": false,
+        "prompt_has_memory_focus": false,
+        "raw": [
+          {
+            "content": "Проверка «Ловкость» завершилась неудачей.",
+            "usage": {
+              "prompt_tokens": 5386,
+              "completion_tokens": 19,
+              "total_tokens": 5405,
+              "provider_cost": 0
+            }
+          }
+        ],
+        "shown": "Проверка «Ловкость» завершилась неудачей.",
+        "origin": {
+          "source": "llm",
+          "reason": "generated",
+          "elapsed_ms": 643
+        },
+        "repaired_after": [],
+        "validation": true
+      },
+      {
+        "case_id": "untrusted-injection",
+        "latency_ms": 615,
+        "include_memory": false,
+        "prompt_has_memory_focus": false,
+        "raw": [
+          {
+            "content": "Герой только что заявил своё намерение — действие ещё не произошло.",
+            "usage": {
+              "prompt_tokens": 5431,
+              "completion_tokens": 20,
+              "total_tokens": 5451,
+              "provider_cost": 0
+            }
+          }
+        ],
+        "shown": "Герой только что заявил своё намерение — действие ещё не произошло.",
+        "origin": {
+          "source": "llm",
+          "reason": "generated",
+          "elapsed_ms": 615
+        },
+        "repaired_after": [],
+        "validation": true
+      },
+      {
+        "case_id": "confirmed-result",
+        "latency_ms": 462,
+        "include_memory": false,
+        "prompt_has_memory_focus": false,
+        "raw": [
+          {
+            "content": "Цель получает урон.",
+            "usage": {
+              "prompt_tokens": 5396,
+              "completion_tokens": 8,
+              "total_tokens": 5404,
+              "provider_cost": 0
+            }
+          }
+        ],
+        "shown": "Цель получает урон.",
+        "origin": {
+          "source": "llm",
+          "reason": "generated",
+          "elapsed_ms": 462
+        },
+        "repaired_after": [],
+        "validation": true
+      },
+      {
+        "case_id": "roleplay-memory",
+        "latency_ms": 1490,
+        "include_memory": true,
+        "prompt_has_memory_focus": true,
+        "raw": [
+          {
+            "content": "Мира кивает, поднимая медную кружку с картой под ней.",
+            "usage": {
+              "prompt_tokens": 6135,
+              "completion_tokens": 21,
+              "total_tokens": 6156,
+              "provider_cost": 0
+            }
+          },
+          {
+            "content": "Медная кружка поднимается, под ней — карта старых троп.",
+            "usage": {
+              "prompt_tokens": 6275,
+              "completion_tokens": 22,
+              "total_tokens": 6297,
+              "provider_cost": 0
+            }
+          }
+        ],
+        "shown": "Медная кружка поднимается, под ней — карта старых троп.",
+        "origin": {
+          "source": "llm",
+          "reason": "generated",
+          "elapsed_ms": 1490
+        },
+        "repaired_after": [
+          "NPC_REACTION_NOT_PERMITTED"
+        ],
+        "validation": true
+      },
+      {
+        "case_id": "roleplay-memory-ablated",
+        "latency_ms": 1828,
+        "include_memory": true,
+        "prompt_has_memory_focus": false,
+        "raw": [
+          {
+            "content": "Мира кивает, но её взгляд устремлён в окно, где тускло светится лампада на улице.",
+            "usage": {
+              "prompt_tokens": 6047,
+              "completion_tokens": 34,
+              "total_tokens": 6081,
+              "provider_cost": 0
+            }
+          },
+          {
+            "content": "Мира молчит, но её взгляд устремлён в окно, где тускло светится лампада на улице.",
+            "usage": {
+              "prompt_tokens": 6200,
+              "completion_tokens": 35,
+              "total_tokens": 6235,
+              "provider_cost": 0
+            }
+          }
+        ],
+        "shown": "Мира молчит, но её взгляд устремлён в окно, где тускло светится лампада на улице.",
+        "origin": {
+          "source": "llm",
+          "reason": "generated",
+          "elapsed_ms": 1829
+        },
+        "repaired_after": [
+          "NPC_REACTION_NOT_PERMITTED"
+        ],
+        "validation": true
+      },
+      {
+        "case_id": "public-rumor-projection",
+        "latency_ms": 2767,
+        "include_memory": true,
+        "prompt_has_memory_focus": true,
+        "raw": [
+          {
+            "content": "Мира кивает, слегка наклоняясь вперёд, и говорит: «Ну-ка, слушай — возчики говорили, что дым был зелёным, как от старой мельницы».",
+            "usage": {
+              "prompt_tokens": 6213,
+              "completion_tokens": 55,
+              "total_tokens": 6268,
+              "provider_cost": 0
+            }
+          },
+          {
+            "content": "Мира кивает, слегка наклоняясь вперёд.",
+            "usage": {
+              "prompt_tokens": 6403,
+              "completion_tokens": 19,
+              "total_tokens": 6422,
+              "provider_cost": 0
+            }
+          }
+        ],
+        "shown": "Пока ничего не меняется: следующий шаг за отрядом. Северные ворота. люди говорят вполголоса после тревоги. Голоса из соседних дворов. Рядом Мира.",
+        "origin": {
+          "source": "template",
+          "reason": "verification_rejected",
+          "elapsed_ms": 2767
+        },
+        "repaired_after": [],
+        "validation": true,
+        "projection_input": {
+          "source_markers_present": true,
+          "projected_markers_present": false,
+          "source_records": [
+            {
+              "visibility": "public",
+              "marker": false
+            },
+            {
+              "visibility": "party",
+              "marker": false
+            },
+            {
+              "visibility": "gm_only",
+              "marker": true
+            }
+          ]
+        },
+        "projection_checks": {
+          "PRIVATE_TESTIMONY_MARKER: под печью спрятан ларец": {
+            "prompt_contains_hidden": false,
+            "raw_contains_hidden": false,
+            "shown_contains_hidden": false
+          }
+        }
+      },
+      {
+        "case_id": "hidden-testimony-projection",
+        "latency_ms": 1252,
+        "include_memory": true,
+        "prompt_has_memory_focus": true,
+        "raw": [
+          {
+            "content": "Следы пожара всё ещё видны у ворот, а в воздухе висит запах горячего железа.",
+            "usage": {
+              "prompt_tokens": 6188,
+              "completion_tokens": 33,
+              "total_tokens": 6221,
+              "provider_cost": 0
+            }
+          }
+        ],
+        "shown": "Следы пожара всё ещё видны у ворот, а в воздухе висит запах горячего железа.",
+        "origin": {
+          "source": "llm",
+          "reason": "generated",
+          "elapsed_ms": 1252
+        },
+        "repaired_after": [],
+        "validation": true,
+        "projection_input": {
+          "source_markers_present": true,
+          "projected_markers_present": false,
+          "source_records": [
+            {
+              "visibility": "public",
+              "marker": false
+            },
+            {
+              "visibility": "party",
+              "marker": false
+            },
+            {
+              "visibility": "gm_only",
+              "marker": true
+            }
+          ]
+        },
+        "projection_checks": {
+          "PRIVATE_TESTIMONY_MARKER: под печью спрятан ларец": {
+            "prompt_contains_hidden": false,
+            "raw_contains_hidden": false,
+            "shown_contains_hidden": false
+          }
+        }
+      }
+    ]
+  }
+}

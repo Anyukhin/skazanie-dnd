@@ -19,6 +19,7 @@ use sk_core::content::{self, ContentError, ContentResult};
 use sk_core::indexmap::IndexSet;
 use sk_core::{js, text};
 use sk_scenario::campaign_scenario::{campaign_scenario, scenario_clue_fact_id, scenario_found_clue_ids, scenario_informant_rules, scenario_location_id, scenario_treaty_rules};
+use sk_social::npc_social::npc_profile_at_world_time;
 use crate::support::{head_utf16, utf16_len, PROTOTYPE_KEYS};
 use sk_world_story::scenario_knight::{scenario_knight_riddle_solved, scenario_knight_state, scenario_night_index};
 
@@ -370,7 +371,11 @@ pub fn parse_dialogue_catalog(text: &str) -> ContentResult<Vec<Dialogue>> {
     normalize_dialogues(&content::parse_json(DIALOGUES_FILE, text)?).map_err(|message| ContentError::new(DIALOGUES_FILE, message))
 }
 
-static PARSED: LazyLock<ContentResult<Vec<Dialogue>>> = LazyLock::new(|| parse_dialogue_catalog(DIALOGUES_SOURCE));
+static RAW_DIALOGUE_CATALOG: LazyLock<ContentResult<Value>> = LazyLock::new(|| content::parse_json(DIALOGUES_FILE, DIALOGUES_SOURCE));
+static PARSED: LazyLock<ContentResult<Vec<Dialogue>>> = LazyLock::new(|| {
+    let raw = RAW_DIALOGUE_CATALOG.as_ref().map_err(Clone::clone)?;
+    normalize_dialogues(raw).map_err(|message| ContentError::new(DIALOGUES_FILE, message))
+});
 
 /// Проверка встроенного каталога диалогов (сервер зовёт её до приёма запросов).
 pub fn check_dialogue_catalog() -> ContentResult<()> {
@@ -669,6 +674,19 @@ fn dialogue_action_open(state: &Value, item: &DialogueOption, hero: &str, progre
 /// `{ greeting, options: [{ id, label, check?, asked, ends }] }` или `None`.
 pub fn dialogue_options_for(state: &Value, npc_id: Option<&Value>, hero_id: Option<&Value>) -> Option<Value> {
     let dialogue = dialogue_for(state, npc_id)?;
+    let npc_id_text = js::s(npc_id);
+    let npcs = field(field(Some(state), "social"), "npcs")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let npc = npcs
+        .iter()
+        .find(|entry| js::s(entry.get("id")) == npc_id_text);
+    if let Some(npc) = npc {
+        if js::is_false(npc_profile_at_world_time(npc, state).get("available")) {
+            return None;
+        }
+    }
     let hero = clean(hero_id, 120);
     let progress = dialogue_progress(state, &dialogue.id);
     let chosen_by_hero = |option_id: &str| js_includes(heroes_of(&progress.chosen, option_id), &hero);
@@ -865,6 +883,58 @@ pub fn scene_dialogues_for_viewer(state: &Value, player_id: Option<&Value>) -> V
     Value::Object(result)
 }
 
+fn normalized_utterance(speech: &str) -> String {
+    let normalized = text::nfkc(speech);
+    let speech = text::trim(&normalized);
+    let speech = [('«', '»'), ('"', '"'), ('“', '”')].iter().find_map(|&(open, close)| {
+        let inner = speech.strip_prefix(open)?.strip_suffix(close)?;
+        (!inner.is_empty() && !inner.contains([open, close])).then_some(inner)
+    }).unwrap_or(speech);
+    let speech = speech.trim_end_matches(|ch| matches!(ch, '.' | '!' | '?' | '…') || text::is_js_space(ch));
+    text::lower(&text::squash_spaces(speech)).replace('ё', "е")
+}
+
+fn question_without_courtesy(speech: &str) -> &str {
+    let answer = ["скажите, пожалуйста, ", "подскажите, пожалуйста, ", "скажите пожалуйста, ", "подскажите пожалуйста, ",
+        "скажите, ", "подскажите, ", "пожалуйста, ", "будьте добры, ", "можно узнать, "]
+        .iter().find_map(|prefix| speech.strip_prefix(*prefix)).unwrap_or(speech);
+    answer.strip_suffix(", пожалуйста").unwrap_or(answer)
+}
+
+fn ends_in_question(speech: &str) -> bool {
+    speech.chars().rev().take_while(|&ch| matches!(ch, '.' | '!' | '?' | '…' | '»' | '”' | '"') || text::is_js_space(ch)).any(|ch| ch == '?')
+}
+
+/// Совпадение всей реплики с авторским вариантом у выбранного собеседника.
+/// `Some(None)` оставляет обычный разговор, если вариант закрыт или неоднозначен.
+pub fn dialogue_option_for_utterance(state: &Value, npc_id: &str, player_id: &str, message: &str) -> Option<Option<&'static str>> {
+    let dialogue = dialogue_for(state, Some(&Value::from(npc_id)))?;
+    let speech = normalized_utterance(message);
+    if speech.is_empty() {
+        return None;
+    }
+    let aliases = RAW_DIALOGUE_CATALOG.as_ref().ok()?.get("utterance_aliases").and_then(|entries| entries.get(&dialogue.id));
+    let plain_question = question_without_courtesy(&speech);
+    let mut matches = dialogue.options.iter().filter(|option| {
+        let safe_question = ends_in_question(&option.label) && option.action.is_none() && option.check.is_none() && !option.ends;
+        let matches_speech = |utterance: &str| {
+            let normalized = normalized_utterance(utterance);
+            normalized == speech || (safe_question && normalized == plain_question)
+        };
+        matches_speech(&option.label) || aliases.and_then(|entry| entry.get(&option.id)).and_then(Value::as_array)
+            .is_some_and(|aliases| aliases.iter().filter_map(Value::as_str).any(matches_speech))
+    });
+    let matched = matches.next()?;
+    let asks_instead_of_choosing = ends_in_question(message) && !ends_in_question(&matched.label)
+        && (matched.action.is_some() || matched.check.is_some() || matched.ends);
+    if matches.next().is_some() || asks_instead_of_choosing {
+        return Some(None);
+    }
+    let scene = scene_dialogues_for_viewer(state, Some(&Value::from(player_id)));
+    let offered = scene.get(npc_id).and_then(|entry| entry.get("options")).and_then(Value::as_array);
+    Some(offered.filter(|options| options.iter().any(|option| option["id"].as_str() == Some(&matched.id))).map(|_| matched.id.as_str()))
+}
+
 const CHECK_SKILL_LABELS: [(&str, &str); 9] = [
     ("persuasion", "Убеждение"),
     ("deception", "Обман"),
@@ -956,6 +1026,27 @@ mod tests {
         assert_eq!(dialogue_check_line(None), "");
         // Ключ прототипа — незнакомый навык: печатается как есть.
         assert_eq!(dialogue_check_line(Some(&json!({ "skill": "constructor" }))), "Проверка «constructor»: провал.");
+    }
+
+    #[test]
+    fn scheduled_castle_maid_speaks_only_after_sunset() {
+        let state = |minutes| json!({
+            "campaignConcept": {"arc": {"version": "skazanie:scenario-arc-v1", "scenario_id": "astohan-dragon-hunt", "scenario_version": 1}},
+            "scene": {"location": "Замок Забытых Скал"},
+            "social": {"npcs": [{
+                "id": "astohan-cliffs-maid", "name": "Призрачная служанка", "location": "Замок Забытых Скал",
+                "available": true, "schedule": [
+                    {"id": "day", "days": [], "start_minute": 360, "end_minute": 1080, "location": "Замок Забытых Скал", "available": false, "summary": "Днём молчит.", "visibility": "party"},
+                    {"id": "evening", "days": [], "start_minute": 1080, "end_minute": 1440, "location": "Замок Забытых Скал", "available": true, "summary": "После заката говорит.", "visibility": "party"},
+                    {"id": "night", "days": [], "start_minute": 0, "end_minute": 360, "location": "Замок Забытых Скал", "available": true, "summary": "Ночью говорит.", "visibility": "party"}
+                ]
+            }]},
+            "mechanics": {"world_time": {"elapsed_minutes": minutes}},
+            "worldMemory": {"facts": [{"id": "fact:secret:scenario:astohan-dragon-hunt:cliffs-maid"}]},
+            "dialogues": {}
+        });
+        assert!(dialogue_options_for(&state(600), Some(&json!("astohan-cliffs-maid")), Some(&json!("hero"))).is_none());
+        assert!(dialogue_options_for(&state(1_200), Some(&json!("astohan-cliffs-maid")), Some(&json!("hero"))).is_some());
     }
 
     #[test]

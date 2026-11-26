@@ -1126,11 +1126,9 @@ function promiseAnchorMatches(sentence, promise) {
 }
 
 function promisedObjectAssertion(sentence) {
-  return [...sentence.matchAll(new RegExp(PROMISED_OBJECT_STATE_PATTERN.source, 'giu'))].some(match => {
-    const before = sentence.slice(Math.max(0, match.index - 32), match.index)
-    // «Не видно» и «пока не найдена» не утверждают получения вещи.
-    return !/(?:не\s+(?:был[аои]?\s+)?|никогда\s+не\s*)$/iu.test(before)
-  })
+  // Открытое обещание не разрешает рассказчику утверждать ни наличие, ни
+  // отсутствие предмета. Обе формы подменяют событие исполнения или осмотра.
+  return PROMISED_OBJECT_STATE_PATTERN.test(sentence)
 }
 
 const CONTENT_BOUNDARY_CATEGORIES = Object.freeze([

@@ -320,13 +320,17 @@ export function AgentInteractionCard({ interaction, players, playerId, canContin
   }
   const votedVoters = new Set(Object.keys(interaction.votes).map((actorId) => interaction.voterByActorId?.[actorId] ?? actorId))
   const abstainedVoters = new Set(interaction.abstainedVoterIds ?? [])
+  const treaty = Boolean(interaction.scenarioTreaty)
+  const canVote = !resolved && (!treaty || eligibleActors.includes(playerId) && !abstainedVoters.has(voterId ?? playerId))
   return (
     <section className={['agent-interaction', 'agent-interaction--' + interaction.type, resolved ? 'resolved' : ''].join(' ')} aria-label="Групповое решение">
       <div className="agent-interaction__head">
         <span><BrainCircuit size={15} />Решение отряда</span>
         <strong>{interaction.title}</strong>
         <p>{interaction.description}</p>
-        <small className="agent-interaction__policy">Один голос на аккаунт · активны {activeVoters} · отключение = воздержание · автоисход через {ttlSeconds} с</small>
+        <small className="agent-interaction__policy">{treaty
+          ? `Для согласия нужно ${quorum} голосов за ${ttlSeconds} с. Без кворума игра продолжится.`
+          : `Один голос на аккаунт · активны ${activeVoters} · отключение = воздержание · автоисход через ${ttlSeconds} с`}</small>
       </div>
       {interaction.type === 'roll' ? (
         <button className="agent-roll" onClick={onRoll} disabled={resolved}>
@@ -339,7 +343,7 @@ export function AgentInteractionCard({ interaction, players, playerId, canContin
             const voters = Object.entries(interaction.votes)
               .filter(([, vote]) => vote === option.id)
               .map(([actorId]) => players.find((player) => player.id === actorId)?.character ?? actorId)
-            return <button key={option.id} className={[selected === option.id ? 'selected' : '', winner?.id === option.id ? 'winner' : ''].join(' ')} onClick={() => onVote(option.id)} disabled={resolved}>
+            return <button key={option.id} className={[selected === option.id ? 'selected' : '', winner?.id === option.id ? 'winner' : ''].join(' ')} onClick={() => onVote(option.id)} disabled={!canVote}>
               <span>{option.label}</span><small>{votes} / {quorum} голосов{voters.length ? ` · ${voters.join(', ')}` : ''}</small>
             </button>
           })}
@@ -352,8 +356,8 @@ export function AgentInteractionCard({ interaction, players, playerId, canContin
           return <span key={voterId} className={status}><i />{player.character}<small>{label}</small></span>
         })}
       </div>}
-      {!resolved && interaction.type !== 'roll' && <button className="agent-abstain" onClick={onAbstain}>Воздержаться</button>}
-      {resolved && <button className="agent-continue" onClick={onContinue} disabled={!canContinue} title={canContinue ? 'Передать подтверждённое решение Рассказчику' : 'Продолжить может владелец выбранного героя'}><Sparkles size={14} />Продолжить историю: {winner?.label}</button>}
+      {canVote && interaction.type !== 'roll' && <button className="agent-abstain" onClick={onAbstain}>Воздержаться</button>}
+      {resolved && !treaty && <button className="agent-continue" onClick={onContinue} disabled={!canContinue} title={canContinue ? 'Передать подтверждённое решение Рассказчику' : 'Продолжить может владелец выбранного героя'}><Sparkles size={14} />Продолжить историю: {winner?.label}</button>}
     </section>
   )
 }
