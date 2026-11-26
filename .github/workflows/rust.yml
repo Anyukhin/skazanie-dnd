@@ -42,7 +42,8 @@ jobs:
         run: cargo build --workspace --all-targets --locked
 
       - name: Тесты
-        run: cargo test --workspace --locked
+        # Остальные наборы покажут свои расхождения за тот же прогон.
+        run: cargo test --workspace --locked --no-fail-fast
 
   # Урок 12 плана переноса: один бинарь в образе. Образ собирается тем же
   # Dockerfile.rust, что и у владельца, и должен подняться и ответить на
