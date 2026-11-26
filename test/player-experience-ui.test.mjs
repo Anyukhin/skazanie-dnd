@@ -141,6 +141,21 @@ test('пауза видна всем, а resume остаётся owner-only и �
   assert.match(appSource, /canManageLifecycle && lifecycleStatus === 'paused'/u)
 })
 
+test('окно судьбы при живом отряде открывается по кнопке только для своих погибших героев', () => {
+  assert.match(appSource, /resolvableFallenHeroes = fallenHeroes\.filter\(\(hero\) => accessibleHeroIds\.includes\(hero\.id\)\)/u)
+  assert.match(appSource, /showDeathScreen = partyDefeated\s*\? fallenHeroes\.length > 0 && !partyDefeatReviewed\s*:\s*canOpenDeathScreen && openDeathCampaign === state\.sessionCode/u)
+  assert.match(appSource, /canOpenDeathScreen && <section[^>]*aria-label="Судьба павших"[\s\S]*?onClick=\{\(\) => setOpenDeathCampaign\(state\.sessionCode\)\}/u)
+  assert.match(appSource, /showDeathScreen && <DeathScreen heroes=\{resolvableFallenHeroes\}/u)
+})
+
+test('заклинание на погибшего выбирает тело отдельно от обычной фишки союзника', () => {
+  assert.match(appSource, /const revivingSpell = spellAiming && selectedSpell\?\.revivesDead === true/u)
+  assert.match(appSource, /if \(revivingSpell\) \{\s*for \(const hero of players\) \{\s*if \(state\.mechanics\?\.death\?\.heroes\?\.\[hero\.id\]\?\.status !== 'dead'\) continue/u)
+  assert.match(appSource, /fallenHere = cell\.revealed \? fallenHeroesByCell\.get\(cellKey\) : undefined/u)
+  assert.match(appSource, /className="revival-targets"[\s\S]*?castAtTarget\(hero\.id\)/u)
+  assert.match(appSource, /const canHeal = Boolean\(selected && combatMode === 'magic' && selectedSpell && !revivingSpell/u)
+})
+
 test('экран уровня появляется только после подтверждённого event/state transition и один раз на уровень', () => {
   const hero = { id: 'hero', character: 'Ада', level: 2 }
   assert.deepEqual(experience.confirmedLevelUps({}, [hero], []), [], 'начальная загрузка не празднуется')
@@ -276,4 +291,18 @@ test('история урона использует только записан
   assert.deepEqual(history.map((entry) => [entry.id, entry.amount]), [['two', 7], ['one', 4]])
   assert.match(appSource, /recentDamageForTarget\(state\.battleLog \?\? \[\], inspectedTarget\.id\)/u)
   assert.match(appSource, /История урона/u)
+})
+
+test('история урона показывает заклинание по записи спасброска или урона', () => {
+  const history = experience.recentDamageForTarget([
+    { id: 'claw', type: 'attack', actorId: 'enemy', targetId: 'fighter', damage: 4 },
+    { id: 'guardian', type: 'spell-save', actorId: 'fighter', targetId: 'fighter', spellId: 'guardian-of-faith', damage: 1, damageType: 'radiant' },
+    { id: 'cloud', type: 'spell-damage', targetId: 'fighter', spellId: 'cloudkill', spellName: 'Облако смерти', damage: 8 },
+  ], 'fighter')
+  assert.deepEqual(history, [
+    { id: 'cloud', sourceSpell: { id: 'cloudkill', name: 'Облако смерти' }, amount: 8 },
+    { id: 'guardian', sourceSpell: { id: 'guardian-of-faith', name: undefined }, amount: 1, damageType: 'radiant' },
+    { id: 'claw', actorId: 'enemy', amount: 4 },
+  ])
+  assert.match(appSource, /entry\.sourceSpell\.name \|\| catalogSpellName\(entry\.sourceSpell\.id\)/u)
 })

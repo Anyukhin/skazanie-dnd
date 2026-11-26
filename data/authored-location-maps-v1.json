@@ -54739,6 +54739,18 @@
           "blocksMove": true,
           "blocksSight": true,
           "cover": "three_quarters"
+        },
+        {
+          "id": "astohan-forgotten-cliffs:executioner-diary",
+          "assetId": "paper_scatter",
+          "x": 42.5,
+          "y": 19.5,
+          "footprint": [
+            {
+              "x": 42,
+              "y": 19
+            }
+          ]
         }
       ],
       "zones": [

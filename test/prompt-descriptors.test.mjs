@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import test from 'node:test'
 
 import {
@@ -44,6 +46,15 @@ test('каждый промпт реестра существует на дис�
   for (const descriptor of PROMPT_DESCRIPTORS) {
     assert.ok(available.has(descriptor.promptId),
       `${descriptor.promptId} объявлен в реестре, но файла нет`)
+  }
+})
+
+test('файлы промптов используют LF для совпадения байтов в JS и Rust', () => {
+  const prompts = new URL('../prompts/', import.meta.url)
+  for (const file of readdirSync(prompts, { recursive: true, withFileTypes: true })) {
+    if (!file.isFile()) continue
+    const path = join(file.parentPath, file.name)
+    assert.ok(!readFileSync(path).includes('\r'), `${path}: ожидаются окончания строк LF`)
   }
 })
 

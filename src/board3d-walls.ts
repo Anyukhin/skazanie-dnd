@@ -1,3 +1,4 @@
+import { createLibraryLeaf } from './board3d-library-leaf'
 import * as THREE from 'three'
 import { wallSideCell, zoneOfCell } from './board-render'
 import { isMasonryCell, isRockCell } from './board3d-landscape'
@@ -193,7 +194,9 @@ export function createTriplanarMaterial(spec: StyleMaterial, cells: number, maps
   vec3 skzNormal = objectNormal;
   #ifdef USE_INSTANCING
     skzWorld = instanceMatrix * skzWorld;
-    skzNormal = mat3( instanceMatrix ) * skzNormal;
+    mat3 axes = mat3( instanceMatrix );
+    vec3 squaredScale = vec3( dot( axes[0], axes[0] ), dot( axes[1], axes[1] ), dot( axes[2], axes[2] ) );
+    skzNormal = axes * ( skzNormal / max( vec3( 1e-8 ), squaredScale ) );
   #endif
   skzWorld = modelMatrix * skzWorld;
   vSkzWorld = skzWorld.xyz;
@@ -263,7 +266,7 @@ export function lookRepeat(pack: GraphicsStylePack, look: string) {
 
 // -------------------------------------------------------------- сборка
 
-type Shape = 'box' | 'log' | 'tip' | 'ring'
+type Shape = 'box' | 'stone-course' | 'portal-wedge' | 'log' | 'tip' | 'ring'
 type Item = { matrix: THREE.Matrix4; color: THREE.Color }
 type Bucket = { shape: Shape; look: string; swap: boolean; items: Item[] }
 
@@ -272,6 +275,8 @@ const TIMBER = '#ffffff'
 
 function createShape(shape: Shape): THREE.BufferGeometry {
   if (shape === 'box') return new THREE.BoxGeometry(1, 1, 1)
+  if (shape === 'stone-course') return createStoneCourseGeometry()
+  if (shape === 'portal-wedge') return createPortalWedgeGeometry()
   if (shape === 'ring') return new THREE.TorusGeometry(1, .22, 6, 14)
   // Брёвна гранёные: у грани постоянная нормаль, и проекция фактуры не рвётся посреди грани.
   const source = shape === 'log' ? new THREE.CylinderGeometry(1, 1, 1, 8, 1, true) : new THREE.ConeGeometry(1, 1, 8, 1, true)
@@ -279,6 +284,61 @@ function createShape(shape: Shape): THREE.BufferGeometry {
   source.dispose()
   faceted.computeVertexNormals()
   return faceted
+}
+
+/** Низкополигональный клин для камня арки: внешний радиус шире внутреннего. */
+export function createPortalWedgeGeometry() {
+  const positions: number[] = [], indices: number[] = []
+  const ring = (halfX: number, y: number, halfZ: number) => [
+    [-halfX, y, -halfZ], [halfX, y, -halfZ], [halfX, y, halfZ], [-halfX, y, halfZ],
+  ] as Array<[number, number, number]>
+  // Четыре сечения дают фаску по внутреннему и внешнему радиусу. Внутренний
+  // радиус уже, наружный шире, а грани фаски ловят свет отдельной полосой.
+  const rings = [
+    ring(.36, -.5, .42), ring(.42, -.40, .5), ring(.5, .40, .5), ring(.46, .5, .42),
+  ]
+  const quad = (a: [number, number, number], b: [number, number, number], c: [number, number, number], d: [number, number, number]) => {
+    const base = positions.length / 3
+    positions.push(...a, ...b, ...c, ...d)
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3)
+  }
+  for (let level = 0; level < rings.length - 1; level += 1) for (let side = 0; side < 4; side += 1) {
+    const next = (side + 1) % 4
+    quad(rings[level][side], rings[level + 1][side], rings[level + 1][next], rings[level][next])
+  }
+  quad(rings.at(-1)![3], rings.at(-1)![2], rings.at(-1)![1], rings.at(-1)![0])
+  quad(rings[0][0], rings[0][1], rings[0][2], rings[0][3])
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  geometry.userData.portalWedge = true
+  return geometry
+}
+
+/** Дешёвый камень с одним скошенным верхним поясом: двадцать треугольников. */
+function createStoneCourseGeometry() {
+  const positions: number[] = [], indices: number[] = []
+  const ring = (halfX: number, y: number, halfZ: number) => [
+    [-halfX, y, -halfZ], [halfX, y, -halfZ], [halfX, y, halfZ], [-halfX, y, halfZ],
+  ] as Array<[number, number, number]>
+  const rings = [ring(.5, -.5, .5), ring(.5, .30, .5), ring(.36, .5, .36)]
+  const quad = (a: [number, number, number], b: [number, number, number], c: [number, number, number], d: [number, number, number]) => {
+    const base = positions.length / 3
+    positions.push(...a, ...b, ...c, ...d)
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3)
+  }
+  for (let level = 0; level < 2; level += 1) for (let index = 0; index < 4; index += 1) {
+    const next = (index + 1) % 4
+    quad(rings[level][next], rings[level][index], rings[level + 1][index], rings[level + 1][next])
+  }
+  quad(rings[2][3], rings[2][2], rings[2][1], rings[2][0])
+  quad(rings[0][0], rings[0][1], rings[0][2], rings[0][3])
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  return geometry
 }
 
 /** Локальная рамка ребра: x — вдоль ребра, y — вверх, z — поперёк (правая тройка). */
@@ -318,6 +378,56 @@ function sandstoneContext(map: TacticalMap, side: TacticalCell | null | undefine
 /** Руинные арки и углы — только в развалинах; целый городской дом их не получает. */
 function ruinContext(map: TacticalMap, side: TacticalCell | null | undefined) {
   return /ruin|руин|развалин|разрушен|заброшен/u.test(contextText(map, side))
+}
+
+/**
+ * Парадный вход в библиотеку Замка Забытых Скал. Это один авторский проём
+ * между двором и библиотекой, а не общий стиль всех дверей. Форма привязана к
+ * существующему ребру, поэтому не раскрывает соседние клетки и не меняет
+ * состояние двери.
+ */
+export const LIBRARY_PORTAL_DOOR_ID = 'astohan-forgotten-cliffs:door-5'
+
+/** Проверяет и авторскую дверь, и пару зон, чтобы арка не переехала на другой проём. */
+export function libraryPortalContext(map: TacticalMap, edge: TacticalEdge) {
+  if (map.locationId !== 'astohan-forgotten-cliffs' || edge.kind !== 'door') return false
+  const neighbor = edgeNeighbor(edge)
+  const ownerCell = cellAt(map, edge.x, edge.y)
+  const neighborCell = cellAt(map, neighbor.x, neighbor.y)
+  if (!ownerCell?.revealed && !neighborCell?.revealed) return false
+  if (edge.doorId !== LIBRARY_PORTAL_DOOR_ID) return false
+  const visibleZones = [ownerCell, neighborCell]
+    .filter((cell) => cell?.revealed)
+    .map((cell) => zoneOfCell(map, cell)?.id)
+    .filter((zone): zone is string => Boolean(zone))
+  if (!visibleZones.length || visibleZones.some((zone) => zone !== 'library' && zone !== 'courtyard')) return false
+  return visibleZones.length === 1 || new Set(visibleZones).size === 2
+}
+
+export type LibraryPortalBlock = { position: [number, number, number]; size: [number, number, number]; rotationZ: number; shade: number; keystone?: boolean }
+
+export function libraryPortalMetrics(wallHeight: number) {
+  const centerY = Math.max(.82, wallHeight + .22)
+  const radius = Math.min(.58, Math.max(.52, wallHeight * .60))
+  return { centerY, radius, postHeight: centerY - .05 }
+}
+
+/** Локальная раскладка портала, общей для стилевого и резервного рендера. */
+export function libraryPortalBlocks(wallHeight: number): LibraryPortalBlock[] {
+  const { centerY, radius } = libraryPortalMetrics(wallHeight)
+  const blocks: LibraryPortalBlock[] = []
+  for (let index = 0; index < 9; index += 1) {
+    const angle = (index + .5) * Math.PI / 9
+    const keystone = index === 4
+    blocks.push({
+      position: [Math.cos(angle) * radius, centerY + Math.sin(angle) * radius, 0],
+      size: keystone ? [.242, .268, .25] : [.233, .20, .21],
+      rotationZ: angle - Math.PI / 2,
+      shade: keystone ? 1.06 : .92 + cellNoise(39, 12, 41 + index) * .14,
+      keystone,
+    })
+  }
+  return blocks
 }
 
 /**
@@ -402,6 +512,7 @@ export function structuralEdgeRolesForMap(map: TacticalMap): StructuralRole[] {
 export type StyledEdges = { group: THREE.Group; instances: number; dispose: () => void }
 
 export type StyledEdgeOptions = {
+  stoneCourses?: boolean
   wallHeight: number
   thickness: number
   /** Модели, привязанные к существующим рёбрам; не меняют TacticalMap. */
@@ -431,8 +542,39 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
   const box = (frame: THREE.Matrix4, look: string, position: [number, number, number], size: [number, number, number], color: string | THREE.Color = '#ffffff', rotation?: [number, number, number], swap = false, target = 'walls') => {
     add('box', look, frame.clone().multiply(local(position, size, rotation)), color, swap, target)
   }
+  /** Отдельный верхний ряд из трёх камней на видимом ребре кладки. */
+  const addStoneCourse = (frame: THREE.Matrix4, look: WallLook, seed: number) => {
+    if (look.kind !== 'masonry' || options.stoneCourses === false) return
+    const left = .245 + cellNoise(seed, 0, 21) * .045
+    const right = .245 + cellNoise(seed, 1, 21) * .045
+    const mortar = .025
+    const parts = [left, 1 - left - right, right]
+    let cursor = -.5
+    for (let index = 0; index < parts.length; index += 1) {
+      const width = parts[index] - mortar
+      const center = cursor + parts[index] / 2
+      const shade = .90 + cellNoise(seed, index, 23) * .18
+      add('stone-course', look.body, frame.clone().multiply(local([center, H + .075, 0], [width, .09, T + .045])), new THREE.Color(look.tint).multiplyScalar(shade), false, 'stone-course')
+      cursor += parts[index]
+    }
+  }
+  const materials = new Map<string, THREE.MeshStandardMaterial>()
+  const materialFor = (look: string, swap: boolean) => {
+    const key = `${look}:${swap}`
+    let material = materials.get(key)
+    if (!material) {
+      material = createLookMaterial(pack, look, { swap, onTexture: options.onTexture, loadTexture: options.loadTexture })
+      materials.set(key, material)
+    }
+    return material
+  }
+  const leafGeometry = new Set<THREE.BufferGeometry>()
   const structuralGroup = new THREE.Group()
   structuralGroup.name = 'structural-edges'
+  const stoneCourseGroup = new THREE.Group()
+  stoneCourseGroup.name = 'wall-stone-courses'
+  const libraryPortalGroup = new THREE.Group()
+  libraryPortalGroup.name = 'library-portal'
   const structural = options.structuralAssets
 
   // Стойки в концах и на поворотах: прямой ряд — без стоек, как и прежде.
@@ -469,6 +611,27 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
     const rest = (1 - fitted) / 2
     if (rest <= .01) return
     for (const side of [-1, 1]) box(frame, look, [side * (.5 - rest / 2), H / 2, 0], [rest, H, T], tint)
+  }
+
+  /**
+   * Клинчатый портал на один дверной проём. Камни остаются отдельными
+   * инстансами, чтобы скругление и разные оттенки читались в обычной камере,
+   * а проход под аркой сохранял исходную ширину.
+   */
+  const addLibraryPortal = (frame: THREE.Matrix4) => {
+    const portalTint = new THREE.Color('#a7abad')
+    const { centerY, postHeight } = libraryPortalMetrics(H)
+    const rowHeight = postHeight / 3
+    for (const side of [-1, 1]) for (let row = 0; row < 3; row += 1) {
+      const shade = .94 + cellNoise(side, row, 67) * .10
+      box(frame, 'plaster', [side * .56, row * rowHeight + rowHeight / 2, 0], [.20, rowHeight - .028, T + .11], portalTint.clone().multiplyScalar(shade), undefined, false, 'library-portal')
+    }
+    // Импосты отмечают место, где плечо начинает нести клинья арки.
+    for (const side of [-1, 1]) box(frame, 'plaster', [side * .53, centerY - .07, 0], [.30, .13, T + .12], portalTint.clone().multiplyScalar(1.04), undefined, false, 'library-portal')
+    for (const side of [-1, 1]) box(frame, 'plaster', [side * .56, .075, 0], [.28, .15, T + .18], portalTint, undefined, false, 'library-portal')
+    for (const block of libraryPortalBlocks(H)) {
+      add('portal-wedge', 'plaster', frame.clone().multiply(local(block.position, [block.size[0], block.size[1], T + block.size[2]], [0, 0, block.rotationZ])), portalTint.clone().multiplyScalar(block.shade), false, 'library-portal')
+    }
   }
 
   for (const edge of edgeList(map)) {
@@ -511,7 +674,10 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
       }
       // Венчающий ряд: чуть шире стены и светлее, как обрез кладки сверху.
       if (look.kind === 'planks') box(frame, 'timber', [0, H + .025, 0], [1, .05, T + .04], TIMBER)
-      else box(frame, look.body, [0, H + .025, 0], [1, .05, T + .04], tint.clone().multiplyScalar(1.12))
+      else {
+        box(frame, look.body, [0, H + .025, 0], [1, .05, T + .04], tint.clone().multiplyScalar(1.12))
+        addStoneCourse(frame, look, seed)
+      }
       continue
     }
 
@@ -580,6 +746,18 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
     }
 
     if (edge.kind !== 'door') continue
+    if (libraryPortalContext(map, edge)) {
+      addLibraryPortal(frame)
+      const state = doorState(map, edge)
+      const { centerY, radius } = libraryPortalMetrics(H)
+      const leaf = createLibraryLeaf(state, edge.dir === 'e', centerY, radius, materialFor('planks', true), materialFor('iron', false), leafGeometry)
+      leaf.name = `door-leaf:${edge.x},${edge.y},${edge.dir}:${state}`
+      const pivot = new THREE.Group()
+      pivot.applyMatrix4(frame)
+      pivot.add(leaf)
+      structuralGroup.add(pivot)
+      continue
+    }
     // Арка ограничена существующим дверным пролётом и не создаёт отдельную
     // 2×2 арку поверх соседних клеток; узкую арку добирает кладка по бокам.
     const arch = structuralRole === 'sandstone_arch' || structuralRole === 'ruin_wall_arch' ? structuralInstance(structural, {
@@ -648,16 +826,6 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
   const doorsGroup = new THREE.Group()
   doorsGroup.name = 'doors'
   const geometries = new Map<Shape, THREE.BufferGeometry>()
-  const materials = new Map<string, THREE.MeshStandardMaterial>()
-  const materialFor = (look: string, swap: boolean) => {
-    const key = `${look}:${swap}`
-    let material = materials.get(key)
-    if (!material) {
-      material = createLookMaterial(pack, look, { swap, onTexture: options.onTexture, loadTexture: options.loadTexture })
-      materials.set(key, material)
-    }
-    return material
-  }
   let instances = 0
   for (const [key, bucket] of buckets) {
     let geometry = geometries.get(bucket.shape)
@@ -671,16 +839,19 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
     mesh.receiveShadow = true
     mesh.computeBoundingSphere()
     instances += bucket.items.length
-    ;(key.startsWith('doors|') ? doorsGroup : wallsGroup).add(mesh)
+    ;(key.startsWith('doors|') ? doorsGroup : key.startsWith('stone-course|') ? stoneCourseGroup : key.startsWith('library-portal|') ? libraryPortalGroup : wallsGroup).add(mesh)
   }
   if (wallsGroup.children.length) group.add(wallsGroup)
   if (doorsGroup.children.length) group.add(doorsGroup)
+  if (stoneCourseGroup.children.length) group.add(stoneCourseGroup)
+  if (libraryPortalGroup.children.length) group.add(libraryPortalGroup)
   if (structuralGroup.children.length) group.add(structuralGroup)
   return {
     group,
     instances,
     dispose() {
       group.removeFromParent()
+      for (const geometry of leafGeometry) geometry.dispose()
       structuralGroup.clear()
       group.clear()
       for (const geometry of geometries.values()) geometry.dispose()

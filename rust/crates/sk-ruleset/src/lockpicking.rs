@@ -77,6 +77,7 @@ fn declared_tool_ids(actor: Option<&Value>) -> Vec<String> {
     ids.extend(list(prop(actor, "toolProficiencyIds")));
     ids.extend(list(path(actor, &["characterSheet", "tool_proficiencies"])));
     ids.extend(list(path(actor, &["characterSheet", "tools"])));
+    ids.extend(list(path(actor, &["creationBenefits", "tool_proficiencies"])));
     let from_background = clean(path(actor, &["backgroundBenefits", "tool_proficiency"]), 120);
     if !from_background.is_empty() {
         ids.push(from_background);
@@ -168,6 +169,7 @@ mod tests {
         assert!(!has_thieves_tools(Some(&Value::Null)));
         assert!(has(json!({ "backgroundBenefits": { "tool_proficiency": THIEVES_TOOLS_ID } })));
         assert!(has(json!({ "toolProficiencies": ["herbalism_kit", THIEVES_TOOLS_ID] })));
+        assert!(has(json!({ "characterSheet": null, "creationBenefits": { "tool_proficiencies": [THIEVES_TOOLS_ID] } })));
         assert!(!has(json!({ "toolProficiencies": ["herbalism_kit"] })));
         assert!(!has(json!({ "classSkillProficiencies": ["sleight_of_hand"] })));
     }

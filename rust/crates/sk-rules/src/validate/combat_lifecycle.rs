@@ -37,6 +37,9 @@ pub fn check_encounter_lifecycle(v: &mut Validation<'_>) -> Step {
     if !ENCOUNTER_LIFECYCLE_COMMAND_TYPES.contains(&kind.as_str()) {
         return Ok(());
     }
+    if sk_director::campaign_lifecycle::treaty_ends_adventure(v.state) {
+        return Err(rule("Договор с главным противником уже завершил сценарий", "SCENARIO_TREATY_CONCLUDED"));
+    }
     // `context?.allowPlayerNpcEncounter === true && command.npc_id && command.command_type === 'CreateEncounter'`.
     let player_npc_encounter = v.context.is_true("allowPlayerNpcEncounter") && js::truthy(v.command.get("npc_id")) && kind == "CreateEncounter";
     if !v.context.is_admin() && !v.context.is_director() && !player_npc_encounter {
@@ -60,6 +63,9 @@ pub fn check_encounter_lifecycle(v: &mut Validation<'_>) -> Step {
 pub fn check_start_combat(v: &mut Validation<'_>) -> Step {
     if command_type(v) == "StartCombat" && game::combat_active(v.state) {
         return Err(rule("Бой уже начат", "COMBAT_ALREADY_ACTIVE"));
+    }
+    if command_type(v) == "StartCombat" && !game::combat_active(v.state) && sk_director::campaign_lifecycle::treaty_ends_adventure(v.state) {
+        return Err(rule("Договор с главным противником уже завершил сценарий", "SCENARIO_TREATY_CONCLUDED"));
     }
     Ok(())
 }

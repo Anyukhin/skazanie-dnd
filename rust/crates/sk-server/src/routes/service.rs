@@ -21,10 +21,10 @@ const MAX_AUDIO: usize = 44 + 16_000 * 2 * 60;
 
 pub fn routes() -> Vec<Route> {
     vec![
-        Route::new(4001, Methods::Any, Matcher::raw("/api/health"), health),
-        Route::get(4015, Matcher::raw("/api/admin/usage"), admin_usage),
-        Route::get(4021, Matcher::raw("/api/speech/status"), speech_status),
-        Route::new(4025, Methods::One(Method::POST), Matcher::raw("/api/speech/transcribe"), speech_transcribe),
+        Route::new(4058, Methods::Any, Matcher::raw("/api/health"), health),
+        Route::get(4072, Matcher::raw("/api/admin/usage"), admin_usage),
+        Route::get(4078, Matcher::raw("/api/speech/status"), speech_status),
+        Route::new(4082, Methods::One(Method::POST), Matcher::raw("/api/speech/transcribe"), speech_transcribe),
     ]
 }
 
@@ -40,7 +40,7 @@ fn health(ctx: &mut RouteCtx) -> RouteFuture<'_> {
         let rules = &ctx.state.rules;
         let models = models_health(ctx);
         let openrouter = config.openrouter_configured();
-        let local_only = !config.cloud_model_configured() && !config.openrouter_configured() && config.ollama_model.is_some();
+        let local_only = !config.cloud_model_configured() && !openrouter && config.ollama_model.is_some();
         let mut fallback_models = if local_only { Vec::new() } else { config.fallback_models.clone() };
         if config.cloud_model_configured() || openrouter {
             fallback_models.extend(config.ollama_model.iter().cloned());

@@ -42,11 +42,11 @@ use crate::routes::campaigns::Caught;
 pub fn routes() -> Vec<Route> {
     vec![
         // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/quests\/(abandon|accept)$/)` и `POST` (4284–4285).
-        Route::post(4345, Matcher::path_template("/api/campaigns/{id}/quests/{abandon|accept}"), quest_decision),
+        Route::post(4402, Matcher::path_template("/api/campaigns/{id}/quests/{abandon|accept}"), quest_decision),
         // `…\/party-decisions\/([A-Za-z0-9._:-]+)\/votes$/` и `POST` (4313–4314).
-        Route::post(4374, Matcher::path_template("/api/campaigns/{id}/party-decisions/{decision}/votes"), party_vote),
+        Route::post(4431, Matcher::path_template("/api/campaigns/{id}/party-decisions/{decision}/votes"), party_vote),
         // `…\/party-decisions\/([A-Za-z0-9._:-]+)\/roll$/` и `POST` (4375–4376).
-        Route::post(4436, Matcher::path_template("/api/campaigns/{id}/party-decisions/{decision}/roll"), party_roll),
+        Route::post(4503, Matcher::path_template("/api/campaigns/{id}/party-decisions/{decision}/roll"), party_roll),
     ]
 }
 
@@ -257,12 +257,22 @@ async fn party_vote_body(ctx: &mut RouteCtx, user: Value) -> Result<axum::respon
     require_hero(ctx, &admitted, Some(Value::String(hero_id.clone()))).await?;
     let key = key_or_uuid(&admitted.body, &ctx.headers);
     let Admitted { campaign_id, user, body } = admitted;
-    let reply = ctx.state.core.call(move |core| Box::pin(async move { cast_vote(&core, &campaign_id, &user, &body, &interaction_id, &hero_id, &key) })).await??;
+    let app = ctx.state.clone();
+    let reply = ctx.state.core.call(move |core| Box::pin(async move { cast_vote(&core, &app, &campaign_id, &user, &body, &interaction_id, &hero_id, &key).await })).await??;
     Ok(json(StatusCode::OK, &reply))
 }
 
-fn cast_vote(core: &Rc<GameCore>, campaign_id: &str, user: &Value, body: &Value, interaction_id: &str, hero_id: &str, key: &str) -> Result<Value, Failure> {
+async fn cast_vote(core: &Rc<GameCore>, app: &std::sync::Arc<crate::state::AppState>, campaign_id: &str, user: &Value, body: &Value, interaction_id: &str, hero_id: &str, key: &str) -> Result<Value, Failure> {
     let abstain = body.get("abstain") == Some(&Value::Bool(true));
+    let assert_treaty_voter = |state: &Value| -> Result<(), sk_core::RuleError> {
+        let decision = &state["agentInteraction"];
+        let voter = decision["voterByActorId"][hero_id].as_str().unwrap_or_default();
+        if decision.get("scenarioTreaty").is_some() && decision["id"] == interaction_id && voter.starts_with("account:")
+            && voter != crate::access::party_voter_id_for_account(campaign_id, &js::s(user.get("id"))) {
+            return Err(sk_core::RuleError::new("ACTOR_FORBIDDEN", "Этот аккаунт не участвовал при открытии голосования"));
+        }
+        Ok(())
+    };
     let committed = match core.events.get_by_idempotency_key(campaign_id, key)? {
         Some(previous) => previous,
         None => {
@@ -289,6 +299,7 @@ fn cast_vote(core: &Rc<GameCore>, campaign_id: &str, user: &Value, body: &Value,
             // Пересобирается против свежего состояния: кворум и разрешение
             // зависят от того, кто ещё в комнате на момент записи.
             let derive = |state: &Value, _loaded: &sk_store::Loaded| -> Result<Vec<Value>, sk_core::RuleError> {
+                assert_treaty_voter(state)?;
                 let resolved = if abstain { resolve_party_abstain(state, &input) } else { resolve_party_vote(state, &input) }.map_err(party_rule)?;
                 Ok(resolved.get("events").and_then(Value::as_array).cloned().unwrap_or_default())
             };
@@ -309,11 +320,27 @@ fn cast_vote(core: &Rc<GameCore>, campaign_id: &str, user: &Value, body: &Value,
     if !recorded.is_some_and(same_option) {
         return Err(Failure::new("Ключ уже использован для другого голоса", Some("IDEMPOTENCY_CONFLICT")));
     }
+    assert_treaty_voter(&committed.state).map_err(Failure::from)?;
     let projected = projection::persist_authoritative_projection(core, campaign_id, &committed.state, &committed.events, None, PersistOptions::default())?;
-    let latest = match projection::reconcile_campaign_projection(core, campaign_id)?.or(projected) {
+    let mut latest = match projection::reconcile_campaign_projection(core, campaign_id)?.or(projected) {
         Some(room) => room,
         None => room::get_room(core, campaign_id)?,
     };
+    let resolved_key = format!("scenario-treaty-decision:{interaction_id}");
+    if let Some(state) = latest.state.as_ref().filter(|state| state["mechanics"]["campaign_lifecycle"]["status"] == "active"
+        && sk_director::campaign_lifecycle::treaty_ends_adventure(state)) {
+        let accepted = core.events.get_by_idempotency_key(campaign_id, &resolved_key)?.is_some_and(|decision| {
+            decision.events.iter().any(|event| event["event_type"] == "ScenarioTreatyConcluded")
+        });
+        if accepted {
+            let services = crate::orchestration::orchestration(core, app)?;
+            services.autonomous.settle_accepted_treaty(campaign_id, &resolved_key, state).await
+                .map_err(|error| Failure::new(error.message(), error.code()))?;
+            if let Some(projected) = projection::reconcile_campaign_projection(core, campaign_id)? {
+                latest = projected;
+            }
+        }
+    }
     room_reply(core, campaign_id, &latest, user, Some(&Value::String(hero_id.to_string())), commit_fields(&committed))
 }
 

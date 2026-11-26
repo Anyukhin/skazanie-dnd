@@ -11,10 +11,71 @@ use crate::command::rules::rule_ids;
 use crate::conditions::{at, at_path, nullish_chain};
 use crate::core::{ability_modifier, command_with_rules, event_from, slice_utf16};
 
-/// `lockpickCheckModifier(actor)`: Лов + больший из бонусов «Ловкости рук» и мастерства.
-pub fn lockpick_check_modifier(actor: Option<&Value>) -> i64 {
+/// Expertise PHB может занимать слот навыка или `thieves_tools`. Для взлома
+/// учитывается только слот инструмента, а не экспертиза Ловкости рук.
+fn thieves_tools_expertise(actor: Option<&Value>) -> bool {
+    [
+        at(actor, "skillExpertiseIds"),
+        at(actor, "expertiseSkillIds"),
+        at_path(actor, &["characterSheet", "skill_expertise"]),
+        at_path(actor, &["creationBenefits", "expertise"]),
+    ].into_iter().any(|value| {
+        value.and_then(Value::as_array).is_some_and(|values| values.iter().any(|entry| js::s(Some(entry)) == "thieves_tools"))
+    })
+}
+
+/// `lockpickCheckModifier(actor, state)`: редакция 2014 использует бонус
+/// thieves_tools и его Expertise. В редакции 2024 сохраняется прежняя политика
+/// проекта с максимумом между Ловкостью рук и базовым бонусом инструмента.
+pub fn lockpick_check_modifier(actor: Option<&Value>, state: Option<&Value>) -> i64 {
     let proficiency = js::safe_int(at(actor, "proficiency"), 0).max(0);
-    ability_modifier(at_path(actor, &["abilities", "dex"])) + crate::checks::skills::skill_proficiency_bonus(actor, "sleight_of_hand", None).max(proficiency)
+    if !state.map(sk_core::game::uses_2014).unwrap_or(false) {
+        return ability_modifier(at_path(actor, &["abilities", "dex"]))
+            + crate::checks::skills::skill_proficiency_bonus(actor, "sleight_of_hand", state).max(proficiency);
+    }
+    let multiplier = if thieves_tools_expertise(actor) { 2 } else { 1 };
+    ability_modifier(at_path(actor, &["abilities", "dex"])) + proficiency * multiplier
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lockpick_check_modifier;
+    use serde_json::json;
+
+    #[test]
+    fn tools_expertise_doubles_only_the_tool_bonus() {
+        let base = json!({ "proficiency": 2, "abilities": { "dex": 14 }, "backgroundId": "criminal" });
+        let rules_2014 = json!({ "ruleset_id": "dnd_5e_2014" });
+        let rules_2024 = json!({ "ruleset_id": "srd_5_2_1" });
+        assert_eq!(lockpick_check_modifier(Some(&base), Some(&rules_2014)), 4);
+
+        let skill_only = json!({
+            "proficiency": 2, "abilities": { "dex": 14 }, "backgroundId": "criminal",
+            "skillExpertiseIds": ["sleight_of_hand"]
+        });
+        assert_eq!(lockpick_check_modifier(Some(&skill_only), Some(&rules_2014)), 4);
+
+        let tool_expertise = json!({
+            "proficiency": 2, "abilities": { "dex": 14 }, "backgroundId": "criminal",
+            "skillExpertiseIds": ["thieves_tools"]
+        });
+        assert_eq!(lockpick_check_modifier(Some(&tool_expertise), Some(&rules_2014)), 6);
+
+        let sheet_expertise = json!({
+            "proficiency": 2, "abilities": { "dex": 14 }, "backgroundId": "criminal",
+            "characterSheet": { "skill_expertise": ["thieves_tools"] }
+        });
+        assert_eq!(lockpick_check_modifier(Some(&sheet_expertise), Some(&rules_2014)), 6);
+        let imported_phb = json!({
+            "proficiency": 2, "abilities": { "dex": 14 }, "backgroundId": "sage",
+            "characterSheet": null, "creationBenefits": {
+                "expertise": ["sleight_of_hand", "thieves_tools"],
+                "tool_proficiencies": ["thieves_tools"]
+            }
+        });
+        assert_eq!(lockpick_check_modifier(Some(&imported_phb), Some(&rules_2014)), 6);
+        assert_eq!(lockpick_check_modifier(Some(&tool_expertise), Some(&rules_2024)), 4);
+    }
 }
 
 /// Параметры `lockpickNoticeEvents`.

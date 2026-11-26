@@ -106,6 +106,7 @@ export function battleEventParticipantIds(event: BattleEvent): string[] {
 export type DamageHistoryEntry = {
   id: string
   actorId?: string
+  sourceSpell?: { id?: string; name?: string }
   amount: number
   damageType?: string
   round?: number
@@ -124,7 +125,11 @@ export function recentDamageForTarget(
     .reverse()
     .map((event) => ({
       id: event.id,
-      ...(event.actorId ? { actorId: event.actorId } : {}),
+      // В строке спасброска actorId принадлежит тому, кто бросал. При уроне
+      // от длящейся области это также может быть инициатор движения.
+      ...(event.type === 'spell-save' || event.type === 'spell-damage'
+        ? { sourceSpell: { id: event.spellId, name: event.spellName } }
+        : event.actorId ? { actorId: event.actorId } : {}),
       amount: Number(event.damage),
       ...(event.damageType ? { damageType: event.damageType } : {}),
       ...(event.round != null ? { round: event.round } : {}),

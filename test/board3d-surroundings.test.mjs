@@ -3,12 +3,13 @@
 // механики в них нет.
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { Matrix4 } from 'three'
 
 import { compileClientModules } from './kit/client-ts.mjs'
 import { addZone, createTacticalMap, deserializeTacticalMap, normalizeMapSurroundings, orientTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 
-const build = await compileClientModules(['src/board3d-surroundings.ts', 'src/tactical-map-client.ts'])
-const [surroundings, mapClient] = build.modules
+const build = await compileClientModules(['src/board3d-surroundings.ts', 'src/tactical-map-client.ts', 'src/board3d-scene.ts'])
+const [surroundings, mapClient, scene3d] = build.modules
 
 function mapWith({ theme = 'forest', kind = 'exterior', material = 'grass', extra = {} } = {}) {
   const map = createTacticalMap({ width: 12, height: 10, seed: 'surroundings-test', theme })
@@ -109,4 +110,71 @@ test('земля за краем берёт рисунок пакета: газ�
   assert.equal(surroundings.surroundingsGroundFloor(mapWith({ theme: 'cave', material: 'stone' })), 'earth')
   assert.equal(surroundings.surroundingsGroundFloor(mapWith({ theme: 'road', material: 'stone' })), 'earth')
   assert.equal(surroundings.surroundingsGroundFloor(mapWith({ kind: 'interior', material: 'wood', theme: 'building' })), null)
+})
+
+test('ландшафт и атлас окружают поле; горизонт со стороны моря остаётся водой', () => {
+  const map = mapWith({ extra: { surroundings: { biome: 'forest', sides: { n: 'sea' } } } })
+  const landscape = surroundings.createSurroundings(map, 'reduced', {}, 'landscape')
+  const atlas = surroundings.createSurroundings(map, 'reduced', {}, 'atlas')
+  try {
+    const hills = landscape.group.getObjectByName('surroundings-hills')
+    const paper = atlas.group.getObjectByName('surroundings-atlas')
+    assert.ok(hills && paper)
+    for (const obj of [hills, paper]) {
+      const pos = obj.geometry.getAttribute('position')
+      for (let i=0; i<pos.count; i++) {
+        const x=pos.getX(i), z=pos.getZ(i)
+        assert.ok(Number.isFinite(pos.getY(i)) && (x < 0 || x > map.width || z < 0 || z > map.height))
+      }
+      obj.geometry.computeBoundingBox()
+    }
+    assert.ok(hills.geometry.boundingBox.max.y - hills.geometry.boundingBox.min.y > 1)
+    assert.equal(paper.geometry.boundingBox.min.y, paper.geometry.boundingBox.max.y)
+    assert.ok(!atlas.group.getObjectByName('surroundings-distant-groves'))
+    const trees = hills.getObjectByName('surroundings-distant-groves')
+    const matrix = new Matrix4()
+    assert.ok(trees.count > 0)
+    for (let i=0; i<trees.count; i++) {
+      trees.getMatrixAt(i,matrix)
+      const x = matrix.elements[12]
+      const z = matrix.elements[14]
+      assert.ok(!(z < 0 && x > 0 && x < map.width), 'дальняя роща стоит на суше')
+    }
+  } finally { landscape.dispose(); atlas.dispose() }
+})
+
+test('смена вида окрестностей сохраняет игровую геометрию и освобождает предыдущий фон', () => {
+  const scene = scene3d.createBoard3DScene(mapWith())
+  try {
+    const targets = scene.getPropPickTargets()
+    const hills = scene.group.getObjectByName('surroundings-hills')
+    assert.ok(hills)
+    let released = 0
+    hills.geometry.addEventListener('dispose', () => released++)
+    scene.setBackdropStyle('landscape')
+    assert.equal(scene.group.getObjectByName('surroundings-hills'), hills)
+    scene.setBackdropStyle('atlas')
+    assert.equal(released, 1)
+    assert.ok(scene.group.getObjectByName('surroundings-atlas'))
+    assert.equal(scene.getPropPickTargets(), targets)
+    scene.setBackdropStyle('classic')
+    assert.ok(!scene.group.getObjectByName('surroundings-atlas'))
+    assert.ok(scene.group.getObjectByName('surroundings-ground'))
+  } finally { scene.dispose() }
+})
+
+test('скрытый материал не задаёт тип и облик дальнего пейзажа', () => {
+  const raw = createTacticalMap({ width:12,height:10,seed:'same-seed',theme:'road' })
+  addZone(raw,{id:'yard',kind:'exterior',label:'Двор',material:'grass'})
+  for (let y=0;y<10;y++) for(let x=0;x<12;x++) setCell(raw,x,y,{zone:'yard',material:'grass',passable:true,revealed:x===0})
+  const build = () => surroundings.createSurroundings(mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(raw)))), 'minimal')
+  const before = build()
+  for (let y=0;y<10;y++) for(let x=1;x<12;x++) setCell(raw,x,y,{material:'stone'})
+  const after = build()
+  try {
+    assert.equal(before.group.userData.biome, 'meadow')
+    assert.equal(after.group.userData.biome, 'meadow')
+    const vertices = s => s.group.getObjectByName('surroundings-hills').geometry.attributes.position.array
+    assert.deepEqual(vertices(before), vertices(after))
+  } finally { before.dispose(); after.dispose() }
 })

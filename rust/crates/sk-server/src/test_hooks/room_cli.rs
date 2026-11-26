@@ -104,7 +104,7 @@ pub fn run(command: &Command, input: &str, node_env: Option<&str>, temp_dir: &Pa
             let store = open(storage)?;
             write_room(&store, campaign, state)
         }
-        Command::Audit { storage } => crate::storage_audit::audit_storage(storage),
+        Command::Audit { storage } => crate::storage_audit::audit_storage_live(storage),
     }
 }
 

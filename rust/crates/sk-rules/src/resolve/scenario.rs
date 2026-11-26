@@ -236,6 +236,9 @@ pub fn choose_dialogue_option(r: &mut Resolve<'_>) -> Flow {
         }
         let acted = r.nested(&Value::Object(input))?;
         r.absorb(&acted);
+        if payload_of(&acted.events, "PartyDecisionOpened").is_some() {
+            return Ok(());
+        }
         if checked_action {
             check = Some(check_record(&option, &acted.events));
         }
@@ -313,12 +316,11 @@ pub fn choose_dialogue_option(r: &mut Resolve<'_>) -> Flow {
         r.events.push(item_granted_event_from(&r.command, Some(json!({ "item": item })), Some(&targets)));
     }
     if revealable {
+        // По target_ids редьюсер создаёт для каждого слушателя свой id знания.
         let mut members = vec![field(&r.command, "actor_id")];
         members.extend(r.state.get("partyMemberIds").and_then(Value::as_array).cloned().unwrap_or_default());
         let party = js::strings_value(unique_strings(Some(&Value::Array(members))));
         let payload = json!({
-            "knowledge_id": format!("{chosen_event_id}:knowledge"),
-            "hero_id": field(&r.command, "actor_id"),
             "fact_id": reveal_fact_id,
             "source_event_ids": [chosen_event_id],
             "source_kind": "npc",
@@ -358,19 +360,86 @@ fn scenario_payload(command: &Value, npc_id: &Value, rest: &[(&str, Value)]) -> 
     Value::Object(payload)
 }
 
+/// Исполняет сохранённое решение по предложенным условиям.
+pub fn resolve_scenario_treaty_decision(r: &mut Resolve<'_>) -> Flow {
+    let decision = &r.state["agentInteraction"];
+    let mut unavailable = None;
+    let mut negotiated = None;
+    if sk_memory::party_decision::scenario_treaty_decision_approved(decision) {
+        let input = json!({
+            "command_type": "NegotiateScenarioTreaty",
+            "campaign_id": r.command["campaign_id"],
+            "command_id": format!("{}:treaty", js::s(r.command.get("command_id"))),
+            "actor_id": decision["scenarioTreaty"]["actorId"],
+        });
+        let context = crate::context::Context::default()
+            .with("scenarioTreatyResolution", json!(true))
+            .with("__resolve_depth", json!(r.context.resolve_depth()));
+        match super::resolve_command_internal(&input, &r.state, &mut r.dice, &context, &mut *r.uuid) {
+            Ok(resolved) => negotiated = Some(resolved),
+            Err(Interrupt::Rule(error)) => unavailable = Some(error.message),
+            Err(error) => return Err(error),
+        }
+    }
+    let mut payload = json!({ "interaction_id": decision["id"], "resolved_option_id": decision["resolvedOptionId"] });
+    if let Some(message) = unavailable {
+        payload["unavailable"] = json!(message);
+    }
+    let command = command_with(&r.command, "visibility", json!("party"));
+    r.events.push(event_from(&command, "PartyDecisionConsumed", Some(payload), decision.get("eligibleActorIds")));
+    if let Some(mut negotiated) = negotiated {
+        for event in &mut negotiated.events {
+            if matches!(event["event_type"].as_str(), Some("ScenarioTreatyConcluded" | "ScenarioTreatyRefused")) {
+                event["payload"]["party_decision_id"] = r.state["agentInteraction"]["id"].clone();
+            }
+        }
+        r.absorb(&negotiated);
+        r.nested_consequences_resolved = true;
+    }
+    Ok(())
+}
+
 /// `NegotiateScenarioTreaty` (20877–20912).
 pub fn negotiate_scenario_treaty(r: &mut Resolve<'_>) -> Flow {
     use sk_attention::scenario_attention::{SCENARIO_TREATY_CONCLUDED_EVENT, SCENARIO_TREATY_REFUSED_EVENT};
     let rules = sk_scenario::campaign_scenario::scenario_treaty_rules(&r.state);
+    let signed_confession = r.command.get("treaty_proof").and_then(Value::as_str) == Some("ares-confession")
+        && !sk_core::game::combat_active(&r.state);
+    let voters = r.context.get("scenarioTreatyVoters");
+    if at(voters, &["eligibleVoterIds"]).and_then(Value::as_array).is_some_and(|ids| ids.len() > 1) && !r.context.is_true("scenarioTreatyResolution") {
+        let digest = sk_core::hash::sha256_hex(js::s(r.command.get("command_id")).as_bytes());
+        let interaction = json!({
+            "id": format!("treaty-{}", &digest[..24]),
+            "type": "vote",
+            "createdAt": r.context.get("scenarioTreatyNow").and_then(Value::as_i64).unwrap_or(0),
+            "title": "Предложить договор Саргату?",
+            "description": format!("Король Арес публично признает правду о походе на Вулканиса и заплатит виру за погубленную кладку. Саргат уйдёт с равнин. {} Успех необратимо завершит приключение эпилогом.",
+                if signed_confession { "Подписанное признание Ареса позволяет заключить договор без броска." } else { "При согласии отряда переговорщик пройдёт проверку убеждения." }),
+            "options": [{"id": "decline", "label": "Не заключать договор"}, {"id": "accept", "label": "Согласиться на условия"}],
+            "scenarioTreaty": { "schemaVersion": 1, "actorId": r.command["actor_id"] },
+        });
+        let mut options = voters.and_then(Value::as_object).cloned().unwrap_or_default();
+        put(&mut options, "policy", r.state.get("partyDecisionPolicy"));
+        let event = sk_memory::party_decision::party_decision_opened_event(&interaction, r.command.get("actor_id"), &Value::Object(options))
+            .map_err(|error| Interrupt::Rule(error.into()))?;
+        r.events.push(event);
+        return Ok(());
+    }
+    if sk_core::game::combat_active(&r.state) {
+        let command = command_with_rules(&r.command, &[rule_ids::TURNS]);
+        let targets = actor_targets(&r.command);
+        r.events.push(event_from(&command, "CombatActionUsed", Some(json!({
+            "action_id": "scenario-treaty", "name": "Переговоры с Саргатом", "action_type": "action",
+        })), Some(&targets)));
+    }
     let Some(rules) = rules else { return Err(missing("boss_npc_id")) };
     let boss = field(&rules, "boss_npc_id");
     let pair = json!([boss, field(&r.command, "actor_id")]);
-    let signed_confession = r.command.get("treaty_proof").and_then(Value::as_str) == Some("ares-confession")
-        && !sk_core::game::combat_active(&r.state);
     let succeeded = if signed_confession {
         true
     } else {
-        let input = ability_check_input(&r.command, &field(&r.command, "command_id"), r.command.get("skill"), r.command.get("difficulty"), rule_list(&r.command, None));
+        let source = json!({ "campaign_id": r.command["campaign_id"], "actor_id": r.command["actor_id"], "visibility": r.command["visibility"] });
+        let input = ability_check_input(&source, &field(&r.command, "command_id"), r.command.get("skill"), r.command.get("difficulty"), rule_list(&r.command, None));
         let check = r.nested(&input)?;
         r.absorb(&check);
         check_succeeded(&check.events)

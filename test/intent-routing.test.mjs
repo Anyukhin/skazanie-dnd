@@ -303,8 +303,10 @@ test('без модели уход к неизвестному месту пол
   assert.equal(unclear.check, undefined)
   assert.deepEqual(unclear.mechanics, [])
   const impossible = await handle('Я поднимаю весь замок одной рукой', 'unknown-place-3')
-  assert.equal(impossible.free_action_outcome, 'clarification')
-  assert.match(impossible.narration, /не по силам ни одному смертному/u)
+  assert.equal(impossible.free_action_outcome, 'rejected')
+  assert.equal(impossible.rejected, true)
+  assert.equal(impossible.clarification, undefined)
+  assert.match(impossible.narration, /не по силам поднять весь замок одной рукой/u)
 })
 
 test('в бою маршрут travel не предлагается: заявка судится как обычная попытка', async () => {

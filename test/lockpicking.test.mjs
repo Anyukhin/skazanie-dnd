@@ -74,7 +74,7 @@ const CHEST_SEED = lockedChestSeed()
  * запертой двери впервые, и только на такой карте видно, что взломанная дверь
  * действительно открывает то, что за ней.
  */
-function fixture({ thief = true, witnesses = false, combat = false, doorState = 'locked', lockDc = 15 } = {}) {
+function fixture({ thief = true, witnesses = false, combat = false, doorState = 'locked', lockDc = 15, actorPatch = {}, rulesetId = 'srd_5_2_1' } = {}) {
   const map = createTacticalMap({ width: 7, height: 4, locationId: 'vault', seed: CHEST_SEED, sizeClass: 'arena' })
   for (let y = 0; y < 4; y += 1) {
     for (let x = 0; x < 7; x += 1) {
@@ -85,8 +85,9 @@ function fixture({ thief = true, witnesses = false, combat = false, doorState = 
   }
   addProp(map, { id: 'prop-chest', assetId: 'chest', x: 2.5, y: 1.5, footprint: [{ x: 2, y: 1 }], interactive: true })
   setDoor(map, { id: 'door-vault', x: 3, y: 1, dir: 'e', state: doorState, lockDc, blocksMove: true, blocksSight: true })
-  return normalizeCampaignState({
+  const state = normalizeCampaignState({
     sessionCode: 'LOCKPICK-1',
+    ruleset_id: rulesetId,
     partyMemberIds: ['hero'],
     members: [{ user_id: 'user-1', hero_id: 'hero', role: 'player' }],
     players: [{
@@ -125,6 +126,9 @@ function fixture({ thief = true, witnesses = false, combat = false, doorState = 
         : { active: false },
     },
   })
+  return actorPatch && Object.keys(actorPatch).length
+    ? { ...state, players: state.players.map((actor) => ({ ...actor, ...actorPatch })) }
+    : state
 }
 
 function commit(state, command, { roll = 20 } = {}) {
@@ -171,6 +175,7 @@ test('владение читается из предыстории, а не и�
   // перенесённый лист — своим списком инструментов.
   assert.equal(hasThievesTools({ backgroundBenefits: { tool_proficiency: THIEVES_TOOLS_ID } }), true)
   assert.equal(hasThievesTools({ toolProficiencies: ['herbalism_kit', THIEVES_TOOLS_ID] }), true)
+  assert.equal(hasThievesTools({ characterSheet: null, creationBenefits: { tool_proficiencies: [THIEVES_TOOLS_ID] } }), true)
   assert.equal(hasThievesTools({ toolProficiencies: ['herbalism_kit'] }), false)
   // Ловкость рук — навык, а не инструмент: одним им замок не вскрыть.
   assert.equal(hasThievesTools({ classSkillProficiencies: ['sleight_of_hand'] }), false)
@@ -210,6 +215,30 @@ test('владеющий вскрывает сундук отмычкой: бо�
   assert.equal(trace.lockpicked, true)
   assert.equal(trace.lockpicked_by, 'hero')
   assert.equal(trace.opened, true)
+})
+
+test('экспертиза thieves_tools удваивает бонус инструмента, а экспертиза Ловкости рук — нет', () => {
+  const toolExpert = pickDoor(fixture({ rulesetId: 'dnd_5e_2014', actorPatch: { skillExpertiseIds: ['thieves_tools'] } }), { roll: 20 })
+  const toolCheck = toolExpert.events.find((event) => event.event_type === 'AbilityCheckResolved')
+  assert.equal(toolCheck.payload.modifier, 6, 'Ловкость + удвоенный бонус мастерства инструмента')
+  assert.equal(toolExpert.events.find((event) => event.event_type === 'DoorLockpicked').payload.check_total, 26)
+
+  const skillOnly = pickDoor(fixture({ rulesetId: 'dnd_5e_2014', actorPatch: { skillExpertiseIds: ['sleight_of_hand'] } }), { roll: 20 })
+  const skillCheck = skillOnly.events.find((event) => event.event_type === 'AbilityCheckResolved')
+  assert.equal(skillCheck.payload.modifier, 4, 'экспертиза навыка не заменяет экспертизу инструмента')
+
+  const toolChest = pickChest(fixture({ rulesetId: 'dnd_5e_2014', actorPatch: { skillExpertiseIds: ['thieves_tools'] } }), { roll: 20 })
+  assert.equal(toolChest.events.find((event) => event.event_type === 'SceneObjectCheckResolved').payload.modifier, 6)
+
+  const dnd2024 = pickDoor(fixture({ rulesetId: 'srd_5_2_1', actorPatch: { skillExpertiseIds: ['thieves_tools'] } }), { roll: 20 })
+  assert.equal(dnd2024.events.find((event) => event.event_type === 'AbilityCheckResolved').payload.modifier, 4)
+
+  const importedPhb = pickDoor(fixture({
+    rulesetId: 'dnd_5e_2014',
+    thief: false,
+    actorPatch: { characterSheet: null, creationBenefits: { expertise: ['sleight_of_hand', THIEVES_TOOLS_ID], tool_proficiencies: [THIEVES_TOOLS_ID] } },
+  }), { roll: 20 })
+  assert.equal(importedPhb.events.find((event) => event.event_type === 'AbilityCheckResolved').payload.modifier, 6)
 })
 
 test('незапертому сундуку отмычка не нужна, и отказ не стоит ни хода, ни броска', () => {

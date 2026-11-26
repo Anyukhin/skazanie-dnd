@@ -77,7 +77,7 @@ use crate::state::AppState;
 
 pub fn routes() -> Vec<Route> {
     // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/commands$/)` и `POST` (5531–5532).
-    vec![Route::post(5625, Matcher::path_template("/api/campaigns/{id}/commands"), campaign_commands)]
+    vec![Route::post(5697, Matcher::path_template("/api/campaigns/{id}/commands"), campaign_commands)]
 }
 
 /// Коды сбоя хранилища, на которые `catch` отвечает 500 (5923).
@@ -633,7 +633,11 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
             "Структурированная команда".to_string()
         }
     };
+    let treaty_voters = if types_any(&["ChooseDialogueOption", "NegotiateScenarioTreaty", "ProposeParley"]) {
+        crate::access::scenario_treaty_voter_snapshot(state, campaign_id, &before, &actor).await?
+    } else { Value::Null };
     let input = json!({
+        "scenarioTreatyVoters": treaty_voters,
         "state": room_state,
         "campaignId": campaign_id,
         "playerId": actor,

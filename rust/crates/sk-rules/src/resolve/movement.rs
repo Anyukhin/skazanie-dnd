@@ -22,7 +22,7 @@ use super::{api, Resolve};
 use crate::checks::saves::{roll_ability_check_with_conditions, D20Method};
 use crate::checks::skills::skill_proficiency_bonus;
 use crate::command::rules::rule_ids;
-use crate::core::{ability_modifier, coalesce, command_with_rules, condition_ids_for, event_from, monster_trait_for, readied_option_for, spread_value};
+use crate::core::{ability_modifier, coalesce, command_with_rules, condition_ids_for, event_from, monster_trait_for, npc_world_events_from, readied_option_for, spread_value};
 use crate::death::zero_hit_point_damage_consequences;
 use crate::geometry::footprint::{actor_footprint_fits, FitOptions};
 use crate::pause::{pending_execution_for, rule, Fault, Interrupt, Flow};
@@ -371,7 +371,19 @@ pub fn move_actor(r: &mut Resolve<'_>) -> Flow {
             }
         }
     }
-    let entered = r.project_events()?;
+    let entered = if !is_enemy && sk_npc_world::npc_positioning::has_unplaced_anchored_npc(&r.state) {
+        let placement_state = r.project_events()?;
+        let drafts = Value::Array(sk_npc_world::npc_positioning::plan_scene_npc_placement_events(&placement_state));
+        let placement_events = npc_world_events_from(&command, &drafts);
+        if placement_events.is_empty() {
+            placement_state
+        } else {
+            r.events.extend(placement_events);
+            r.project_events()?
+        }
+    } else {
+        r.project_events()?
+    };
     let from_value = from_json.clone().unwrap_or(Value::Null);
     let consequences = r.area_entry_consequences(&entered, &actor_id, Some(&from_value), Some(&to_json), None)?;
     r.events.extend(consequences);

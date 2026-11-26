@@ -287,7 +287,7 @@ pub fn haste_only_action_frame(economy: Option<&Value>) -> bool {
 pub fn command_requires_normal_action_frame(command: &Value, economy: Option<&Value>) -> bool {
     match js::s(command.get("command_type")).as_str() {
         "LootContainer" => command.get("loot_combat_action").and_then(Value::as_str) != Some("object_interaction"),
-        "IdentifyEnemy" | "ProposeParley" | "CalmBeast" | "FeedBeast" | "UseMonsterAction" | "ChangeWeapon" | "MakeAreaAttack" | "OperateSceneObject" | "BarricadeDoor" | "ClearDoorBarricade" => true,
+        "IdentifyEnemy" | "ProposeParley" | "NegotiateScenarioTreaty" | "CalmBeast" | "FeedBeast" | "UseMonsterAction" | "ChangeWeapon" | "MakeAreaAttack" | "OperateSceneObject" | "BarricadeDoor" | "ClearDoorBarricade" => true,
         "OperateDoor" => matches!(js::s(command.get("intent")).as_str(), "force" | "lockpick"),
         // Первое взаимодействие с предметом бесплатно; после его расхода
         // валидатор жизненного цикла поднимает команду до обычного действия.

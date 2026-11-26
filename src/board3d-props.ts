@@ -1,4 +1,9 @@
 import * as THREE from 'three'
+import { buildVulkanisBones, type FossilPart } from './board3d-vulkanis-bones'
+import { buildVulkanisSkull } from './board3d-vulkanis-skull'
+import { buildGedrikTable } from './board3d-gedrik-table'
+import { buildLomarBench } from './board3d-lomar-bench'
+import { buildOathCircle } from './board3d-oath-circle'
 
 import { propDrawingFor, propVisualLayout, resolvePropAssetId, stampFit, PROP_DECAL_ALPHA, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
 import { detailPropAlias } from './detail-props'
@@ -6,6 +11,11 @@ import type { TacticalProp } from './types'
 import { frontFacingEntry, propModelFit, propModelFloorFit, propModelFor, propModelTreeStretch } from './prop-model-catalog'
 import type { PropModelAssets } from './prop-model-assets'
 import type { SeeThrough } from './board3d-see-through'
+import { eldrinBarkTexture, eldrinOakGeometry } from './board3d-eldrin'
+import { addCastleThroneBack } from './board3d-throne'
+import { addOldBoundaryStone } from './board3d-boundary-obelisk'
+import { buildIronCage, buildSwiftCage } from './board3d-swift-cage'
+import { resources, geometry, material, part, type Resources } from './board3d-prop-resources'
 
 type Layout = ReturnType<typeof propVisualLayout>
 
@@ -25,13 +35,6 @@ type Tones = {
   shadow: string
 }
 
-type Resources = {
-  geometries: Set<THREE.BufferGeometry>
-  materials: Set<THREE.Material>
-  textures: Set<THREE.Texture>
-  geometryPool: Map<string, THREE.BufferGeometry>
-  materialPool: Map<string, THREE.Material>
-}
 
 /**
  * Канонический asset id → семантическая процедурная модель. Это намеренная
@@ -45,14 +48,14 @@ const MODEL_KINDS: Readonly<Record<string, string>> = Object.freeze({
   crate_stack: 'crate-stack', sack: 'sack', basket: 'basket', bucket: 'bucket', chest: 'chest',
   cupboard: 'cupboard', wardrobe: 'wardrobe', bookshelf: 'bookshelf', shelf_wall: 'shelf-wall', broom: 'broom',
   mug: 'mug', plate: 'plate', bowl_stew: 'bowl', bottle: 'bottle', jug: 'jug', bread_loaf: 'bread',
-  cheese_wheel: 'cheese', candle: 'candle', dice_cup: 'dice-cup', coin_pile: 'coin-pile', lute: 'lute',
+  cheese_wheel: 'cheese', candle: 'candle', dice_cup: 'dice-cup', coin_pile: 'coin-pile', coin_pouch: 'coin-pouch', lute: 'lute',
   cutting_board: 'cutting-board', pot: 'pot', bed: 'bed', bunk_bed: 'bunk-bed', night_table: 'night-table',
   washbasin: 'washbasin', torch_wall: 'wall-torch', lantern_wall: 'wall-lantern', candelabra: 'stand-light',
   chandelier: 'chandelier', banner: 'wall-banner', sign_board: 'sign-board', rug: 'rug', floor_stain: 'floor-stain',
   stairs_up: 'stairs-up', stairs_down: 'stairs-down', trapdoor: 'trapdoor', tree_oak: 'tree-oak', tree_pine: 'tree-pine',
   tree_birch: 'tree-birch', tree_dead: 'tree-dead', tree_stump: 'tree-stump', bush: 'bush', shrub: 'shrub',
   grass_tuft: 'grass-tuft', flowers: 'flowers', rock_small: 'rock-small', boulder: 'boulder', woodpile: 'woodpile',
-  cart: 'cart', wagon_wheel: 'wagon-wheel', hitching_post: 'hitching-post', water_trough: 'water-trough', well: 'well',
+  iron_cage: 'iron-cage', cart: 'cart', wagon_wheel: 'wagon-wheel', hitching_post: 'hitching-post', water_trough: 'water-trough', well: 'well',
   lamp_post: 'lamp-post', signpost: 'signpost', haystack: 'haystack', path_stone: 'path-stone', campfire: 'campfire',
   pillar: 'pillar', altar: 'altar', statue: 'statue', brazier: 'brazier', offering_bowl: 'offering-bowl',
   prayer_bench: 'prayer-bench', temple_banner: 'temple-banner', reliquary: 'reliquary', mosaic: 'mosaic',
@@ -63,8 +66,42 @@ const MODEL_KINDS: Readonly<Record<string, string>> = Object.freeze({
   village_fence: 'village-fence',
 })
 
+/**
+ * Авторские предметы кампании получают отдельный силуэт по полному id пропа.
+ * Это не меняет обычный `paper_scatter`, `mosaic` или `temple_banner` в других
+ * сценах, где они остаются нейтральной обстановкой.
+ */
+const STORY_PROP_KINDS: Readonly<Record<string, string>> = Object.freeze({
+  'astohan-quiet-watch-camp:gedrik-war-table': 'story-gedrik-table',
+  'astohan-lomar-tower:lab-alchemy-table': 'story-lomar-bench',
+  'astohan-vulkanis-brazier:vulkanis-skull': 'story-vulkanis-skull',
+  'astohan-vulkanis-brazier:vulkanis-neck': 'fossil-neck',
+  'astohan-vulkanis-brazier:vulkanis-chest': 'fossil-chest',
+  'astohan-vulkanis-brazier:vulkanis-hips': 'fossil-hips',
+  'astohan-vulkanis-brazier:vulkanis-spine-1': 'fossil-spine',
+  'astohan-vulkanis-brazier:vulkanis-spine-2': 'fossil-spine',
+  'astohan-vulkanis-brazier:vulkanis-tail-1': 'fossil-tail',
+  'astohan-vulkanis-brazier:vulkanis-wing': 'fossil-wing',
+  ...Object.fromEntries([1,2,3,4,5].map(n => [`astohan-vulkanis-brazier:vulkanis-rib-${n}`, 'fossil-rib'])),
+  'astohan-cursed-woods:oath-ritual-circle': 'story-oath-circle',
+  'astohan-redstone:toban-swift-cage': 'story-swift-cage',
+  'astohan-redstone:toban-swift-cage-2': 'story-swift-cage',
+  'astohan-eldrin-heart:great-tree-eldrin': 'story-eldrin',
+  'astohan-ash-watch:burnt-journal': 'story-journal',
+  'astohan-forgotten-cliffs:executioner-diary': 'executioner-diary',
+  'astohan-forgotten-cliffs:fresco-1': 'story-fresco-crown',
+  'astohan-forgotten-cliffs:fresco-2': 'story-fresco-execution',
+  'astohan-forgotten-cliffs:fresco-3': 'story-fresco-head',
+})
+
+export const STORY_FRESCO_PROP_IDS: readonly string[] = Object.freeze([
+  'astohan-forgotten-cliffs:fresco-1',
+  'astohan-forgotten-cliffs:fresco-2',
+  'astohan-forgotten-cliffs:fresco-3',
+])
+
 const LIGHT_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({
-  fireplace: 0.34, hearth: 0.43, campfire: 0.43, brazier: 0.43,
+  fireplace: 0.34, hearth: 0.43, campfire: 0.68, brazier: 0.43,
   'wall-torch': 0.86, 'wall-lantern': 0.66, 'stand-light': 0.84,
   chandelier: 0.48, candle: 0.26, 'lamp-post': 0.91,
 })
@@ -90,59 +127,6 @@ function tones(palette: BoardPalette): Tones {
   }
 }
 
-function resources(): Resources {
-  return {
-    geometries: new Set(), materials: new Set(), textures: new Set(),
-    geometryPool: new Map(), materialPool: new Map(),
-  }
-}
-
-function geometry(resources: Resources, key: string, factory: () => THREE.BufferGeometry) {
-  const cached = resources.geometryPool.get(key)
-  if (cached) return cached
-  const value = factory()
-  resources.geometryPool.set(key, value)
-  resources.geometries.add(value)
-  return value
-}
-
-function material(
-  resources: Resources,
-  key: string,
-  color: string,
-  options: THREE.MeshStandardMaterialParameters = {},
-) {
-  const cached = resources.materialPool.get(key)
-  if (cached) return cached
-  const value = new THREE.MeshStandardMaterial({ color, roughness: 0.88, metalness: 0.03, ...options })
-  resources.materialPool.set(key, value)
-  resources.materials.add(value)
-  return value
-}
-
-function part(
-  resources: Resources,
-  parent: THREE.Group,
-  name: string,
-  key: string,
-  factory: () => THREE.BufferGeometry,
-  materialValue: THREE.Material,
-  size: [number, number, number],
-  position: [number, number, number] = [0, 0, 0],
-  rotation: [number, number, number] = [0, 0, 0],
-  castShadow = true,
-) {
-  const mesh = new THREE.Mesh(geometry(resources, key, factory), materialValue)
-  mesh.name = name
-  mesh.position.set(...position)
-  mesh.rotation.set(...rotation)
-  mesh.scale.set(...size)
-  mesh.castShadow = castShadow
-  mesh.receiveShadow = true
-  parent.add(mesh)
-  return mesh
-}
-
 function cube(resources: Resources, parent: THREE.Group, name: string, materialValue: THREE.Material, size: [number, number, number], position: [number, number, number] = [0, 0, 0], rotation: [number, number, number] = [0, 0, 0], castShadow = true) {
   return part(resources, parent, name, 'cube', () => new THREE.BoxGeometry(1, 1, 1), materialValue, size, position, rotation, castShadow)
 }
@@ -163,12 +147,133 @@ function rock(resources: Resources, parent: THREE.Group, name: string, materialV
   return part(resources, parent, name, 'rock', () => new THREE.DodecahedronGeometry(0.5, 0), materialValue, size, position)
 }
 
+/**
+ * Костёр — ключевой ориентир лагеря. У него отдельный камень с плавной
+ * фаской, чтобы в наклонной камере кольцо не превращалось в восьмигранник.
+ * Геометрия общая для всех костров сцены, поэтому добавленные полигоны не
+ * растут вместе с числом экземпляров.
+ */
+function campfireStone(resources: Resources, parent: THREE.Group, name: string, materialValue: THREE.Material, size: [number, number, number], position: [number, number, number]) {
+  return part(resources, parent, name, 'campfire-stone-high', () => new THREE.IcosahedronGeometry(0.5, 1), materialValue, size, position)
+}
+
+type FlameProfile = {
+  heights: readonly number[]
+  radii: readonly number[]
+  offsets: readonly [number, number][]
+  sides: number
+  phase: number
+  bottomColor: string
+  topColor: string
+}
+
+function flameGeometry(resources: Resources, key: string, profile: FlameProfile) {
+  return geometry(resources, key, () => {
+    const positions: number[] = [], colors: number[] = [], indices: number[] = []
+    const bottom = new THREE.Color(profile.bottomColor), top = new THREE.Color(profile.topColor)
+    for (let ringIndex = 0; ringIndex < profile.heights.length; ringIndex += 1) {
+      const progress = ringIndex / Math.max(1, profile.heights.length - 1)
+      const radius = profile.radii[ringIndex]
+      const [centerX, centerZ] = profile.offsets[ringIndex]
+      const ringColor = bottom.clone().lerp(top, progress)
+      for (let side = 0; side < profile.sides; side += 1) {
+        const angle = side * Math.PI * 2 / profile.sides + profile.phase + progress * .42
+        // Неровная грань оставляет у языка огня живой контур, а не правильный конус.
+        const irregular = 1 + .12 * Math.sin(side * 2.7 + ringIndex * 1.4 + profile.phase)
+          + .055 * Math.cos(side * 5.1 - ringIndex * .8)
+        positions.push(centerX + Math.cos(angle) * radius * irregular, profile.heights[ringIndex], centerZ + Math.sin(angle) * radius * irregular)
+        colors.push(ringColor.r, ringColor.g, ringColor.b)
+      }
+      if (ringIndex > 0) {
+        const previous = (ringIndex - 1) * profile.sides, current = ringIndex * profile.sides
+        for (let side = 0; side < profile.sides; side += 1) {
+          const next = (side + 1) % profile.sides
+          indices.push(previous + side, current + side, previous + next, previous + next, current + side, current + next)
+        }
+      }
+    }
+    const result = new THREE.BufferGeometry()
+    result.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    result.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+    result.setIndex(indices)
+    result.computeVertexNormals()
+    return result
+  })
+}
+
+function flamePart(resources: Resources, parent: THREE.Group, name: string, key: string, profile: FlameProfile, materialValue: THREE.Material) {
+  const mesh = new THREE.Mesh(flameGeometry(resources, key, profile), materialValue)
+  mesh.name = name
+  mesh.castShadow = false
+  mesh.receiveShadow = false
+  parent.add(mesh)
+  return mesh
+}
+
+function buildCampfireFlame(resources: Resources, parent: THREE.Group, t: Tones) {
+  const outer = material(resources, 'campfire-flame-outer', '#ffffff', {
+    vertexColors: true, emissive: '#ff4b18', emissiveIntensity: .65,
+    transparent: true, opacity: .82, depthWrite: false, side: THREE.DoubleSide,
+  })
+  const warm = material(resources, 'campfire-flame-warm', '#ffffff', {
+    vertexColors: true, emissive: '#ff8628', emissiveIntensity: .8,
+    transparent: true, opacity: .86, depthWrite: false, side: THREE.DoubleSide,
+  })
+  const core = material(resources, 'campfire-flame-core', '#ffffff', {
+    vertexColors: true, emissive: '#ffd45c', emissiveIntensity: 1.15,
+    transparent: true, opacity: .92, depthWrite: false, side: THREE.DoubleSide,
+  })
+  flamePart(resources, parent, 'campfire-flame-outer', 'campfire-flame-outer-high', {
+    heights: [.18, .3, .45, .58, .68], radii: [.12, .18, .145, .075, .012],
+    offsets: [[-.08, 0], [-.11, .01], [-.08, .04], [-.02, .08], [.05, .11]],
+    sides: 7, phase: .18, bottomColor: '#ffd15a', topColor: '#e43b18',
+  }, outer)
+  flamePart(resources, parent, 'campfire-flame-warm', 'campfire-flame-warm-high', {
+    heights: [.18, .27, .39, .5, .58], radii: [.1, .16, .125, .06, .01],
+    offsets: [[.03, 0], [.09, .01], [.14, .03], [.1, .06], [.03, .09]],
+    sides: 6, phase: 1.08, bottomColor: '#fff0a1', topColor: '#ff731d',
+  }, warm)
+  flamePart(resources, parent, 'campfire-flame-core', 'campfire-flame-core-high', {
+    heights: [.19, .27, .36, .44, .5], radii: [.06, .08, .06, .028, .008],
+    offsets: [[.02, .01], [.04, .03], [.02, .06], [-.02, .08], [-.07, .1]],
+    sides: 6, phase: .48, bottomColor: '#fff8d2', topColor: '#ffd55e',
+  }, core)
+}
+
 function ring(resources: Resources, parent: THREE.Group, name: string, materialValue: THREE.Material, diameter: number, thickness: number, position: [number, number, number], rotation: [number, number, number] = [0, 0, 0]) {
   return part(resources, parent, name, 'ring', () => new THREE.TorusGeometry(0.5, 0.1, 5, 12), materialValue, [diameter / 1.2, Math.max(0.25, thickness / 0.2), diameter / 1.2], position, rotation, false)
 }
 
 function flat(resources: Resources, parent: THREE.Group, name: string, materialValue: THREE.Material, width: number, depth: number, y = 0.018) {
   return cube(resources, parent, name, materialValue, [Math.max(0.08, width), 0.024, Math.max(0.08, depth)], [0, y, 0], [0, 0, 0], false)
+}
+
+function reliefShape(
+  resources: Resources,
+  parent: THREE.Group,
+  name: string,
+  materialValue: THREE.Material,
+  key: string,
+  draw: (shape: THREE.Shape) => void,
+  position: [number, number, number],
+  rotation: [number, number, number] = [0, 0, 0],
+) {
+  const geometryValue = geometry(resources, key, () => {
+    const shape = new THREE.Shape()
+    draw(shape)
+    return new THREE.ExtrudeGeometry(shape, {
+      depth: .018, bevelEnabled: true, bevelSegments: 2,
+      steps: 1, bevelSize: .008, bevelThickness: .005,
+    })
+  })
+  const mesh = new THREE.Mesh(geometryValue, materialValue)
+  mesh.name = name
+  mesh.position.set(...position)
+  mesh.rotation.set(...rotation)
+  mesh.castShadow = false
+  mesh.receiveShadow = false
+  parent.add(mesh)
+  return mesh
 }
 
 function dimensions(layout: Layout) {
@@ -226,7 +331,8 @@ function buildShelf(resources: Resources, parent: THREE.Group, layout: Layout, t
 
 function buildCabinet(resources: Resources, parent: THREE.Group, layout: Layout, t: Tones, shape: 'cupboard' | 'wardrobe' | 'night' | 'books') {
   const { width, depth } = dimensions(layout), wood = material(resources, 'wood', t.wood), dark = material(resources, 'wood-dark', t.woodDark)
-  const w = Math.min(1.8, width * 0.84), d = Math.min(0.72, depth * 0.72), h = shape === 'night' ? 0.58 : 0.96
+  const w = Math.min(1.8, width * 0.84), d = Math.min(0.72, depth * 0.72)
+  const h = shape === 'night' ? .58 : shape === 'cupboard' ? 1.30 : .96
   cube(resources, parent, `${shape}-body`, dark, [w, h, d], [0, h / 2, 0])
   if (shape === 'books') buildShelf(resources, parent, layout, t, true)
   else {
@@ -278,11 +384,17 @@ function buildTableware(resources: Resources, parent: THREE.Group, t: Tones, kin
   else if (kind === 'plate') { round(resources, parent, 'plate', clay, 0.42, 0.045, [0, 0.03, 0]); ring(resources, parent, 'plate-rim', dark, 0.38, 0.025, [0, 0.06, 0]) }
   else if (kind === 'bowl') { cone(resources, parent, 'bowl', clay, 0.44, 0.18, [0, 0.09, 0]); round(resources, parent, 'stew', food, 0.27, 0.025, [0, 0.19, 0], false) }
   else if (kind === 'bottle' || kind === 'jug') { round(resources, parent, `${kind}-body`, clay, kind === 'jug' ? 0.34 : 0.25, 0.34, [0, 0.17, 0]); round(resources, parent, `${kind}-neck`, clay, 0.13, 0.22, [0, 0.44, 0]); if (kind === 'jug') { const handle = ring(resources, parent, 'jug-handle', clay, 0.24, 0.045, [0.18, 0.3, 0], [Math.PI / 2, 0, 0]); handle.rotation.x = Math.PI / 2 } }
-  else if (kind === 'bread') { sphere(resources, parent, 'bread-loaf', material(resources, 'bread', t.woodLight), [0.5, 0.23, 0.33], [0, 0.115, 0]); cube(resources, parent, 'bread-score', dark, [0.025, 0.015, 0.22], [0, 0.24, 0], [0, 0, 0.18], false) }
+  else if (kind === 'bread') { sphere(resources, parent, 'bread-loaf', material(resources, 'bread', t.woodLight), [.32, .094, .16], [0, .047, 0]); cube(resources, parent, 'bread-score', dark, [.012, .006, .10], [0, .093, 0], [0, 0, .18], false) }
   else if (kind === 'cheese') { round(resources, parent, 'cheese-wheel', material(resources, 'cheese', t.woodLight), 0.37, 0.13, [0, 0.065, 0]); cube(resources, parent, 'cheese-cut', dark, [0.02, 0.11, 0.27], [0.03, 0.07, 0.06], undefined, false) }
   else if (kind === 'dice-cup') { round(resources, parent, 'dice-cup', dark, 0.25, 0.25, [0, 0.125, 0]); ring(resources, parent, 'dice-cup-rim', clay, 0.24, 0.035, [0, 0.26, 0]) }
-  else if (kind === 'coin-pile') { for (let i = 0; i < 3; i += 1) round(resources, parent, 'coin', material(resources, 'coin', t.woodLight, { metalness: 0.42, roughness: 0.45 }), 0.21, 0.035, [i * 0.035 - 0.035, 0.02 + i * 0.035, 0]) }
-  else if (kind === 'cutting-board') { cube(resources, parent, 'cutting-board', woodMaterial(t, resources), [0.54, 0.045, 0.34], [0, 0.025, 0]); cube(resources, parent, 'board-handle', woodMaterial(t, resources), [0.12, 0.045, 0.14], [0.31, 0.025, 0], undefined, false) }
+  else if (kind === 'coin-pile') { for (let i = 0; i < 3; i += 1) round(resources, parent, 'coin', material(resources, 'coin', t.woodLight, { metalness: 0.42, roughness: 0.45 }), .10, .016, [i * .021 - .021, .008 + i * .016, 0]) }
+  else if (kind === 'coin-pouch') {
+    const hide = material(resources, 'coin-pouch-hide', '#72503a')
+    sphere(resources, parent, 'pouch-body', hide, [.155, .089, .115], [0, .045, 0])
+    cone(resources, parent, 'pouch-neck', hide, .066, .029, [0, .102, 0])
+    round(resources, parent, 'pouch-cord', dark, .053, .010, [0, .088, 0])
+  }
+  else if (kind === 'cutting-board') { cube(resources, parent, 'cutting-board', woodMaterial(t, resources), [0.54, 0.023, 0.34], [0, 0.013, 0]); cube(resources, parent, 'board-handle', woodMaterial(t, resources), [0.12, 0.023, 0.14], [0.31, 0.013, 0], undefined, false) }
   else { round(resources, parent, 'pot', dark, 0.36, 0.26, [0, 0.13, 0]); ring(resources, parent, 'pot-rim', clay, 0.36, 0.035, [0, 0.27, 0]); for (const x of [-0.22, 0.22]) cube(resources, parent, 'pot-handle', dark, [0.07, 0.06, 0.16], [x, 0.16, 0], [0, 0, x]) }
 }
 
@@ -336,6 +448,22 @@ function buildFire(resources: Resources, parent: THREE.Group, t: Tones, kind: 'f
     cube(resources, parent, 'fireplace-lintel', material(resources, 'stone-light', t.stoneLight), [0.9, 0.18, 0.38], [0, 0.84, 0])
     cube(resources, parent, 'fireplace-hearth', stone, [0.9, 0.08, 0.48], [0, 0.04, 0.04])
     cone(resources, parent, 'fireplace-flame', flame, 0.3, 0.5, [0, 0.3, -0.1], false)
+  } else if (kind === 'campfire') {
+    // У лагерного костра есть читаемое каменное кольцо, четыре перекрёстных
+    // полена и две языковые формы пламени. Общие геометрии остаются лёгкими,
+    // но силуэт виден изометрически и сверху.
+    for (const angle of [0, Math.PI / 3, Math.PI * 2 / 3, Math.PI, Math.PI * 4 / 3, Math.PI * 5 / 3]) {
+      const stoneBlock = campfireStone(resources, parent, 'campfire-stone', stone, [0.18, 0.14, 0.22], [Math.cos(angle) * 0.28, 0.1, Math.sin(angle) * 0.28])
+      stoneBlock.rotation.y = angle + 0.18
+    }
+    const logMaterial = material(resources, 'wood-dark', t.woodDark)
+    for (const [x, z, yaw] of [[0, -0.1, 0.22], [0, 0.1, -0.22], [-0.1, 0, Math.PI / 2 - 0.22], [0.1, 0, Math.PI / 2 + 0.22]] as Array<[number, number, number]>) {
+      const log = round(resources, parent, 'campfire-log', logMaterial, 0.14, 0.58, [x, 0.18, z])
+      log.rotation.z = Math.PI / 2
+      log.rotation.y = yaw
+    }
+    campfireStone(resources, parent, 'campfire-embers', ember, [0.38, 0.08, 0.38], [0, 0.2, 0])
+    buildCampfireFlame(resources, parent, t)
   } else {
     ring(resources, parent, `${kind}-ring`, stone, kind === 'brazier' ? 0.48 : 0.64, 0.08, [0, 0.08, 0])
     if (kind === 'brazier') round(resources, parent, 'brazier-stand', stone, 0.16, 0.45, [0, 0.28, 0])
@@ -367,7 +495,7 @@ function buildNatural(resources: Resources, parent: THREE.Group, layout: Layout,
     if (pine) for (const [y, d] of [[0.66, 0.78], [0.97, 0.58], [1.23, 0.38]] as Array<[number, number]>) cone(resources, parent, 'pine-crown', green, d, 0.48, [0, y, 0])
     else { sphere(resources, parent, 'tree-crown', green, [birch ? 0.58 : 0.86, 0.62, birch ? 0.58 : 0.86], [0, 1.08, 0]); sphere(resources, parent, 'tree-crown-light', light, [0.5, 0.4, 0.5], [0.17, 1.28, 0.05]) }
   } else if (kind === 'bush' || kind === 'shrub') { const d = kind === 'bush' ? 0.75 : 0.55; for (const [x, y, z] of [[-0.18, 0.3, 0], [0.16, 0.34, 0.05], [0, 0.46, -0.12]] as Array<[number, number, number]>) sphere(resources, parent, 'shrub-clump', kind === 'bush' ? green : light, [d, d * 0.85, d], [x, y, z]) }
-  else if (kind === 'rock-small') rock(resources, parent, 'rock-small', stone, [0.42, 0.27, 0.34], [0, 0.14, 0])
+  else if (kind === 'rock-small') rock(resources, parent, 'rock-small', stone, [.42, .19, .34], [0, .095, 0])
   else if (kind === 'boulder') { rock(resources, parent, 'boulder', stone, [0.7, 0.52, 0.6], [0, 0.26, 0]); rock(resources, parent, 'boulder-chip', material(resources, 'stone-light', t.stoneLight), [0.22, 0.14, 0.16], [0.22, 0.43, 0.08]) }
   else if (kind === 'stalagmite') cone(resources, parent, 'stalagmite', stone, 0.54, 0.92, [0, 0.46, 0])
   else if (kind === 'rubble-heap') for (const [x, y, z, s] of [[-0.2, 0.13, 0, 0.34], [0.15, 0.16, 0.08, 0.4], [0, 0.3, -0.1, 0.3]] as Array<[number, number, number, number]>) rock(resources, parent, 'rubble', stone, [s, s * 0.75, s], [x, y, z])
@@ -382,6 +510,368 @@ function buildGroundDetail(resources: Resources, parent: THREE.Group, layout: La
   else if (kind === 'grass-tuft' || kind === 'fern') for (const x of [-0.14, 0, 0.14]) cube(resources, parent, 'grass-blade', green, [0.035, kind === 'fern' ? 0.28 : 0.18, 0.06], [x, kind === 'fern' ? 0.14 : 0.09, 0], [0, x * 2, x * 2], false)
   else if (kind === 'flowers') { for (const x of [-0.14, 0.08, 0.24]) { cube(resources, parent, 'flower-stem', green, [0.025, 0.16, 0.025], [x, 0.08, 0]); sphere(resources, parent, 'flower-head', light, [0.11, 0.08, 0.11], [x, 0.18, 0], false) } }
   else if (kind === 'path-stone' || kind === 'mosaic') { const count = kind === 'mosaic' ? 4 : 3; for (let i = 0; i < count; i += 1) rock(resources, parent, kind, stone, [width / count * 0.75, 0.035, depth / count * 0.75], [(i - (count - 1) / 2) * width / count, 0.03, (i % 2 - 0.5) * depth * 0.3]) }
+}
+
+/** Записи в ведомости служат фактурой. Содержание улики выдаёт команда осмотра. */
+function ledgerPaper(resources: Resources) {
+  const paper = material(resources, 'journal-written-paper', '#f1dfb8', { roughness: .96, side: THREE.DoubleSide })
+  if (!(paper instanceof THREE.MeshStandardMaterial) || paper.map || typeof document === 'undefined') return paper
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 320
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return paper
+  const fold = ctx.createLinearGradient(0, 0, canvas.width, 0)
+  for (const [at, color] of [[0, '#9e7950'], [.18, '#e6d3aa'], [.46, '#d7bd8d'], [.5, '#97754e'], [.56, '#dbc397'], [.83, '#e5cda4'], [1, '#aa8355']] as const) {
+    fold.addColorStop(at, color)
+  }
+  ctx.fillStyle = fold
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  for (const left of [16, 273]) {
+    ctx.fillStyle = '#985846'
+    ctx.fillRect(left + 13, 20, 1.6, 272)
+    ctx.fillRect(left + 168, 28, 1, 257)
+    for (let row = 0; row < 13; row += 1) {
+      const y = 44 + 18 * row
+      ctx.fillStyle = '#ae956e'
+      ctx.fillRect(left + 6, y + 3, 196, .8)
+      ctx.strokeStyle = row === 0 ? '#724330' : '#554531'
+      ctx.lineWidth = row === 0 ? 1.9 : 1.25
+      ctx.beginPath()
+      let x = left + 20
+      for (let word = 0; word < 4; word += 1) {
+        ctx.moveTo(x, y)
+        const letters = 3 + ((row + 3 * word) % 7)
+        for (let letter = 0; letter < letters; letter += 1) {
+          const h = 2 + (letter * 5 + row) % 6
+          ctx.bezierCurveTo(x + 3, y - h, x + 3.5, y + 2, x + 5, y - .5)
+          x += 5
+        }
+        x += 6
+      }
+      ctx.moveTo(left + 179, y)
+      ctx.lineTo(left + 185, y - 5)
+      ctx.lineTo(left + 183, y + 1)
+      ctx.stroke()
+    }
+  }
+  ctx.strokeStyle = '#533528'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(287, 247)
+  ctx.bezierCurveTo(339, 243, 398, 235, 447, 228)
+  ctx.stroke()
+  const burn = ctx.createRadialGradient(8, 27, 6, 8, 27, 105)
+  burn.addColorStop(0, '#28201c')
+  burn.addColorStop(.36, '#533c29')
+  burn.addColorStop(.64, 'rgba(129,79,37,.74)')
+  burn.addColorStop(1, 'rgba(146,101,46,0)')
+  ctx.fillStyle = burn
+  ctx.fillRect(0, 0, 120, 139)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  resources.textures.add(texture)
+  paper.map = texture
+  paper.needsUpdate = true
+  return paper
+}
+
+function buildStoryJournal(resources: Resources, parent: THREE.Group, layout: Layout, t: Tones) {
+  const { width, depth } = dimensions(layout)
+  const w = THREE.MathUtils.clamp(width * .38, .30, .44)
+  const d = THREE.MathUtils.clamp(depth * .27, .21, .30)
+  const book = new THREE.Group()
+  book.rotation.y = -.15
+  parent.add(book)
+  const cover = material(resources, 'journal-leather', '#442c25', { roughness: .93 })
+  const char = material(resources, 'journal-char', '#332c26')
+  const brass = material(resources, 'journal-brass', t.metal, { metalness: .52, roughness: .5 })
+  const edge = material(resources, 'journal-cut-edge', '#b99b73')
+  cube(resources, book, 'journal-cover', cover, [w, .014, d], [0, .009, 0])
+  const spread = geometry(resources, `journal-spread:${w}:${d}`, () => {
+    const surface = new THREE.PlaneGeometry(w * .96, d * .93, 32, 18)
+    const { uv, position } = surface.attributes
+    for (let i = 0; i < position.count; i += 1) {
+      const u = uv.getX(i), v = uv.getY(i)
+      const leaf = Math.abs(2 * u - 1)
+      const missing = Math.max(0, 1 - u / .17 - (1 - v) / .31)
+      const curl = Math.max(0, (u - .74) / .26) * Math.max(0, (v - .65) / .35)
+      const x = (u - .5) * w * .96 + missing * .036 + missing * .005 * Math.sin(70 * v)
+      const y = .032 + .018 * Math.sin(Math.PI * leaf) + .02 * curl * curl - .006 * leaf
+      position.setXYZ(i, x, y, (.5 - v) * d * .93 + missing * .022 + curl * .012)
+    }
+    surface.computeVertexNormals()
+    return surface
+  })
+  for (const [layer, name, surface] of [[0, 'journal-page-block', edge], [1, 'journal-charred-page-edge', char], [2, 'journal-written-leaf', ledgerPaper(resources)]] as const) {
+    const leaf = new THREE.Mesh(spread, surface)
+    leaf.name = name
+    leaf.position.y = layer * .004
+    leaf.scale.set(1 - layer * .006, 1, 1 - layer * .008)
+    leaf.receiveShadow = true
+    leaf.castShadow = layer === 2
+    book.add(leaf)
+  }
+  cube(resources, book, 'journal-clasp', brass, [.030, .009, .044], [w * .49, .02, 0])
+}
+
+/** Переплетённый тюремный дневник, упавший рядом со столом палача. */
+function buildExecutionerDiary(resources: Resources, parent: THREE.Group) {
+  const book = new THREE.Group()
+  book.rotation.y = -.19
+  parent.add(book)
+  const leather = material(resources, 'diary-hide', '#813d2d', { roughness: .83 })
+  const binding = material(resources, 'diary-binding', '#573327')
+  const brass = material(resources, 'diary-aged-brass', '#b18a51', { metalness: .48, roughness: .56 })
+  const tooling = material(resources, 'diary-tooling', '#936044', { roughness: .77 })
+  const paper = material(resources, 'diary-paper', '#d0b591')
+  const paperEdge = material(resources, 'diary-paper-edge', '#ab8b69')
+  const ribbon = material(resources, 'diary-ribbon', '#733241')
+  const width = .246, length = .334
+  if (!leather.map) {
+    const size = 128, pixels = new Uint8Array(size * size * 4)
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const edge = Math.min(x, size - 1 - x, y, size - 1 - y)
+      const grain = Math.sin(x * 39.1 + y * 83.7) * Math.cos(x * 17.9 - y * 23.3)
+      const marbling = Math.sin(x * .12 + 2 * Math.cos(y * .11)) + .7 * Math.cos(y * .16 - x * .086)
+      const worn = Math.max(0, 1 - edge / 14) * (15 + 8 * marbling)
+      const tone = 210 + 17 * grain + 7 * marbling + worn
+      const at = (y * size + x) * 4
+      pixels[at] = Math.min(255, tone); pixels[at + 1] = Math.min(255, tone + worn * .37)
+      pixels[at + 2] = Math.min(255, tone + worn * .28); pixels[at + 3] = 255
+    }
+    const texture = new THREE.DataTexture(pixels, size, size)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.offset.set(.5, .5); texture.repeat.set(1 / width, 1 / length)
+    texture.magFilter = THREE.LinearFilter; texture.minFilter = THREE.LinearMipmapLinearFilter
+    texture.generateMipmaps = true; texture.needsUpdate = true
+    leather.map = texture; resources.textures.add(texture)
+  }
+
+  // Доски переплёта, уголки и шнурок выдавлены по контуру. Их собственные
+  // скосы ловят свет даже при косом взгляде на предмет с уровня фигурки.
+  function plate(name: string, surface: THREE.Material, shape: THREE.Shape, thickness: number, bevel: number, y: number) {
+    return part(resources, book, name, name, () => new THREE.ExtrudeGeometry(shape, {
+      depth: thickness, bevelEnabled: true, steps: 1, bevelSegments: 2,
+      bevelSize: bevel, bevelThickness: bevel, curveSegments: 6,
+    }).rotateX(-Math.PI / 2), surface, [1, 1, 1], [0, y, 0])
+  }
+  function coverShape(w: number, d: number) {
+    const shape = new THREE.Shape(), x = w / 2, z = d / 2, r = .009
+    shape.moveTo(-x + r, -z); shape.lineTo(x - r, -z)
+    shape.quadraticCurveTo(x, -z, x, -z + r); shape.lineTo(x, z - r)
+    shape.quadraticCurveTo(x, z, x - r, z); shape.lineTo(-x + r, z)
+    shape.quadraticCurveTo(-x, z, -x, z - r); shape.lineTo(-x, -z + r)
+    shape.quadraticCurveTo(-x, -z, -x + r, -z)
+    return shape
+  }
+  const cover = plate('diary-bound-cover', leather, coverShape(width, length), .005, .0022, .004)
+  const lid = cover.clone()
+  lid.name = 'diary-front-cover'; lid.position.y = .050; book.add(lid)
+  // Отдельные тетради видны по неровному переднему обрезу.
+  const section = coverShape(width - .013, length - .015)
+  const leaf = plate('diary-gathering', paper, section, .0057, .0008, .012)
+  for (let i = 1; i < 6; i++) {
+    const gathering = leaf.clone()
+    gathering.material = i === 2 || i === 4 ? paperEdge : paper
+    gathering.position.set(.0014 * Math.sin(i * 2), .012 + i * .0064, .0012 * Math.cos(i * 3))
+    book.add(gathering)
+  }
+  const spine = part(resources, book, 'diary-spine', 'diary-rounded-spine',
+    () => new THREE.CylinderGeometry(1, 1, 1, 24).rotateX(Math.PI / 2),
+    binding, [.016, .028, length], [-width / 2 + .003, .029, 0])
+  for (const z of [-.116, -.065, .063, .115]) {
+    const band = spine.clone()
+    band.name = 'diary-raised-band'
+    band.scale.set(.019, .030, .011); band.position.z = z
+    book.add(band)
+  }
+  // Тонкие линии тиснения идут по краям кожаной доски.
+  const top = .0576
+  function rule(x1: number, z1: number, x2: number, z2: number, stroke: number) {
+    cube(resources, book, 'diary-impression', tooling, [Math.hypot(x2 - x1, z2 - z1), .0013, stroke],
+      [(x1 + x2) / 2, top, (z1 + z2) / 2], [0, -Math.atan2(z2 - z1, x2 - x1), 0], false)
+  }
+  for (const inset of [.018, .023]) {
+    const x = width / 2 - inset, z = length / 2 - inset
+    rule(-x, -z, x, -z, .0018); rule(-x, z, x, z, .0018)
+    rule(-x, -z, -x, z, .0018); rule(x, -z, x, z, .0018)
+  }
+  for (const x of [-1, 1]) for (const z of [-1, 1]) {
+    const corner = new THREE.Shape()
+    corner.moveTo(x * .120, z * .162); corner.lineTo(x * .083, z * .162)
+    corner.quadraticCurveTo(x * .093, z * .150, x * .100, z * .149)
+    corner.quadraticCurveTo(x * .109, z * .141, x * .120, z * .118); corner.closePath()
+    plate(`diary-corner-${x}-${z}`, brass, corner, .0018, .0009, top)
+    const rivet = sphere(resources, book, 'diary-pin', brass, [.008, .0025, .008], [x * .110, .063, z * .150], false)
+    rivet.receiveShadow = false
+  }
+  const label = material(resources, 'diary-label', '#d6bc92', { roughness: 1 })
+  if (!label.map && typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas')
+    canvas.width = 256; canvas.height = 96
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      const fade = ctx.createLinearGradient(0, 0, 256, 96)
+      fade.addColorStop(0, '#bca991'); fade.addColorStop(.25, '#f2e3c7'); fade.addColorStop(.77, '#e5d4b5'); fade.addColorStop(1, '#b29978')
+      ctx.fillStyle = fade; ctx.fillRect(0, 0, 256, 96)
+      ctx.strokeStyle = '#856f55'; ctx.lineWidth = 2; ctx.strokeRect(6, 6, 244, 84)
+      ctx.fillStyle = '#3f352b'; ctx.font = 'italic 49px Georgia, serif'; ctx.textAlign = 'center'
+      ctx.fillText('Дневник', 128, 64)
+      label.map = new THREE.CanvasTexture(canvas); label.map.colorSpace = THREE.SRGBColorSpace
+      resources.textures.add(label.map)
+    }
+  }
+  part(resources, book, 'diary-paper-label', 'diary-paper-label', () => new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+    label, [.133, 1, .05], [-.009, top + .0002, -.044], [0, -.035, 0], false)
+  const iron = material(resources, 'diary-clasp-iron', '#575047', { metalness: .56, roughness: .64 })
+  cube(resources, book, 'diary-clasp-fold', iron, [.005, .044, .022], [width / 2 + .002, .034, .038])
+  const clasp = new THREE.Shape()
+  clasp.moveTo(.124, -.024); clasp.lineTo(.076, -.024); clasp.quadraticCurveTo(.061, -.023, .060, -.038)
+  clasp.quadraticCurveTo(.061, -.052, .076, -.052); clasp.lineTo(.124, -.052); clasp.closePath()
+  plate('diary-clasp', iron, clasp, .002, .001, top)
+  sphere(resources, book, 'diary-clasp-stud', brass, [.013, .005, .013], [.074, .061, .038], false)
+  const marker = new THREE.Shape()
+  marker.moveTo(.013, -.148); marker.lineTo(.028, -.148); marker.lineTo(.039, -.190)
+  marker.lineTo(.030, -.184); marker.lineTo(.026, -.195); marker.closePath()
+  plate('diary-cloth-marker', ribbon, marker, .0014, .0005, .022)
+}
+
+/** У всех трёх панелей одна текстура. UV лежат внутри своего столбца;
+ * неровности штукатурки дают меняющийся блик при повороте камеры. */
+function paintedFrescoFace(resources: Resources, atlas: THREE.Texture, kind: string, width: number, height: number) {
+  const column = kind === 'story-fresco-crown' ? 0 : kind === 'story-fresco-execution' ? 1 : 2
+  const plaster = geometry(resources, `fresco-face:${kind}:${width}:${height}`, () => {
+    const face = new THREE.PlaneGeometry(width, height, 30, 24)
+    const { position, uv } = face.attributes
+    for (let i = 0; i < position.count; i += 1) {
+      const u = uv.getX(i), v = uv.getY(i)
+      const interior = Math.sin(Math.PI * u) * Math.sin(Math.PI * v)
+      position.setZ(i, interior * (.009 * Math.sin(11 * u + column) * Math.cos(8 * v) + .004 * Math.cos(19 * u - 9 * v)))
+      // Полтекселя по краю не даёт соседней картине просочиться в UV.
+      uv.setX(i, (column + (.5 + 511 * u) / 512) / 3)
+    }
+    face.computeVertexNormals()
+    return face
+  })
+  const pigment = material(resources, 'painted-fresco', '#ffffff', { map: atlas, roughness: .97, metalness: 0 })
+  const panel = new THREE.Mesh(plaster, pigment)
+  panel.name = 'fresco-atlas-front'
+  panel.receiveShadow = true
+  return panel
+}
+
+function buildStoryFresco(resources: Resources, parent: THREE.Group, layout: Layout, kind: string, atlas: THREE.Texture | null = null) {
+  const { width, depth } = dimensions(layout)
+  const mount = new THREE.Group()
+  mount.name = 'fresco-mounted-relief'
+  mount.position.y = 0.12
+  parent.add(mount)
+  const stone = material(resources, 'story-fresco-stone', '#6d5b4b', { roughness: 0.98 })
+  const frame = material(resources, 'story-fresco-frame', '#302a29', { roughness: 0.94 })
+  const panelW = Math.max(0.48, width * 0.88), panelH = 0.82
+  // В библиотеке все три authored-пропа стоят у северной стены. Прижимаем
+  // панель к ней, чтобы стена не закрывала рельеф и чтобы предмет не выглядел
+  // напольной табличкой с неверным физическим масштабом.
+  const wallZ = -Math.max(0.3, depth * 0.38)
+  const front = wallZ + 0.055
+  cube(resources, mount, 'fresco-panel', stone, [panelW, panelH, 0.075], [0, panelH / 2, wallZ])
+  reliefShape(resources, mount, 'fresco-frame', frame, `fresco-frame:${panelW}:${panelH}`, (shape) => {
+    const x = panelW / 2, rim = .036
+    shape.moveTo(-x, 0)
+    shape.lineTo(x, 0)
+    shape.lineTo(x, panelH)
+    shape.lineTo(-x, panelH)
+    shape.closePath()
+    const hole = new THREE.Path()
+    hole.moveTo(-x + rim, rim)
+    hole.lineTo(-x + rim, panelH - rim)
+    hole.lineTo(x - rim, panelH - rim)
+    hole.lineTo(x - rim, rim)
+    hole.closePath()
+    shape.holes.push(hole)
+  }, [0, 0, front + .008])
+  if (atlas) {
+    const painting = paintedFrescoFace(resources, atlas, kind, panelW - .05, panelH - .05)
+    painting.position.set(0, panelH / 2, front)
+    mount.add(painting)
+    return
+  }
+  const relief = material(resources, `story-fresco-relief:${kind}`, kind === 'story-fresco-crown' ? '#b6934f' : '#a08f7a', { roughness: .9 })
+  const dark = material(resources, 'story-fresco-dark', '#251e1b', { roughness: 1 })
+  const blood = material(resources, 'story-fresco-blood', '#793d35', { roughness: .94 })
+  if (kind === 'story-fresco-crown') {
+    reliefShape(resources, mount, 'fresco-knight-presenting-crown', dark, `${kind}:knight`, (shape) => {
+      shape.moveTo(-0.36, 0.18); shape.lineTo(-0.28, 0.2); shape.lineTo(-0.24, 0.42); shape.lineTo(-0.16, 0.54)
+      shape.lineTo(-0.03, 0.5); shape.lineTo(0.02, 0.45); shape.lineTo(-0.04, 0.39); shape.lineTo(-0.16, 0.42)
+      shape.lineTo(-0.22, 0.2); shape.lineTo(-0.1, 0.12); shape.lineTo(-0.32, 0.12); shape.closePath()
+    }, [-0.2, 0, front])
+    reliefShape(resources, mount, 'fresco-knight-head', dark, `${kind}:head`, (shape) => {
+      shape.absellipse(-0.25, 0.58, 0.09, 0.1, 0, Math.PI * 2, false, 0)
+      shape.moveTo(-0.33, 0.64); shape.lineTo(-0.16, 0.64); shape.lineTo(-0.22, 0.71); shape.closePath()
+    }, [-0.2, 0, front])
+    reliefShape(resources, mount, 'fresco-knight-shield', relief, `${kind}:shield`, (shape) => {
+      shape.moveTo(-0.43, 0.18); shape.lineTo(-0.31, 0.22); shape.lineTo(-0.32, 0.42)
+      shape.quadraticCurveTo(-0.38, 0.5, -0.45, 0.42); shape.closePath()
+    }, [-0.2, 0, front + 0.008])
+    reliefShape(resources, mount, 'fresco-dragon-profile', dark, `${kind}:dragon`, (shape) => {
+      shape.moveTo(0.03, 0.28); shape.quadraticCurveTo(0.2, 0.2, 0.27, 0.33); shape.lineTo(0.42, 0.38)
+      shape.lineTo(0.5, 0.47); shape.lineTo(0.4, 0.5); shape.lineTo(0.47, 0.57); shape.lineTo(0.3, 0.56)
+      shape.lineTo(0.2, 0.68); shape.lineTo(0.14, 0.53); shape.lineTo(0.03, 0.48); shape.closePath()
+    }, [0, 0, front + 0.006])
+    reliefShape(resources, mount, 'fresco-dragon-wing', relief, `${kind}:wing`, (shape) => {
+      shape.moveTo(0.08, 0.38); shape.quadraticCurveTo(0.14, 0.78, 0.4, 0.74)
+      shape.quadraticCurveTo(0.28, 0.54, 0.2, 0.4); shape.closePath()
+    }, [0, 0, front + 0.008])
+    reliefShape(resources, mount, 'fresco-dragon-eye', blood, `${kind}:eye`, (shape) => {
+      shape.absellipse(0.36, 0.5, 0.025, 0.018, 0, Math.PI * 2, false, 0)
+    }, [0, 0, front + 0.014])
+    reliefShape(resources, mount, 'fresco-presented-crown', relief, `${kind}:crown`, (shape) => {
+      shape.moveTo(-0.07, 0.48); shape.lineTo(-0.02, 0.62); shape.lineTo(0.04, 0.52); shape.lineTo(0.1, 0.66)
+      shape.lineTo(0.16, 0.52); shape.lineTo(0.22, 0.63); shape.lineTo(0.2, 0.46); shape.closePath()
+    }, [0, 0, front + 0.012])
+  } else if (kind === 'story-fresco-execution') {
+    reliefShape(resources, mount, 'fresco-execution-knight', dark, `${kind}:knight`, (shape) => {
+      shape.moveTo(-0.31, 0.15); shape.lineTo(-0.18, 0.18); shape.lineTo(-0.12, 0.43); shape.lineTo(-0.2, 0.58)
+      shape.lineTo(-0.29, 0.54); shape.lineTo(-0.33, 0.33); shape.closePath()
+    }, [-0.08, 0, front])
+    reliefShape(resources, mount, 'fresco-execution-helmet', dark, `${kind}:helmet`, (shape) => {
+      shape.absellipse(-0.22, 0.65, 0.1, 0.1, 0, Math.PI * 2, false, 0)
+      shape.moveTo(-0.32, 0.67); shape.lineTo(-0.08, 0.67); shape.lineTo(-0.05, 0.62); shape.lineTo(-0.33, 0.62); shape.closePath()
+    }, [-0.08, 0, front])
+    reliefShape(resources, mount, 'fresco-cursed-sword', relief, `${kind}:sword`, (shape) => {
+      shape.moveTo(0.15, 0.1); shape.lineTo(0.21, 0.12); shape.lineTo(0.39, 0.67); shape.lineTo(0.33, 0.69); shape.closePath()
+      shape.moveTo(0.22, 0.33); shape.lineTo(0.38, 0.28); shape.lineTo(0.39, 0.33); shape.lineTo(0.23, 0.38); shape.closePath()
+    }, [-0.08, 0, front + 0.01])
+    reliefShape(resources, mount, 'fresco-cursed-blood', blood, `${kind}:blood`, (shape) => {
+      shape.moveTo(-0.4, 0.18); shape.quadraticCurveTo(-0.34, 0.28, -0.39, 0.42); shape.lineTo(-0.34, 0.41)
+      shape.quadraticCurveTo(-0.28, 0.25, -0.34, 0.16); shape.closePath()
+    }, [-0.08, 0, front + 0.014])
+  } else {
+    reliefShape(resources, mount, 'fresco-stone-arch', frame, `${kind}:arch`, (shape) => {
+      shape.moveTo(-0.38, 0.1); shape.lineTo(-0.38, 0.58); shape.quadraticCurveTo(0, 0.84, 0.38, 0.58)
+      shape.lineTo(0.38, 0.1); shape.lineTo(0.3, 0.1); shape.lineTo(0.3, 0.54); shape.quadraticCurveTo(0, 0.73, -0.3, 0.54)
+      shape.lineTo(-0.3, 0.1); shape.closePath()
+    }, [0, 0, front])
+    reliefShape(resources, mount, 'fresco-head-stone', relief, `${kind}:head`, (shape) => {
+      shape.moveTo(-0.18, 0.28); shape.quadraticCurveTo(-0.24, 0.45, -0.14, 0.58)
+      shape.quadraticCurveTo(0, 0.68, 0.17, 0.56); shape.lineTo(0.16, 0.37)
+      shape.quadraticCurveTo(0.05, 0.2, -0.18, 0.28); shape.closePath()
+    }, [0, 0, front + 0.01])
+    reliefShape(resources, mount, 'fresco-head-face', dark, `${kind}:face`, (shape) => {
+      shape.absellipse(-0.08, 0.46, 0.025, 0.018, 0, Math.PI * 2, false, 0)
+      shape.absellipse(0.08, 0.46, 0.025, 0.018, 0, Math.PI * 2, false, 0)
+      shape.moveTo(-0.06, 0.34); shape.quadraticCurveTo(0, 0.3, 0.06, 0.34); shape.lineTo(0.04, 0.32); shape.lineTo(-0.04, 0.32); shape.closePath()
+    }, [0, 0, front + 0.02])
+    reliefShape(resources, mount, 'fresco-stone-cracks', dark, `${kind}:cracks`, (shape) => {
+      shape.moveTo(-0.38, 0.2); shape.lineTo(-0.3, 0.4); shape.lineTo(-0.22, 0.48); shape.lineTo(-0.24, 0.51); shape.lineTo(-0.35, 0.44); shape.lineTo(-0.43, 0.26); shape.closePath()
+      shape.moveTo(0.32, 0.16); shape.lineTo(0.25, 0.35); shape.lineTo(0.2, 0.42); shape.lineTo(0.23, 0.45); shape.lineTo(0.31, 0.39); shape.lineTo(0.4, 0.2); shape.closePath()
+    }, [0, 0, front + 0.015])
+  }
+}
+
+function storyPropKind(propId: string) {
+  return STORY_PROP_KINDS[propId]
 }
 
 /** Виды плоских предметов, которые 2D-штамп заменяет целиком. */
@@ -405,6 +895,38 @@ function buildFloorStamp(resources: Resources, parent: THREE.Group, layout: Layo
       map: texture, transparent: true, opacity: propDrawingFor(assetId).flat ? PROP_DECAL_ALPHA : 1, depthWrite: false, roughness: 0.95, metalness: 0,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
     })
+    if (assetId === 'rug_runner') {
+      // Атлас уже содержит рисунок дорожки. Тонкая процедурная фактура поверх
+      // него возвращает ощущение тканой миниатюры: плетение, потёртые края и
+      // очень спокойный ритм орнамента без нового предмета или текстуры.
+      materialValue.roughness = 1
+      materialValue.opacity = .96
+      materialValue.onBeforeCompile = (shader) => {
+        shader.vertexShader = `varying vec2 vRugLocalUv;\n${shader.vertexShader}`
+          .replace('#include <uv_vertex>', '#include <uv_vertex>\n  vRugLocalUv = uv;')
+        shader.fragmentShader = `varying vec2 vRugLocalUv;\n${shader.fragmentShader}`
+          .replace('#include <color_fragment>', `
+            #include <color_fragment>
+            vec2 weave = vRugLocalUv * vec2(92.0, 240.0);
+            // За пределом разрешения отдельные нити сливаются в общий цвет.
+            float threadDetail = 1. - smoothstep(.18, .5, max(fwidth(weave.x), fwidth(weave.y)));
+            float woven = sin(weave.x * 6.2831853) * sin(weave.y * 6.2831853) * threadDetail;
+            float edgeDistance = min(min(vRugLocalUv.x, 1.0 - vRugLocalUv.x), min(vRugLocalUv.y, 1.0 - vRugLocalUv.y));
+            float wornBorder = 1.0 - smoothstep(0.022, 0.08, edgeDistance);
+            float dyeVariation = 0.975 + 0.025 * sin(vRugLocalUv.y * 8.0 + sin(vRugLocalUv.x * 3.0));
+            diffuseColor.rgb *= (1.0 + .045 * woven) * dyeVariation;
+            // Три ромба охристой нитью по мареновому полю, вдоль оси дорожки.
+            vec2 tile = vec2(vRugLocalUv.x - .5, fract(vRugLocalUv.y * 3.) - .5);
+            float diamond = 3.25 * abs(tile.x) + 3.3 * abs(tile.y);
+            float aa = max(fwidth(diamond), .015);
+            float field = (1. - smoothstep(.96-aa, .96+aa, diamond)) * (1.-wornBorder);
+            float stitch = 1. - smoothstep(.055-aa, .055+aa, abs(diamond-.78));
+            diffuseColor.rgb *= mix(vec3(1.), vec3(.92,.36,.37), field * .84);
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.53,.31,.12), .65 * stitch * field);
+          `)
+      }
+      materialValue.customProgramCacheKey = () => 'board3d-rug-runner-weave-v1'
+    }
     resources.materialPool.set(key, materialValue)
     resources.materials.add(materialValue)
   }
@@ -474,8 +996,16 @@ function buildWallOrSign(resources: Resources, parent: THREE.Group, layout: Layo
   else buildTableware(resources, parent, t, kind === 'cauldron' ? 'pot' : kind)
 }
 
-function buildModel(resources: Resources, parent: THREE.Group, layout: Layout, t: Tones, kind: string) {
+function buildModel(resources: Resources, parent: THREE.Group, layout: Layout, t: Tones, kind: string, storyFrescoAtlas: THREE.Texture | null = null) {
+  if (kind.startsWith('fossil-')) {
+    buildVulkanisBones(resources, parent, kind.slice(7) as FossilPart, layout.width, layout.depth)
+    return
+  }
   switch (kind) {
+    case 'story-gedrik-table': buildGedrikTable(resources, parent, layout.width, layout.depth); break
+    case 'story-lomar-bench': buildLomarBench(resources, parent, layout.width, layout.depth); break
+    case 'story-vulkanis-skull': buildVulkanisSkull(resources, parent, layout.width, layout.depth); break
+    case 'story-oath-circle': buildOathCircle(resources, parent, layout.width, layout.depth); break
     case 'table-round': buildTable(resources, parent, layout, t, 'round'); break
     case 'table-long': buildTable(resources, parent, layout, t, 'long'); break
     case 'table-royal': buildTable(resources, parent, layout, t, 'royal'); break
@@ -510,7 +1040,7 @@ function buildModel(resources: Resources, parent: THREE.Group, layout: Layout, t
     case 'chest': buildCrate(resources, parent, layout, t, 'chest'); break
     case 'bed': buildBed(resources, parent, layout, t); break
     case 'bunk-bed': buildBed(resources, parent, layout, t, true); break
-    case 'mug': case 'plate': case 'bowl': case 'bottle': case 'jug': case 'bread': case 'cheese': case 'dice-cup': case 'coin-pile': case 'cutting-board': case 'pot': buildTableware(resources, parent, t, kind); break
+    case 'mug': case 'plate': case 'bowl': case 'bottle': case 'jug': case 'bread': case 'cheese': case 'dice-cup': case 'coin-pile': case 'coin-pouch': case 'cutting-board': case 'pot': buildTableware(resources, parent, t, kind); break
     case 'lute': buildLute(resources, parent, t); break
     case 'sack': sphere(resources, parent, 'sack-body', material(resources, 'fabric', t.fabric), [0.4, 0.48, 0.34], [0, 0.24, 0]); round(resources, parent, 'sack-tie', material(resources, 'wood-dark', t.woodDark), 0.08, 0.1, [0, 0.52, 0]); break
     case 'basket': case 'bucket': { cone(resources, parent, kind, material(resources, 'wood', t.wood), kind === 'basket' ? 0.45 : 0.36, 0.32, [0, 0.16, 0]); ring(resources, parent, `${kind}-rim`, material(resources, 'wood-light', t.woodLight), kind === 'basket' ? 0.45 : 0.36, 0.045, [0, 0.33, 0]); break }
@@ -521,6 +1051,20 @@ function buildModel(resources: Resources, parent: THREE.Group, layout: Layout, t
     case 'woodpile': for (const z of [-0.14, 0, 0.14]) { const log = round(resources, parent, 'woodpile-log', material(resources, 'wood', t.wood), 0.18, 0.76, [0, 0.12 + Math.abs(z), z]); log.rotation.z = Math.PI / 2 } break
     case 'cart': case 'wagon-wheel': case 'hitching-post': case 'water-trough': case 'well': case 'lamp-post': case 'signpost': case 'haystack': case 'market-stall': case 'village-fence': case 'milestone': case 'roadside-shrine': buildSettlement(resources, parent, layout, t, kind); break
     case 'grass-tuft': case 'flowers': case 'fern': case 'path-stone': case 'mosaic': case 'rug': case 'floor-stain': case 'trapdoor': buildGroundDetail(resources, parent, layout, t, kind); break
+    case 'story-eldrin': {
+      const oak = material(resources, 'eldrin-oak', '#ffffff', { vertexColors: true, side: THREE.DoubleSide, roughness: 1, metalness: 0 })
+      if (!oak.map) {
+        oak.map = eldrinBarkTexture()
+        resources.textures.add(oak.map)
+      }
+      part(resources, parent, 'eldrin-ancient-oak', 'story-eldrin', eldrinOakGeometry, oak, [layout.width / 4, 1, layout.depth / 4])
+      break
+    }
+    case 'story-swift-cage': buildSwiftCage(resources, parent, layout); break
+    case 'iron-cage': buildIronCage(resources, parent, layout, t.woodDark); break
+    case 'story-journal': buildStoryJournal(resources, parent, layout, t); break
+    case 'executioner-diary': buildExecutionerDiary(resources, parent); break
+    case 'story-fresco-crown': case 'story-fresco-execution': case 'story-fresco-head': buildStoryFresco(resources, parent, layout, kind, storyFrescoAtlas); break
     case 'pillar': case 'altar': case 'statue': case 'offering-bowl': case 'urn': case 'prayer-bench': case 'reliquary': case 'sarcophagus': case 'grave': case 'bone-pile': case 'crypt-niche': case 'mushroom-cluster': case 'cave-pool': case 'ore-vein': case 'temple-banner': case 'cobweb': case 'banner': case 'wall-banner': buildTempleCrypt(resources, parent, layout, t, kind); break
     case 'sign-board': buildWallOrSign(resources, parent, layout, t, kind); break
     default: buildUnknown(resources, parent, t)
@@ -585,8 +1129,26 @@ function modelKindOf(canonical: string): string | null {
 /** Деревья выше человека: их крона получает окно над фигурками (`board3d-see-through`). */
 const CANOPY_ASSETS: ReadonlySet<string> = new Set(['tree_oak', 'tree_birch', 'tree_pine', 'tree_spruce', 'tree_dead'])
 
+/**
+ * Один из двух вариантов Kenney содержит только два пересекающихся бревна.
+ * Для него процедурный вариант с кольцом камней и пламенем читается заметно
+ * лучше. Вариант `k-campfire_stones` оставляем GLB: он уже содержит объёмное
+ * каменное кольцо и имеет вдвое больше треугольников.
+ */
+const PROCEDURAL_QUALITY_MODEL_KEYS: ReadonlySet<string> = new Set(['k-campfire_logs'])
+const INACTIVE_CAMPFIRE_STATES: ReadonlySet<string> = new Set(['burned', 'broken', 'toppled'])
+
+function hideSpentFlame(parent: THREE.Object3D) {
+  parent.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return
+    const materials = Array.isArray(object.material) ? object.material : [object.material]
+    if (/(?:^|-)(?:flame|glow)(?:-|$)/u.test(object.name)
+      || materials.every(material => /(?:^|-)(?:flame|ember)(?:-|$)/u.test(material.name))) object.visible = false
+  })
+}
+
 /** Общий процедурный каталог окружения. Видимость и свет принадлежат вызывающему коду. */
-export function createEnvironmentModels(palette: BoardPalette, assets?: PropModelAssets | null, options: { seeThrough?: SeeThrough | null } = {}): { create: (prop: TacticalProp) => THREE.Group; dispose: () => void } {
+export function createEnvironmentModels(palette: BoardPalette, assets?: PropModelAssets | null, options: { seeThrough?: SeeThrough | null; storyFrescoAtlas?: THREE.Texture | null } = {}): { create: (prop: TacticalProp) => THREE.Group; dispose: () => void } {
   const owned = resources()
   const t = tones(palette)
   let disposed = false
@@ -595,11 +1157,18 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
       if (disposed) throw new Error('Каталог моделей окружения уже освобождён')
       const layout = propVisualLayout(prop)
       const canonical = resolvePropAssetId(prop.assetId)
-      const kind = modelKindOf(canonical) ?? 'unknown'
+      const castleThrone = canonical === 'royal_throne' && prop.id === 'astohan-forgotten-cliffs:throne'
+      const storyKind = storyPropKind(prop.id)
+      const kind = storyKind ?? modelKindOf(canonical) ?? 'unknown'
       const group = new THREE.Group()
       group.name = `prop:${prop.id}`
       group.userData.modelKind = kind
       group.userData.assetId = prop.assetId
+      if (storyKind) group.userData.storyArtifact = storyKind
+      if (storyKind?.startsWith('story-fresco-')) {
+        group.userData.storyWallMount = true
+        group.userData.storyWallNormal = 'south'
+      }
       group.userData.state = prop.state
       const lightHeight = LIGHT_HEIGHTS[kind]
       if (lightHeight !== undefined) group.userData.lightHeight = lightHeight
@@ -612,8 +1181,12 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
       const entry = propModelFor(assets?.catalog, canonical, prop.id)
       const template = entry ? assets?.models.get(entry.key) : null
       const templateHinge = animatedHingeOf(template)
-      const useTemplate = Boolean(template) && (!openContainerState(prop.state) || Boolean(templateHinge))
-      const stamp = !useTemplate && FLOOR_STAMP_KINDS.has(kind) ? assets?.stamps?.get(canonical) : undefined
+      const qualityOverride = Boolean(entry && PROCEDURAL_QUALITY_MODEL_KEYS.has(entry.key))
+      const campfireStoneWithFlame = kind === 'campfire' && entry?.key === 'k-campfire_stones'
+        && !INACTIVE_CAMPFIRE_STATES.has(prop.state)
+      const useTemplate = !storyKind && Boolean(template) && !qualityOverride
+        && (!openContainerState(prop.state) || Boolean(templateHinge))
+      const stamp = !storyKind && !useTemplate && FLOOR_STAMP_KINDS.has(kind) ? assets?.stamps?.get(canonical) : undefined
       if (useTemplate && template) {
         const model = template.clone(true)
         model.updateMatrixWorld(true)
@@ -634,9 +1207,20 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         const fitted = new THREE.Group()
         model.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2)
         fitted.add(model)
+        // В слитом GLB свеча стоит у правого края стола. Координаты фитиля
+        // заданы в долях его габарита, до поворота и масштабирования предмета.
+        if (entry?.key === 'style-detail-candle-desk') {
+          const wick = new THREE.Object3D()
+          wick.name = 'flame-socket'
+          wick.position.set(size.x * .43, size.y * .995, 0)
+          fitted.add(wick)
+        }
         fitted.scale.setScalar(fit)
         // Дерево в 3D тянется вверх до своего роста; ширина кроны прежняя.
         fitted.scale.y *= propModelTreeStretch(canonical, size.y * fit * layout.scale)
+        if (castleThrone) {
+          addCastleThroneBack(owned, fitted, size.x, size.y, -size.z * .38)
+        }
         // Модель ставится на пол. Настенную вещь, собранную висящей (в GLB она
         // над нулём: полочка, щит, стойка с крюками), поднимаем так, чтобы верх
         // пришёлся на WALL_MOUNT_TOP: иначе щит лежал у стены на полу.
@@ -645,14 +1229,37 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         fitted.position.y = lift
         if (hung) group.userData.wallLift = lift
         group.add(fitted)
+        // Вариант с каменным кольцом — качественный GLB без языков пламени.
+        // Добавляем только огонь, сохраняя саму модель, её выбор и габарит.
+        if (campfireStoneWithFlame) {
+          buildCampfireFlame(owned, group, t)
+        }
         group.userData.modelKey = entry!.key
         group.userData.modelSource = 'glb'
         if (lightHeight !== undefined) group.userData.lightHeight = size.y * fit * .8 + lift
+        if (campfireStoneWithFlame) {
+          group.userData.lightHeight = LIGHT_HEIGHTS.campfire
+        }
       } else if (stamp) {
         buildFloorStamp(owned, group, layout, canonical, stamp)
         group.userData.modelSource = 'stamp'
       } else if (kind === 'unknown') buildUnknown(owned, group, t)
-      else buildModel(owned, group, layout, t, kind)
+      else {
+        buildModel(owned, group, layout, t, kind, options.storyFrescoAtlas ?? null)
+        if (storyKind) group.userData.modelSource = 'procedural-story'
+        else if (qualityOverride) group.userData.modelSource = 'procedural-quality'
+      }
+      if (INACTIVE_CAMPFIRE_STATES.has(prop.state) && (kind === 'campfire' || lightHeight !== undefined)) hideSpentFlame(group)
+      if (canonical === 'broken_obelisk' && prop.id === 'astohan-obsidian-pass:old-boundary-stone') {
+        addOldBoundaryStone(owned, group, layout.scale)
+      }
+      if (castleThrone && !useTemplate) {
+        const seatBack = group.getObjectByName('throne-back')
+        if (seatBack instanceof THREE.Mesh) {
+          const top = seatBack.position.y + seatBack.scale.y / 2
+          addCastleThroneBack(owned, group, Math.min(1, seatBack.scale.x), top, seatBack.position.z)
+        }
+      }
       applyContainerState(group, kind, prop.state)
       if (prop.state === 'toppled' || prop.state === 'burned' || prop.state === 'broken') applyState(owned, group, layout, t, prop.state)
       if (options.seeThrough && CANOPY_ASSETS.has(canonical) && prop.state !== 'toppled') {

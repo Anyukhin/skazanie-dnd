@@ -238,6 +238,28 @@ pub fn party_voter_snapshot_with(memberships: &[Value], campaign_id: &str, state
     Value::Object(snapshot)
 }
 
+/// Для договора берём назначенных героям игроков, включая отключённых.
+pub async fn scenario_treaty_voter_snapshot(app: &crate::state::AppState, campaign_id: &str, state: &Value, actor_id: &str) -> Result<Value, Failure> {
+    use sk_scenario::campaign_scenario::{scenario_location_id, scenario_treaty_rules};
+    let Some(rules) = scenario_treaty_rules(state) else { return Ok(Value::Null) };
+    if rules["boss_location_id"] != scenario_location_id(state) {
+        return Ok(Value::Null);
+    }
+    let accounts = app.accounts.clone();
+    let code = campaign_id.to_string();
+    let actor = actor_id.to_string();
+    let heroes = party_hero_ids(state);
+    let policy = serde_json::json!({ "partyDecisionPolicy": state["partyDecisionPolicy"] });
+    crate::core::blocking(move || {
+        let memberships = accounts.list_campaign_memberships(&code)?;
+        let owned: IndexSet<&str> = memberships.iter().flat_map(|member| array(member.get("heroIds"))).filter_map(Value::as_str).collect();
+        let eligible: Vec<String> = heroes.into_iter().filter(|id| id == &actor || owned.contains(id.as_str())).collect();
+        let mut snapshot = party_voter_snapshot_with(&memberships, &code, &policy, &eligible);
+        snapshot["eligibleHeroIds"] = serde_json::json!(eligible);
+        Ok(snapshot)
+    }).await.map_err(|error| Failure::new(error.to_string(), None))?
+}
+
 /// `campaignVoterCount(campaignId, state)` (2533–2535).
 pub fn campaign_voter_count(accounts: &Accounts, campaign_id: &str, state: &Value) -> Result<usize, Failure> {
     let snapshot = party_voter_snapshot(accounts, campaign_id, state, &party_hero_ids(state))?;

@@ -62,7 +62,7 @@
   },
   {
    "role": "lore_keeper",
-   "promptId": "lore_keeper/v1",
+   "promptId": "lore_keeper/v2",
    "module": "lore-voice.mjs",
    "loads": true
   }
@@ -194,10 +194,10 @@
    }
   },
   {
-   "promptId": "lore_keeper/v1",
+   "promptId": "lore_keeper/v2",
    "descriptor": {
     "role": "lore_keeper",
-    "promptId": "lore_keeper/v1",
+    "promptId": "lore_keeper/v2",
     "module": "lore-voice.mjs",
     "loads": true
    }

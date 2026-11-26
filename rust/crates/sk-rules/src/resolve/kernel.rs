@@ -73,6 +73,8 @@ pub struct MagicMissile<'a> {
     pub target: &'a Value,
     pub slot_level: Option<&'a Value>,
     pub damage_type: &'a Value,
+    pub projectile_count_override: Option<f64>,
+    pub missile_roll_override: Option<&'a Value>,
     pub source_item: Option<&'a Value>,
 }
 
@@ -483,11 +485,11 @@ impl Resolve<'_> {
     /// damageType, sourceItem })`: снаряды «Волшебной стрелы» с иммунитетом
     /// предмета и «Щитом» цели.
     pub fn append_magic_missile_resolution(&mut self, missile: MagicMissile<'_>) -> Result<(), Interrupt> {
-        let MagicMissile { source_command, spell, target, slot_level, damage_type, source_item } = missile;
+        let MagicMissile { source_command, spell, target, slot_level, damage_type, projectile_count_override, missile_roll_override, source_item } = missile;
         let target_id = sk_core::game::actor_id(target);
         let level = crate::spells::slots::spell_level(spell);
         let resolved_slot = level.max(js::safe_int(slot_level, level));
-        let projectiles = crate::spells::slots::spell_projectile_count(spell, Some(&Value::from(resolved_slot)));
+        let projectiles = projectile_count_override.unwrap_or_else(|| crate::spells::slots::spell_projectile_count(spell, Some(&Value::from(resolved_slot))));
         let protected_by_shield = condition_ids_for(&self.state, &target_id).contains("shielded");
         let spell_key = sk_core::text::lower(&js::string(spell.get("id")));
         let options = sk_items_life::item_lifecycle::MechanicEffectOptions { selected_item_id: None, selected_counts_as_equipped: false };
@@ -510,11 +512,16 @@ impl Resolve<'_> {
             None => "1d4+1".into(),
         };
         let visibility = crate::core::coalesce(&[source_command.get("visibility")]).cloned().unwrap_or_else(|| Value::String("public".into()));
-        let missile_roll = self.roll_dice(Value::String(expression), &format!("spell_damage:{}", js::string(spell.get("id"))), source_command.get("actor_id").cloned().unwrap_or(Value::Null), visibility)?;
-        self.rolls.push(missile_roll.clone());
-        let mut roll_payload = spread_value(Some(&missile_roll));
-        roll_payload.insert("projectile_count".into(), js::num(projectiles));
-        self.events.push(event_from(source_command, "DieRolled", Some(Value::Object(roll_payload)), Some(&json!([]))));
+        let missile_roll = if let Some(roll) = missile_roll_override {
+            roll.clone()
+        } else {
+            let roll = self.roll_dice(Value::String(expression), &format!("spell_damage:{}", js::string(spell.get("id"))), source_command.get("actor_id").cloned().unwrap_or(Value::Null), visibility)?;
+            self.rolls.push(roll.clone());
+            let mut roll_payload = spread_value(Some(&roll));
+            roll_payload.insert("projectile_count".into(), js::num(projectiles));
+            self.events.push(event_from(source_command, "DieRolled", Some(Value::Object(roll_payload)), Some(&json!([]))));
+            roll
+        };
         let per_projectile = js::number(missile_roll.get("total"));
         let mut metadata = Map::new();
         if let Some(item) = source_item.filter(|item| js::truthy(Some(item))) {

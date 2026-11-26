@@ -383,7 +383,7 @@ fn run_probe(r: &mut Resolve<'_>, f: &str, a: &[Option<Value>]) -> Result<Value,
             let spell = sk_rules::executable::Executable::admit(spell, "заклинания").expect("«Волшебная стрела» исполнима");
             let command = r.command.clone();
             let force = json!("force");
-            r.append_magic_missile_resolution(kernel::MagicMissile { source_command: &command, spell: &spell, target: &target, slot_level: v(1), damage_type: &force, source_item: some(2) })?;
+            r.append_magic_missile_resolution(kernel::MagicMissile { source_command: &command, spell: &spell, target: &target, slot_level: v(1), damage_type: &force, projectile_count_override: None, missile_roll_override: None, source_item: some(2) })?;
             Ok(undefined())
         }
         "rollAmount" => Ok(json!(r.roll_amount(&js::string(v(0)), v(1).map_or(0.0, |value| js::number(Some(value))))?)),

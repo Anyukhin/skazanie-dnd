@@ -202,6 +202,23 @@ test('Scene Architect получает детерминированный сво
   assert.equal(state.scene.cells.find((cell) => cell.x === marta.payload.x && cell.y === marta.payload.y)?.type, 'floor')
 })
 
+test('сюжетный якорь ждёт раскрытия реквизита и ставит NPC у него', () => {
+  const state = npcState({ npcs: [
+    { id: 'keeper', name: 'Хранитель', role: 'житель', location: 'Рынок', visibility: 'party', available: true, tags: ['anchor:bar-1'] },
+  ] })
+  const hidden = openMap()
+  setCell(hidden, 7, 2, { revealed: false })
+  state.scene.map = serializeTacticalMap(hidden)
+  assert.deepEqual(planSceneNpcPlacementEvents(state), [], 'скрытый якорь не ставит NPC у случайного входа')
+
+  for (let y = 0; y < 5; y += 1) for (let x = 5; x < 9; x += 1) setCell(hidden, x, y, { revealed: true })
+  state.scene.map = serializeTacticalMap(hidden)
+  const placed = planSceneNpcPlacementEvents(state)
+  assert.equal(placed.length, 1)
+  assert.equal(placed[0].payload.anchor_prop_id, 'bar-1')
+  assert.ok(Math.max(Math.abs(placed[0].payload.x - 7), Math.abs(placed[0].payload.y - 2)) <= 2)
+})
+
 test('посты NPC не пересекаются с партией и друг с другом при начальной расстановке', () => {
   const base = npcState({ npcs: [
     { id: 'marta', name: 'Марта', role: 'трактирщица', location: 'Рынок', visibility: 'party', available: true },

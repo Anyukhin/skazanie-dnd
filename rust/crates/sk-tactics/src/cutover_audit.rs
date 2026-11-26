@@ -163,6 +163,12 @@ pub fn open_game_store(database: &Path, reducer: Arc<GameReducer>) -> Result<Eve
     EventStore::open(database, reducer, StoreOptions::default()).map(|store| store.with_map_cells(Arc::new(TacticalMapCells))).map_err(|error| error.message)
 }
 
+/// Один снимок журнала для отчёта и последующей сверки комнат.
+pub struct AuditStore {
+    pub report: Value,
+    pub store: Option<EventStore>,
+}
+
 /// Каталог хранилища: `storageRoot || DND_STORAGE_DIR || 'storage'`, абсолютным путём.
 fn storage_root(requested: Option<&Path>) -> PathBuf {
     let chosen = requested
@@ -189,14 +195,33 @@ fn report(root: &Path, campaigns: Vec<Value>, blockers: Vec<Value>, warnings: Ve
 /// Базы нет — пустой готовый отчёт (база не создаётся). `Err` — базу нельзя
 /// открыть или перечислить кампании.
 pub fn audit_legacy_cutover(storage: Option<&Path>) -> Result<Value, String> {
+    Ok(open_audit_store(storage)?.report)
+}
+
+/// Аудит остановленного сервера. Сверка комнат получает тот же снимок, что и сверка журнала.
+pub fn open_audit_store(storage: Option<&Path>) -> Result<AuditStore, String> {
+    open_audit_store_with(storage, false)
+}
+
+/// Аудит изолированного тестового сервера, который ещё может принимать ходы.
+pub fn open_audit_store_live(storage: Option<&Path>) -> Result<AuditStore, String> {
+    open_audit_store_with(storage, true)
+}
+
+fn open_audit_store_with(storage: Option<&Path>, live: bool) -> Result<AuditStore, String> {
     let root = storage_root(storage);
     let database = root.join(STORE_FILE);
     if !database.is_file() {
-        return Ok(report(&root, Vec::new(), Vec::new(), Vec::new()));
+        return Ok(AuditStore { report: report(&root, Vec::new(), Vec::new(), Vec::new()), store: None });
     }
     let reducer = Arc::new(GameReducer::new());
-    let store = open_game_store(&database, reducer.clone())?;
-    audit_event_store(&store, &reducer, &root)
+    let store = if live {
+        EventStore::open_read_only_live(&database, reducer.clone(), StoreOptions::default())
+    } else {
+        EventStore::open_read_only(&database, reducer.clone(), StoreOptions::default())
+    }.map_err(|error| error.message)?.with_map_cells(Arc::new(TacticalMapCells));
+    let audited = audit_event_store(&store, &reducer, &root)?;
+    Ok(AuditStore { report: audited, store: Some(store) })
 }
 
 /// Аудит уже открытого хранилища (`reducer` — тот, с которым оно открыто).

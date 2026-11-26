@@ -47,12 +47,19 @@ for (const text of [
 for (const text of [
   'Мира обещала оставить карту старых троп под медной кружкой.',
   'Мира говорила: «Карта будет лежать под медной кружкой». Обещание пока остаётся открытым.',
-  'Под медной кружкой карты пока не видно.',
-  'Обещанная карта пока не найдена.',
-  'Обещанная карта не была найдена.',
 ]) test(`память и отсутствие результата разрешены: ${text}`, async () => {
   const { result } = await render(text)
   assert.equal(result.provider, 'Object', JSON.stringify(result.verification))
+})
+
+for (const text of [
+  'Под медной кружкой карты пока не видно.',
+  'Обещанная карта пока не найдена.',
+  'Обещанная карта не была найдена.',
+]) test('открытое обещание не утверждает отсутствие предмета', async () => {
+  const { result } = await render(text)
+  assert.equal(result.provider, 'deterministic-fallback')
+  assert.ok(result.verification.repaired_from.some(entry => entry.code === 'PROMISE_RESOLUTION_NOT_IN_BRIEF'))
 })
 
 test('постороннее разрешённое обещание не разрешает получение этой карты', async () => {
@@ -88,8 +95,14 @@ test('отсутствие согласия не объявляет принят
 
 test('нахождение другой вещи не закрывает открытое обещание', async () => {
   const input = brief({ visible_events: [{ event_type: 'ItemGranted', visibility: 'public', payload: { item: { name: 'ключ от шкафа' } } }] })
-  const { result } = await render('Обещанная карта не найдена, но на месте найден ключ от шкафа.', input)
+  const { result } = await render('Обещание карты остаётся открытым, но на месте найден ключ от шкафа.', input)
   assert.equal(result.provider, 'Object', JSON.stringify(result.verification))
+})
+
+test('отсутствие обещанной вещи без осмотра не считается результатом', async () => {
+  const input = brief({ visible_events: [{ event_type: 'ItemGranted', visibility: 'public', payload: { item: { name: 'ключ от шкафа' } } }] })
+  const { result } = await render('Обещанная карта не найдена, но на месте найден ключ от шкафа.', input)
+  assert.equal(result.provider, 'deterministic-fallback')
 })
 
 test('разрешение чужого обещания не подтверждает обещание без id', async () => {

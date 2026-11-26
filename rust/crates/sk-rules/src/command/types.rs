@@ -119,7 +119,7 @@ pub static ALLOWED_COMMAND_TYPES: LazyLock<IndexSet<&'static str>> = LazyLock::n
     set.insert(DIALOGUE_COMMAND_TYPE);
     set.extend(["SetCharacterChoices", "SetSpellSelections", "SetSpellBonusPreference", "SetReactionPreference"]);
     set.extend(["EquipItem", "UseItem", "TransferItem", "AttuneItem", "ActivateItem", "LevelUp", "ImportCharacter", "RollCharacterAbilities", "RollCharacterWealth"]);
-    set.extend(["CompleteCampaign", "AdvanceCampaignArc", "ResolveQuestDecision"]);
+    set.extend(["CompleteCampaign", "AdvanceCampaignArc", "ResolveQuestDecision", "ResolveScenarioTreatyDecision"]);
     set
 });
 

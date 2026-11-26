@@ -299,3 +299,19 @@ test('ответ о знании цитирует фразу собеседни�
   const factOnly = answerKnownLore('Что мы знаем о баркасе?', { ...remembered, social: { ...state.social, conversations: [] } }, { viewer: { playerId: 'hero', isPartyMember: true } }).narration
   assert.match(factOnly, /Марен говорит, что баркас/u)
 })
+
+test('свидетельство с датой сохраняет предыдущее предложение и источник', () => {
+  const state = {
+    scene: { location: 'Штормберг' },
+    social: {
+      npcs: [{ id: 'astohan-ares', name: 'Король Арес', role: 'король Валедора', location: 'Штормберг', visibility: 'party' }],
+      conversations: [{
+        npc_id: 'astohan-ares', hero_id: 'hero', visibility: 'party',
+        npc_reply: 'Молодой красный. Три месяца требует с поселений золото и сведения, десять дней назад сжёг Пепельную заставу.',
+      }],
+    },
+  }
+  const result = answerKnownLore('Что мы знаем о Пепельной заставе?', state, { viewer: { playerId: 'hero' } })
+  assert.match(result.narration, /Король Арес: «Молодой красный\. Три месяца требует/u)
+  assert.equal(result.lore_material.heard[0].line.startsWith('Молодой красный.'), true)
+})

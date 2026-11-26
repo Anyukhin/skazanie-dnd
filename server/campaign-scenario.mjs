@@ -193,6 +193,7 @@ function validateScenario(scenario) {
   const locations = Array.isArray(scenario.locations) ? scenario.locations : invalid(`${scenario.id}: locations`)
   const locationIds = new Set()
   const clueIds = new Set()
+  const inspectPropIds = new Set()
   for (const location of locations) {
     const id = String(location?.location_id ?? '')
     if (!ID_PATTERN.test(id) || locationIds.has(id)) invalid(`${scenario.id}: место ${id}`)
@@ -227,6 +228,21 @@ function validateScenario(scenario) {
       }
       if (secret.next_objective != null && (typeof secret.next_objective !== 'string' || !clean(secret.next_objective, 121) || clean(secret.next_objective, 121).length > 120)) {
         invalid(`${scenario.id}/${secretId}: следующая цель — текст до 120 символов`)
+      }
+      if (secret.inspect_prop_ids != null) {
+        if (!Array.isArray(secret.inspect_prop_ids) || !secret.inspect_prop_ids.length
+          || secret.inspect_prop_ids.some((/** @type {unknown} */ propId) => {
+            const normalizedPropId = clean(propId, 200)
+            return !normalizedPropId || !normalizedPropId.startsWith(`${id}:`)
+          })) {
+          invalid(`${scenario.id}/${secretId}: inspect_prop_ids — непустой список предметов этого места`)
+        }
+        if (!clean(secret.inspect_label, 120)) invalid(`${scenario.id}/${secretId}: inspect_label — подпись предмета`)
+        for (const rawPropId of secret.inspect_prop_ids) {
+          const propId = clean(rawPropId, 200)
+          if (inspectPropIds.has(propId)) invalid(`${scenario.id}/${secretId}: предмет ${propId} уже привязан к другой тайне`)
+          inspectPropIds.add(propId)
+        }
       }
     }
   }
@@ -336,6 +352,29 @@ function deepFreeze(value) {
 
 const SCENARIOS = Object.freeze(loadScenarios())
 
+// Карты вызывают это на каждом пропе. Индекс строится один раз при загрузке
+// каталога, чтобы обычные предметы не перебирали все карточки сценария.
+const SCENARIO_INSPECT_PROP_INDEX = new Map()
+for (const scenario of SCENARIOS) {
+  for (const location of scenario.locations) {
+    for (const secret of location.secrets ?? []) {
+      for (const propId of secret.inspect_prop_ids ?? []) {
+        const key = `${location.location_id}\u0000${propId}`
+        SCENARIO_INSPECT_PROP_INDEX.set(key, Object.freeze({
+          scenario_id: scenario.id,
+          prop_id: propId,
+          fact_id: scenarioClueFactId(scenario, secret.id),
+          clue_id: secret.id,
+          clue: clean(secret.clue, 1_000),
+          topic: clean(secret.topic, 200),
+          label: clean(secret.inspect_label, 120),
+          ...(secret.inspect_alias ? { alias: clean(secret.inspect_alias, 120) } : {}),
+        }))
+      }
+    }
+  }
+}
+
 /** Все сценарии каталога — для тестов и аудита. */
 export function listCampaignScenarios() {
   return SCENARIOS
@@ -383,6 +422,50 @@ export function campaignScenario(state = {}) {
 /** @param {any} scenario @param {string} clueId */
 export function scenarioClueFactId(scenario, clueId) {
   return `fact:secret:scenario:${scenario.id}:${clueId}`
+}
+
+/**
+ * Быстрый индекс авторских предметов, не зависящий от состояния кампании.
+ * @param {string} locationId
+ * @param {string} propId
+ */
+export function scenarioSceneObjectClueForLocation(locationId, propId) {
+  const entry = SCENARIO_INSPECT_PROP_INDEX.get(`${clean(locationId, 120)}\u0000${clean(propId, 200)}`)
+  if (!entry) return null
+  const { scenario_id: _scenarioId, ...publicEntry } = entry
+  return publicEntry
+}
+
+/**
+ * Сценарная привязка для публичной карты. Проверяет активную арку, чтобы
+ * одинаковый location/prop id в свободной кампании не обещал неисполняемое
+ * действие.
+ * @param {string} scenarioId
+ * @param {string} locationId
+ * @param {string} propId
+ */
+export function scenarioSceneObjectClueForScenario(scenarioId, locationId, propId) {
+  const entry = SCENARIO_INSPECT_PROP_INDEX.get(`${clean(locationId, 120)}\u0000${clean(propId, 200)}`)
+  if (!entry || entry.scenario_id !== clean(scenarioId, 120)) return null
+  const { scenario_id: _scenarioId, ...publicEntry } = entry
+  return publicEntry
+}
+
+/**
+ * Улика, которую открывает авторский предмет карты. Связь хранится в сценарии,
+ * а не в ассете: один и тот же `mosaic` в другой сцене остаётся обычной
+ * обстановкой.
+ * @param {any} state
+ * @param {string} locationId
+ * @param {string} propId
+ * @returns {{ fact_id: string, clue_id: string, clue: string, topic: string, label: string, prop_id: string } | null}
+ */
+export function scenarioSceneObjectClue(state, locationId, propId) {
+  const scenario = campaignScenario(state)
+  const entry = SCENARIO_INSPECT_PROP_INDEX.get(`${clean(locationId, 120)}\u0000${clean(propId, 200)}`)
+  if (!scenario || !entry || entry.scenario_id !== scenario.id) return null
+  const { scenario_id: _scenarioId, ...publicEntry } = entry
+  return publicEntry
 }
 
 /** @param {any} scenario @param {string} locationId */
@@ -465,9 +548,12 @@ export function scenarioLocationNpcs(state, locationId) {
     beliefs: (npc.beliefs ?? []).map((/** @type {unknown} */ belief) => clean(belief, 200)),
     known_fact_ids: scenarioClueFactIdsKnownBy(scenario, String(npc.id)),
     visibility: 'party',
-    available: true,
-    tags: (npc.tags ?? []).map((/** @type {unknown} */ tag) => clean(tag, 40)),
-    schedule: [],
+    available: npc.available !== false,
+    // Якоря authored-реквизита несут полный `location_id:prop_id`, поэтому
+    // предел совпадает с лимитом тега в `npc-social`, а не с короткими
+    // сюжетными метками старых NPC.
+    tags: (npc.tags ?? []).map((/** @type {unknown} */ tag) => clean(tag, 60)),
+    schedule: Array.isArray(npc.schedule) ? structuredClone(npc.schedule) : [],
     inventory: [],
   }))
 }

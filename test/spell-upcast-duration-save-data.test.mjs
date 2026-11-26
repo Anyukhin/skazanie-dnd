@@ -125,3 +125,13 @@ test('Аудит перечисляет только известные проб
   // либо задать поле, либо осознанно объявить причину в аудите.
   assert.deepEqual(auditSpellOverrides().upcastGaps.map((gap) => gap.id).sort(), [])
 })
+test('длительность эффекта 2014 в раундах соответствует карточке при шестисекундном раунде', () => {
+  for (const [id, minutes] of Object.entries({
+    'enhance-ability': 60, 'pass-without-trace': 60, suggestion: 480, 'melf-s-minute-meteors': 10,
+    'charm-monster': 60, 'freedom-of-movement': 60, polymorph: 60,
+  })) {
+    const { profile } = spellRuntimeFixture(id)
+    assert.equal(profile.durationRounds * 6, minutes * 60, id)
+    if (profile.conditionDurationSeconds) assert.equal(profile.conditionDurationSeconds, minutes * 60, id)
+  }
+})

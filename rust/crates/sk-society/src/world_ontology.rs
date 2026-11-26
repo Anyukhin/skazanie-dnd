@@ -103,7 +103,7 @@ pub static PREDICATES: &[(&str, PredicateEntry)] = &[
             family: false,
             subject_kinds: &["npc", "faction", "location", "item", "event", "concept"],
             object: "«clue»",
-            producers: &["world-memory"],
+            producers: &["rules-engine", "world-memory"],
             consumers: &["campaign-dialogues", "campaign-scenario", "game-orchestrator", "narrator", "npc-social", "npc-social-controller", "player-request-router", "rules-engine", "scenario-knight", "world-memory"],
             external_producers: None,
             generic_readers_only: false,
@@ -539,6 +539,20 @@ pub const GENERIC_PREDICATE_CONSUMERS: [(&str, &str); 5] = [
 /// Предикаты, у которых нет производителя в коде сознательно: их пишет только ведущий.
 pub const EXTERNAL_ONLY_PREDICATES: [&str; 2] = ["lore", "quest_progress"];
 
+/// Legacy-факты со слухом читаются только старым compatibility-путём NPC.
+/// Это не разрешённый producer и не новый предикат записи.
+pub const LEGACY_PREDICATE_READERS: [(&str, &[&str]); 1] = [
+    ("rumor", &["npc-social-controller"]),
+];
+
+fn is_legacy_compatibility_read(name: &str, entry: &AuditEntry) -> bool {
+    LEGACY_PREDICATE_READERS.iter().find(|(known, _)| *known == name).is_some_and(|(_, readers)| {
+        entry.producers.is_empty()
+            && readers.len() == entry.consumers.len()
+            && readers.iter().all(|reader| entry.consumers.contains(*reader))
+    })
+}
+
 /// Статья словаря для предиката записи (`predicateEntryFor`,
 /// `server/world-ontology.mjs:277`): точное имя или семейство `prefix:` с
 /// непустым суффиксом (`party_deed:theft` → `party_deed:`). Имя семейства без
@@ -879,13 +893,14 @@ fn serialize(table: &AuditTable) -> Value {
     Value::Object(map)
 }
 
-fn consumed_without_producer(table: &AuditTable) -> Vec<String> {
+fn consumed_without_producer(table: &AuditTable, allow_legacy: bool) -> Vec<String> {
     sorted(
         table
             .iter()
             .filter(|(name, entry)| {
                 !entry.consumers.is_empty()
                     && entry.producers.is_empty()
+                    && (!allow_legacy || !is_legacy_compatibility_read(name, entry))
                     && !(name.ends_with(':') && table.iter().any(|(other, candidate)| other.starts_with(name.as_str()) && !candidate.producers.is_empty()))
             })
             .map(|(name, _)| name),
@@ -931,7 +946,7 @@ pub fn audit_ontology(files: &[(&str, &str)]) -> Value {
         "predicates": serialize(&predicates),
         "relations": serialize(&relations),
         "gaps": {
-            "consumed_but_never_produced": { "predicates": consumed_without_producer(&predicates), "relations": consumed_without_producer(&relations) },
+            "consumed_but_never_produced": { "predicates": consumed_without_producer(&predicates, true), "relations": consumed_without_producer(&relations, false) },
             "produced_but_never_consumed": { "predicates": produced_without_consumer(&predicates), "relations": produced_without_consumer(&relations) },
         },
         "dynamic": { "produced": dynamic_json(&dynamic_produced), "consumed": dynamic_json(&dynamic_consumed) },
@@ -982,6 +997,19 @@ mod tests {
         assert_eq!(consumed, ["died", "died", "faction_offscreen_move:"]);
         let kinds: Vec<&str> = scan.dynamic.produced.iter().map(|entry| entry.kind).collect();
         assert_eq!(kinds, ["passthrough"]);
+    }
+
+    #[test]
+    fn legacy_rumor_fact_compatibility_read_is_visible_but_not_a_gap() {
+        let source = "if (spokenAloud && record.fact.predicate === 'rumor') return true";
+        let scan = scan_ontology_usage("npc-social-controller", source);
+        assert_eq!(scan.consumed.predicates.iter().map(|entry| entry.name.as_str()).collect::<Vec<_>>(), vec!["rumor"]);
+        assert!(scan.produced.predicates.is_empty());
+        let audit = audit_ontology(&[("npc-social-controller", source)]);
+        assert_eq!(audit["gaps"]["consumed_but_never_produced"]["predicates"], json!([]));
+        let other = "if (record.fact.predicate === 'rumor') return true";
+        let other_audit = audit_ontology(&[("other-reader", other)]);
+        assert_eq!(other_audit["gaps"]["consumed_but_never_produced"]["predicates"], json!(["rumor"]));
     }
 
     #[test]

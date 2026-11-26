@@ -732,6 +732,14 @@ fn candidate_cells(map: &TacticalMap, npc: &Value, occupied: &IndexSet<String>, 
     let assigned_zone = post.as_ref().and_then(|post| map.zones.iter().find(|zone| &zone.id == post));
     let anchor_id = tag_suffix(npc, "anchor:");
     let assigned_prop = anchor_id.as_ref().and_then(|anchor| map.props.iter().find(|prop| &prop.id == anchor));
+    // Сюжетный NPC с якорем ждёт, пока отряд действительно откроет этот
+    // реквизит. Иначе первый вход у края карты создавал бы ему пост у случайной
+    // травы, одновременно выдавая положение скрытой сцены.
+    if let Some(prop) = assigned_prop {
+        if !prop_cells(prop).iter().any(|(x, y)| cell_at(map, *x, *y).is_some_and(|cell| cell.revealed)) {
+            return Vec::new();
+        }
+    }
     let props: Vec<&TacticalProp> = match assigned_prop {
         Some(prop) => vec![prop],
         None => suitable_props(map, &preferred),
@@ -932,6 +940,25 @@ fn plan_placements(state: &Value, npcs: &[Value]) -> Vec<Value> {
 /// через `NpcMoved`.
 pub fn plan_scene_npc_placement_events(state: &Value) -> Vec<Value> {
     plan_placements(state, social_npcs(state))
+}
+
+/// Быстрая проверка горячего пути движения: полный план постов требует
+/// projection событий и нужен только при ожидающем authored-якоре.
+pub fn has_unplaced_anchored_npc(state: &Value) -> bool {
+    let location_id = scene_location_id(state);
+    if location_id.is_empty() {
+        return false;
+    }
+    let world = world_of(state);
+    let placed: HashSet<String> = world_placements(&world)
+        .iter()
+        .filter(|placement| placement.get("location_id").and_then(Value::as_str) == Some(location_id.as_str()))
+        .map(|placement| js::s(placement.get("npc_id")))
+        .collect();
+    present_in(state, world.get("vitals"), social_npcs(state)).iter().any(|npc| {
+        !placed.contains(&js::s(npc.get("id")))
+            && array(npc.get("tags")).iter().any(|tag| js::s(Some(tag)).starts_with("anchor:"))
+    })
 }
 
 fn social_npc<'s>(state: &'s Value, npc_id: &str) -> Option<&'s Value> {

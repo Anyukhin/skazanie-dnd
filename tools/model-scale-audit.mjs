@@ -4,10 +4,9 @@
  *
  * Предметы берутся с настоящих карт — пресеты `pnpm maps:preview` по
  * нескольким сидам и авторские карты (`data/authored-location-maps-v1.json`),
- * — и для каждого считается та же высота, что строит 3D-доска: габарит модели
- * из каталога окружения или пакета стиля, вписанный в след
- * (`propModelFit`), умноженный на `prop.scale`. Фигурки — высота профиля из
- * `public/assets/models/manifest.json` и множитель площади существа.
+ * — и собираются штатной фабрикой доски с каталогом выпуска каждой карты.
+ * Измеряется габарит готовой геометрии после посадки, поворота и масштаба.
+ * Крепления на стене или столе и отдельные эффекты огня в высоту предмета не входят.
  *
  * Мерило — рост фигурки человека: средняя высота автоподбираемых гуманоидов
  * манифеста считается за 5,75 фт. Ожидаемая высота предмета — его настоящая
@@ -82,21 +81,10 @@ const PROFILE_FEET = Object.freeze({ warrior: 5.75, mage: 5.75, rogue: 5.75, ske
 /** Доска сжимает верх шкалы размеров: огромное и громадное — не ниже этой доли книги. */
 const LARGE_SIZE_FLOOR = .35
 
-const { modules: [render, catalogModule, style, props3d, actorModels] } = await compileClientModules(['src/board-render.ts', 'src/prop-model-catalog.ts', 'src/board3d-style.ts', 'src/board3d-props.ts', 'src/actor-models.ts'])
-// Виды без GLB доска строит процедурно: их высота меряется по собранной группе.
-const procedural = props3d.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, null)
-/** @param {any} prop */
-function proceduralHeight(prop) {
-  const group = procedural.create(prop)
-  if (group.userData.modelKind === 'unknown') return null
-  group.updateMatrixWorld(true)
-  const box = new THREE.Box3().setFromObject(group)
-  return box.isEmpty() ? null : box.max.y - Math.max(0, box.min.y)
-}
+const { modules: [render, catalogModule, style, props3d, actorModels, assetsModule] } = await compileClientModules(
+  ['src/board-render.ts', 'src/prop-model-catalog.ts', 'src/board3d-style.ts', 'src/board3d-props.ts', 'src/actor-models.ts', 'src/prop-model-assets.ts'],
+)
 const readJson = (path) => JSON.parse(readFileSync(join(root, path), 'utf8'))
-
-// Каталог доски: выпуск окружения плюс пакет стиля, который подменяет свои виды.
-const environment = catalogModule.validatePropModelCatalog(readJson('public/assets/models/environment/manifest.json'))
 const stylePack = style.validateGraphicsStylePack(readJson('public/assets/styles/stylized/manifest.json'))
 const actorManifest = readJson('public/assets/models/manifest.json')
 
@@ -135,53 +123,66 @@ const toFeet = (cells) => cells / feetToCells
 /** @type {Map<string, {heights: number[], scales: number[], keys: Map<string, number[]>, sources: Set<string>, missing: number}>} */
 const byAsset = new Map()
 const maps = corpusMaps()
-const assetIds = new Set(maps.flatMap(({ map }) => map.props.map((prop) => render.resolvePropAssetId(prop.assetId))))
-const catalog = render.withStyleAssets(environment, stylePack, assetIds)
-
-// У части записей каталога габарит не записан: доска меряет такой GLB при
-// загрузке. Замер делает то же — грузит файл и берёт bbox после поворота yaw.
-// GLTFLoader ждёт `self` браузера; текстуры в Node не грузятся, геометрии хватает.
+const releases = new Map()
+const templates = new Map()
 globalThis.self ??= globalThis
 const loader = new GLTFLoader()
-/** @type {Map<string, [number, number, number]>} */
-const measured = new Map()
-for (const entry of catalog.models) {
-  if (entry.size || !entry.assetIds.some((id) => assetIds.has(id)) || !entry.url.endsWith('.glb')) continue
-  const data = readFileSync(join(root, 'public', entry.url))
-  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
-  const gltf = await new Promise((resolve, reject) => loader.parse(buffer, '', resolve, reject))
-  const holder = new THREE.Group()
-  gltf.scene.rotation.y = entry.yaw * Math.PI / 180
-  holder.add(gltf.scene)
-  holder.updateMatrixWorld(true)
-  const size = new THREE.Box3().setFromObject(holder).getSize(new THREE.Vector3())
-  measured.set(entry.key, [size.x, size.y, size.z])
+// Для измерения меша не нужны изображения. Такой парсер не пытается создать
+// браузерный ImageBitmap или загрузить текстуру по URL при прогоне в Node.
+loader.register(() => ({ name: 'geometry-only', loadTexture: async () => new THREE.Texture() }))
+const stamp = new THREE.Texture({ width: 1, height: 1 })
+
+async function templateFor(entry) {
+  const yaw = catalogModule.frontFacingEntry(entry).yaw
+  const key = `${entry.url}:${yaw}`
+  if (!templates.has(key)) {
+    const bytes = readFileSync(join(root, 'public', entry.url))
+    const gltf = await loader.parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')
+    const holder = new THREE.Group()
+    holder.add(gltf.scene)
+    assetsModule.bakeSkinnedMeshes(holder)
+    holder.rotation.y = yaw * Math.PI / 180
+    holder.updateMatrixWorld(true)
+    templates.set(key, holder)
+  }
+  return templates.get(key)
 }
 
 for (const { source, map } of maps) {
-  for (const prop of map.props) {
-    if (prop.transition) continue
-    const canonical = render.resolvePropAssetId(prop.assetId)
-    const record = byAsset.get(canonical) ?? { heights: [], scales: [], keys: new Map(), sources: new Set(), missing: 0 }
-    byAsset.set(canonical, record)
-    record.sources.add(source)
-    const entry = catalogModule.propModelFor(catalog, canonical, prop.id)
-    const layout = render.propVisualLayout(prop)
-    const size = entry ? entry.size ?? measured.get(entry.key) : undefined
-    const fit = entry && size ? catalogModule.propModelFit(canonical, entry, layout.width, layout.depth, render.PROP_FOOTPRINT_FILL, size) : null
-    const raised = fit === null || !size ? null : catalogModule.propModelFloorFit(canonical, fit, size, layout.scale, layout.width, layout.depth)
-    const modelKey = raised !== null ? entry.key : 'procedural'
-    // Дерево в 3D вытягивается вверх до своего роста (`propModelTreeStretch`).
-    const glbCells = raised !== null && size ? size[1] * raised * layout.scale : null
-    const cells = glbCells !== null ? glbCells * catalogModule.propModelTreeStretch(canonical, glbCells) : proceduralHeight(prop)
-    if (cells === null || cells < .01) { record.missing += 1; continue }
-    record.heights.push(cells)
-    record.scales.push(layout.scale)
-    const list = record.keys.get(modelKey) ?? []
-    list.push(cells)
-    record.keys.set(modelKey, list)
+  const revision = map.catalogRevision ?? catalogModule.LEGACY_CATALOG_REVISION
+  if (!releases.has(revision)) {
+    const file = revision === catalogModule.LEGACY_CATALOG_REVISION ? 'baseline-pr79.json' : `releases/${revision}/manifest.json`
+    releases.set(revision, catalogModule.validatePropModelCatalog(readJson('public/assets/models/environment/' + file), revision))
+  }
+  const catalog = render.withStyleProps(releases.get(revision), stylePack, map.props)
+  const models = new Map(), stamps = new Map()
+  const library = props3d.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, { catalog, models, stamps })
+  try {
+    for (const prop of map.props) {
+      if (prop.transition) continue
+      const canonical = render.resolvePropAssetId(prop.assetId)
+      const record = byAsset.get(canonical) ?? { heights: [], scales: [], keys: new Map(), sources: new Set(), missing: 0 }
+      byAsset.set(canonical, record)
+      record.sources.add(source)
+      const entry = catalogModule.propModelFor(catalog, canonical, prop.id)
+      if (entry && !models.has(entry.key)) models.set(entry.key, await templateFor(entry))
+      if (!entry && assetsModule.isFloorStamp(canonical)) stamps.set(canonical, stamp)
+      const model = library.create({ ...prop, rotation: prop.rotation ?? 0, scale: prop.scale ?? 1 })
+      const bounds = new THREE.Box3().setFromObject(model)
+      const cells = bounds.max.y - bounds.min.y
+      if (model.userData.modelKind === 'unknown' || bounds.isEmpty() || cells < .01) { record.missing += 1; continue }
+      const key = model.userData.modelKey ?? model.userData.storyArtifact ?? 'procedural'
+      record.heights.push(cells)
+      record.scales.push(prop.scale ?? 1)
+      const list = record.keys.get(key) ?? []
+      list.push(cells)
+      record.keys.set(key, list)
+    }
+  } finally {
+    library.dispose()
   }
 }
+stamp.dispose()
 
 const rows = []
 for (const [assetId, record] of [...byAsset].sort(([a], [b]) => a.localeCompare(b))) {

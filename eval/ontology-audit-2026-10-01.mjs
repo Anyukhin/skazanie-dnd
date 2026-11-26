@@ -18,6 +18,7 @@ import { performance } from 'node:perf_hooks'
 import {
   auditOntology,
   EXTERNAL_ONLY_PREDICATES,
+  LEGACY_PREDICATE_READERS,
   PREDICATES,
   RELATIONS,
 } from '../server/world-ontology.mjs'
@@ -45,12 +46,18 @@ function headSource(relativePath) {
 }
 
 function registryCheck(audit) {
+  const legacyCompatibilityRead = (name, entry) => Object.hasOwn(LEGACY_PREDICATE_READERS, name)
+    && entry.producers.length === 0
+    && LEGACY_PREDICATE_READERS[name].length === entry.consumers.length
+    && LEGACY_PREDICATE_READERS[name].every((module) => entry.consumers.includes(module))
   const registeredPredicate = (name) => Object.hasOwn(PREDICATES, name)
     || Object.keys(PREDICATES).some((key) => key.endsWith(':') && name.startsWith(key))
   const producedUnregistered = Object.entries(audit.predicates)
     .filter(([name, entry]) => entry.producers.length && !registeredPredicate(name)).map(([name]) => name)
   const consumedUnregistered = Object.entries(audit.predicates)
-    .filter(([name, entry]) => entry.consumers.length && !registeredPredicate(name)).map(([name]) => name)
+    .filter(([name, entry]) => entry.consumers.length && !registeredPredicate(name) && !legacyCompatibilityRead(name, entry)).map(([name]) => name)
+  const legacyCompatibilityReads = Object.entries(audit.predicates)
+    .filter(([name, entry]) => legacyCompatibilityRead(name, entry)).map(([name]) => name)
   const relationsUnregistered = Object.keys(audit.relations).filter((name) => !Object.hasOwn(RELATIONS, name))
   const stale = []
   for (const [name, entry] of Object.entries(PREDICATES)) {
@@ -67,6 +74,7 @@ function registryCheck(audit) {
     consumed_unregistered: consumedUnregistered,
     relations_unregistered: relationsUnregistered,
     stale_entries: stale,
+    legacy_compatibility_reads: legacyCompatibilityReads,
     consumed_without_code_producer: consumedWithoutCodeProducer,
     declared_external_only: [...EXTERNAL_ONLY_PREDICATES],
   }

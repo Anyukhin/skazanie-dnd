@@ -105,7 +105,7 @@ function ambientSourcesOf(map: TacticalMap): AmbientCache {
   if (cached && cached.signature === map.terrainHash) return cached
   const fires: AmbientFire[] = []
   for (const prop of map.props) {
-    const assetId = lightSourceAssetId(prop.assetId)
+    const assetId = lightSourceAssetId(prop.assetId, prop.state)
     if (!assetId) continue
     const x = Math.floor(prop.x)
     const y = Math.floor(prop.y)

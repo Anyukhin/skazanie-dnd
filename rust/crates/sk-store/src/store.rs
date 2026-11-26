@@ -18,7 +18,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use serde_json::{json, Map, Value};
 use sk_core::indexmap::IndexMap;
 
@@ -338,6 +338,8 @@ pub struct EventStore {
     reducer: Arc<dyn Reducer>,
     cells: Arc<dyn MapCells>,
     options: StoreOptions,
+    // Поля удаляются в порядке объявления: SQLite уже закрыта, когда TempDir удаляет копию.
+    _audit_files: Option<tempfile::TempDir>,
 }
 
 const SCHEMA: &str = "
@@ -432,6 +434,43 @@ impl EventStore {
         Self::with_connection(conn, reducer, options)
     }
 
+    /// Аудит остановленного сервера. SQLite иногда создаёт -shm даже при открытии
+    /// для чтения. Копия сохраняет исходные файлы и учитывает ещё не перенесённый в базу WAL.
+    pub fn open_read_only(path: impl AsRef<Path>, reducer: Arc<dyn Reducer>, options: StoreOptions) -> StoreResult<Self> {
+        let path = path.as_ref();
+        let mut builder = tempfile::Builder::new();
+        builder.prefix("skazanie-audit-");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            builder.permissions(std::fs::Permissions::from_mode(0o700));
+        }
+        let scratch = builder.tempdir().map_err(|error| StoreError::new("EVENT_STORE_ERROR", format!("Временный каталог для аудита: {error}")))?;
+        let filename = path.file_name().ok_or_else(|| StoreError::new("EVENT_STORE_NOT_FOUND", "Не задан файл базы SQLite"))?;
+        let copy = scratch.path().join(filename);
+        std::fs::copy(path, &copy).map_err(|error| StoreError::new("EVENT_STORE_ERROR", format!("Копирование базы для аудита: {error}")))?;
+        let mut wal = path.as_os_str().to_owned();
+        wal.push("-wal");
+        if Path::new(&wal).try_exists().map_err(|error| StoreError::new("EVENT_STORE_ERROR", format!("Проверка WAL: {error}")))? {
+            let mut output = copy.as_os_str().to_owned();
+            output.push("-wal");
+            std::fs::copy(wal, output).map_err(|error| StoreError::new("EVENT_STORE_ERROR", format!("Копирование WAL для аудита: {error}")))?;
+        }
+        let mut store = Self::open_read_only_live(copy, reducer, options)?;
+        store._audit_files = Some(scratch);
+        Ok(store)
+    }
+
+    /// Живой тестовый сервер продолжает писать в WAL. Транзакция читателя
+    /// фиксирует одну версию на всю сверку журнала и накладок комнат.
+    pub fn open_read_only_live(path: impl AsRef<Path>, reducer: Arc<dyn Reducer>, options: StoreOptions) -> StoreResult<Self> {
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        conn.execute_batch("BEGIN DEFERRED")?;
+        Self::check_schema(&conn)?;
+        Ok(Self::from_connection(conn, reducer, options))
+    }
+
     /// База в памяти — для тестов.
     pub fn in_memory(reducer: Arc<dyn Reducer>, options: StoreOptions) -> StoreResult<Self> {
         Self::with_connection(Connection::open_in_memory()?, reducer, options)
@@ -446,7 +485,34 @@ impl EventStore {
         // данных — первый приоритет (`AGENTS.md` §9).
         conn.pragma_update(None, "synchronous", "FULL")?;
         conn.execute_batch(SCHEMA)?;
-        Ok(Self { inner: Mutex::new(Inner { conn, head_cache: IndexMap::new() }), reducer, cells: Arc::new(NoMapCells), options })
+        Ok(Self::from_connection(conn, reducer, options))
+    }
+
+    fn from_connection(conn: Connection, reducer: Arc<dyn Reducer>, options: StoreOptions) -> Self {
+        Self { inner: Mutex::new(Inner { conn, head_cache: IndexMap::new() }), reducer, cells: Arc::new(NoMapCells), options, _audit_files: None }
+    }
+
+    fn check_schema(conn: &Connection) -> StoreResult<()> {
+        // Даже если кампаний нет, таблицы должны поддерживать чтение журнала, снимков и карт.
+        for (table, columns) in [
+            ("campaigns", "campaign_id, metadata"),
+            ("commits", "campaign_id, version_after, version_before, commit_id, idempotency_key, body"),
+            ("snapshots", "campaign_id, state_version, body"),
+            ("map_blobs", "hash, body"),
+            ("room_overlays", "room_id, version, body, updated_at"),
+        ] {
+            let exists = conn.query_row(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                [table],
+                |_row| Ok(()),
+            ).optional()?.is_some();
+            if !exists {
+                return Err(StoreError::new("EVENT_STORE_SCHEMA_INVALID", format!("В базе SQLite отсутствует таблица {table}")));
+            }
+            conn.prepare(&format!("SELECT {columns} FROM {table} LIMIT 0"))
+                .map_err(|error| StoreError::new("EVENT_STORE_SCHEMA_INVALID", format!("Схема SQLite, таблица {table}: {error}")))?;
+        }
+        Ok(())
     }
 
     /// Восстановление клеток сцены из карты (тактическая карта).

@@ -2,8 +2,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 
 import { Adjudicator } from './adjudicator.mjs'
-import { ActionAdjudicator } from './action-adjudicator.mjs'
+import { ActionAdjudicator, revealedPropPredicate } from './action-adjudicator.mjs'
 import { answerKnownLore, answerTableQuestion } from './player-request-router.mjs'
+import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, dialogueCheckLine, dialogueOptionForUtterance } from './campaign-dialogues.mjs'
 import { PROMPT_DESCRIPTORS } from './prompt-descriptors.mjs'
 import { TURN_TRACE_SCHEMA_VERSION, isMechanicalTrace } from './trace-store.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
@@ -11,7 +12,7 @@ import { IdempotencyConflictError } from './event-store.mjs'
 import { deterministicNarratorFor, renderDeterministicNarration } from './deterministic-narration.mjs'
 import { combatNarrator, combatNarration, damageTypeLabel } from './combat-narration.mjs'
 import './encounter-narration.mjs'
-import { IntentParser, actionSequence, buildRuleQueries, inferRequestKind, namedKnownSpell, normalizeRequestKind, sameNameToken } from './intent-parser.mjs'
+import { IntentParser, actionSequence, buildRuleQueries, directDialogueSpeech, inferRequestKind, namedKnownSpell, normalizeRequestKind, sameNameToken } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
@@ -36,7 +37,7 @@ import {
   PICKPOCKET_SKILL,
   pickpocketDifficultyFor,
 } from './pickpocket.mjs'
-import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, shrinePrayerRefusalFor } from './rules-engine.mjs'
+import { actorNameResolver, actorPosition, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, scenarioTreatyParley, shrinePrayerRefusalFor } from './rules-engine.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, freeActionApproachPlan, freeActionGoalIsPassage, freeActionIsCopyRequest, hasRecognizedFreeActionApproach, interpretFreeAction, minutesLabelRu } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
@@ -44,8 +45,9 @@ import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedC
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
 import { agentContextMetadata, campaignConceptForAgent, heroCardForAgent, npcKnownByName, sceneContextForAgent } from './agent-context.mjs'
 import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
+import { scenarioNarratorBrief, scenarioSceneObjectClue } from './campaign-scenario.mjs'
+import { nearestSceneObjectCommand, sceneObjectOperationFromText } from './scene-interactions.mjs'
 import { treatyEndsAdventure } from './campaign-lifecycle.mjs'
-import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
@@ -63,12 +65,39 @@ function narrationScenarioContext(state) {
   return scenario ? { scenario } : {}
 }
 
+function scenarioCompletionBoundary(state) {
+  return state?.mechanics?.campaign_lifecycle?.status === 'active'
+    && treatyEndsAdventure(state)
+}
+
 // A JSON request cannot manufacture this identity. Only server-owned world
 // orchestration may attach it to derived AdvanceScene/merchant commands.
 export const DIRECTOR_COMMAND_CAPABILITY = Symbol('skazanie:director-command-capability')
 
 function emptyEffects() {
   return { roll: null, reveal: [], spawn: [], objective: null, grantItems: [] }
+}
+
+/**
+ * Авторский предмет с уликой должен идти через `OperateSceneObject`. Intent
+ * Parser склонен превращать «осматриваю журнал» в обычную проверку Восприятия,
+ * что обходило дальность и туман до свободного оркестратора.
+ */
+function authoredSceneObjectCommandFor(state, actorId, message) {
+  if (sceneObjectOperationFromText(message)?.intent !== 'inspect') return null
+  const locationId = state.scene?.location_id ?? state.scene?.locationId
+  const clues = new Map()
+  const candidates = (state.scene?.map?.props ?? []).filter(prop => {
+    const clue = scenarioSceneObjectClue(state, locationId, prop.id)
+    if (clue) clues.set(prop.id, clue)
+    return Boolean(clue)
+  })
+  if (!candidates.length) return null
+  const options = { actorPosition: actorPosition(state, actorId), text: message, scenarioClueForProp: prop => clues.get(prop.id) }
+  const target = nearestSceneObjectCommand({ ...options, props: candidates })
+  if (!target || candidates.length === 1) return target
+  const visible = revealedPropPredicate(state)
+  return nearestSceneObjectCommand({ ...options, props: candidates.filter(visible) }) ?? target
 }
 
 const DIALOGUE_RESPONSE_PLAN_VERSION = 'dialogue-response-plan/v1'
@@ -119,22 +148,17 @@ function narrationMemoryQuery(state, message, events) {
   ].filter(Boolean).join(' ').slice(0, 4_000)
 }
 
-function narrationWorldFacts(state, viewer, message, events) {
-  // A hero may legitimately have a personal gm_only fact in the canonical
-  // viewer projection. Narrator has a stricter contract: remove such facts
-  // before retrieval so they cannot consume ranking slots or leak through a
-  // wrapper record's summary.
+function narrationWorldFacts(state, message, events) {
+  // Общий рассказ слышат все за столом. Личные раскрытия героя
+  // не участвуют ни в поиске, ни в ранжировании по графу.
   const publicMemory = {
     ...(state.worldMemory ?? {}),
     facts: (state.worldMemory?.facts ?? []).filter((fact) => ['public', 'party'].includes(fact.visibility)),
   }
-  const records = retrieveWorldMemory(publicMemory, {
-    playerId: viewer.playerId,
-    partyIds: viewer.partyIds,
-    isPartyMember: viewer.isPartyMember,
-  }, {
+  const records = retrieveWorldMemory(publicMemory, { isPartyMember: true }, {
     query: narrationMemoryQuery(state, message, events),
     limit: NARRATION_WORLD_FACT_LIMIT,
+    kind: 'fact',
     asOfMinutes: state.mechanics?.world_time?.elapsed_minutes,
     // Без совпадений рассказчик не получает ничего. Режим 'all' отдавал
     // первые записи по id, и на вопрос о драконе в brief уходил чужой долг
@@ -746,6 +770,23 @@ export function narrationRequestFingerprint({
   return hash.digest('hex')
 }
 
+export function authoredDialogueRequestFingerprint(events) {
+  return (events ?? []).find((event) => event.narration_request_fingerprint)?.narration_request_fingerprint ?? ''
+}
+
+export function authoredNarrationReplayMatches(events, { campaignId, playerId, message, npcId, body }) {
+  const stored = authoredDialogueRequestFingerprint(events)
+  if (!stored) return false
+  const field = (camel, snake, limit) => String(body[camel] ?? body[snake] ?? '').trim().slice(0, limit)
+  return stored === narrationRequestFingerprint({ campaignId, playerId, message, npcId, operation: MESSAGE_REQUEST_OPERATION,
+    clarificationId: field('clarificationId', 'clarification_id', 8_000),
+    supersedesCheckId: field('supersedesCheckId', 'supersedes_check_id', 200),
+    supersedesProposalId: field('supersedesProposalId', 'supersedes_proposal_id', 300),
+    questionCheckId: field('questionCheckId', 'question_check_id', 200),
+    questionProposalId: field('questionProposalId', 'question_proposal_id', 300),
+  })
+}
+
 function legacyNarrationRequestFingerprint({ campaignId = '', playerId = '', message = '', npcId = '' } = {}) {
   return createHash('sha256')
     .update(String(campaignId).toUpperCase())
@@ -773,6 +814,15 @@ function assertNarrationRequestIdempotency(duplicate, trace, {
   operation = '',
 }) {
   if (!duplicate) return
+  const dialogueEvent = (duplicate.events ?? []).find((event) => event.event_type === DIALOGUE_EVENT)
+  const dialogueFingerprint = authoredDialogueRequestFingerprint(duplicate.events)
+  if (dialogueFingerprint) {
+    if (dialogueFingerprint !== narrationRequestFingerprint({ campaignId, playerId, message, npcId, requestKind, clarificationId,
+      supersedesCheckId, supersedesProposalId, questionCheckId, questionProposalId, operation })) {
+      throw new IdempotencyConflictError(campaignId, idempotencyKey)
+    }
+    return
+  }
   const fields = {
     campaignId,
     playerId,
@@ -802,6 +852,8 @@ function assertNarrationRequestIdempotency(duplicate, trace, {
     }
     return
   }
+  // До маршрутизации свободной реплики это событие писала только кнопка.
+  if (dialogueEvent && operation === MESSAGE_REQUEST_OPERATION) throw new IdempotencyConflictError(campaignId, idempotencyKey)
   // Traces created before request fingerprints existed cannot distinguish an
   // omitted target from an old inferred social target. Preserve that replay
   // path, but never let a new explicit target bind to a different old event.
@@ -1584,6 +1636,7 @@ export class GameOrchestrator {
     npcSocialController = null,
     unknownActionHandler = null,
     loreVoice = null,
+    scenarioTreatyVoterSnapshot = null,
     rollRegistry = null,
     clarificationRegistry = null,
     idFactory = randomUUID,
@@ -1593,6 +1646,7 @@ export class GameOrchestrator {
     if (!eventStore) throw new TypeError('GameOrchestrator требует EventStore')
     /** Голос хранителя знаний (`server/lore-voice.mjs`): без него звучит серверный ответ. */
     this.loreVoice = loreVoice
+    this.scenarioTreatyVoterSnapshot = scenarioTreatyVoterSnapshot
     /**
      * Последние нарации кампании — тёплый буфер в памяти процесса.
      *
@@ -2082,7 +2136,7 @@ export class GameOrchestrator {
         // решённые время суток и погоду, чтобы не выдумывать закат в полдень.
         world_clock: worldClockForAgents(state, playerId),
         scene_canon: sceneCanonFor(state, { playerId: viewer?.playerId ?? playerId, actorId: playerId }),
-        world_memory: { facts: narrationWorldFacts(state, viewer, message, publicCommittedEvents) },
+        world_memory: { facts: narrationWorldFacts(state, message, publicCommittedEvents) },
         story_context: storyContext,
         ...narrationScenarioContext(state),
         social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
@@ -2549,7 +2603,7 @@ export class GameOrchestrator {
         })
       }
       const spellReply = !clarificationId && !npcId && requestKind === 'action' && !input.commands && input.routeRedirect !== true
-        && this.npcSocialController && result?.mechanics?.length && !result.check && !result.clarification && !result.action_proposal
+        && this.npcSocialController && result?.mechanics?.length && !result.rejected && !result.check && !result.clarification && !result.action_proposal
         && result.authoritative_state?.mechanics?.combat?.active !== true
         ? spellSpeechFollowUp(message, result.authoritative_state ?? input.state, playerId)
         : null
@@ -2574,7 +2628,7 @@ export class GameOrchestrator {
       const stepText = steps.length && message === steps[0] ? message : mergeClarificationAction(pending, message)
       if (!steps.length || stepText !== steps[0]) return result
       if (result.check) return { ...result, check: { ...result.check, clarification_id: clarificationId } }
-      if (!result.mechanics?.length || result.clarification || result.action_proposal || steps.length < 2) return result
+      if (result.rejected || !result.mechanics?.length || result.clarification || result.action_proposal || steps.length < 2) return result
       const depth = Number(input.planStep ?? 0)
       const nextKey = `${idempotencyKey}:step-${depth + 2}`
       // Повтор запроса воспроизводит шаги, которые уже были исполнены, но не
@@ -2681,6 +2735,9 @@ export class GameOrchestrator {
       allowedActorIds: input.allowedActorIds ?? [playerId],
       isAdmin: input.user?.role === 'admin',
       isDirector: directorCapability,
+      scenarioTreatyNow: this.now(),
+      scenarioTreatyVoterSnapshot: this.scenarioTreatyVoterSnapshot
+        ? (state, actorId) => this.scenarioTreatyVoterSnapshot(campaignId, state, actorId) : null,
     }
     let turnId = structuredCommandTurnId(campaignId, idempotencyKey)
     const mode = 'enforce'
@@ -2707,6 +2764,11 @@ export class GameOrchestrator {
       isPartyMember: true,
       state: originalState,
     })
+    const directSpeech = !input.commands && requestKind === 'action' ? directDialogueSpeech(message, visibleState, explicitNpcId) : null
+    const dialogueNpcId = explicitNpcId || directSpeech?.npcId || ''
+    const dialogueUtterance = directSpeech?.npcId === dialogueNpcId ? directSpeech.speech : message
+    const addressedAuthoredSpeech = !explicitNpcId && directSpeech
+      && dialogueOptionForUtterance(originalState, dialogueNpcId, playerId, dialogueUtterance)
     const worldkeeperViewer = {
       playerId,
       isAdmin: input.user?.role === 'admin',
@@ -2717,7 +2779,8 @@ export class GameOrchestrator {
     // Окрик о переговорах посреди боя — не вопрос к миру: Хранитель мира на
     // него отвечать не должен, иначе «предлагаю переговоры» уходило бы в
     // «подтверждённых сведений нет» и до правила не доезжало.
-    const loreAnswer = requestKind !== 'action' || input.commands || explicitNpcId
+    const authoredReplay = input.authoredDialogueReplay === true
+    const loreAnswer = requestKind !== 'action' || input.commands || explicitNpcId || addressedAuthoredSpeech || authoredReplay
       || (originalState.mechanics?.combat?.active === true && mentionsParley(message))
       ? null
       : await this.voiceLore(answerKnownLore(message, worldkeeperState, { viewer: worldkeeperViewer }), { message, state: worldkeeperState, playerId })
@@ -2754,11 +2817,11 @@ export class GameOrchestrator {
     }
     const loaded = await this.eventStore.load(campaignId)
     const authoritativeState = normalizeCampaignState(loaded.state)
-    // Договор — терминальный исход сценария. Если процесс остановился между
-    // коммитом договора и эпилогом, закрываем активное сохранение до разбора
-    // новой заявки, чтобы оно не успело породить следующую встречу.
-    if (treatyCompletionPending(authoritativeState)
-      && typeof this.unknownActionHandler?.settleAcceptedTreaty === 'function') {
+    // После договора или уже завершённой кульминации старое активное
+    // сохранение может попасть сюда раньше, чем Директор успел дописать
+    // эпилог. Закрываем его до разбора новой заявки, иначе следующая команда
+    // успеет создать встречу на уже завершённой линии.
+    if (!authoredReplay && scenarioCompletionBoundary(authoritativeState) && typeof this.unknownActionHandler?.settleAcceptedTreaty === 'function') {
       const completion = await this.unknownActionHandler.settleAcceptedTreaty(campaignId, idempotencyKey, authoritativeState)
       if (completion?.state && Number(completion.state_version) > Number(authoritativeState.state_version)) {
         const events = completion.events ?? []
@@ -2825,7 +2888,7 @@ export class GameOrchestrator {
       const missing = constraints.filter(constraint => !step.includes(constraint))
       return missing.length ? `${step}. Ограничение игрока: ${missing.join('; ')}` : step
     })
-    if (!input.commands && !explicitNpcId && steps.length && (standaloneAction || !pendingClarification?.original_intent?.action_steps?.length)) {
+    if (!input.commands && !explicitNpcId && !addressedAuthoredSpeech && !authoredReplay && steps.length && (standaloneAction || !pendingClarification?.original_intent?.action_steps?.length)) {
       // Живой ведущий не спрашивает «выполнить первый шаг?»: игрок уже сказал,
       // что делает. Шаги исполняются по порядку тем же путём, что и ответ на
       // уточнение, и останавливаются на броске, неудаче или вопросе мира
@@ -2909,7 +2972,9 @@ export class GameOrchestrator {
     // реестре, ничего не коммитит и ждёт второй запрос с `roll_id`. Так игрок
     // бросает d20 сам и за парлей из хотбара, и за парлей голосом.
     const parleyCommand = this.parleyCommandFor({ input, playerId, message, state: authoritativeState })
-    if (parleyCommand) {
+    if (parleyCommand && scenarioTreatyParley(authoritativeState)) {
+      input = { ...input, commands: [{ command_type: 'NegotiateScenarioTreaty', actor_id: parleyCommand.actor_id }] }
+    } else if (parleyCommand) {
       if (manualRoll && !verifiedRoll && this.rollRegistry && !duplicate) {
         const card = this.parleyCheckCard({ campaignId, playerId, state: authoritativeState, command: parleyCommand })
         if (card) {
@@ -3152,9 +3217,35 @@ export class GameOrchestrator {
         beastCommand.verified_roll = verifiedRollPayload
       }
     }
+    const replayedDialogue = (duplicate?.events ?? []).find((event) => event.event_type === DIALOGUE_EVENT)?.payload
+      ?? (duplicate?.events ?? []).find((event) => event.authored_dialogue_option)?.authored_dialogue_option
+    if (!input.commands && !replayedDialogue && authoredDialogueRequestFingerprint(duplicate?.events)) {
+      input = { ...input, commands: [{ command_type: 'NegotiateScenarioTreaty', actor_id: playerId }] }
+    }
+    const dialogueSpeech = !input.commands && (explicitNpcId || addressedAuthoredSpeech) && !duplicate
+      ? dialogueOptionForUtterance(authoritativeState, dialogueNpcId, playerId, dialogueUtterance)
+      : null
+    const authoredSpeech = !input.commands && Boolean(dialogueSpeech?.optionId || replayedDialogue?.option_id)
+    if (authoredSpeech) {
+      if (verifiedRoll) {
+        const error = new Error('Этот бросок регистрировался не для авторского разговора')
+        error.code = 'ROLL_CONTEXT_MISMATCH'
+        throw error
+      }
+      input = { ...input, commands: [{ command_type: DIALOGUE_COMMAND_TYPE, actor_id: playerId,
+        npc_id: replayedDialogue?.npc_id ?? dialogueNpcId, option_id: replayedDialogue?.option_id ?? dialogueSpeech?.optionId }] }
+    }
     let intent = input.commands
       ? { actor_id: playerId, intent: 'structured_commands', approach: 'api', targets: [], mentioned_entities: [], missing_information: [], requires_clarification: false, confidence: 1, raw_message: message }
       : await this.intentParser.parse({ message, playerId, visibleState })
+    const authoredSceneObject = !input.commands && ['ability_check', 'improvised_action', 'unknown', 'explore'].includes(String(intent.intent))
+      ? authoredSceneObjectCommandFor(originalState, playerId, message)
+      : null
+    if (authoredSceneObject) {
+      // Дальше заявка проходит общий free-action путь. Он проверит раскрытие,
+      // расстояние и OperateSceneObject, а не создаст проверку по обстановке.
+      intent = { ...intent, intent: 'improvised_action', free_action_kind: 'scene_interaction', authored_scene_object: authoredSceneObject, missing_information: [], requires_clarification: false }
+    }
     // `npc_id` binds an already social phrase to the selected NPC. It is not a
     // permission to reinterpret every addressed action as dialogue: the NPC
     // card also sends pickpocket and other deterministic interactions through
@@ -3168,11 +3259,11 @@ export class GameOrchestrator {
       && /(?:обчищ|обчист|карман|кошел)/iu.test(message)
     const deterministicAction = deterministicActionIntent.has(intent.intent)
       && (intent.intent !== 'improvised_action' || Boolean(intent.free_action_kind) || explicitPickpocket)
-    if (!input.commands && explicitNpcId && !deterministicAction) {
+    if (!input.commands && (dialogueSpeech || (explicitNpcId && !deterministicAction))) {
       intent = {
         ...intent,
         intent: 'social',
-        targets: [explicitNpcId],
+        targets: [dialogueSpeech ? dialogueNpcId : explicitNpcId],
         missing_information: [],
         requires_clarification: false,
       }
@@ -3188,7 +3279,7 @@ export class GameOrchestrator {
     }
     // Прямая речь, обращённая к человеку рядом, — разговор с ним; спутнику —
     // отыгрыш (`speechAddressee`). Вне боя: там у слов своя цена хода.
-    if (!input.commands && !explicitNpcId && originalState.mechanics?.combat?.active !== true
+    if (!input.commands && !explicitNpcId && !dialogueSpeech && originalState.mechanics?.combat?.active !== true
       && ['improvised_action', 'explore', 'unknown', 'social'].includes(String(intent.intent))) {
       const addressee = speechAddressee(message, visibleState, playerId)
       const socialIds = new Set((visibleState.social?.npcs ?? []).map((npc) => String(npc.id)))
@@ -3588,11 +3679,24 @@ export class GameOrchestrator {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         engineResult = this.rulesEngine.resolvePlan(plan, resolutionState, rulesContext)
         if (!engineResult.events.length) throw new Error('Enforce-ход не создал ни события, ни ruling')
+        const dialogueEvent = engineResult.events.find((event) => event.event_type === DIALOGUE_EVENT)
+        if (dialogueEvent) dialogueEvent.narration_request_fingerprint = requestFingerprint
+        else if (plan.proposed_commands[0]?.command_type === DIALOGUE_COMMAND_TYPE) {
+          const proposal = engineResult.events.find((event) => event.event_type === 'PartyDecisionOpened')
+          if (proposal) {
+            const { npc_id, option_id } = plan.proposed_commands[0]
+            proposal.narration_request_fingerprint = requestFingerprint
+            proposal.authored_dialogue_option = { npc_id, option_id }
+          }
+        } else if (plan.proposed_commands[0]?.command_type === 'NegotiateScenarioTreaty') {
+          const treaty = engineResult.events.find((event) => ['PartyDecisionOpened', 'ScenarioTreatyConcluded', 'ScenarioTreatyRefused'].includes(event.event_type))
+          if (treaty) treaty.narration_request_fingerprint = requestFingerprint
+        }
         try {
           committed = await this.eventStore.commit({ campaign_id: campaignId, expected_state_version: resolutionState.state_version, idempotency_key: idempotencyKey, command_id: idempotencyKey, events: engineResult.events })
           break
         } catch (error) {
-          if (error?.code === 'STATE_VERSION_CONFLICT' && attempt < 2 && !plan.maneuver) {
+          if (error?.code === 'STATE_VERSION_CONFLICT' && attempt < 2 && !plan.maneuver && !authoredSpeech) {
             const latest = await this.eventStore.load(campaignId)
             resolutionState = normalizeCampaignState(latest.state)
             continue
@@ -3614,8 +3718,12 @@ export class GameOrchestrator {
       campaignId, idempotencyKey, committed, message, rulesContext,
       checkCommand: planCheckCommand && !socialRequest && planCheckCommand.command_type === 'MakeAbilityCheck' ? planCheckCommand : null,
     })
-    if (treatyCompletionPending(committed.state)
-      && typeof this.unknownActionHandler?.settleAcceptedTreaty === 'function') {
+    // Договор с главным противником и исход кульминационного боя завершают
+    // сценарий в тот же игровой шаг. Обычные перемещения и атаки сюда не
+    // заходят: completion не должен перечитывать полное состояние на каждом
+    // player commit. Старое активное сохранение закрывается ранним путём выше.
+    const completionBoundary = scenarioCompletionBoundary(committed.state)
+    if (completionBoundary && typeof this.unknownActionHandler?.settleAcceptedTreaty === 'function') {
       const completion = await this.unknownActionHandler.settleAcceptedTreaty(campaignId, idempotencyKey, committed.state)
       if (completion?.state && Number(completion.state_version) > Number(committed.state_version)) {
         committed = {
@@ -3660,7 +3768,7 @@ export class GameOrchestrator {
         world_clock: worldClockForAgents(committed.state, playerId),
         scene_canon: sceneCanonFor(committed.state, { playerId: viewer?.playerId ?? playerId, actorId: playerId }),
         world_memory: {
-          facts: narrationWorldFacts(committed.state, viewer, message, publicCommittedEvents),
+          facts: narrationWorldFacts(committed.state, message, publicCommittedEvents),
         },
         story_context: storyContext,
         ...narrationScenarioContext(committed.state),
@@ -3677,7 +3785,17 @@ export class GameOrchestrator {
     const replayTrace = idempotentReplay && this.traceStore && typeof this.traceStore.get === 'function'
       ? requestTrace ?? this.traceStore.get(campaignId, turnId)
       : null
-    const storedSocialNarration = npcConversationNarration(committedEvents, committed.state)
+    const authoredReply = authoredSpeech
+      ? publicCommittedEvents.find((event) => event.event_type === DIALOGUE_EVENT)?.payload
+      : null
+    const authoredNarration = authoredReply ? {
+      narration: [dialogueCheckLine(authoredReply.check), authoredReply.reply].filter(Boolean).join('\n'),
+      journal_author: authoredReply.npc_name || 'Собеседник',
+      provider: 'AuthoredDialogue',
+      prompt_version: null,
+      verification: { valid: true, violations: [] },
+    } : null
+    const storedSocialNarration = authoredNarration ?? npcConversationNarration(committedEvents, committed.state)
     if (storedSocialNarration && socialTurn?.token_usage) storedSocialNarration.token_usage = socialTurn.token_usage
     const privateSocialNarration = committedEvents.some((event) => event.event_type === 'NpcConversationRecorded' && event.visibility === 'specific_player')
     const resolveActorName = actorNameResolver(committed.state)
@@ -3726,7 +3844,7 @@ export class GameOrchestrator {
           } catch { /* Поток не является авторитетным результатом хода. */ }
         }
       : null
-    const narration = idempotentReplay
+    const narration = authoredNarration ?? (idempotentReplay
       ? cachedNarration(replayTrace, brief, resolvedRuleIds) ?? replayFallback
       : deterministicResponse
         ?? storedSocialNarration
@@ -3736,7 +3854,7 @@ export class GameOrchestrator {
               knownRuleIds: resolvedRuleIds,
               recentNarrations: this.recentNarrationsFor(campaignId),
               onProgress: onNarrationProgress,
-            }))
+            })))
     if (!idempotentReplay && !privateSocialNarration) this.rememberNarration(campaignId, narration.narration)
     const response = {
       narration: narration.narration,
@@ -3756,7 +3874,7 @@ export class GameOrchestrator {
       ...(pendingClarification ? { resolved_action: message } : {}),
       explanation_url: `/api/campaigns/${encodeURIComponent(campaignId)}/turns/${encodeURIComponent(turnId)}/explanation`,
       idempotent_replay: idempotentReplay,
-      ...(storedSocialNarration ? { turn_consumed: true, action_kind: 'social' } : {}),
+      ...(storedSocialNarration ? { turn_consumed: !authoredNarration, action_kind: 'social' } : {}),
     }
     const turnTrace = { turnId, campaignId, idempotencyKey, requestFingerprint, mode, intent, retrievalQueries, retrievedRules, plan, engineResult: { ...engineResult, events: committedEvents }, stateBefore: authoritativeState.state_version, stateAfter: committed.state_version, verification: narration.verification, latency: this.now() - started, narration: { ...narration, visibility: privateSocialNarration ? 'specific_player' : 'party' }, ruling: plan.ruling_draft }
     if (!idempotentReplay) {

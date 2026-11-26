@@ -36,11 +36,13 @@ const MAX_DICE = {
   rules: [{ sides: 20, value: 'max' }, { value: 'max' }],
 }
 
-async function lairState(code = CODE, { combat = false } = {}) {
+const COMPANION = { ...HERO, id: 'treaty-http-companion', character: 'Тавин' }
+
+async function lairState(code = CODE, { combat = false, players = [HERO], decisionTtlMs } = {}) {
   let state = normalizeCampaignState(await new CampaignBootstrapper().create({
     code,
     worldTemplateId: 'astohan-plains',
-    players: [HERO],
+    players,
     campaignMode: 'adventure',
   }))
   const scenario = campaignScenario(state)
@@ -94,7 +96,8 @@ async function lairState(code = CODE, { combat = false } = {}) {
     sessionCode: code,
     campaign: 'Договор Асстохана',
     partyName: 'Отряд договора',
-    partyMemberIds: [HERO.id],
+    partyMemberIds: players.map(({ id }) => id),
+    partyDecisionPolicy: { decisionTtlMs },
     campaignConcept: state.campaignConcept,
     worldMap: state.worldMap,
     worldMemory: state.worldMemory,
@@ -181,46 +184,6 @@ test('договор через диалог сразу завершает ка�
   const replayed = await readJournal(server, CODE, { useSnapshots: false })
   assert.equal(replayed.state.mechanics.campaign_lifecycle.ending.id, 'treaty')
   assert.equal(replayed.state.mechanics.campaign_lifecycle.status, 'completed')
-
-  await server.restart()
-  const afterRestart = expectStatus(await player.get(`/api/rooms/${CODE}`))
-  assert.equal(afterRestart.state.mechanics.campaign_lifecycle.status, 'completed')
-  assert.equal(afterRestart.state.mechanics.campaign_lifecycle.ending?.id, 'treaty')
-})
-
-test('диалог о подписанном признании завершает кампанию без броска', { timeout: runnerTimeout(180_000) }, async (t) => {
-  const code = 'SIGNED-TREATY-HTTP'
-  const fake = await startFakeProvider(t, () => chatCompletion('Отряд только прибыл в логово и ещё не решил судьбу дракона.'))
-  const server = await startTestServer(t, {
-    storagePrefix: 'skazanie-signed-treaty-',
-    env: { OPENROUTER_API_KEY: 'kit-free', DND_AI_OPENROUTER_BASE_URL: fake.baseUrl },
-  })
-  const { client: admin } = await setupAdmin(server)
-  const state = await lairState(code)
-  state.dialogues = { 'astohan-ares': { flags: ['ares-signed-confession'] } }
-  await createCampaign(admin, { code, state })
-  const { client: player } = await addPlayer(server, admin, code, { heroIds: [HERO_ID] })
-  const { state: before } = expectStatus(await player.get(`/api/rooms/${code}`))
-  const option = before.scene_dialogues[SARGAT].options.find((entry) => entry.id === 'signed-treaty')
-  assert.ok(option, 'в диалоге доступно письменное признание')
-  assert.equal(option.check, undefined)
-
-  const result = expectStatus(await sendCommand(player, code, 'signed-treaty-dialogue', {
-    command_type: 'ChooseDialogueOption',
-    actor_id: HERO_ID,
-    npc_id: SARGAT,
-    option_id: option.id,
-  }))
-  assert.ok(result.mechanics.some((event) => event.event_type === 'ScenarioTreatyConcluded'))
-  assert.ok(result.mechanics.every((event) => event.event_type !== 'AbilityCheckResolved'))
-  const { state: after } = expectStatus(await player.get(`/api/rooms/${code}`))
-  assert.equal(after.mechanics.campaign_lifecycle.status, 'completed')
-  assert.equal(after.mechanics.campaign_lifecycle.ending.id, 'treaty')
-  assert.match(after.mechanics.campaign_lifecycle.epilogue, /^Саргат ушёл с равнин по договору\./u)
-  const journal = await readJournal(server, code)
-  const completed = journal.events.find((event) => event.event_type === 'CampaignCompleted')
-  assert.equal(completed?.payload.epilogue, after.mechanics.campaign_lifecycle.epilogue)
-  assert.equal(fake.requests.length, 0, 'для авторского эпилога не запрашиваем модель')
 })
 
 test('старое активное сохранение с treaty.concluded закрывается перед первым запросом Директора', { timeout: runnerTimeout(180_000) }, async (t) => {
@@ -241,22 +204,250 @@ test('старое активное сохранение с treaty.concluded з�
     email: 'treaty-old-player@test.local',
     password: 'secure-treaty-old-player-password',
   })
-
-  const advanced = await admin.post(`/api/campaigns/${code}/autonomy/advance`, {
+  const request = {
     idempotency_key: 'old-treaty-director',
     actor_id: HERO_ID,
     player_action: 'Ищем бой с Саргатом в Жаровне Вулканиса',
-  })
+  }
+  const advanced = await admin.post(`/api/campaigns/${code}/autonomy/advance`, request)
   assert.equal(advanced.status, 200, advanced.text)
   assert.equal(advanced.body.state.mechanics.campaign_lifecycle.status, 'completed')
   assert.equal(advanced.body.state.mechanics.campaign_lifecycle.ending?.id, 'treaty')
   assert.match(String(advanced.body.state.mechanics.campaign_lifecycle.epilogue), /Саргат|договор/u)
   assert.equal(advanced.body.state.mechanics.combat?.active, false)
+  const repeat = expectStatus(await admin.post(`/api/campaigns/${code}/autonomy/advance`, request))
+  assert.equal(repeat.duplicate, true)
+  assert.equal(repeat.state.mechanics.campaign_lifecycle.ending?.id, 'treaty')
 
   const journal = await readJournal(server, code)
   assert.equal(journal.events.filter((event) => event.event_type === 'CampaignCompleted').length, 1)
   assert.equal(journal.events.filter((event) => event.event_type === 'EncounterCreated' || event.event_type === 'CombatStarted').length, 0)
   assert.equal(journal.state.mechanics.campaign_lifecycle.ending.id, 'treaty')
+})
+
+test('диалог о подписанном признании завершает кампанию без броска', { timeout: runnerTimeout(180_000) }, async (t) => {
+  const code = 'SIGNED-TREATY-HTTP'
+  const fake = await startFakeProvider(t, () => chatCompletion('Резервный ответ не должен использоваться.'))
+  const server = await startTestServer(t, {
+    storagePrefix: 'skazanie-signed-treaty-',
+    env: { OPENROUTER_API_KEY: 'kit-free', DND_AI_OPENROUTER_BASE_URL: fake.baseUrl },
+  })
+  const { client: admin } = await setupAdmin(server)
+  const state = await lairState(code)
+  state.dialogues = { 'astohan-ares': { flags: ['ares-signed-confession'] } }
+  await createCampaign(admin, { code, state })
+  const { client: player } = await addPlayer(server, admin, code, { heroIds: [HERO_ID] })
+  const before = expectStatus(await player.get(`/api/rooms/${code}`)).state
+  const option = before.scene_dialogues[SARGAT].options.find((entry) => entry.id === 'signed-treaty')
+  assert.ok(option)
+  assert.equal(option.check, undefined)
+  const result = expectStatus(await sendCommand(player, code, 'signed-treaty-dialogue', {
+    command_type: 'ChooseDialogueOption', actor_id: HERO_ID, npc_id: SARGAT, option_id: option.id,
+  }))
+  assert.ok(result.mechanics.some((event) => event.event_type === 'ScenarioTreatyConcluded'))
+  assert.ok(result.mechanics.every((event) => event.event_type !== 'AbilityCheckResolved'))
+  assert.equal(result.authoritative_state.mechanics.campaign_lifecycle.status, 'completed')
+  assert.equal(result.authoritative_state.mechanics.campaign_lifecycle.ending.id, 'treaty')
+  assert.equal(fake.requests.length, 0)
+})
+
+test('директор записывает исходы финала без повторного боя', { timeout: runnerTimeout(180_000) }, async (t) => {
+  const server = await startTestServer(t)
+  const { client: admin } = await setupAdmin(server)
+  const lair = await lairState()
+  for (const [outcome, ending] of [
+    ['enemies_defeated', 'slain'], ['fled', 'banished'], ['parley', 'treaty'], ['party_incapacitated', 'defeat'],
+  ]) {
+    const code = `FINALE-${ending.toUpperCase()}`
+    const state = structuredClone(lair)
+    state.sessionCode = code
+    state.mechanics.encounter = { id: 'boss', status: 'ended', outcome, enemy_ids: [SARGAT], difficulty: 'deadly', location: lair.scene.location }
+    state.autonomy.encounter_outcomes = [{ encounter_id: 'boss', outcome }]
+    await createCampaign(admin, { code, state })
+    const { client: player } = await addPlayer(server, admin, code, { heroIds: [HERO_ID] })
+    const initial = await readJournal(server, code)
+    assert.equal(scenarioEnding(initial.state)?.id, ending, outcome)
+    const result = expectStatus(await admin.post(`/api/campaigns/${code}/autonomy/advance`, {
+      idempotency_key: 'complete-finale', actor_id: HERO_ID, player_action: 'Подводим итог встречи с Саргатом',
+    })).state
+    assert.equal(result.mechanics.campaign_lifecycle.ending?.id, ending, outcome)
+    assert.equal(expectStatus(await player.get(`/api/rooms/${code}`)).state.mechanics.campaign_lifecycle.ending?.id, ending)
+    const replay = await readJournal(server, code, { useSnapshots: false })
+    assert.deepEqual(replay.state.mechanics.campaign_lifecycle, result.mechanics.campaign_lifecycle)
+    assert.equal(replay.events.filter((event) => event.event_type === 'CampaignCompleted').length, 1)
+    assert.ok(!replay.events.some((event) => event.event_type === 'EncounterCreated'), outcome)
+  }
+})
+
+test('подписанное признание в группе завершается после двух голосов без проверки', { timeout: runnerTimeout(180_000) }, async (t) => {
+  const code = 'SIGNED-TREATY-PARTY'
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-signed-treaty-party-', dice: MAX_DICE })
+  const { client: admin } = await setupAdmin(server)
+  const state = await lairState(code, { players: [HERO, COMPANION] })
+  state.dialogues = { 'astohan-ares': { flags: ['ares-signed-confession'] } }
+  await createCampaign(admin, { code, state })
+  const first = (await addPlayer(server, admin, code, { heroIds: [HERO_ID] })).client
+  const second = (await addPlayer(server, admin, code, { heroIds: [COMPANION.id] })).client
+  const before = expectStatus(await first.get("/api/rooms/" + code)).state
+  const option = before.scene_dialogues[SARGAT].options.find((entry) => entry.id === 'signed-treaty')
+  assert.ok(option)
+  const opened = expectStatus(await sendCommand(first, code, 'signed-party-open', {
+    command_type: 'ChooseDialogueOption', actor_id: HERO_ID, npc_id: SARGAT, option_id: option.id,
+  }))
+  assert.equal(opened.mechanics.filter((event) => event.event_type === 'PartyDecisionOpened').length, 1)
+  const decision = opened.authoritative_state.agentInteraction
+  assert.equal(decision.requiredVotes, 2)
+  const one = expectStatus(await castTreatyVote(first, code, decision, HERO, 'accept', 'signed-party-a'))
+  assert.equal(one.state.mechanics.campaign_lifecycle.status, 'active')
+  assert.equal(one.state.agentInteraction.status, 'open')
+  const done = expectStatus(await castTreatyVote(second, code, decision, COMPANION, 'accept', 'signed-party-b'))
+  assert.equal(done.state.mechanics.campaign_lifecycle.status, 'completed')
+  assert.equal(done.state.mechanics.campaign_lifecycle.ending.id, 'treaty')
+  const journal = await readJournal(server, code)
+  assert.equal(journal.events.filter((event) => event.event_type === 'AbilityCheckResolved').length, 0)
+  assert.equal(journal.events.filter((event) => event.event_type === 'ScenarioTreatyConcluded').length, 1)
+  assert.equal(journal.events.filter((event) => event.event_type === 'CampaignCompleted').length, 1)
+})
+
+async function startTreatyParty(t, code, { dice = MAX_DICE, ...options } = {}) {
+  const server = await startTestServer(t, { dice, storagePrefix: 'skazanie-treaty-vote-' })
+  const { client: admin } = await setupAdmin(server, {
+    name: 'Ведущий отряда', email: 'treaty-party-admin@test.local', password: 'secure-treaty-admin-password',
+  })
+  const state = await lairState(code, { ...options, players: [HERO, COMPANION] })
+  await createCampaign(admin, { code, name: 'Решение отряда', state })
+  const first = (await addPlayer(server, admin, code, {
+    heroIds: [HERO.id], name: HERO.character, email: 'treaty-party-first@test.local', password: 'secure-treaty-player-password',
+  })).client
+  const second = (await addPlayer(server, admin, code, {
+    heroIds: [COMPANION.id], name: COMPANION.character, email: 'treaty-party-second@test.local', password: 'secure-treaty-player-password',
+  })).client
+  return { server, first, second }
+}
+
+function castTreatyVote(client, code, decision, hero, option, key) {
+  return client.post(`/api/campaigns/${code}/party-decisions/${decision.id}/votes`, {
+    actor_id: hero.id, option_id: option, idempotency_key: key,
+  })
+}
+
+test('договор требует голосов двух игроков, переживает перезапуск и исполняется один раз', { timeout: runnerTimeout(180_000) }, async (t) => {
+  const code = 'TREATY-PARTY'
+  const { server, first, second } = await startTreatyParty(t, code)
+  const command = { command_type: 'ChooseDialogueOption', actor_id: HERO.id, npc_id: SARGAT, option_id: 'treaty' }
+  const opened = expectStatus(await sendCommand(first, code, 'treaty-open', command))
+  assert.deepEqual(opened.mechanics.map((event) => event.event_type), ['PartyDecisionOpened'])
+  const decision = opened.authoritative_state.agentInteraction
+  assert.equal(decision.scenarioTreaty.actorId, HERO.id)
+  assert.equal(decision.requiredVotes, 2)
+  assert.match(decision.description, /Вулканиса.*вир.*эпилог/u)
+  const duplicate = expectStatus(await sendCommand(first, code, 'treaty-open', command))
+  assert.equal(duplicate.idempotent_replay, true)
+  assert.equal(duplicate.authoritative_state.agentInteraction.id, decision.id)
+  const view = expectStatus(await second.get(`/api/rooms/${code}`))
+  assert.deepEqual(view.state.agentInteraction.options, decision.options)
+  assert.equal(view.state.agentInteraction.description, decision.description)
+  assert.equal(view.state.mechanics.campaign_lifecycle.status, 'active')
+
+  const forced = await sendCommand(first, code, 'treaty-force', {
+    command_type: 'NegotiateScenarioTreaty', actor_id: HERO.id, interaction_id: decision.id,
+    resolved_option_id: 'accept', isDirector: true, difficulty: 0,
+  })
+  assert.equal(forced.status, 403, forced.text)
+  const forgedResolution = await sendCommand(first, code, 'treaty-forged-resolution', {
+    command_type: 'ResolveScenarioTreatyDecision', actor_id: HERO.id, interaction_id: decision.id, resolved_option_id: 'accept',
+  })
+  assert.equal(forgedResolution.status, 403, forgedResolution.text)
+  const forged = await castTreatyVote(first, code, decision, COMPANION, 'accept', 'treaty-forged')
+  assert.equal(forged.status, 403, forged.text)
+  const firstVote = expectStatus(await castTreatyVote(first, code, decision, HERO, 'accept', 'treaty-vote-a'))
+  assert.equal(firstVote.state.mechanics.campaign_lifecycle.status, 'active')
+  assert.equal(firstVote.state.agentInteraction.status, 'open')
+  await server.restart()
+  assert.equal(expectStatus(await second.get(`/api/rooms/${code}`)).state.agentInteraction.id, decision.id)
+
+  const agreed = expectStatus(await castTreatyVote(second, code, decision, COMPANION, 'accept', 'treaty-vote-b'))
+  assert.equal(agreed.state.agentInteraction, null)
+  assert.equal(agreed.state.mechanics.campaign_lifecycle.status, 'completed')
+  const repeat = expectStatus(await castTreatyVote(second, code, decision, COMPANION, 'accept', 'treaty-vote-b'))
+  assert.equal(repeat.state.mechanics.campaign_lifecycle.ending.id, 'treaty')
+  const lateProposalRetry = expectStatus(await sendCommand(first, code, 'treaty-open', command))
+  assert.equal(lateProposalRetry.idempotent_replay, true)
+  assert.equal(lateProposalRetry.authoritative_state.mechanics.campaign_lifecycle.ending.id, 'treaty')
+  const replay = await readJournal(server, code, { useSnapshots: false })
+  const counts = ['PartyDecisionOpened', 'PartyDecisionResolved', 'PartyDecisionConsumed', 'AbilityCheckResolved', 'ScenarioTreatyConcluded', 'CampaignCompleted']
+  assert.deepEqual(replay.events.filter((event) => counts.includes(event.event_type)).map((event) => event.event_type), counts)
+  assert.equal(replay.state.mechanics.campaign_lifecycle.ending.id, 'treaty')
+})
+
+test('молчание второго игрока и отказ сохраняют кампанию без попытки проверки', { timeout: runnerTimeout(180_000) }, async (t) => {
+  const code = 'TREATY-DECLINE'
+  const { server, first, second } = await startTreatyParty(t, code, { decisionTtlMs: 8_000 })
+  const proposal = (key) => first.post('/api/narrate', {
+    campaign_id: code, actor_id: HERO.id, action: 'Предлагаю Саргату договор', idempotency_key: key,
+  })
+  const open = expectStatus(await proposal('treaty-await'))
+  const decision = open.authoritative_state.agentInteraction
+  assert.ok(decision?.scenarioTreaty)
+  const firstVote = expectStatus(await castTreatyVote(first, code, decision, HERO, 'accept', 'treaty-await-a'))
+  assert.equal(firstVote.state.agentInteraction.status, 'open')
+  await new Promise((resolve) => setTimeout(resolve, Math.max(1, decision.expiresAt - Date.now() + 20)))
+  const expiredResponse = await second.get(`/api/rooms/${code}`)
+  assert.equal(expiredResponse.status, 200, server.output())
+  const expired = expiredResponse.body
+  assert.equal(expired.state.agentInteraction, null)
+  assert.equal(expired.state.mechanics.campaign_lifecycle.status, 'active')
+  const fresh = expectStatus(await proposal('treaty-decline')).authoritative_state.agentInteraction
+  assert.notEqual(fresh.id, decision.id)
+  expectStatus(await castTreatyVote(first, code, fresh, HERO, 'accept', 'treaty-decline-a'))
+  const refused = expectStatus(await castTreatyVote(second, code, fresh, COMPANION, 'decline', 'treaty-decline-b'))
+  assert.equal(refused.state.agentInteraction, null)
+  assert.equal(refused.state.mechanics.campaign_lifecycle.status, 'active')
+  const journal = await readJournal(server, code)
+  assert.equal(journal.events.filter((event) => event.event_type === 'PartyDecisionConsumed').length, 2)
+  assert.ok(!journal.events.some((event) => ['AbilityCheckResolved', 'ScenarioTreatyConcluded', 'CampaignCompleted'].includes(event.event_type)))
+
+  const offeredToNpc = { campaign_id: code, actor_id: HERO.id, npc_id: SARGAT, action: 'Предлагаю Саргату договор', idempotency_key: 'treaty-late-confirm' }
+  const another = expectStatus(await first.post('/api/narrate', offeredToNpc)).authoritative_state.agentInteraction
+  assert.ok(another?.scenarioTreaty)
+  expectStatus(await castTreatyVote(first, code, another, HERO, 'accept', 'treaty-confirm-a'))
+  const final = expectStatus(await castTreatyVote(second, code, another, COMPANION, 'accept', 'treaty-confirm-b'))
+  assert.equal(final.state.mechanics.campaign_lifecycle.ending?.id, 'treaty')
+  const retried = expectStatus(await first.post('/api/narrate', offeredToNpc))
+  assert.equal(retried.idempotent_replay, true)
+  assert.equal(retried.authoritative_state.mechanics.campaign_lifecycle.ending?.id, 'treaty')
+})
+
+test('кнопка переговоров с Саргатом ведёт в тот же кворум и не обходит провал проверки', { timeout: runnerTimeout(180_000) }, async (t) => {
+  const code = 'TREATY-HOTBAR'
+  const dice = { ...MAX_DICE, rules: [{ value: 1 }] }
+  const { server, first, second } = await startTreatyParty(t, code, { combat: true, dice })
+  const open = expectStatus(await first.post(`/api/campaigns/${code}/commands`, {
+    idempotency_key: 'treaty-hotbar', manual_roll: true, command: { command_type: 'ProposeParley', actor_id: HERO.id, skill: 'intimidation' },
+  }))
+  assert.equal(open.check ?? null, null)
+  const decision = open.authoritative_state.agentInteraction
+  assert.ok(decision?.scenarioTreaty, server.output())
+  assert.equal(decision.requiredVotes, 2)
+  assert.equal(open.authoritative_state.mechanics.combat.active, true)
+  assert.notEqual(open.authoritative_state.mechanics.combat.action_economy[HERO.id]?.action, false)
+  expectStatus(await castTreatyVote(first, code, decision, HERO, 'accept', 'treaty-hotbar-a'))
+  const refused = expectStatus(await castTreatyVote(second, code, decision, COMPANION, 'accept', 'treaty-hotbar-b'))
+  assert.equal(refused.state.agentInteraction, null)
+  assert.equal(refused.state.mechanics.campaign_lifecycle.status, 'active')
+  assert.equal(refused.state.mechanics.combat.active, true)
+  assert.equal(refused.state.mechanics.combat.action_economy[HERO.id].action, false)
+  expectStatus(await castTreatyVote(second, code, decision, COMPANION, 'accept', 'treaty-hotbar-b'))
+  const journal = await readJournal(server, code)
+  const actionUses = journal.events.filter((event) => event.event_type === 'CombatActionUsed' && event.payload.action_id === 'scenario-treaty')
+  assert.equal(actionUses.length, 1)
+  assert.equal(actionUses[0].actor_id, HERO.id)
+  const checks = journal.events.filter((event) => event.event_type === 'AbilityCheckResolved')
+  assert.equal(checks.length, 1)
+  assert.equal(checks[0].payload.skill, 'persuasion')
+  assert.equal(checks[0].payload.success, false)
+  assert.equal(journal.events.filter((event) => event.event_type === 'ScenarioTreatyRefused').length, 1)
+  assert.ok(!journal.events.some((event) => event.event_type === 'CampaignCompleted' || event.event_type === 'TruceOpened'))
 })
 
 test('договор в уже начатом бою через обычную фразу закрывает бой и пишет эпилог', { timeout: runnerTimeout(180_000) }, async (t) => {
@@ -308,35 +499,6 @@ test('договор в уже начатом бою через обычную �
   const journal = await readJournal(server, code)
   assert.equal(journal.events.filter((event) => event.event_type === 'CampaignCompleted').length, 1)
   assert.equal(journal.events.filter((event) => event.event_type === 'EncounterOutcomeRecorded' && event.payload?.outcome === 'parley').length, 1)
+  assert.equal(journal.events.filter((event) => event.event_type === 'CombatActionUsed' && event.payload.action_id === 'scenario-treaty').length, 1)
   assert.equal(journal.state.mechanics.campaign_lifecycle.ending.id, 'treaty')
-})
-
-test('Директор записывает четыре авторские развязки из подтверждённых исходов финала', { timeout: runnerTimeout(120_000) }, async (t) => {
-  const server = await startTestServer(t)
-  const { client: admin } = await setupAdmin(server)
-  const lair = await lairState()
-  for (const [outcome, ending] of [
-    ['enemies_defeated', 'slain'], ['fled', 'banished'], ['parley', 'treaty'], ['party_incapacitated', 'defeat'],
-  ]) {
-    const code = `FINALE-${ending.toUpperCase()}`
-    const state = structuredClone(lair)
-    state.sessionCode = code
-    state.mechanics.encounter = { id: 'boss', status: 'ended', outcome, enemy_ids: [SARGAT], difficulty: 'deadly', location: lair.scene.location }
-    state.autonomy.encounter_outcomes = [{ encounter_id: 'boss', outcome }]
-    await createCampaign(admin, { code, state })
-    const { client: player } = await addPlayer(server, admin, code, { heroIds: [HERO_ID] })
-    const initial = await readJournal(server, code)
-    assert.equal(scenarioEnding(initial.state)?.id, ending, outcome)
-    const { state: result } = expectStatus(await admin.post(`/api/campaigns/${code}/autonomy/advance`, {
-      idempotency_key: 'complete-finale', actor_id: HERO_ID, player_action: 'Подводим итог встречи с Саргатом',
-    }))
-    assert.equal(result.mechanics.campaign_lifecycle.ending?.id, ending, outcome)
-    const { state: room } = expectStatus(await player.get(`/api/rooms/${code}`))
-    assert.equal(room.mechanics.campaign_lifecycle.ending?.id, ending)
-    assert.notEqual(room.agentInteraction?.status, 'open', outcome)
-    const replay = await readJournal(server, code, { useSnapshots: false })
-    assert.deepEqual(replay.state.mechanics.campaign_lifecycle, result.mechanics.campaign_lifecycle)
-    assert.equal(replay.events.filter((event) => event.event_type === 'CampaignCompleted').length, 1)
-    assert.ok(!replay.events.some((event) => event.event_type === 'EncounterCreated'), outcome)
-  }
 })

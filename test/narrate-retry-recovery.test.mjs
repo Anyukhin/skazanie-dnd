@@ -10,6 +10,7 @@ import {
   clearPendingNarrate,
   isTacticalCommandUnknown,
   narrateRecoveryFor,
+  narrateRequestAction,
   pendingNarrateStorageKey,
   readPendingNarrate,
   writePendingNarrate,
@@ -35,6 +36,7 @@ import {
  */
 
 const sessionSource = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
+const boardSource = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
 
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-narrate-retry-'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
@@ -82,6 +84,34 @@ function installNarrateServer(lose) {
 
 const state = { sessionCode: 'RETRY-1' }
 const intent = { campaignId: 'RETRY-1', actorId: 'hero-a', action: 'Проверяю силу', requestKind: 'action' }
+
+test('форма досье отправляет речь и npc_id, а незавершённый запрос старого досье сохраняет своё тело', async () => {
+  const submitNpcDialogue = boardSource.slice(boardSource.indexOf('const submitNpcDialogue'), boardSource.indexOf('const dossierDialogue'))
+  assert.match(submitNpcDialogue, /onNpcAction\(text, dossierSceneNpc\.id\)/u)
+  assert.match(sessionSource, /narrateRequestAction\(text\.trim\(\), narrateRecovery\)/u)
+
+  const talk = { ...intent, npcId: 'astohan-ares', action: 'Какое поручение вы даёте нам?' }
+  const wrapped = `Обращаюсь к Король Арес (король Валедора и прославленный драконоборец): ${talk.action}`
+  const pending = narrateRecoveryFor(null, { ...talk, action: wrapped }, { newKey: () => 'old-dialogue', manualRoll: true })
+  const recovered = narrateRecoveryFor(pending, talk, { newKey: () => 'unexpected' })
+  assert.equal(recovered.requestId, 'old-dialogue')
+  assert.equal(narrateRecoveryFor(pending, { ...talk, npcId: 'astohan-ivara' }, { newKey: () => 'other-npc' }).requestId, 'other-npc')
+  const fresh = narrateRecoveryFor(null, talk, { newKey: () => 'new-dialogue' })
+
+  const server = installNarrateServer(() => new Response(JSON.stringify({ narration: 'Найдите Саргата.', effects: {} })))
+  try {
+    for (const recovery of [fresh, recovered]) {
+      await client.narrateWithAgent(state, narrateRequestAction(talk.action, recovery), 'Герой', undefined, recovery.requestId, talk.actorId, {
+        requestKind: talk.requestKind, npcId: talk.npcId, manualRoll: recovery.manualRoll,
+      })
+    }
+    const expectBody = { campaign_id: state.sessionCode, actor_id: talk.actorId, npc_id: 'astohan-ares', request_kind: 'action' }
+    assert.deepEqual(server.bodies[0], { ...expectBody, action: talk.action, idempotency_key: 'new-dialogue' })
+    assert.deepEqual(server.bodies[1], { ...expectBody, action: wrapped, idempotency_key: 'old-dialogue', manual_roll: true })
+  } finally {
+    server.restore()
+  }
+})
 
 /** Шаги `submitAction`: запись до отправки, снятие только известным исходом. */
 async function submit(storage, key, manualRoll = false) {

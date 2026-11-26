@@ -11,6 +11,7 @@ import {
   auditOntology,
   EXTERNAL_ONLY_PREDICATES,
   GENERIC_PREDICATE_CONSUMERS,
+  LEGACY_PREDICATE_READERS,
   PREDICATES,
   RELATIONS,
   scanOntologyUsage,
@@ -44,7 +45,10 @@ test('каждое отношение, которое пишет код серв
 test('у каждого читаемого предиката есть производитель в коде, кроме закрытого списка внешних', () => {
   const consumed = Object.entries(audit.predicates).filter(([, entry]) => entry.consumers.length)
   assert.ok(consumed.some(([name]) => name === 'died'), 'сканер обязан видеть чтение died')
-  const orphan = consumed.filter(([name, entry]) => !entry.producers.length && !EXTERNAL_ONLY_PREDICATES.includes(name))
+  const legacy = (name, entry) => Object.hasOwn(LEGACY_PREDICATE_READERS, name)
+    && LEGACY_PREDICATE_READERS[name].length === entry.consumers.length
+    && LEGACY_PREDICATE_READERS[name].every((module) => entry.consumers.includes(module))
+  const orphan = consumed.filter(([name, entry]) => !entry.producers.length && !EXTERNAL_ONLY_PREDICATES.includes(name) && !legacy(name, entry))
     .map(([name, entry]) => `${name} (${entry.sites.join(', ')})`)
   assert.deepEqual(orphan, [], 'предикат читается, но его никто не пишет')
   // Внешний список закрыт: в нём ровно то, у чего в реестре нет производителя в коде.
@@ -125,6 +129,18 @@ test('сканер различает запись, образец сравне�
   ])
   assert.deepEqual(scan.consumed.predicates.map((entry) => entry.name), ['died', 'died', 'faction_offscreen_move:'])
   assert.deepEqual(scan.dynamic.produced.map((entry) => entry.kind), ['passthrough'])
+})
+
+test('legacy rumor fact compatibility-read виден, но не считается новой дырой', () => {
+  const scan = scanOntologyUsage('npc-social-controller', "if (spokenAloud && record.fact.predicate === 'rumor') return true")
+  assert.deepEqual(scan.consumed.predicates.map((entry) => entry.name), ['rumor'])
+  assert.deepEqual(scan.produced.predicates, [])
+  const audit = auditOntology([{ file: 'npc-social-controller', source: "if (spokenAloud && record.fact.predicate === 'rumor') return true" }])
+  assert.deepEqual(audit.gaps.consumed_but_never_produced.predicates, [])
+  const otherReader = auditOntology([{ file: 'other-reader', source: "if (record.fact.predicate === 'rumor') return true" }])
+  assert.deepEqual(otherReader.gaps.consumed_but_never_produced.predicates, ['rumor'])
+  const relation = auditOntology([{ file: 'npc-social-controller', source: "const relationship = { from_entity_id: 'a', to_entity_id: 'b' }; if (relationship.relation === 'rumor') return true" }])
+  assert.deepEqual(relation.gaps.consumed_but_never_produced.relations, ['rumor'])
 })
 
 test('отношение считается записью памяти только рядом с from_entity_id', () => {

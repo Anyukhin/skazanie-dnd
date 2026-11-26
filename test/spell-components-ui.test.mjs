@@ -109,6 +109,7 @@ test('компоненты встроены в существующие карт
   assert.match(dungeonMap, /fallback\?\.components && !spell\.components/u)
   assert.match(dungeonMap, /componentAvailability\.blocked/u)
   assert.doesNotMatch(dungeonMap, /Применить/u)
+  assert.match(dungeonMap, /selectedSpell\.spellOptions\.map\(\(option\) => <button type="button"/u, 'варианты заклинания не должны отправлять форму подтверждения')
   assert.match(combatSpells, /componentAvailability: _catalogAvailability/u)
   assert.match(combatSpells, /componentAvailability: _overrideAvailability/u)
   assert.match(combatSpells, /rulesetId = 'srd_5_2_1'/u)

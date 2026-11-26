@@ -1853,10 +1853,9 @@ fn promise_anchor_matches(sentence: &str, promise: &Value) -> bool {
 }
 
 fn promised_object_assertion(sentence: &str) -> bool {
-    promised_object_state().find_iter(sentence).filter_map(Result::ok).any(|found| {
-        let before = chars_before(sentence, found.start(), 32);
-        !text::test(re!(r"(?:не\s+(?:был[аои]?\s+)?|никогда\s+не\s*)$", "iu"), before)
-    })
+    // Открытое обещание не разрешает рассказчику утверждать ни наличие, ни
+    // отсутствие предмета. Обе формы подменяют событие исполнения или осмотра.
+    promised_object_state().is_match(sentence).unwrap_or(false)
 }
 
 struct BoundaryCategory {
@@ -3748,5 +3747,21 @@ impl Narrator {
 impl CriticalNarrator for Narrator {
     fn render<'a>(&'a self, brief: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
         Box::pin(async move { Narrator::render(self, brief, RenderOptions::from_json(options)).await.map_err(LlmError::from) })
+    }
+}
+
+#[cfg(test)]
+mod promise_grounding_tests {
+    use super::promised_object_assertion;
+
+    #[test]
+    fn open_promise_state_is_blocked_in_both_polarities() {
+        for sentence in [
+            "Под кружкой лежит обещанная карта.",
+            "Под кружкой карты пока не видно.",
+            "Обещанная карта пока не найдена.",
+        ] {
+            assert!(promised_object_assertion(sentence), "{sentence}");
+        }
     }
 }

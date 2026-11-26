@@ -268,6 +268,17 @@ pub fn find_all(regex: &fancy_regex::Regex, text: &str) -> Vec<String> {
     regex.find_iter(text).filter_map(Result::ok).map(|m| m.as_str().to_string()).collect()
 }
 
+/// Слова в кавычках и отрицаемые действия не являются заявкой игрока.
+pub fn without_quoted_or_negated_actions(lowered: &str) -> String {
+    let unquoted = replace_all(crate::re!(r#"«[^»]*»|"[^"]*"|'[^']*'"#, "gu"), lowered, " ");
+    let without_intent = replace_all(
+        crate::re!(r"(?:^|\s)(?:не|ни|без|никогда)\s+(?!только(?:\s|$))(?:буду|хочу|собираюсь)\s+(?:(?:его|её|их|это|так|себя)\s+)?\p{L}+", "giu"),
+        &unquoted,
+        " ",
+    );
+    replace_all(crate::re!(r"(?:^|\s)(?:не|ни|без|никогда)\s+(?!только(?:\s|$))\p{L}+", "giu"), &without_intent, " ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -46,6 +46,18 @@ fn scene_architect_gets_a_deterministic_free_post_next_to_a_suitable_prop() {
 }
 
 #[test]
+fn authored_anchor_tag_beats_role_guess() {
+    let fixture = fixture();
+    let mut state = fixture.labelled("npc-state").clone();
+    state["social"]["npcs"][0]["tags"] = json!(["anchor:bar-1"]);
+    let planned = plan_scene_npc_placement_events(&state);
+    let marta = planned.iter().find(|event| event["payload"]["npc_id"] == "marta").expect("якорный пост");
+    assert_eq!(marta["payload"]["anchor_prop_id"], "bar-1");
+    let (x, y) = (marta["payload"]["x"].as_i64().expect("x"), marta["payload"]["y"].as_i64().expect("y"));
+    assert!((x - 7).abs().max((y - 2).abs()) <= 2);
+}
+
+#[test]
 fn initial_posts_do_not_overlap_the_party_or_each_other() {
     let fixture = fixture();
     let planned = plan_scene_npc_placement_events(fixture.labelled("npc-state-two"));

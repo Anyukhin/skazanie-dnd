@@ -8,7 +8,7 @@
  *  - заводит владельца и игроков по приглашениям — по аккаунту на героя;
  *  - создаёт кампанию из авторского мира `astohan-plains` так же, как мастер
  *    создания на сайте (редакция 2014, стартовый уровень 7);
- *  - создаёт героев (по умолчанию воин, варвар, монах, паладин) импортом и
+ *  - создаёт героев (по умолчанию воин, жрица, маг, плут) импортом и
  *    поэтапным повышением до 7-го уровня, выборы уровня — из серверного каталога;
  *  - играет сценарий: поручение Ареса, принятие задания голосованием, торговля,
  *    улики из заготовок ведущего, реальные фразы игроков из
@@ -22,13 +22,13 @@
  *
  *   node eval/astohan-playthrough.mjs                 # без модели, 3–15 мин до развязки
  *   node eval/astohan-playthrough.mjs --seed 7        # повторяемые кости
- *   node eval/astohan-playthrough.mjs --party fighter,paladin  # быстрый прогон вдвоём
+ *   node eval/astohan-playthrough.mjs --impl rust --treaty --seed 2   # расследование и эпилог сразу после договора
+ *   node eval/astohan-playthrough.mjs --impl rust --live --visit astohan-ash-watch  # с настроенным поставщиком модели
+ *   node eval/astohan-playthrough.mjs --party fighter,cleric   # быстрый прогон вдвоём
  *   node eval/astohan-playthrough.mjs --tactics bot            # прежняя простая тактика бота
  *   node eval/astohan-playthrough.mjs --live          # с моделью из .env, бюджет и темп
  *   node eval/astohan-playthrough.mjs --live --judge  # плюс оценка текста моделью-судьёй
  *   node eval/astohan-playthrough.mjs --minutes 20 --out tmp/astohan-playtest/run1
- *   node eval/astohan-playthrough.mjs --impl rust --direct-route --seed 2 # явный путь отряда через Митглайд
- *   node eval/astohan-playthrough.mjs --impl rust --finale-combat --seed 2 # отдельный бой в логове
  *   SKAZANIE_RUST_SERVER_BIN=… node eval/astohan-playthrough.mjs --impl rust --seed 7   # бинарь переноса
  *
  * Итог — `<out>/report.md` (оценка и находки), `<out>/transcript.md`
@@ -44,22 +44,29 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { abilityScoreChoiceLevelsFor, classSkillRuleFor, featureChoiceGroupsFor, normalizedClassSkillProficiencies } from '../server/character-progression.mjs'
-import { characterCreationChoicesComplete, createCharacterSlot } from '../server/character-lifecycle.mjs'
-import { astohanPilotBuildCatalog, stagedCommandsForPilotBuild } from '../server/astohan-pilot-builds.mjs'
+import { characterCreationChoicesComplete } from '../server/character-lifecycle.mjs'
+import { createCharacterSlot } from '../server/character-lifecycle.mjs'
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
+import { astohanPilotBuildCatalog, stagedCommandsForPilotBuild } from '../server/astohan-pilot-builds.mjs'
 import { combatClassCatalogInfo, combatSubclassOptionsFor, normalizedCombatSubclassFor } from '../server/combat-actions.mjs'
 import { combatSpellsFor, spellSelectionRulesFor } from '../server/combat-spells.mjs'
-import { movementForActor, movementStepCostFor, normalizeCampaignState, previewApproachAttack, resolveCommands } from '../server/rules-engine.mjs'
+import { movementForActor, movementStepCostFor, normalizeCampaignState, previewApproachAttack } from '../server/rules-engine.mjs'
+import { resolveCommands } from '../server/rules-engine.mjs'
+import { answerKnownLore } from '../server/player-request-router.mjs'
 import { occupiedPositions, shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
-import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import { footprintCellsFor } from '../server/actor-footprint.mjs'
 import { planHeroCombatCommand } from '../server/party-tactics.mjs'
+import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import { isDirectorPartyDecision } from '../src/director-continuation.mjs'
 import { pilotImportDocument } from '../test/kit/astohan-pilot.mjs'
 import { fixedDice } from '../test/kit/dice.mjs'
 import { findNarratorCliches } from '../server/narrator-craft-quality.mjs'
 import { measureNarratorCraft } from './narrator-craft-metrics.mjs'
 import { freePort, rustCutoverAudit, spawnRustStand, standImpl } from './stand-server.mjs'
+import { rustServerBinary } from '../test/kit/http.mjs'
+import { seedPassed, victoryFor } from './astohan-seed-status.mjs'
+import { budgetCriterion, playthroughUsage } from './playthrough-usage.mjs'
+import { traceLoreAnswer } from './lore-trace.mjs'
 import { judgeContext, narrationConsistency, sceneContinuity, sceneMapConsistency } from './consistency-checks.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -93,8 +100,8 @@ const TACTICS = option('tactics', 'server')
 const SEED = option('seed', null)
 // Реализация сервера: `js` (по умолчанию) или бинарь Rust-переноса (`eval/stand-server.mjs`).
 const IMPL = standImpl(argv)
-if (IMPL === 'rust' && (LIVE || JUDGE)) {
-  console.error('--impl rust: только без модели (--live и --judge — для JS-сервера)')
+if (IMPL === 'rust' && JUDGE) {
+  console.error('--judge доступен только в стенде JS')
   process.exit(2)
 }
 const MINUTES = Number(option('minutes', LIVE ? 25 : 20))
@@ -153,12 +160,11 @@ const stats = {
   parley: { attempts: 0, truces: 0, outcomes: [] },
   spells: {}, features: {}, sneakAttacks: 0,
   // Сколько ответов сверено с картой и механикой и какие расхождения нашлись.
-  consistencyChecked: 0, consistency: {},
+  consistencyChecked: 0, consistency: {}, loreTraceAnswers: 0, loreTraceUnverifiedAnswers: 0, loreTraceClaimsChecked: 0,
 }
 /** Текст рассказчика за прогон: для метрик, выборки и судьи. */
 const narrations = []
 let currentStage = 'startup'
-let playStarted = false
 
 function finding(severity, kind, message, context = {}) {
   const entry = { severity, kind, stage: currentStage, at_s: Math.round((Date.now() - startedAt) / 1000), message, ...context }
@@ -197,9 +203,13 @@ function startServer() {
   // Без --live ключ обнуляется явно: dotenv не перекрывает уже заданные
   // переменные, и пустая строка выигрывает у ключа из .env.
   if (!LIVE) env.ROUTERAI_API_KEY = ''
-  child = IMPL === 'rust'
-    ? spawnRustStand({ port: PORT, storage, setupToken, env: { DND_COMBAT_TURN_TIMEOUT_MS: env.DND_COMBAT_TURN_TIMEOUT_MS, ...(SEED == null ? {} : { PLAYTEST_DICE_SEED: String(SEED) }) } })
-    : spawn(process.execPath, [...preload, 'server/index.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  if (IMPL === 'rust' && !LIVE) {
+    child = spawnRustStand({ port: PORT, storage, setupToken, env: { DND_COMBAT_TURN_TIMEOUT_MS: env.DND_COMBAT_TURN_TIMEOUT_MS, ...(SEED == null ? {} : { PLAYTEST_DICE_SEED: String(SEED) }) } })
+  } else {
+    const binary = IMPL === 'rust' ? rustServerBinary() : process.execPath
+    const args = IMPL === 'rust' ? [] : [...preload, 'server/index.mjs']
+    child = spawn(binary, args, { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  }
   child.stdout.on('data', (chunk) => { logs += chunk })
   child.stderr.on('data', (chunk) => { logs += chunk })
 }
@@ -222,7 +232,6 @@ process.on('exit', () => { try { child?.kill() } catch { /* уже остано�
 // HTTP с замерами
 
 async function request(path, { method = 'GET', account, body, key, timeoutMs = 120_000 } = {}) {
-  if (playStarted && account === accounts.admin && method !== 'GET') throw new Error(`Команда ведущего во время партии: ${method} ${path}`)
   const started = Date.now()
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const controller = new AbortController()
@@ -354,6 +363,29 @@ async function command(actorId, commandValue, label = commandValue.command_type,
 // Создание героев: импорт первого уровня и поэтапное повышение до седьмого
 
 const HERO_PLANS = {
+  fighter: {
+    name: 'Торвальд', characterClass: 'fighter', role: 'Воин · ур. 1', species: 'Холмовой дварф',
+    document: {
+      character: 'Торвальд', name: 'Владелец', role: 'Воин · ур. 1', characterClass: 'fighter', species: 'Холмовой дварф',
+      background: 'Солдат', backgroundId: 'soldier', backgroundChoices: { tools: ['dice_set'], languages: [] },
+      speciesChoices: { 'artisan-tool': ['smiths_tools'] },
+      starterEquipmentChoices: { armor: ['chain-mail'], 'melee-loadout': ['longsword-shield'], secondary: ['light-crossbow'], pack: ['explorers-pack'] },
+      level: 1, experience: 0,
+      abilities: { str: 15, dex: 14, con: 15, int: 12, wis: 11, cha: 8 },
+      abilityGeneration: {
+        policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2, method: 'standard_array',
+        baseScores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
+        originBonusProfileId: 'dwarf-hill', originBonuses: { str: 0, dex: 0, con: 2, int: 0, wis: 1, cha: 0 }, speciesOptionId: 'dwarf-hill',
+      },
+      baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['athletics', 'perception'],
+      selectedFeatureIds: ['fighting-style-defense'], knownSpellIds: [], preparedSpellIds: [],
+      phbCreation: { schema_version: 1, classChoices: {} },
+    },
+    skills: ['athletics', 'perception', 'survival', 'intimidation', 'insight'],
+    subclass: ['Чемпион'],
+    asi: ['str', 'con'],
+    cantrips: [], spells: [],
+  },
   cleric: {
     name: 'Ильва', characterClass: 'cleric', role: 'Жрец · ур. 1', species: 'Холмовой дварф',
     document: {
@@ -406,7 +438,7 @@ const HERO_PLANS = {
     name: 'Шорох', characterClass: 'rogue', role: 'Плут · ур. 1', species: 'Легконогий полурослик',
     document: {
       character: 'Шорох', name: 'Четвёртый игрок', role: 'Плут · ур. 1', characterClass: 'rogue', species: 'Легконогий полурослик',
-      background: 'Преступник', backgroundId: 'criminal', backgroundChoices: { tools: ['dice_set'], languages: [], replacementTools: ['smiths_tools'] },
+      background: 'Преступник', backgroundId: 'criminal', backgroundChoices: { tools: ['dice_set'], languages: [], replacementTools: ['disguise_kit'] },
       starterEquipmentChoices: { primary: ['rapier'], secondary: ['shortbow'], pack: ['burglars-pack'] },
       level: 1, experience: 0,
       abilities: { str: 8, dex: 17, con: 14, int: 12, wis: 13, cha: 11 },
@@ -417,7 +449,7 @@ const HERO_PLANS = {
       },
       baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['acrobatics', 'perception', 'sleight_of_hand', 'investigation'],
       selectedFeatureIds: [], knownSpellIds: [], preparedSpellIds: [],
-      phbCreation: { schema_version: 1, classChoices: { expertise: ['acrobatics', 'perception'] } },
+      phbCreation: { schema_version: 1, classChoices: { expertise: ['sleight_of_hand', 'thieves_tools'] } },
     },
     skills: ['acrobatics', 'perception', 'sleight_of_hand', 'investigation'],
     subclass: ['Вор'],
@@ -425,9 +457,6 @@ const HERO_PLANS = {
     cantrips: [], spells: [],
   },
 }
-
-const PILOT_NAMES = { fighter: 'Торвальд', barbarian: 'Лада', monk: 'Мирра', paladin: 'Рейна' }
-for (const recipe of PILOT_BUILDS.builds) HERO_PLANS[recipe.id] = { name: PILOT_NAMES[recipe.id], recipe }
 
 /** Недостающие выборы текущего уровня — тем же каталогом, что и проверка сервера. */
 function pendingChoices(actor, plan, rulesetId) {
@@ -478,7 +507,7 @@ function pendingChoices(actor, plan, rulesetId) {
   return commands
 }
 
-async function buildHero(account, plan, catalog) {
+async function buildHero(account, plan, catalog = null) {
   const actorId = account.heroId
   const document = plan.recipe ? pilotImportDocument(catalog, plan.recipe, plan.name)
     : { schema: 'skazanie.character', schema_version: 1, character: plan.document }
@@ -495,7 +524,13 @@ async function buildHero(account, plan, catalog) {
     }
     if (step.command_type === 'LevelUp') stats.levelUps += 1
   }
-  for (let guard = 0; !plan.recipe && guard < 40; guard += 1) {
+  if (plan.recipe) {
+    const hero = heroOf(await room(account), actorId)
+    if (hero.characterSetupRequired || Number(hero.level) !== START_LEVEL) return false
+    note(`- ${hero.character}: ${hero.role}, ур. ${hero.level}, ОЗ ${hero.hp}/${hero.maxHp}, КД ${hero.armor}`)
+    return true
+  }
+  for (let guard = 0; guard < 40; guard += 1) {
     const state = await room(account)
     const actor = heroOf(state, actorId)
     if (!actor.characterSetupRequired && Number(actor.level) >= START_LEVEL) break
@@ -537,7 +572,8 @@ const DISCOVERY_SKILLS = new Set(['perception', 'investigation', 'insight', 'sur
 let narrateSeq = 0
 async function say(actorId, action, { label = '', requestKind, npcId, expect = 'outcome' } = {}) {
   const account = accountFor(actorId)
-  const hero = heroOf(await room(account), actorId)
+  const stateBefore = await room(account)
+  const hero = heroOf(stateBefore, actorId)
   const baseBody = { action, campaign_id: CODE, actor_id: actorId, manual_roll: true, ...(requestKind ? { request_kind: requestKind } : {}), ...(npcId ? { npc_id: npcId } : {}) }
   let body = { ...baseBody, idempotency_key: `bot-say-${++narrateSeq}` }
   note(`\n**${hero?.character ?? actorId}${label ? ` · ${label}` : ''}:** ${action}`)
@@ -559,6 +595,9 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
       return { status: result.status, body: result.body, steps }
     }
     const answer = result.body
+    if (!stats.retryCheck && answer.idempotent_replay === false && answer.mechanics?.length && !answer.check && !answer.clarification && !answer.rejected) {
+      await checkIdempotency(account, body)
+    }
     steps.push(answer)
     final = answer
     const text = String(answer.narration ?? '')
@@ -591,7 +630,7 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
       const skill = String(check.skill ?? '').replace(/_/gu, '-')
       if (rolled.body.success && DISCOVERY_SKILLS.has(skill)) {
         const facts = (final?.mechanics ?? []).filter((event) => event.event_type === 'WorldFactRecorded')
-        if (facts.length) { stats.discoveries += 1; note(`> 🔎 находка: ${facts.map((event) => short(event.payload?.fact?.summary ?? JSON.stringify(event.payload), 160)).join(' | ')}`) }
+        if (facts.length) { stats.discoveries += 1; note(`> 🔎 находка: ${facts.map((event) => short(event.payload?.object ?? event.payload?.value ?? event.payload?.text ?? JSON.stringify(event.payload), 160)).join(' | ')}`) }
         else { stats.discoveryEmpty += 1; finding('major', 'empty-success', `успех ${check.label} (${rolled.body.total} против ${rolled.body.difficulty}) не записал находку: «${short(action, 90)}»`) }
       }
       break
@@ -619,7 +658,7 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
     break
   }
   classifyOutcome(action, final, expect, rolledCheck)
-  await checkNarrationConsistency(action, final?.narration, rolledCheck)
+  await checkNarrationConsistency(action, final?.narration, rolledCheck, { provider: final?.provider, actorId, stateBefore })
   return { status: 200, body: final, steps }
 }
 
@@ -678,6 +717,23 @@ function classifyOutcome(action, answer, expect, rolledCheck = null) {
 // ---------------------------------------------------------------------------
 // Голосования и Режиссёр
 
+async function voteForOption(interaction, option) {
+  note(`- 🗳 голосование «${short(interaction.question ?? interaction.title ?? interaction.id, 160)}»: ${interaction.options.map((entry) => entry.label).join(' / ')} → «${option.label}»`)
+  for (const actorId of heroIds()) {
+    const key = `bot-vote-${randomUUID()}`
+    const vote = await request(`/api/campaigns/${CODE}/party-decisions/${encodeURIComponent(interaction.id)}/votes`, {
+      method: 'POST', account: accountFor(actorId), key,
+      body: { actor_id: actorId, option_id: option.id, idempotency_key: key },
+    })
+    stats.votes += 1
+    if (vote.status !== 200) {
+      const code = vote.body?.code ?? ''
+      if (!/ALREADY|RESOLVED|CLOSED/u.test(code)) finding('major', 'vote-refused', `голос ${actorId} в «${interaction.id}»: ${vote.status} ${code} — ${short(vote.body?.error, 200)}`)
+    }
+    if (vote.body?.state?.agentInteraction?.status !== 'open') return vote.body
+  }
+}
+
 async function settleInteraction(reason = '') {
   for (let guard = 0; guard < 6; guard += 1) {
     const state = await room()
@@ -696,21 +752,12 @@ async function settleInteraction(reason = '') {
       const preferred = options.find((entry) => /^(accept|continue|go|yes)$/u.test(String(entry.id)))
         ?? options.find((entry) => /принять|продолж|идём|в путь|да\b|отправ/iu.test(String(entry.label)))
         ?? options[0]
-      note(`- 🗳 голосование «${short(interaction.question ?? interaction.title ?? interaction.id, 160)}»: ${options.map((entry) => entry.label).join(' / ')} → «${preferred?.label}»`)
-      for (const actorId of heroIds()) {
-        const key = `bot-vote-${randomUUID()}`
-        const vote = await request(`/api/campaigns/${CODE}/party-decisions/${encodeURIComponent(interaction.id)}/votes`, { method: 'POST', account: accountFor(actorId), key, body: { actor_id: actorId, option_id: preferred?.id, idempotency_key: key } })
-        stats.votes += 1
-        if (vote.status !== 200) {
-          const code = vote.body?.code ?? ''
-          if (!/ALREADY|RESOLVED|CLOSED/u.test(code)) finding('major', 'vote-refused', `голос ${actorId} в «${interaction.id}»: ${vote.status} ${code} — ${short(vote.body?.error, 200)}`)
-        }
-        if (vote.body?.state?.agentInteraction?.status !== 'open') break
-      }
+      if (!preferred) return state
+      await voteForOption(interaction, preferred)
       continue
     }
     if (interaction.status === 'resolved') {
-      if (interaction.questAcceptance || interaction.questAbandonment) return state
+      if (interaction.questAcceptance || interaction.questAbandonment || interaction.scenarioTreaty) return state
       const winner = (interaction.options ?? []).find((entry) => entry.id === interaction.resolvedOptionId)
       if (isDirectorPartyDecision(interaction)) {
         const advanced = await director('Продолжить подтверждённый переход.', { interactionId: interaction.id, quiet: true })
@@ -846,7 +893,7 @@ async function playCombat(label) {
   const ended = (state.battleLog ?? []).findLast((entry) => entry.type === 'combat-end')
   const heroesUp = state.players.filter(isUp).length
   if (!state.mechanics.combat.active) {
-    if (['enemies_defeated', 'fled'].includes(ended?.reason)) stats.combatWins += 1
+    if ((state.enemies ?? []).every((enemy) => !isUp(enemy))) stats.combatWins += 1
     note(`- итог боя: раундов ${maxRound}, ${ended?.reason ?? ended?.text ?? '?'}, героев на ногах ${heroesUp}/${heroIds().length}`)
   }
   const tally = {}
@@ -865,8 +912,8 @@ async function playCombat(label) {
   for (const actorId of heroIds()) {
     if (state.mechanics.death?.heroes?.[actorId]?.status === 'dead') {
       stats.heroDeaths += 1
-      finding('minor', 'hero-died', `${heroOf(state, actorId)?.character} погиб в бою «${label}»`)
-      if (!FINALE_COMBAT) await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
+      finding('minor', 'hero-died', `${heroOf(state, actorId)?.character} погиб в бою «${label}» — воскрешаю`)
+      await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
     }
   }
   return room()
@@ -884,7 +931,7 @@ async function heroTurnActions(state, actorId) {
   const me = heroOf(state, actorId)
   const fate = state.mechanics.death?.heroes?.[actorId]
   if (fate?.status === 'dead') {
-    if (!FINALE_COMBAT) await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
+    await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
     return
   }
   if (isUp(me)) {
@@ -906,7 +953,7 @@ async function heroTurnActions(state, actorId) {
   if (!combat.active || combat.reaction_window) return
   if (String(combat.initiative[combat.active_index]?.actor_id) !== actorId) return
   const ended = await command(actorId, { command_type: 'EndTurn' }, 'Завершить ход')
-  if (!FINALE_COMBAT && ended.status !== 200 && ended.body?.code === 'HERO_DEAD_UNRESOLVED') await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
+  if (ended.status !== 200 && ended.body?.code === 'HERO_DEAD_UNRESOLVED') await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
   else if (ended.status !== 200) finding('major', 'end-turn-refused', `EndTurn ${actorId}: ${ended.body?.code} — ${short(ended.body?.error, 200)}`)
 }
 
@@ -1330,11 +1377,21 @@ async function withFullSceneMap(state) {
 }
 
 /** Ответ рассказчика сверяется с тем, что сейчас на самом деле в сцене. */
-async function checkNarrationConsistency(action, text, check = null) {
+async function checkNarrationConsistency(action, text, check = null, { provider = '', actorId = '', stateBefore = null } = {}) {
   if (!text) return
   const state = await withFullSceneMap(await room())
   stats.consistencyChecked += 1
   for (const issue of narrationConsistency(String(text), state, { check })) recordConsistency(issue, `на «${short(action, 70)}»`)
+  // Материал отбирается из того же снимка, который видел игрок перед вопросом.
+  if (provider === 'AgentWorldkeeper') {
+    const lore = stateBefore && answerKnownLore(action, stateBefore, { actorId, viewer: { playerId: actorId, isPartyMember: true } })
+    const audit = traceLoreAnswer(String(text), lore)
+    stats.loreTraceAnswers += 1
+    if (audit.status === 'checked') {
+      stats.loreTraceClaimsChecked += audit.claims
+      for (const reason of audit.reasons) recordConsistency({ code: `LORE_${reason.toUpperCase()}`, severity: 'major', message: `ответ хранителя не прошёл проверку серверного материала: ${reason}`, evidence: reason }, `на «${short(action, 70)}»`)
+    } else stats.loreTraceUnverifiedAnswers += 1
+  }
   // Контекст в момент ответа — для судьи: без него он не знает, что на карте и чем кончился бросок.
   const entry = narrations.findLast((item) => item.text === String(text))
   if (entry) entry.context = judgeContext(state, { check, recentNarrations: narrations.slice(-4, -1).map((item) => item.text) })
@@ -1406,17 +1463,21 @@ async function checkGuestProjection(when) {
   return leaks
 }
 
-async function checkIdempotency() {
-  const key = `bot-idem-${randomUUID()}`
-  // Действие с серверным броском без ручной фазы: оно точно записывается коммитом.
-  const body = { action: 'Внимательно осматриваю всё вокруг, ищу следы и тайники', campaign_id: CODE, actor_id: accounts.guest.heroId, idempotency_key: key }
-  const first = await request('/api/narrate', { method: 'POST', account: accounts.guest, body, key })
-  const second = await request('/api/narrate', { method: 'POST', account: accounts.guest, body, key })
-  if (first.status !== 200 || second.status !== 200) { note(`- идемпотентность: ${first.status}/${second.status} ${second.body?.code ?? ''}`); return }
-  if (second.body.state_version !== first.body.state_version) finding('critical', 'idempotency', `повтор с тем же ключом сдвинул версию ${first.body.state_version} → ${second.body.state_version}`)
-  const forged = await request('/api/narrate', { method: 'POST', account: accounts.guest, body: { ...body, action: 'Совсем другое действие' }, key })
-  if (forged.status === 200 && forged.body?.state_version !== first.body.state_version) finding('critical', 'idempotency-conflict', `другой текст под тем же ключом записал новый ход (${first.body.state_version} → ${forged.body.state_version})`)
-  else if (forged.status !== 409) note(`- идемпотентность: другой текст под тем же ключом → ${forged.status}${forged.body?.idempotent_replay ? ' (возвращён прежний ответ)' : ''}`)
+/** Повторяем реальную принятую заявку, пока кампания ещё принимает ходы. */
+async function checkIdempotency(account, body) {
+  const key = body.idempotency_key
+  const before = (await room(account)).state_version
+  const retry = await request('/api/narrate', { method: 'POST', account, body, key })
+  const conflict = await request('/api/narrate', { method: 'POST', account, body: { ...body, action: 'Совсем другое действие' }, key })
+  const after = (await room(account)).state_version
+  stats.retryCheck = { replay: retry.body?.idempotent_replay === true, conflict: conflict.body?.code, before, after }
+  if (retry.status !== 200 || !stats.retryCheck.replay || before !== after) {
+    finding('critical', 'idempotency', `повтор принятой заявки: HTTP ${retry.status}, replay=${stats.retryCheck.replay}, версии ${before} → ${after}`)
+  }
+  if (conflict.status !== 409 || conflict.body?.code !== 'IDEMPOTENCY_CONFLICT') {
+    finding('critical', 'idempotency-conflict', `иной текст под тем же ключом: HTTP ${conflict.status} ${conflict.body?.code ?? ''}`)
+  }
+  note(`- Повтор заявки: HTTP ${retry.status}, replay=${stats.retryCheck.replay}. Смена текста: ${conflict.status} ${conflict.body?.code ?? ''}. Версии ${before} → ${after}.`)
 }
 
 async function restartAndCompare(reason) {
@@ -1433,13 +1494,13 @@ async function restartAndCompare(reason) {
 }
 
 function runCutoverAudit() {
-  const audit = spawnSync(process.execPath, ['tools/audit-cutover.mjs', '--storage', storage], { cwd: ROOT, encoding: 'utf8', timeout: 600_000, env: { ...process.env, ROUTERAI_API_KEY: '' } })
+  const audit = spawnSync(process.execPath, ['tools/audit-cutover.mjs', '--storage', storage, '--strict'], { cwd: ROOT, encoding: 'utf8', timeout: 600_000, env: { ...process.env, ROUTERAI_API_KEY: '' } })
   const output = `${audit.stdout ?? ''}${audit.stderr ?? ''}`
   // Статус null без вывода — аудит не успел за отведённое время (длинная
   // кампания на занятой машине), а не расхождение replay: это разные находки.
   if (audit.status === null) finding('major', 'replay-audit-timeout', `audit-cutover не успел за 10 мин (${audit.signal ?? audit.error?.code ?? 'timeout'})`)
   else if (audit.status !== 0) finding('critical', 'replay-audit', `audit-cutover вернул ${audit.status}: ${short(output, 400)}`)
-  return { status: audit.status, output: short(output, 2000) }
+  return { status: audit.status, output: short(output, 2000), ready: audit.status === 0 }
 }
 
 // Хранилище Rust — SQLite, `tools/audit-cutover.mjs` его не читает: та же
@@ -1448,12 +1509,14 @@ function runCutoverAudit() {
 async function runRustCutoverAudit() {
   const audit = await rustCutoverAudit(storage, CODE)
   if (audit.status !== 0) finding('critical', 'replay-audit', `аудит журнала Rust упал: ${short(audit.output, 400)}`)
+  else if (!audit.report?.ready) finding('critical', 'replay-audit-not-ready', 'аудит журнала Rust завершился без готового состояния: replay или pending projection не подтверждены')
   else if (!audit.report.replay_matched) finding('critical', 'replay-audit', `журнал Rust: загрузка со снимками и replay расходятся (${audit.report.hashes.loaded.slice(0, 12)} ≠ ${audit.report.hashes.replayed.slice(0, 12)})`)
   if (audit.status === 0 && !audit.report.cross_replay_matched) {
     const where = audit.report.cross_replay_error ? `JS-редьюсер отказал на версии ${audit.report.cross_replay_error.at_version}: ${audit.report.cross_replay_error.message}` : `первое расхождение ${JSON.stringify(audit.report.first_difference)}`
     finding('critical', 'cross-replay', `журнал Rust, переигранный JS-редьюсером, даёт другое состояние: ${short(where, 500)}`)
   }
-  return { status: audit.status, output: short(audit.output, 2000) }
+  const ready = audit.status === 0 && audit.report?.ready === true
+  return { status: ready ? 0 : (audit.status ?? 1), ready, report: audit.report, output: short(audit.output, 2000) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1531,16 +1594,19 @@ async function tradeAtMerchant() {
  * договор) — когда окно их предлагает. Прощание не выбирается: окно и так
  * закрывается, когда вопросов не осталось.
  */
-async function talkThroughDialogues(reason = '', { limit = 24 } = {}) {
+async function talkThroughDialogues(reason = '', { limit = 24, speaker, options } = {}) {
   const tried = new Set()
   for (let step = 0; step < limit; step += 1) {
     const state = await room()
-    if (state.mechanics.combat?.active || state.law?.encounter) return
+    if (lifecycleStatus(state) !== 'active' || state.mechanics.combat?.active || state.law?.encounter) return
     let choice = null
     for (const heroId of heroIds()) {
       const view = (await room(accountFor(heroId))).scene_dialogues ?? {}
       for (const [npcId, dialogue] of Object.entries(view)) {
-        const option = (dialogue.options ?? []).find((entry) => !entry.asked && !entry.ends && !tried.has(`${heroId}:${npcId}:${entry.id}`))
+        if (speaker && npcId !== speaker) continue
+        const offered = dialogue.options ?? []
+        const candidates = options ? options.map((id) => offered.find((entry) => entry.id === id)).filter(Boolean) : offered.filter((entry) => !entry.asked)
+        const option = candidates.find((entry) => !entry.ends && !tried.has(`${heroId}:${npcId}:${entry.id}`))
         if (option) { choice = { heroId, npcId, option }; break }
       }
       if (choice) break
@@ -1565,13 +1631,25 @@ async function talkThroughDialogues(reason = '', { limit = 24 } = {}) {
     }
     const mechanics = result.body?.mechanics ?? []
     const chosen = mechanics.find((event) => event.event_type === 'DialogueOptionChosen')?.payload
-    stats.dialogue.chosen += 1
-    stats.dialogue.npcs[npcName] = (stats.dialogue.npcs[npcName] ?? 0) + 1
+    if (chosen) {
+      stats.dialogue.chosen += 1
+      stats.dialogue.npcs[npcName] = (stats.dialogue.npcs[npcName] ?? 0) + 1
+    }
     if (mechanics.some((event) => event.event_type === 'KnowledgeRevealed')) stats.dialogue.reveals += 1
     if (mechanics.some((event) => /^Scenario|ItemGranted/u.test(String(event.event_type)))) stats.dialogue.actions += 1
     const reply = String(chosen?.reply ?? result.body?.narration ?? '')
     if (chosen?.check) note(`> 🎲 ${chosen.check.skill}: ${chosen.check.total} против СЛ ${chosen.check.dc} → ${chosen.check.success ? 'успех' : 'провал'}`)
     if (reply) { note(`> ${short(reply, 1200)}`); narrations.push({ kind: 'dialogue', action: option.label, label: npcName, text: reply }) }
+    if (mechanics.some((event) => event.event_type === 'ScenarioTreatyConcluded')) return result.body
+    if (mechanics.some((event) => event.event_type === 'PartyDecisionOpened')) {
+      const ballot = (await room()).agentInteraction
+      if (ballot?.scenarioTreaty && ballot.status === 'open') {
+        const accept = ballot.options.find((entry) => entry.id === 'accept')
+        if (!accept) throw new Error('В карточке договора нет варианта принятия условий')
+        const receipt = await voteForOption(ballot, accept)
+        if (receipt?.state?.mechanics?.campaign_lifecycle?.ending?.id === 'treaty') return receipt
+      }
+    }
     if (reason) await settleInteraction(`dialogue:${reason}`)
   }
 }
@@ -1610,7 +1688,8 @@ async function openingScene() {
   const owner = accounts.owner.heroId
   const guest = accounts.guest.heroId
   await talkThroughDialogues('opening')
-  const accepted = await request(`/api/campaigns/${CODE}/quests/accept`, { method: 'POST', account: accounts.owner, key: `bot-quest-${randomUUID()}`, body: { actor_id: owner, quest_id: 'quest:astohan-crown-report', idempotency_key: `bot-quest-${randomUUID()}` } })
+  const key = `bot-quest-${randomUUID()}`
+  const accepted = await request(`/api/campaigns/${CODE}/quests/accept`, { method: 'POST', account: accounts.owner, key, body: { actor_id: owner, quest_id: 'quest:astohan-crown-report', idempotency_key: key } })
   if (accepted.status !== 200) finding('major', 'quest-accept', `принять «Вернуть донесение короне»: ${accepted.status} ${accepted.body?.code ?? ''} — ${short(accepted.body?.error, 200)}`)
   await settleInteraction('quest')
   state = await room()
@@ -1625,6 +1704,101 @@ async function openingScene() {
   await settleInteraction('opening')
   await director('Продолжить приключение')
   await settleInteraction('opening-director')
+}
+
+/** Обычные диалоги и соседние дороги. Эпилог должен появиться в результате
+ * переговоров, до следующего хода или обращения к Режиссёру. */
+async function playTreatyRoute() {
+  const talk = (speaker, options) => talkThroughDialogues('', { speaker: `astohan-${speaker}`, options })
+  await talk('ares', ['vulkanis-eyes'])
+  await talk('oren', ['journal-for-the-truth', 'journal'])
+  await talk('ares', ['confession'])
+
+  const stops = ['mirror-lake', 'mittlayd', 'quiet-watch-camp', 'mittlayd', 'mirror-lake', 'stormberg', 'ash-watch', 'obsidian-pass', 'vulkanis-brazier']
+  for (const stop of stops) {
+    const id = `astohan-${stop}`
+    if ((await room()).worldMap?.currentLocationId !== id && !await travelTo(id)) throw new Error(`Отряд не дошёл до ${id}`)
+    const arrived = await room()
+    await trackScene(arrived)
+    stage(`Путь к договору · ${arrived.scene.location}`)
+    if (stop === 'quiet-watch-camp') await talk('gedrik', ['read', 'confess-guilt', 'confess-journal', 'confess-press'])
+    if (stop === 'stormberg') await talk('ares', ['confession'])
+  }
+
+  const reply = await talk('sargat', ['treaty'])
+  if (!reply) throw new Error('Отряд исчерпал доступные варианты переговоров, Саргат не принял договор')
+  const after = await room()
+  const lifecycle = after.mechanics?.campaign_lifecycle
+  const replyLifecycle = (reply.state ?? reply.authoritative_state)?.mechanics?.campaign_lifecycle
+  stats.treatyReceipt = {
+    reply_status: replyLifecycle?.status ?? null,
+    room_status: lifecycle?.status ?? null,
+    ending: lifecycle?.ending?.id ?? null,
+    state_version: after.state_version,
+    epilogue_visible: Boolean(lifecycle?.epilogue?.trim()),
+  }
+  if (lifecycle?.status !== 'completed' || lifecycle.ending?.id !== 'treaty' || !lifecycle.epilogue?.trim()
+    || (replyLifecycle && replyLifecycle.status !== 'completed') || after.mechanics.combat?.active) {
+    throw new Error(`Договор принят, но игрок не получил эпилог сразу: статус ${lifecycle?.status}, исход ${lifecycle?.ending?.id ?? '—'}`)
+  }
+  note(`- Договор принят. До нового хода Режиссёра игрок видит эпилог «${lifecycle.ending.title}» (версия ${after.state_version}).`)
+  return after
+}
+
+async function lairOpening() {
+  let state = await new CampaignBootstrapper().create({
+    code: CODE, partyName: 'Пепельный отряд', worldTemplateId: TEMPLATE_ID,
+    players: accounts.players.map((account, index) => createCharacterSlot({ id: account.heroId, index })),
+    rulesetId: RULESET_ID, startLevel: START_LEVEL, campaignMode: 'adventure',
+  })
+  const architect = new SceneArchitectAgent()
+  for (const location of ROUTE_PLAN) {
+    const planned = await architect.plan({ state, decision: 'Идём в ' + location, destinationLocationId: location })
+    state = resolveCommands([{ command_type: 'AdvanceScene', command_id: 'finale-opening-' + location, scene_args: planned.sceneArgs }], state, {
+      diceService: fixedDice(10), context: { isAdmin: true },
+    }).state
+  }
+  if (state.scene?.location_id !== LAIR) throw new Error('Не удалось подготовить карту Жаровни')
+  return { ...state, locationMaps: {} }
+}
+
+async function playFinaleCombat() {
+  stage('Изолированный бой: Жаровня Вулканиса')
+  const state = await room()
+  await trackScene(state)
+  if (state.scene?.location_id !== LAIR || state.mechanics.combat?.active || lifecycleStatus(state) !== 'active') {
+    throw new Error('Начальное состояние должно быть в логове до начала боя')
+  }
+  await director('Ищем бой с Саргатом и его слугами')
+  await settleInteraction('finale-combat')
+  const started = await room(accounts.admin)
+  const boss = started.enemies.find((enemy) => enemy.id === SARGAT)
+  if (!started.mechanics.combat?.active || !(boss?.hp > 0) || boss.hp !== boss.maxHp) {
+    throw new Error('Режиссёр не запустил бой с Саргатом с полными ОЗ')
+  }
+  note('- Саргат начинает бой с ' + boss.hp + '/' + boss.maxHp + ' ОЗ')
+  const ended = await playCombat('Саргат')
+  if (!ended.mechanics.combat.active && lifecycleStatus(ended) === 'active') await director('Продолжить приключение')
+}
+
+async function followDirectRoute() {
+  const waypoints = ['astohan-ash-watch', 'astohan-mittlayd', 'astohan-obsidian-pass', LAIR]
+  for (const target of waypoints) {
+    stage('Дорога: ' + target)
+    let state = await room()
+    for (let hop = 0; hop < 8 && state.scene?.location_id !== target && timeLeft() > 0; hop += 1) {
+      await travelTo(target)
+      const after = await room()
+      if (state.scene?.location_id === after.scene?.location_id && state.state_version === after.state_version) break
+      state = after
+      await trackScene(state)
+    }
+    if (state.scene?.location_id !== target) throw new Error('Отряд не дошёл до ' + target + ': ' + state.scene?.location)
+    await trackScene(state)
+    if (target === 'astohan-ash-watch') await say(accounts.guest.heroId, 'Осматриваю распахнутые ворота и выжженную землю у входа. Ищу следы, по которым можно понять, кто открыл ворота перед пожаром.', { label: 'ворота заставы' })
+    if (target === 'astohan-mittlayd') await talkThroughDialogues('mittlayd')
+  }
+  await playUntilFinale()
 }
 
 async function playUntilFinale() {
@@ -1667,7 +1841,7 @@ async function playUntilFinale() {
     const arc = state.autonomy?.pacing ?? {}
     // По сценарию финал — логово Саргата, а не номер главы.
     const finale = state.campaignConcept?.arc?.scenario_id
-      ? state.scene?.location_id === LAIR
+      ? state.scene?.location_id === 'astohan-vulkanis-brazier'
       : Number(state.adventure?.chapter) >= Number(state.campaignConcept?.arc?.target_scenes ?? 99)
     const action = idleDirector >= 3 ? 'Перейти дальше' : finale || arc.phase === 'climax' ? 'Ищем бой с Саргатом и его слугами' : idleDirector === 1 ? 'Ищем бой с теми, кто разорил эти земли' : 'Продолжить приключение'
     const before = state.state_version
@@ -1807,6 +1981,7 @@ function narrationScore(quality, judge) {
 /** Согласованность 1–10: расхождения с картой и механикой на сверенный ответ, вместе с оценкой судьи. */
 function consistencyScore(judge) {
   if (!stats.consistencyChecked && !Object.keys(stats.consistency).length) return null
+  if (stats.loreTraceUnverifiedAnswers > 0 || (stats.loreTraceAnswers > 0 && stats.loreTraceClaimsChecked === 0)) return null
   const issues = findings.filter((entry) => entry.kind.startsWith('consistency-'))
   const severe = issues.filter((entry) => entry.severity !== 'minor').length
   const minor = issues.length - severe
@@ -1816,11 +1991,16 @@ function consistencyScore(judge) {
 }
 function consistencyDetail(judge) {
   const top = Object.entries(stats.consistency).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([code, count]) => `${code} ×${count}`).join(', ')
-  return `сверено ответов ${stats.consistencyChecked}, сцен ${stats.scenes.length}; расхождения: ${top || 'нет'}${judge?.consistency_average != null ? `; судья по согласованности ${judge.consistency_average}/5` : ''}`
+  const lore = stats.loreTraceAnswers > 0
+    ? `; ответов хранителя сверено ${stats.loreTraceAnswers - stats.loreTraceUnverifiedAnswers} из ${stats.loreTraceAnswers}, утверждений в источниках ${stats.loreTraceClaimsChecked}`
+    : ''
+  const coverage = stats.loreTraceUnverifiedAnswers > 0 ? `; непроверенных ответов ${stats.loreTraceUnverifiedAnswers}, балл не выставлен` : ''
+  return `сверено ответов ${stats.consistencyChecked}, сцен ${stats.scenes.length}${lore}${coverage}; расхождения: ${top || 'нет'}${judge?.consistency_average != null ? `; судья по согласованности ${judge.consistency_average}/5` : ''}`
 }
 
 function grade(final, usage, audit, quality, judge) {
   const status = lifecycleStatus(final)
+  const endingId = String(final?.mechanics?.campaign_lifecycle?.ending?.id ?? '')
   const blockers = findings.filter((entry) => entry.severity === 'blocker').length
   const critical = findings.filter((entry) => entry.severity === 'critical').length
   const major = findings.filter((entry) => entry.severity === 'major').length
@@ -1839,7 +2019,7 @@ function grade(final, usage, audit, quality, judge) {
     // пересчитан на его фактическую длительность.
     // Бот говорит в разы чаще людей, поэтому вечер пересчитывается не по
     // времени, а по числу реплик: ~150 реплик отряда за три часа игры.
-    { id: 8, name: 'Бюджет', score: !LIVE ? null : usage?.per_evening_rub == null ? 5 : usage.per_evening_rub <= 50 ? 10 : usage.per_evening_rub <= 75 ? 6 : 3, detail: LIVE ? `вызовов модели ${usage?.requests ?? '?'}, токенов ${usage?.tokens ?? '?'}, ≈${usage?.cost_rub ?? '?'} ₽ (${usage?.cost_source ?? '?'}); ≈${usage?.per_action_rub ?? '?'} ₽ на реплику, вечер в ${EVENING_ACTIONS} реплик ≈${usage?.per_evening_rub ?? '?'} ₽ (цель ≤ 50 ₽)` : 'без модели не меряется' },
+    budgetCriterion(LIVE, usage),
     { id: 'Т', name: 'Текст рассказчика', score: narrationScore(quality, judge), detail: `${quality.samples} ответов, в среднем ${quality.average_chars} знаков; повторы ${quality.repeated_share_pct} %, пересечение 3-грамм ${quality.ngram_overlap_pct} %, штампов ${quality.cliches}, служебных кодов ${quality.raw_identifiers}, коротких ${quality.short_share_pct} %${judge?.average != null ? `; судья ${judge.model}: ${judge.average}/5` : ''}` },
     { id: 'С', name: 'Согласованность', score: consistencyScore(judge), detail: consistencyDetail(judge) },
     { id: 'Р', name: 'Разговор', score: npcTalkScore(), detail: npcTalkDetail() },
@@ -1848,7 +2028,7 @@ function grade(final, usage, audit, quality, judge) {
   const scored = criteria.filter((entry) => entry.score != null)
   const average = scored.reduce((sum, entry) => sum + entry.score, 0) / scored.length
   const overall = Math.max(1, Math.round((average - blockers * 1.5 - critical * 1) * 10) / 10)
-  return { criteria, overall, blockers, critical, major, status, p50, p95 }
+  return { criteria, overall, blockers, critical, major, status, ending: endingId || null, victory: victoryFor(endingId), p50, p95 }
 }
 
 /** Доля отписок среди реплик собеседников: ≤ 5 % — разговор даёт сведения. */
@@ -1878,34 +2058,13 @@ function npcTalkDetailFree() {
 }
 
 /** Реплик отряда (свободных и шагов Режиссёра) за трёхчасовой вечер — для пересчёта цены. */
-const EVENING_ACTIONS = 150
-
 async function usageReport() {
   const usage = await request('/api/admin/usage', { account: accounts.admin })
-  if (usage.status !== 200) return null
-  // Учёт расхода сервера (`server/usage-ledger.mjs`) называет токены и цену
-  // поставщика; если поставщик цену не прислал, она оценивается по каталогу.
-  const report = usage.body.usage ?? {}
-  const architect = usage.body.architect ?? {}
-  const requests = (report.requests ?? 0) + (architect.requests ?? 0)
-  const tokens = (report.committed_tokens ?? 0) + (architect.committed_tokens ?? 0)
-  let costRub = Number(report.provider_cost ?? 0) + Number(architect.provider_cost ?? 0)
-  let costSource = 'цена поставщика'
-  if (!(costRub > 0) && tokens > 0) {
-    const env = (() => { try { return readFileSync(join(ROOT, '.env'), 'utf8') } catch { return '' } })()
-    const model = process.env.DND_AI_MODEL || /^DND_AI_MODEL=(.+)$/mu.exec(env)?.[1]?.trim() || ''
-    const pricing = modelPricing(model)
-    costRub = callCostRub({ prompt_tokens: report.input_tokens ?? 0, completion_tokens: report.output_tokens ?? 0 }, pricing)
-    costSource = pricing ? `оценка по каталогу для ${model}` : 'нет цены'
-  }
-  const perAction = costRub / Math.max(1, stats.narrate + stats.directorSteps)
-  return {
-    requests, tokens, input_tokens: report.input_tokens ?? null, output_tokens: report.output_tokens ?? null,
-    failed_requests: report.failed_requests ?? null,
-    cost_rub: Math.round(costRub * 100) / 100, cost_source: costSource,
-    per_action_rub: Math.round(perAction * 1000) / 1000,
-    per_evening_rub: Math.round(perAction * EVENING_ACTIONS * 100) / 100,
-  }
+  if (usage.status !== 200 || !usage.body.usage) return null
+  // Каталог даёт только оценку. При каскаде суммарные токены нельзя отнести
+  // к одному тарифу, а реальный расход поставщика остаётся в журнале.
+  const model = usage.body.models?.length === 1 ? usage.body.models[0].model : ''
+  return playthroughUsage(usage.body.usage, stats.narrate + stats.directorSteps, model, model ? modelPricing(model) : null)
 }
 
 function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
@@ -1928,7 +2087,7 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
   const md = [
     `# Прогон «Асстоханские равнины» — ${STAMP}${IMPL === 'rust' ? ' · сервер Rust' : ''}`,
     '',
-    `Режим: **${LIVE ? 'с моделью' : 'без модели'}**${SEED != null ? `, сид костей ${SEED}` : ''} · ${RUN_MODE} · длительность ${minutes} мин · исход кампании **${scorecard.status}** · итоговая оценка **${scorecard.overall}/10**`,
+    `Режим: **${LIVE ? 'вызовы модели включены' : 'без модели'}**${SEED != null ? `, сид костей ${SEED}` : ''} · длительность ${minutes} мин · исход кампании **${scorecard.status}${scorecard.ending ? ` (${scorecard.ending})` : ''}** · итоговая оценка **${scorecard.overall}/10**`,
     `Блокеров ${scorecard.blockers}, критичных ${scorecard.critical}, серьёзных ${scorecard.major}, мелких ${findings.length - scorecard.blockers - scorecard.critical - scorecard.major}.`,
     '',
     '## Критерии цели «Первый вечер без ведущего»',
@@ -1998,75 +2157,13 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
     }),
   ].join('\n') + '\n')
   writeFileSync(join(OUT, 'transcript.md'), `# Хроника прогона ${STAMP}\n${transcript.join('\n')}\n`)
-  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, impl: IMPL, live: LIVE, mode: RUN_MODE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, narration: { quality, judge }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
+  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, impl: IMPL, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, narration: { quality, judge }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
   const serverErrors = logs.split('\n').filter((line) => /error|ошибк|exception|unhandled/iu.test(line) && !/ROUTERAI|api[_-]?key/iu.test(line)).slice(0, 60)
   writeFileSync(join(OUT, 'server-errors.log'), serverErrors.join('\n'))
 }
 
 // ---------------------------------------------------------------------------
 // Прогон
-
-async function lairOpening() {
-  let state = await new CampaignBootstrapper().create({
-    code: CODE, partyName: 'Пепельный отряд', worldTemplateId: TEMPLATE_ID,
-    players: accounts.players.map((account, index) => createCharacterSlot({ id: account.heroId, index })),
-    rulesetId: RULESET_ID, startLevel: START_LEVEL, campaignMode: 'adventure',
-  })
-  const architect = new SceneArchitectAgent()
-  for (const location of ROUTE_PLAN) {
-    const { sceneArgs } = await architect.plan({ state, decision: `Идём в ${location}`, destinationLocationId: location })
-    state = resolveCommands([{ command_type: 'AdvanceScene', command_id: `finale-opening-${location}`, scene_args: sceneArgs }], state, {
-      diceService: fixedDice(10), context: { isAdmin: true },
-    }).state
-  }
-  if (state.scene?.location_id !== LAIR) throw new Error('Не удалось подготовить карту Жаровни')
-  // В отдельном бою прежние карты не понадобятся. Импорт ограничен 1 МБ.
-  return { ...state, locationMaps: {} }
-}
-
-async function playFinaleCombat() {
-  stage('Изолированный бой: Жаровня Вулканиса')
-  const state = await room()
-  await trackScene(state)
-  if (state.scene?.location_id !== LAIR || state.mechanics.combat?.active || lifecycleStatus(state) !== 'active') {
-    throw new Error('Начальное состояние должно быть в логове до начала боя')
-  }
-  await director('Ищем бой с Саргатом и его слугами')
-  await settleInteraction('finale-combat')
-  const started = await room(accounts.admin)
-  const boss = started.enemies.find((enemy) => enemy.id === SARGAT)
-  if (!started.mechanics.combat?.active || !(boss?.hp > 0) || boss.hp !== boss.maxHp) {
-    throw new Error('Режиссёр не запустил бой с Саргатом с полными ОЗ')
-  }
-  note(`- Саргат начинает бой с ${boss.hp}/${boss.maxHp} ОЗ; отряд: ${started.players.map((hero) => `${hero.character} ${hero.hp}/${hero.maxHp} ОЗ`).join(', ')}`)
-  const ended = await playCombat('Саргат')
-  // Победа и бегство возвращают игрокам кнопку продолжения после боя.
-  if (!ended.mechanics.combat.active && lifecycleStatus(ended) === 'active') {
-    await director('Продолжить приключение')
-  }
-}
-
-async function followDirectRoute() {
-  const waypoints = ['astohan-ash-watch', 'astohan-mittlayd', 'astohan-obsidian-pass', LAIR]
-  for (const target of waypoints) {
-    stage(`Дорога: ${target}`)
-    let state = await room()
-    for (let hop = 0; hop < 8 && state.scene?.location_id !== target && timeLeft() > 0; hop += 1) {
-      await travelTo(target)
-      const after = await room()
-      if (state.scene?.location_id === after.scene?.location_id && state.state_version === after.state_version) break
-      state = after
-      await trackScene(state)
-    }
-    if (state.scene?.location_id !== target) throw new Error(`Отряд не дошёл до ${target}: ${state.scene?.location}`)
-    await trackScene(state)
-    if (target === 'astohan-ash-watch') {
-      await say(accounts.guest.heroId, 'Осматриваю распахнутые ворота и выжженную землю у входа. Ищу следы, по которым можно понять, кто открыл ворота перед пожаром.', { label: 'ворота заставы' })
-    }
-    if (target === 'astohan-mittlayd') await talkThroughDialogues('mittlayd')
-  }
-  await playUntilFinale()
-}
 
 async function main() {
   stage('Подготовка')
@@ -2086,14 +2183,14 @@ async function main() {
   const creator = FINALE_COMBAT ? accounts.admin : accounts.owner
   const created = await request('/api/campaigns', { method: 'POST', account: creator, body: {
     code: CODE, name: FINALE_COMBAT ? 'Асстохан: изолированный бой' : 'Асстоханские равнины',
-    ...(FINALE_COMBAT ? { state: await lairOpening() } : {
-      bootstrap: { partyName: 'Пепельный отряд', world: {}, worldTemplateId: TEMPLATE_ID, slotCount: PARTY.length, startLevel: START_LEVEL, rulesetId: RULESET_ID, campaignMode: 'adventure' },
-    }),
+    ...(FINALE_COMBAT
+      ? { state: await lairOpening() }
+      : { bootstrap: { partyName: 'Пепельный отряд', world: {}, worldTemplateId: TEMPLATE_ID, slotCount: PARTY.length, startLevel: START_LEVEL, rulesetId: RULESET_ID, campaignMode: 'adventure' } }),
   } })
   if (created.status !== 201) throw new Error(`Кампания не создана: ${created.status} ${created.text.slice(0, 400)}`)
   note(`Кампания «${created.body.state.campaign}», старт в «${created.body.state.scene.location}», редакция ${created.body.state.ruleset_id}, мир ${created.body.state.worldMap?.locations?.length} мест, отряд: ${PARTY.join(', ')}`)
   for (const account of accounts.players.slice(FINALE_COMBAT ? 0 : 1)) {
-    const invite = await request(`/api/campaigns/${CODE}/invites`, { method: 'POST', account: creator, body: { hero_ids: [account.heroId] } })
+    const invite = await request('/api/campaigns/' + CODE + '/invites', { method: 'POST', account: creator, body: { hero_ids: [account.heroId] } })
     const joined = await request(`/api/campaigns/${CODE}/join`, { method: 'POST', account, body: { invite_token: invite.body?.token } })
     if (joined.status !== 200) throw new Error(`Игрок ${account.name} не вошёл: ${joined.status} ${joined.text.slice(0, 300)}`)
   }
@@ -2101,13 +2198,12 @@ async function main() {
   await checkGuestProjection('до первой реплики')
 
   stage('Создание героев 7-го уровня')
-  const catalog = await request(`/api/rulesets/${RULESET_ID}/character-creation`, { account: accounts.owner })
-  if (catalog.status !== 200) throw new Error(`Каталог создания героя: ${catalog.status}`)
+  const catalog = await request('/api/rulesets/' + RULESET_ID + '/character-creation', { account: accounts.owner })
+  if (catalog.status !== 200) throw new Error('Каталог создания героя: ' + catalog.status)
   const built = []
   for (const account of accounts.players) built.push(await buildHero(account, account.plan, catalog.body))
   if (!built.every(Boolean)) throw new Error('Герои не созданы — дальше прогон не имеет смысла')
 
-  playStarted = true
   if (!FINALE_COMBAT) await openingScene()
   if (VISIT.length) {
     for (const target of VISIT) {
@@ -2124,20 +2220,26 @@ async function main() {
 Кампания ${CODE}, вход владельца — player1@astohan.test`)
     return room()
   }
-  if (FINALE_COMBAT) await playFinaleCombat()
-  else if (DIRECT_ROUTE) await followDirectRoute()
-  else {
+  let final
+  if (FINALE_COMBAT) {
+    await playFinaleCombat()
+    final = await room()
+  } else if (DIRECT_ROUTE) {
+    final = await followDirectRoute()
+  } else if (flag('treaty')) {
+    final = await playTreatyRoute()
+  } else {
     if (await travelTo('astohan-ash-watch')) await trackScene(await room())
-    await playUntilFinale()
+    final = await playUntilFinale()
   }
 
   stage('Проверки целостности')
-  await checkIdempotency()
+  if (!stats.retryCheck) finding('critical', 'idempotency-unchecked', 'в прогоне не проверен повтор принятой заявки')
   await checkGuestProjection('в конце прогона')
   if (stats.restarts === 0) await restartAndCompare('в конце')
-  const final = await room()
-  if (lifecycleStatus(final) === 'active' && FINALE_COMBAT) {
-    finding('blocker', 'finale-combat-unresolved', 'Бой с Саргатом не привёл к эпилогу после обычного продолжения')
+  final = await room()
+  if (lifecycleStatus(final) === 'active' && (FINALE_COMBAT || DIRECT_ROUTE)) {
+    finding('blocker', 'finale-combat-unresolved', 'Изолированный режим не привёл к завершённому эпилогу')
   } else if (lifecycleStatus(final) === 'active') {
     finding('major', 'not-completed', `за ${MINUTES} мин кампания не дошла до финала: глава ${final.adventure?.chapter}, «${final.scene?.location}», фаза ${final.autonomy?.pacing?.phase ?? '?'}`)
   } else {
@@ -2161,7 +2263,8 @@ if (LIVE) {
   startServer()
   try { await waitForHealth(); usage = await usageReport() } catch { /* без замера */ }
   await stopServer()
-  if (!usage?.requests) finding('critical', 'live-without-model', 'прогон с --live не сделал ни одного вызова модели: сервер работал без ключа или модель недоступна — отчёт описывает игру без модели')
+  if (!usage) finding('critical', 'live-usage-unavailable', 'Журнал расхода недоступен. Успешные вызовы модели подтвердить не удалось.')
+  else if (!usage.completed_requests) finding('critical', 'live-without-model', `Журнал зафиксировал ${usage.requests} попыток обращения к модели и ни одного успешного ответа.`)
 }
 const quality = narrationQuality()
 const sample = narrationSample()
@@ -2172,4 +2275,4 @@ console.log(`\nИтог: ${scorecard.status}, оценка ${scorecard.overall}/
 console.log(`Отчёт: ${relative(ROOT, join(OUT, 'report.md'))}`)
 if (!KEEP) rmSync(storage, { recursive: true, force: true })
 else console.log(`Хранилище оставлено: ${storage}`)
-process.exit(fatal || ((DIRECT_ROUTE || FINALE_COMBAT) && scorecard.status !== 'completed') ? 1 : 0)
+process.exit(fatal || !seedPassed({ scorecard, audit }) ? 1 : 0)

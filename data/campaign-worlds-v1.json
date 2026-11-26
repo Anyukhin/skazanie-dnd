@@ -4694,7 +4694,8 @@
             "tags": [
               "ancient",
               "tree",
-              "incorruptible"
+              "incorruptible",
+              "anchor:astohan-eldrin-heart:great-tree-eldrin"
             ],
             "mechanics": {
               "profile_id": "astohan:eldrin-v1",
@@ -5153,6 +5154,10 @@
                   "attack_modifier": 10,
                   "damage_expression": "2d10+6",
                   "damage_type": "piercing",
+                  "on_hit": {
+                    "damage_expression": "1d6",
+                    "damage_type": "fire"
+                  },
                   "range_feet": 10,
                   "tactical_priority": 8
                 },

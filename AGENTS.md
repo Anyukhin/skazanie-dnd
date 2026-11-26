@@ -132,7 +132,7 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v8.txt` | исходная ситуация, заготовки (`secrets`), якоря первой карты |
 | `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v10.txt` | прочтение свободного действия, маршрут (`check`/`travel`/`talk`/`clarify`) и деталь успеха (`success_detail`) |
 | `server/campaign-recap.mjs` | `prompts/recap/v1.txt` | рекап «в прошлой серии» |
-| `server/lore-voice.mjs` | `prompts/lore_keeper/v1.txt` | ответ «что мы знаем» голосом ведущего: пересказ материала, отобранного `answerKnownLore`, без новых имён и фактов |
+| `server/lore-voice.mjs` | `prompts/lore_keeper/v2.txt` | порядок известных сведений в ответе «что мы знаем». Текст свидетельства и имя говорящего берутся из материала `answerKnownLore` |
 | `server/hero-hooks.mjs` | `prompts/hero_hooks/v1.txt` | зацепки из предысторий героев: скрытые `gm_secret` с `hero_id`, личная нить; стадия `hero-hooks` после коммита |
 
 Других загрузок промптов нет. Остальные файлы в `prompts/` — прежние версии тех
@@ -154,8 +154,8 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 список вариантов). `worldkeeper` (детерминированный `answerKnownLore`) и
 `game_master` (Rules Engine) — без `prompt_id`. Сторож —
 `test/player-request-router.test.mjs`. Материал хранителя отбирает
-`answerKnownLore`; голосом ведущего его пересказывает `lore-voice`
-(`lore_keeper/v1`), а не прошедший проверку пересказ уступает серверному ответу.
+`answerKnownLore`. Модель `lore_keeper/v2` предлагает порядок ссылок,
+`lore-voice` проверяет их и собирает текст. При ошибке игрок видит исходную сводку.
 
 **Сценарий авторской кампании:** `campaign-scenario` читает
 `data/campaign-scenarios-v1.json` (сюжет для людей — `docs/astohan-scenario.md`).

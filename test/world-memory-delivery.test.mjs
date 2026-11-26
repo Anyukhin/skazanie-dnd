@@ -188,3 +188,30 @@ test('без совпадений с памятью рассказчик не п
   assert.deepEqual(brief.known_environment.world_memory.facts, [])
   assert.doesNotMatch(JSON.stringify(brief.known_environment.world_memory), /Брам должен/u)
 })
+
+test('общий NarrationBrief не теряет факт за тремя более сильными записями', async () => {
+  const state = campaign({
+    worldMemory: {
+      entities: [{ id: 'location:gates', kind: 'location', name: 'Северные ворота', summary: '', visibility: 'party' }],
+      facts: [{
+        id: 'fact:trail', subject_id: 'location:gates', predicate: 'mark', object: 'старая отметка',
+        summary: 'На камне осталась отметка.', visibility: 'party', source_event_ids: ['event:trail'], recorded_at_minutes: 0,
+      }],
+      relationships: [{
+        id: 'relationship:trail', from_entity_id: 'location:gates', to_entity_id: 'location:gates', relation: 'near',
+        summary: 'У северных ворот виден след каравана.', visibility: 'party', status: 'active', source_event_ids: ['event:relationship'], recorded_at_minutes: 0,
+      }],
+      quests: [{
+        id: 'quest:trail', title: 'След каравана', summary: 'Найти след каравана у северных ворот.', status: 'active',
+        visibility: 'party', entity_ids: ['location:gates'], objectives: [], recorded_at_minutes: 0,
+      }],
+      threads: [{
+        id: 'thread:trail', title: 'След каравана', summary: 'След каравана ведёт к северным воротам.', status: 'active',
+        visibility: 'party', entity_ids: ['location:gates'], source_event_ids: ['event:thread'], recorded_at_minutes: 0,
+      }],
+      epistemic_claims: [], summaries: [], knowledge_ledger: [],
+    },
+  })
+  const { brief } = await runNarration(state, 'hero', { command_type: 'ApplyHealing', actor_id: 'hero', amount: 1 })
+  assert.ok(brief.known_environment.world_memory.facts.some((fact) => fact.id === 'fact:trail'))
+})

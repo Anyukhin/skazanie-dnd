@@ -33,7 +33,7 @@ for (const path of emittedFiles(buildDir).filter((candidate) => candidate.endsWi
   writeFileSync(path, rewritten)
   renameSync(path, path.replace(/\.js$/u, '.mjs'))
 }
-const { createSpellEffect3D } = await import(pathToFileURL(join(buildDir, 'src/board3d-spell-effects.mjs')).href)
+const { createPersistentSpellEffect3D, createSpellEffect3D } = await import(pathToFileURL(join(buildDir, 'src/board3d-spell-effects.mjs')).href)
 function map(hidden = []) {
   const value = createTacticalMap({ width: 12, height: 12, locationId: 'spell-effects-test', fill: { passable: true, revealed: true, material: 'stone' } })
   hidden.forEach(({ x, y }) => setCell(value, x, y, { revealed: false }))
@@ -417,6 +417,41 @@ test('projectile, aura и channel-семейства получают bounded 3D
     assert.ok(effect.group.children.some((child) => child.visible), cue.id)
     effect.dispose()
   }
+})
+
+test('guardian-of-faith получает неподвижного стража на открытой точке и не попадает в picker', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const cue = {
+    id: 'guardian', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'guardian-of-faith',
+    school: 'conjuration', center: { x: 5, y: 5 }, shape: 'sphere', sizeFeet: 10,
+    durationMs: 480, motion: 'reduced', detail: 'reduced',
+  }
+  const effect = createSpellEffect3D(cue, actors, board)
+  assert.ok(effect)
+  assert.equal(effect.group.userData.guardianOfFaith, true)
+  const bodies = effect.group.children.filter(child => child.isMesh)
+  assert.ok(bodies.length >= 5, 'щит, голова, корпус, копьё и граница круга')
+  effect.update(.5)
+  assert.ok(effect.group.visible)
+  assert.ok(bodies.every(child => child.userData?.board3dPickable !== true && child.raycast), 'визуал не добавляет цели выбора')
+  effect.dispose()
+  assert.equal(effect.group.parent, null)
+})
+
+test('persistent guardian projection создаёт 3D-маркер только при раскрытии и освобождает его', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const open = decodeTacticalMap(map())
+  const hidden = decodeTacticalMap(map([{ x: 5, y: 5 }]))
+  const projection = { id: 'guardian:1', kind: 'area', spellId: 'guardian-of-faith', center: { x: 5, y: 5 }, shape: 'sphere', sizeFeet: 10 }
+  const absent = createPersistentSpellEffect3D(projection, actors, hidden)
+  assert.equal(absent, null)
+  const present = createPersistentSpellEffect3D(projection, actors, open)
+  assert.ok(present)
+  present.update(.5)
+  assert.equal(present.group.userData.guardianOfFaith, true)
+  present.dispose()
+  assert.equal(present.group.parent, null)
 })
 
 test('линия не пересекает стену, а крупный заклинатель получает area cue', async () => {

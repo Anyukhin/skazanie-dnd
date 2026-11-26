@@ -687,6 +687,13 @@ export function answerKnownLore(action, state = {}, options = {}) {
     const best = sentences.map((sentence, index) => ({ sentence, index, score: relevance(sentence) }))
       .sort((left, right) => right.score - left.score || left.index - right.index)[0]
     const next = sentences[best.index + 1]
+    const previous = sentences[best.index - 1]
+    // Речь часто начинается с короткого подлежащего («Молодой красный. Три
+    // месяца…»). Если взять только вторую фразу, имя собеседника формально
+    // останется снаружи цитаты, а субъект действия потеряется. Возвращаем обе
+    // исходные фразы, когда выбранная начинается с даты или продолжения.
+    const continuation = /^(?:\d|ноль|один|два|три|четыре|пять|шесть|семь|восемь|девять|десять|сегодня|вчера|завтра|назад|через|последн\p{L}*|раз\s+в)/iu.test(best.sentence)
+    if (previous && continuation && previous.length + best.sentence.length <= 220) return visibleText(`${previous} ${best.sentence}`, 240)
     return visibleText(next && best.sentence.length + next.length <= 220 ? `${best.sentence} ${next}` : best.sentence, 240)
   }
   const ranked = (items, score) => items

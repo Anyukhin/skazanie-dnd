@@ -602,7 +602,7 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
     ['map_architect/v8', 'map_architect/v8'],
     ['recap/v1', 'recap/v1'],
     ['hero_hooks/v1', 'hero_hooks/v1'],
-    ['lore_keeper/v1', 'lore_keeper/v1'],
+    ['lore_keeper/v2', 'lore_keeper/v2'],
   ]
   for (const [fileId, promptId] of prompts) {
     const prompt = await readFile(new URL(`../prompts/${fileId}.txt`, import.meta.url), 'utf8')
@@ -631,7 +631,7 @@ test('контрактным списком покрыта каждая роль
   // Одиннадцать загружаемых промптов на десять ролей: у Режиссёра свой файл
   // на каждый режим импровизации. Десятый — зацепки из предысторий героев
   // (`hero_hooks/v1`), одиннадцатый — голос хранителя знаний
-  // (`lore_keeper/v1`), оба 2026-10-10.
+  // (`lore_keeper/v2`), обновлённый строгий план ссылок.
   assert.equal(loaded.size, 11, `ожидались ровно одиннадцать загружаемых промптов, найдено ${loaded.size}`)
 
   const knownGaps = new Set([])

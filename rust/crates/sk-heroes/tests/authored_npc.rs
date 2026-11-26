@@ -170,6 +170,8 @@ fn sargat_breath_is_a_special_action() {
     assert_eq!(actor["stat_block_id"], json!("astohan:sargat-v1"));
     let breath = actor["special_actions"].as_array().and_then(|list| list.iter().find(|action| action["id"] == "fire-breath")).cloned().expect("дыхание");
     assert_eq!(breath["damage"][0]["expression"], json!("16d6"));
+    let bite = actor["action_profiles"].as_array().and_then(|list| list.iter().find(|action| action["id"] == "sargat-bite")).cloned().expect("укус");
+    assert_eq!(bite["on_hit"], json!({ "damage_expression": "1d6", "damage_type": "fire" }));
     let legendary: Vec<&str> = actor["legendary"]["actions"].as_array().map(|list| list.iter().filter_map(|action| action["id"].as_str()).collect()).unwrap_or_default();
     assert_eq!(legendary, ["tail-sweep", "wing-buffet"]);
     assert_eq!(actor["footprint"], json!({ "version": 1, "size": 2 }));

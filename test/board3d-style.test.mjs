@@ -377,10 +377,21 @@ test('стены стиля: прежние имена групп, двери о
   const built = walls.buildStyledEdges(map, pack, { wallHeight: .95, thickness: 1 / 6, loadTexture: (url, done) => { requested.push(url); done(); return new THREE.Texture() } })
   const wallsGroup = built.group.getObjectByName('cutaway-walls')
   const doors = built.group.getObjectByName('doors')
+  const stoneCourses = built.group.getObjectByName('wall-stone-courses')
   assert.ok(wallsGroup && doors)
   const names = (group) => group.children.map((mesh) => mesh.name).sort()
   // Фахверк: штукатурка и брус; каменная комната — камень; решётка — железо.
   for (const name of ['wall-box:plaster', 'wall-box:timber', 'wall-box:stone', 'wall-box:iron']) assert.ok(names(wallsGroup).includes(name), name)
+  assert.ok(stoneCourses && stoneCourses.children.length > 0, 'каменная стена получает отдельный венец')
+  assert.ok(stoneCourses.children.every((mesh) => mesh.name.startsWith('wall-stone-course:stone')), 'венец использует каменную фактуру')
+  for (const mesh of stoneCourses.children) {
+    const { normal, position } = mesh.geometry.attributes
+    for (let i = 0; i < position.count; i++) {
+      const n = new THREE.Vector3().fromBufferAttribute(normal, i)
+      assert.ok(n.dot(new THREE.Vector3().fromBufferAttribute(position, i)) > 0, 'каменный венец освещается снаружи')
+    }
+  }
+  assert.ok(stoneCourses.children.every((mesh) => mesh.count <= 3 * map.width * map.height), 'венец ограничен малым бюджетом')
   // Доски створки повёрнуты рисунком вдоль (swap), кольца — отдельная форма.
   assert.ok(names(doors).includes('wall-box:planks:swap'))
   assert.ok(names(doors).includes('wall-ring:iron'))

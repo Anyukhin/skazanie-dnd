@@ -566,7 +566,7 @@ test('CastSpell игрока сохраняет список целей, вар�
         materializeCatalogItem('srd_5_2_1:component-pouch', { id: 'hero-component-pouch', quantity: 1 }),
         materializeCatalogItem('srd_5_2_1:diamond-50gp', { id: 'hero-chromatic-orb-diamond', quantity: 1 }),
       ], x: 1, y: 1,
-      knownSpellIds: ['acid-splash', 'chromatic-orb'], preparedSpellIds: ['acid-splash', 'chromatic-orb'] }],
+      knownSpellIds: ['acid-splash', 'chromatic-orb', 'magic-missile'], preparedSpellIds: ['acid-splash', 'chromatic-orb', 'magic-missile'] }],
     enemies: ['first', 'second', 'far'].map((id, index) => ({ id, name: id, hp: 100, maxHp: 100,
       armor: 12, speed: 30, attackBonus: 0, damageDice: 4, damageBonus: 0, attackRange: 5,
       abilities: { str: 10, dex: 10, con: 10, int: 8, wis: 8, cha: 8 }, x: [3, 4, 6][index], y: 1, alive: true })),
@@ -630,6 +630,39 @@ test('CastSpell игрока сохраняет список целей, вар�
   assert.equal(castEvent.payload.spell_option, 'cold')
   assert.equal(castEvent.payload.damage_type, 'cold')
   assert.equal(castEvent.payload.slot_level, 2)
+  const missileTurn = await command(baseUrl, playerCookie, 'missile-next-turn', { command_type: 'EndTurn', actor_id: 'hero' })
+  assertStatus(missileTurn, 200, log)
+  const missileCommand = {
+    command_type: 'CastSpell', actor_id: 'hero', spell_id: 'magic-missile',
+    target_ids: ['first', 'second'], missile_target_ids: ['first', 'first', 'first', 'second'], slot_level: 2,
+  }
+  const missiles = await command(baseUrl, playerCookie, 'missile-3-plus-1', missileCommand)
+  assertStatus(missiles, 200, log)
+  const missileDamage = events(missiles.body, 'DamageApplied').filter((entry) => entry.payload?.spell_id === 'magic-missile')
+  assert.deepEqual(missileDamage.map((entry) => [entry.target_ids[0], entry.payload.projectile_count]).sort(), [['first', 3], ['second', 1]])
+  const missileReplay = await command(baseUrl, playerCookie, 'missile-3-plus-1', missileCommand)
+  assertStatus(missileReplay, 200, log)
+  assert.equal(missileReplay.body.idempotent_replay, true)
+  const missileConflict = await command(baseUrl, playerCookie, 'missile-3-plus-1', { ...missileCommand, missile_target_ids: ['first', 'second', 'second', 'second'] })
+  assertStatus(missileConflict, 409, log)
+  assert.equal(missileConflict.body.code, 'IDEMPOTENCY_CONFLICT')
+
+  for (const [key, allocation, expected] of [
+    ['auto', {}, [['first', 2], ['second', 1]]],
+    ['zero', { missile_target_ids: ['second', 'second', 'second'] }, [['second', 3]]],
+  ]) {
+    const turn = await command(baseUrl, playerCookie, `missile-turn-${key}`, { command_type: 'EndTurn', actor_id: 'hero' })
+    assertStatus(turn, 200, log)
+    const cast = { command_type: 'CastSpell', actor_id: 'hero', spell_id: 'magic-missile', target_ids: ['first', 'second'], slot_level: 1, ...allocation }
+    const salvo = await command(baseUrl, playerCookie, `missile-${key}`, cast)
+    assertStatus(salvo, 200, log)
+    const hits = events(salvo.body, 'DamageApplied').filter((entry) => entry.payload?.spell_id === 'magic-missile')
+    assert.deepEqual(hits.map((entry) => [entry.target_ids[0], entry.payload.projectile_count]).sort(), expected)
+    const retry = await command(baseUrl, playerCookie, `missile-${key}`, cast)
+    assertStatus(retry, 200, log)
+    assert.equal(retry.body.idempotent_replay, true)
+    assert.equal(retry.body.authoritative_state.state_version, salvo.body.authoritative_state.state_version)
+  }
 })
 
 for (const withResistance of [false, true]) test(`площадной урон${withResistance ? ' с Resistance после броска' : ''}: restart, права и однократность реакции`, { timeout: runnerTimeout(45_000) }, async (t) => {
