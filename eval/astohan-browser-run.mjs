@@ -21,7 +21,7 @@ const totalSteps = 12
 const through = throughOption < 0 ? totalSteps : Number(process.argv[throughOption + 1])
 assert.ok(Number.isInteger(through) && through >= 1 && through <= totalSteps, 'доступны шаги --through от 1 до 12')
 const seedOption = process.argv.indexOf('--seed')
-const seed = seedOption < 0 ? 12 : Number(process.argv[seedOption + 1])
+const seed = seedOption < 0 ? (through >= 6 ? 197 : 12) : Number(process.argv[seedOption + 1])
 assert.ok(Number.isSafeInteger(seed), 'сид костей должен быть целым числом')
 const recipes = JSON.parse(await readFile(new URL('../data/astohan-pilot-builds-v1.json', import.meta.url), 'utf8')).builds
 const report = { engine: 'rust', code, seed, mode: through < totalSteps ? 'partial' : 'full', requestedThrough: through,
@@ -199,6 +199,10 @@ function serverSlice(snapshot) {
       x: hero.x, y: hero.y, resources: hero.combatResources, loadout: state.actor_appearances?.[hero.id]?.loadout })),
     npcs: state.scene_npcs?.map(npc => ({ id: npc.id, name: npc.name, x: npc.x, y: npc.y })),
     turn: state.mechanics?.combat?.initiative?.[state.mechanics?.combat?.active_index ?? 0]?.actor_id,
+    initiative: state.mechanics?.combat?.initiative?.map(entry => ({ id: entry.actor_id, value: entry.total,
+      name: state.players.find(actor => actor.id === entry.actor_id)?.character
+        ?? state.enemies?.find(actor => actor.id === entry.actor_id)?.name })),
+    phase: state.turn_phase_actor_ids,
     check: state.pendingCheck?.check_id, decision: state.agentInteraction?.id,
     chronicle: state.messages.slice(-4).map(message => ({ speaker: message.speaker, text: message.text })),
   }
@@ -217,7 +221,12 @@ async function displaySlice(page) {
     const status = [...document.querySelectorAll('.player-hud[aria-label]')].find(node => node.getClientRects().length)?.getAttribute('aria-label')
     const frame = document.querySelector('.board-frame')
     const cells2d = frame ? ['--board-columns', '--board-rows'].map(name => Number(getComputedStyle(frame).getPropertyValue(name))) : null
+    const initiative = [...document.querySelectorAll('.initiative-ribbon.combat li button')].map(node => ({
+      number: Number(node.querySelector('.initiative-order')?.textContent), label: node.getAttribute('aria-label'),
+      active: node.closest('li')?.getAttribute('aria-current') === 'step',
+    }))
     return { view, actors, status, cells2d, canvas: board ? { width: board.width, height: board.height, ...board.dataset } : null,
+      initiative,
       panels: [...document.querySelectorAll('.player-hud, .map-turn-banner, .scene-who-card, .server-column .messages, .pending-check-overlay, .agent-interaction')]
         .map(node => node.innerText.trim().slice(-340)).filter(Boolean) }
   })
@@ -244,7 +253,7 @@ async function receipt(id, title, players) {
       }, { args: [source.location], timeoutMs, label: 'фигурки загружены на текущей карте' })
     }
     const browser = await displaySlice(page)
-    const overlaps = await textOverlaps(page, ['.player-hud', '.scene-who-card', '.map-turn-banner', '.pending-check-overlay', '.agent-interaction'])
+    const overlaps = await textOverlaps(page, ['.player-hud', '.scene-who-card', '.map-turn-banner', '.initiative-ribbon', '.pending-check-overlay', '.agent-interaction'])
     const photo = resolve(output, `${id}-${seat}.png`)
     await page.screenshot(photo, { fullPage: false })
     step.seats.push({ seat, source, browser, overlaps, screenshot: photo })
@@ -464,6 +473,61 @@ async function travelToAshWatch(owner, guest, server, viewerSeats, finish) {
   }
 }
 
+async function ashWatchCombat(owner, server, viewerSeats) {
+  const initial = await readJournal(server, code)
+  await owner.command('Page.bringToFront')
+  await byText(owner, '.app-rail button', 'Опции')
+  await byText(owner, '.setting-row[aria-pressed=false]', 'Домашнее правило: Групповая инициатива')
+  await waitRoom(owner, state => state.enabled_house_rules?.includes('house:group-initiative'), 'включена групповая инициатива')
+  await byText(owner, '.app-rail button', 'Игра')
+  await owner.type('.dialogue-composer textarea', 'Ищем бой')
+  await byText(owner, '.dialogue-composer button[type=submit]', 'Отправить')
+  const heroId = initial.state.players[0].id
+  const combat = await waitRoom(owner, (state) => state.mechanics?.combat?.active
+    && state.turn_phase_actor_ids?.includes(heroId), 'ход героя в бою на заставе')
+  assert.equal(combat.mechanics.combat.group_initiative, true)
+  const partyIds = combat.players.map(hero => hero.id)
+  assert.ok(partyIds.every(id => combat.turn_phase_actor_ids.includes(id)), 'оба героя получили общую фазу хода')
+  const beforeMove = combat.players.find(hero => hero.id === heroId)
+  const adjacent = await owner.evaluate(({ x, y }) => [...document.querySelectorAll('.board-cells button.board-cell[data-cell]')]
+    .map(node => ({ node, at: node.dataset.cell.split(',').map(Number) }))
+    .filter(({ node, at }) => !node.querySelector('[data-actor-id], .door-hotspot') && Math.abs(at[0] - x) + Math.abs(at[1] - y) === 1
+      && !node.className.includes('scene-object'))
+    .map(({ node, at }) => ({ cell: node.dataset.cell, x: at[0], y: at[1] })), beforeMove)
+  assert.ok(adjacent.length, 'на 2D есть соседняя клетка для перемещения')
+  const target = adjacent[0]
+  const cell = `button.board-cell[data-cell="${target.cell}"]`
+  await byText(owner, cell, '')
+  await owner.waitFor(() => document.body.innerText.includes('Нажмите ещё раз, чтобы идти сюда'),
+    { timeoutMs: actionTimeoutMs, label: 'маршрут движения ждёт подтверждения' })
+  const staged = (await room(owner)).state.players.find(hero => hero.id === heroId)
+  assert.deepEqual([staged.x, staged.y], [beforeMove.x, beforeMove.y], 'предпросмотр не переместил героя')
+  await byText(owner, cell, '')
+  await waitRoom(owner, state => state.players.some(hero => hero.id === heroId && hero.x === target.x && hero.y === target.y), 'подтверждённое перемещение героя')
+  const afterMove = await readJournal(server, code)
+  const events = afterMove.events.slice(initial.events.length)
+  const started = events.find(event => event.event_type === 'CombatStarted')
+  assert.equal(started?.payload.group_initiative, true)
+  const moved = events.find(event => event.event_type === 'ActorMoved' && event.actor_id === heroId)
+  assert.deepEqual(moved?.payload.to, { x: target.x, y: target.y })
+  assert.ok(moved.payload.movement_cost > 0)
+  await owner.waitFor(feet => [...document.querySelectorAll('button[title]')]
+    .some(button => button.title.includes(`движение ${feet} фт`) && button.title.includes('Завершить ход')),
+    { args: [moved.payload.movement_remaining], timeoutMs: actionTimeoutMs, label: 'остаток движения в панели совпал с событием' })
+  await receipt('06', 'Бой на заставе, групповая инициатива и движение', viewerSeats)
+  const step = report.steps.at(-1)
+  for (const seat of step.seats) {
+    const order = seat.browser.initiative.toSorted((a, b) => a.number - b.number)
+    assert.equal(order.length, seat.source.initiative.length)
+    for (const [index, row] of order.entries()) {
+      const expected = seat.source.initiative[index]
+      if (expected.name) assert.ok(row.label.startsWith(`Выделить на карте: ${expected.name}`))
+      assert.equal(row.active, expected.id === seat.source.turn)
+    }
+  }
+  step.combat = { move: moved.payload, groupInitiative: started.payload.group_initiative, partyPhase: combat.turn_phase_actor_ids }
+}
+
 await mkdir(output, { recursive: true })
 try {
   const server = await startTestServer({ after: callback => context.push(callback) }, { env: { DND_DATA_DIR: REPO_ROOT, PLAYTEST_DICE_SEED: String(seed) } })
@@ -504,6 +568,10 @@ try {
       if (through >= 4) {
         currentStep = 'Ш4'
         await travelToAshWatch(owner, guest, server, viewerSeats, through >= 5)
+      }
+      if (through >= 6) {
+        currentStep = 'Ш6'
+        await ashWatchCombat(owner, server, viewerSeats)
       }
     } catch (error) {
       report.screenOnFailure = []
