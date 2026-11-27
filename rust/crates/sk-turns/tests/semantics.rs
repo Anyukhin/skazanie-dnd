@@ -365,6 +365,41 @@ fn scheduler_leaves_a_newer_turn_version_in_place_after_a_refused_plan() {
     assert_eq!(event_types(&events), ["ObjectiveUpdated"]);
 }
 
+/// Движок, отвергающий любую атаку кодом, которого нет среди тактических.
+struct RefusedAttacks {
+    inner: RefCell<RulesEngine>,
+    code: &'static str,
+    attempts: Cell<usize>,
+}
+
+impl NpcRulesEngine for RefusedAttacks {
+    fn resolve_plan(&self, commands: &[Value], state: &Value, context: &Value) -> Result<Value, Halt> {
+        if commands.iter().any(|command| command["command_type"] == "MakeAttack") {
+            self.attempts.set(self.attempts.get() + 1);
+            return Err(Halt::Rule(sk_core::RuleError::new(self.code, "План врага отвергнут правилами")));
+        }
+        self.inner.resolve_plan(commands, state, context)
+    }
+}
+
+/// Ход врага конечен при любом отказе правил, а не только при закрытой
+/// траектории: у хода NPC нет таймера, и повтор отвергнутого плана держал бы
+/// бой вечно.
+#[test]
+fn any_rules_refusal_still_ends_the_npc_turn() {
+    for code in ["ACTION_UNAVAILABLE", "INVALID_TARGET", "WEAPON_NOT_EQUIPPED"] {
+        let campaign = format!("NPC-REFUSED-{code}");
+        let journal = store();
+        initialize(&journal, &campaign, two_targets_on_npc_turn());
+        let rules = RefusedAttacks { inner: bounded(), code, attempts: Cell::new(0) };
+        let outcome = block_on(run_npc_turn_scheduler(run(&campaign, &journal, &rules, None))).unwrap_or_else(|error| panic!("{code}: ход не закончился: {:?}", error.code()));
+        assert_eq!(rules.attempts.get(), 2, "{code}: обе цели опробованы");
+        let ended: Vec<_> = outcome.events.iter().filter(|event| event["event_type"] == "TurnEnded").collect();
+        assert_eq!(ended.len(), 1, "{code}");
+        assert_eq!(ended[0]["payload"]["auto_skip_reason"], "npc-no-target", "{code}");
+    }
+}
+
 #[test]
 fn morale_controller_is_called_once_and_surrender_is_applied() {
     let mut state = fixture();

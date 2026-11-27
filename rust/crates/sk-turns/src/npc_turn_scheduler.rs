@@ -2355,11 +2355,13 @@ fn commit_plan(options: &SchedulerOptions<'_>, loaded_version: i64, commands: &[
     Ok(PlanCommit { committed, key: used_key })
 }
 
+/// Отказ правил плану врага. Какой бы ни была причина, ход обязан
+/// закончиться: планировщик пробует другую цель, а затем завершает ход без
+/// цели. Иначе повтор того же плана держит бой вечно — у хода NPC нет
+/// таймера. Конфликт версии, чужой ход и открытое окно реакции планом не
+/// лечатся: их разбирает следующий запуск планировщика.
 fn tactical_refusal(error: &SchedulerError) -> bool {
-    error.is_rules_validation() && matches!(
-        error.code(),
-        Some("TRAJECTORY_BLOCKED" | "TARGET_OUT_OF_RANGE" | "TARGET_NOT_VISIBLE" | "TOTAL_COVER" | "INVALID_DESTINATION" | "PATH_BLOCKED" | "SPEED_EXCEEDED")
-    )
+    error.is_rules_validation() && !matches!(error.code(), Some("STATE_VERSION_CONFLICT" | "OUT_OF_TURN" | "COMBAT_REACTION_PENDING"))
 }
 
 /// Другая цель или профиль остаются частью того же хода и той же версии.
