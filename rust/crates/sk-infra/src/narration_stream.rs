@@ -15,7 +15,7 @@
 //! [`sse_socket`].
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::Duration;
 
@@ -619,10 +619,10 @@ impl CampaignStreamOutbox {
 // Сокет SSE на tokio
 // ---------------------------------------------------------------------------
 
-struct SocketShared {
-    buffered: AtomicUsize,
-    needs_drain: AtomicBool,
-    high_water: usize,
+#[derive(Default)]
+struct SocketBuffer {
+    buffered: usize,
+    needs_drain: bool,
 }
 
 /// Пишущая сторона сокета SSE: как `res.write()` Node, кадр принимается всегда
@@ -631,26 +631,28 @@ struct SocketShared {
 #[derive(Clone)]
 pub struct SseSocket {
     sender: tokio::sync::mpsc::UnboundedSender<String>,
-    shared: Arc<SocketShared>,
+    buffer: Arc<Mutex<SocketBuffer>>,
+    high_water: usize,
 }
 
 impl SseSocket {
     /// `res.write(chunk)`; `None` — читатель закрыт.
     pub fn write(&self, chunk: &str) -> Option<bool> {
+        // Читатель может получить кадр сразу после send, но учтёт его
+        // только после обновления счётчика и признака drain.
+        let mut buffer = lock(&self.buffer);
         if self.sender.send(chunk.to_string()).is_err() {
             return None;
         }
-        let buffered = self.shared.buffered.fetch_add(1, Ordering::SeqCst) + 1;
-        let accepted = buffered < self.shared.high_water;
-        if !accepted {
-            self.shared.needs_drain.store(true, Ordering::SeqCst);
-        }
+        buffer.buffered += 1;
+        let accepted = buffer.buffered < self.high_water;
+        buffer.needs_drain |= !accepted;
         Some(accepted)
     }
 
     /// Сколько кадров записано и ещё не прочитано.
     pub fn buffered(&self) -> usize {
-        self.shared.buffered.load(Ordering::SeqCst)
+        lock(&self.buffer).buffered
     }
 }
 
@@ -658,7 +660,7 @@ impl SseSocket {
 /// после переполнения, вызывается `on_drain` — событие `drain` сокета Node.
 pub struct SseSocketReader {
     receiver: tokio::sync::mpsc::UnboundedReceiver<String>,
-    shared: Arc<SocketShared>,
+    buffer: Arc<Mutex<SocketBuffer>>,
     on_drain: Option<Box<dyn FnMut() + Send>>,
 }
 
@@ -671,8 +673,12 @@ impl SseSocketReader {
     /// Следующий кадр; `None` — все писатели закрыты и кадров нет.
     pub async fn recv(&mut self) -> Option<String> {
         let chunk = self.receiver.recv().await?;
-        let left = self.shared.buffered.fetch_sub(1, Ordering::SeqCst).saturating_sub(1);
-        if left == 0 && self.shared.needs_drain.swap(false, Ordering::SeqCst) {
+        let drained = {
+            let mut buffer = lock(&self.buffer);
+            buffer.buffered -= 1;
+            buffer.buffered == 0 && std::mem::take(&mut buffer.needs_drain)
+        };
+        if drained {
             if let Some(on_drain) = self.on_drain.as_mut() {
                 on_drain();
             }
@@ -689,6 +695,6 @@ impl SseSocketReader {
 /// Сокет SSE с буфером в `high_water` кадров (не меньше одного).
 pub fn sse_socket(high_water: usize) -> (SseSocket, SseSocketReader) {
     let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-    let shared = Arc::new(SocketShared { buffered: AtomicUsize::new(0), needs_drain: AtomicBool::new(false), high_water: high_water.max(1) });
-    (SseSocket { sender, shared: Arc::clone(&shared) }, SseSocketReader { receiver, shared, on_drain: None })
+    let buffer = Arc::new(Mutex::new(SocketBuffer::default()));
+    (SseSocket { sender, buffer: Arc::clone(&buffer), high_water: high_water.max(1) }, SseSocketReader { receiver, buffer, on_drain: None })
 }
