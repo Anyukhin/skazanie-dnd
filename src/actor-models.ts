@@ -298,6 +298,13 @@ export function figureHeightFor(profileHeight: number, profile: ActorModelProfil
   return own === native ? profileHeight : profileHeight * STATURE_HEIGHT[own] / STATURE_HEIGHT[native]
 }
 
+/** Рост на доске после выбора профиля и открытой зрителю площади. */
+export function actorModelHeight(input: ActorModelInput, side: number, manifest: ActorModelManifest): number {
+  const entry = resolveModelProfile(input, manifest)
+  const stature = input.appearance?.version === 2 ? input.appearance.stature : undefined
+  return figureHeightFor(entry.height ?? 1.25, entry.profile, side, stature)
+}
+
 /**
  * Проверяет путь до модели до того, как он попадёт в fetch. Внешние CDN,
  * data-URL и `..` намеренно запрещены: каталог ассетов должен быть локальным.

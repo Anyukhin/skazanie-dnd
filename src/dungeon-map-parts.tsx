@@ -21,7 +21,7 @@ import type {
   TacticalProp,
 } from './types'
 import { spellComponentAvailabilityFor, spellComponentsPresentation } from './types'
-import { DAMAGE_TYPE_LABELS, HARMFUL_SPELL_KINDS, REPUTATION_TIER_LABELS, boardTrajectoryBlockReason } from './app-shared'
+import { DAMAGE_TYPE_LABELS, HARMFUL_SPELL_KINDS, REPUTATION_TIER_LABELS, boardTrajectoryBlockReason, boardTrajectoryTrace } from './app-shared'
 import type { WeaponAttackChoice } from './useGameSession'
 import { CELL_FEET } from './tactical-engine'
 import {
@@ -497,16 +497,32 @@ export function hasClearBoardTrajectory(state: GameState, from: BoardTrajectoryA
  * только через раскрытые клетки их площадей. Для линии в клетку остаётся
  * `actorTrajectoryBlockReason`: сервер берёт её без фильтра тумана.
  */
-export function actorLineOfFireBlockReason(state: GameState, from: BoardTrajectoryActor, to: BoardTrajectoryActor) {
+export function actorLineOfFire(state: GameState, from: BoardTrajectoryActor, to: BoardTrajectoryActor) {
   const { starts, ends } = revealedLineOfFireCells(state.scene.cells, actorFootprintCells(from), actorFootprintCells(to))
-  if (!starts.length || !ends.length) return HIDDEN_LINE_OF_FIRE_REASON
-  let firstReason: string | null = null
+  let first: ({ start: BoardTrajectoryActor; end: BoardTrajectoryActor } & ReturnType<typeof boardTrajectoryTrace>) | null = null
   for (const start of starts) for (const end of ends) {
-    const reason = boardTrajectoryBlockReason(state, start, end)
-    if (reason == null) return null
-    firstReason ??= reason
+    const trace = boardTrajectoryTrace(state, start, end)
+    if (!trace.obstruction) return { start, end, ...trace }
+    first ??= { start, end, ...trace }
   }
-  return firstReason ?? 'Траектория недоступна'
+  return first
+}
+
+/** Отрезок к видимой цели совпадает с прогнозом выбранного оружия. */
+export function visibleWeaponFireLine(state: GameState, actor: BoardTrajectoryActor & { id: string }, target: BoardTrajectoryActor & { id: string }, itemId: string | null) {
+  const forecast = state.combatForecast
+  if (forecast?.actor_id !== actor.id) return null
+  const weapon = forecast.targets[target.id]?.find(shot => shot.item_id === itemId)
+  if (!weapon) return null
+  const line = actorLineOfFire(state, actor, target)
+  if (!line?.visible) return null
+  if (line.obstruction) return weapon.unreachable_reason === 'линия удара перекрыта' ? line : null
+  return weapon.in_range ? line : null
+}
+
+export function actorLineOfFireBlockReason(state: GameState, from: BoardTrajectoryActor, to: BoardTrajectoryActor) {
+  const line = actorLineOfFire(state, from, to)
+  return line ? line.obstruction?.reason ?? null : HIDDEN_LINE_OF_FIRE_REASON
 }
 
 export function hasClearActorLineOfFire(state: GameState, from: BoardTrajectoryActor, to: BoardTrajectoryActor) {

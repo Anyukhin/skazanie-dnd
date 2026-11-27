@@ -7,6 +7,7 @@ const PALETTES: Record<string, Palette> = {
   ghoul: { bone: '#c9d2a4', dark: '#344034', cloth: '#3b3129', accent: '#b65b45', glow: '#a4d17b' },
   mummy: { bone: '#d2bd91', dark: '#655644', cloth: '#a28e68', accent: '#8b4d3d', glow: '#d4a855' },
   wight: { bone: '#d7e2d2', dark: '#17212a', cloth: '#263847', accent: '#a4473d', glow: '#9dd3e0' },
+  vampire: { bone: '#ded4c2', dark: '#231c30', cloth: '#552b40', accent: '#961f37', glow: '#ff704d' },
   zombie: { bone: '#a4b18a', dark: '#354034', cloth: '#46503d', accent: '#a65b46', glow: '#b5c06f' },
   minotaur: { bone: '#c7b492', dark: '#40362d', cloth: '#51372b', accent: '#8f443b', glow: '#d29a45' },
 }
@@ -121,6 +122,23 @@ function ghost(profile: string, palette: Palette) {
   root.children.filter(child => child.name.startsWith('leg-') || child.name.startsWith('foot-')).forEach(child => child.visible = false)
   cone(root, mat(palette.cloth, opts), 'ghost-tail', .34, .48, [0, .19, 0], [Math.PI, 0, 0])
   sphere(root, mat(palette.bone, opts), 'ghost-face', .13, [0, 1.08, .13], [1, 1.1, .4])
+  const veil = mat(palette.accent, opts)
+  if (profile === 'banshee') {
+    // Летящие пряди и раскинутые рукава видны при любом цвете тумана.
+    for (const side of [-1, 1]) {
+      beam(root, veil, 'banshee-sleeve-' + side, new THREE.Vector3(side * .2, .82, 0), new THREE.Vector3(side * .58, 1.05, .04), .10)
+      cone(root, veil, 'banshee-hair-' + side, .115, .45, [side * .29, 1.19, -.11], [0, 0, side * -1.10])
+    }
+  } else if (profile === 'specter') {
+    cone(root, veil, 'specter-cowl', .255, .44, [0, 1.05, -.095])
+    const tail = root.getObjectByName('ghost-tail')!
+    tail.position.set(.08, .13, -.17)
+    tail.rotation.set(Math.PI - .41, 0, -.42)
+    tail.scale.set(.67, 1.42, .68)
+  } else {
+    // Целая погребальная ткань отличает привидение от разорванной тени.
+    cone(root, veil, 'ghost-shroud', .52, .8, [0, .56, -.08])
+  }
   return root
 }
 
@@ -155,6 +173,13 @@ function ghoul(profile: string, palette: Palette) {
     beam(root, shadow, 'ghoul-thigh-' + side, new THREE.Vector3(side * .12, .35, .02), new THREE.Vector3(side * .18, .11, .12), .065)
   }
   for (const x of [-.07, .07]) sphere(root, claws, 'ghoul-eye', .022, [x, .82, .47])
+  if (profile === 'ghast') {
+    for (const side of [-1, 1]) {
+      cone(root, shadow, 'ghast-shoulder-spine-' + side, .09, .29, [side * .31, .72, -.02], [0, 0, -side * .58])
+      cone(root, skin, 'ghast-ear-' + side, .056, .27, [side * .15, .86, .27], [0, 0, -side * .59])
+    }
+    cone(root, claws, 'ghast-tongue', .044, .32, [0, .63, .61], [Math.PI / 2 + .24, 0, 0])
+  }
   root.userData.undeadProfile = profile
   return root
 }
@@ -164,6 +189,33 @@ function wight(profile: string, palette: Palette) {
   cone(root, mat(palette.dark), 'wight-cloak', .4, .8, [0, .5, -.02])
   box(root, mat(palette.accent), 'wight-collar', [.32, .06, .05], [0, .88, .12])
   beam(root, mat(palette.accent), 'wight-blade', new THREE.Vector3(.3, .48, .03), new THREE.Vector3(.3, .98, .03), .025)
+  return root
+}
+
+function vampireSpawn() {
+  const palette = PALETTES.vampire
+  const root = humanoid('vampire-spawn', palette)
+  const cape = mat(palette.cloth)
+  for (const side of [-1, 1]) {
+    box(root, cape, 'vampire-coat-tail-' + side, [.23, .69, .065], [side * .15, .43, -.21], [0, side * .12, side * .13])
+    cone(root, cape, 'vampire-raised-collar-' + side, .102, .34, [side * .205, 1.05, -.14], [0, 0, side * -.38])
+  }
+  return root
+}
+
+function zombie() {
+  const palette = PALETTES.zombie
+  const root = humanoid('zombie', palette)
+  const skin = mat(palette.bone)
+  root.getObjectByName('head')?.position.set(.084, .99, .12)
+  for (const side of [-1, 1]) {
+    root.getObjectByName('arm-' + side)!.visible = false
+    root.getObjectByName('hand-' + side)!.visible = false
+    const from = new THREE.Vector3(side * .23, .78, .02)
+    const hand = new THREE.Vector3(side * .32, .68 + side * .11, .51)
+    beam(root, skin, 'zombie-reaching-arm-' + side, from, hand, .064)
+    sphere(root, skin, 'zombie-reaching-hand-' + side, .078, hand.toArray())
+  }
   return root
 }
 
@@ -188,8 +240,9 @@ export function buildAstohanUndead(slugValue: string): THREE.Group | null {
   if (['specter', 'banshee', 'ghost'].includes(slug)) return ghost(slug, PALETTES.ghost)
   if (slug === 'mummy') return mummy(PALETTES.mummy)
   if (['ghoul', 'ghast'].includes(slug)) return ghoul(slug, PALETTES.ghoul)
-  if (['wight', 'vampire-spawn'].includes(slug)) return wight(slug, PALETTES.wight)
+  if (slug === 'wight') return wight(slug, PALETTES.wight)
+  if (slug === 'vampire-spawn') return vampireSpawn()
   if (slug === 'minotaur-skeleton') return minotaurSkeleton(PALETTES.minotaur)
-  if (slug === 'zombie') return wight('zombie', PALETTES.zombie)
+  if (slug === 'zombie') return zombie()
   return null
 }

@@ -131,6 +131,46 @@ fn map_output(map: &TacticalMap) -> Result<Value, Failure> {
     Ok(json!({ "map": tm::serialize_tactical_map(map).map_err(fault)?, "cells": tm::legacy_cells_from_tactical_map(map) }))
 }
 
+/// Снимок карты, полученной тем же генератором, что строит игровые сцены.
+fn preview_scene_geometry(input: &Value, options: &Value) -> Result<Value, Failure> {
+    use sk_map_core::map_quality::{audit_tactical_map, platform_cells, program_report, ProgramOptions, SETTLEMENT_MIN_SIZE};
+    use sk_scene_base::scene_requirements::{requirement_assets, requirement_label, requirement_terrain, required_program_kinds, scene_map_requirements_for};
+
+    let mut request = input.clone();
+    let program = options.get("text").and_then(Value::as_str)
+        .and_then(|text| scene_map_requirements_for(&json!([input["location"], text]), options.get("npcs"), None));
+    if let Some(program) = &program {
+        request["program"] = program.to_value();
+        request["requirements"] = json!(program.items);
+    }
+    let library = options.get("library").and_then(Value::as_str).map(sk_story::map_library::MapLibrary::new);
+    let geometry = sk_director::adventure_director::generate_scene_geometry_with(&request, library.as_ref()).map_err(fault)?;
+    let mut result = geometry.to_json().map_err(fault)?;
+    result["report"] = audit_tactical_map(&geometry.map).to_json();
+    if let Some(program) = program {
+        let value = program.to_value();
+        let required = required_program_kinds(&value);
+        let details: Vec<Value> = program.items.iter().map(|item| {
+            let spots: Vec<Value> = if requirement_terrain(&item.id).is_some() {
+                platform_cells(&geometry.map).into_iter().map(|(x, y)| json!([x, y])).collect()
+            } else {
+                let assets = requirement_assets(&item.id);
+                geometry.map.props.iter().filter(|prop| assets.contains(&prop.asset_id.as_str()))
+                    .map(|prop| json!([prop.x.floor() as i64, prop.y.floor() as i64])).collect()
+            };
+            json!({ "label": requirement_label(&item.id), "count": item.count, "required": required.contains(&item.id), "spots": spots })
+        }).collect();
+        let settlement = sk_themes::scene_themes::resolve_scene_theme(input).kind == "settlement";
+        result["program"] = json!({
+            "version": program.version, "items": details, "focus": program.focus.as_deref().map(requirement_label),
+            "posts": program.posts.iter().map(|post| json!({ "npc": post.npc, "label": requirement_label(&post.id) })).collect::<Vec<_>>(),
+            "report": program_report(&geometry.map, &value, &ProgramOptions { min_size: settlement.then_some(SETTLEMENT_MIN_SIZE), open_scene: settlement }).to_json(),
+            "missing": geometry.missing.as_deref().unwrap_or(&[]).iter().map(|kind| requirement_label(kind)).collect::<Vec<_>>(),
+        });
+    }
+    Ok(result)
+}
+
 /// `readMap(map)`: карта в форме `serializeTacticalMap`, все её существующие
 /// клетки, как их отдаёт `cellAt`, и предметы целиком, как в
 /// `deserializeTacticalMap(map).props` (с `blocksMove` и прочим из каталога).
@@ -209,10 +249,127 @@ fn optional(value: Option<Value>) -> Value {
     value.unwrap_or(Value::Null)
 }
 
+/// Карта из комнаты и факты для сверки авторского текста в стенде.
+fn inspect_scene_map(raw: &Value, text: &Value, program: &Value, audit: bool) -> Value {
+    use sk_map_core::map_quality::{audit_tactical_map, count_platforms, program_report};
+    use sk_scene_base::scene_requirements::{requirement_label, requirements_coverage, scene_requirements_from_text};
+
+    let Ok(map) = tm::deserialize_tactical_map(raw) else { return Value::Null };
+    let mut props = Map::new();
+    for prop in &map.props {
+        let count = props.entry(prop.asset_id.clone()).or_insert(Value::from(0));
+        *count = Value::from(count.as_u64().unwrap_or(0) + 1);
+    }
+    let mut mentioned = scene_requirements_from_text(text);
+    for requirement in &mut mentioned {
+        requirement.count = 1.0;
+    }
+    let terrain = json!({ "platform": count_platforms(&map) });
+    let missing = requirements_coverage(&mentioned, Some(&Value::Object(props)), Some(&terrain)).missing;
+    let objects = missing.iter().map(|id| json!({ "id": id, "label": requirement_label(id) })).collect::<Vec<_>>();
+    if !audit {
+        return json!({ "missingObjects": objects });
+    }
+    let problems = audit_tactical_map(&map).problems.iter().map(|problem| problem.to_json()).collect::<Vec<_>>();
+    let program_problems = if program.is_object() {
+        program_report(&map, program, &Default::default()).problems.iter().map(|problem| {
+            let label = requirement_label(problem.detail.as_deref().unwrap_or_default());
+            json!({ "code": problem.code, "detail": problem.detail, "label": label })
+        }).collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    json!({
+        "missingObjects": objects, "problems": problems, "programProblems": program_problems,
+        "propCount": map.props.len(), "passableCells": tm::cells(&map).filter(|cell| cell.passable).count(),
+    })
+}
+
+/// Сверить ответ, собранный из материала Хранителя, его же рендером.
+fn matches_rendered_lore_plan(answer: &str, material: &Value) -> bool {
+    use sk_agents::lore_voice::{render_lore_plan, validate_lore_plan};
+    fn visit(answer: &str, material: &Value, without_closing: &Value, plan: &mut Vec<Value>, remaining: &[Value]) -> bool {
+        if render_lore_plan(plan, material) == answer && validate_lore_plan(Some(&json!({ "plan": plan })), Some(material)).valid {
+            return true;
+        }
+        for (index, reference) in remaining.iter().enumerate() {
+            plan.push(reference.clone());
+            let prefix = render_lore_plan(plan, without_closing);
+            let matched = if !prefix.is_empty() && answer.contains(&prefix) {
+                let next = remaining.iter().enumerate().filter(|(other, _)| *other != index).map(|(_, value)| value.clone()).collect::<Vec<_>>();
+                visit(answer, material, without_closing, plan, &next)
+            } else {
+                false
+            };
+            plan.pop();
+            if matched {
+                return true;
+            }
+        }
+        false
+    }
+
+    let Some(fields) = material.as_object() else { return false };
+    let references = ["found", "heard", "known", "lead"].into_iter().flat_map(|kind| {
+        fields.get(kind).and_then(Value::as_array).into_iter().flatten().enumerate().map(move |(index, _)| json!({ "kind": kind, "index": index }))
+    }).collect::<Vec<_>>();
+    let mut without_closing = material.clone();
+    without_closing["unknown"] = Value::Bool(false);
+    without_closing["hook"] = Value::String(String::new());
+    visit(answer, material, &without_closing, &mut Vec::new(), &references)
+}
+
 /// Одна функция по имени JS.
 pub fn call(name: &str, args: &[Value]) -> Result<Value, Failure> {
     let a = |index: usize| arg(args, index);
     match name {
+        "createCharacterSlot" => sk_character::character_lifecycle::create_character_slot(a(0).get("id"), a(0).get("index")).map_err(fault),
+        "characterProgression" => {
+            use sk_character::character_lifecycle::character_creation_choices_complete;
+            use sk_combat_content::combat_actions::{combat_class_catalog_info, combat_subclass_options_for, normalized_combat_subclass_for};
+            use sk_ruleset::character_progression::{ability_score_choice_levels_for, class_skill_rule_for, normalized_class_skill_proficiencies};
+
+            let actor = args.first();
+            if character_creation_choices_complete(actor, Some(&json!({ "rulesetId": a(1) }))).map_err(fault)? {
+                return Ok(json!({ "complete": true }));
+            }
+            let catalog = combat_class_catalog_info();
+            let subclass_level = catalog["classes"].as_array().into_iter().flatten()
+                .find(|entry| entry.get("classKey") == a(0).get("characterClass"))
+                .and_then(|entry| entry.get("subclassLevel"));
+            Ok(json!({
+                "complete": false, "skillRule": class_skill_rule_for(actor), "skills": normalized_class_skill_proficiencies(actor),
+                "subclassOptions": combat_subclass_options_for(actor), "normalizedSubclass": normalized_combat_subclass_for(actor),
+                "subclassLevel": subclass_level, "asiLevels": ability_score_choice_levels_for(actor),
+            }))
+        }
+        "characterChoiceOptions" => {
+            use sk_combat_content::combat_spells::{combat_spells_for, spell_selection_rules_for};
+            use sk_ruleset::character_progression::feature_choice_groups_for;
+
+            let actor = args.first();
+            let mut unselected = a(0).as_object().cloned().unwrap_or_default();
+            unselected.shift_remove("knownSpellIds");
+            unselected.shift_remove("preparedSpellIds");
+            let rules = spell_selection_rules_for(actor).map(|rules| rules.to_value());
+            let spells = rules.as_ref().map(|_| combat_spells_for(Some(&Value::Object(unselected)), Some(&json!({ "rulesetId": a(1) }))));
+            Ok(json!({ "featureGroups": feature_choice_groups_for(actor), "spellRules": rules, "spells": spells }))
+        }
+        "planHeroCombatCommand" => sk_tactics::party_tactics::plan_hero_combat_command(a(0), a(1).as_str().unwrap_or("")).map(|step| step.to_json()).map_err(halt),
+        "worldClockForAgents" => Ok(sk_world_time::weather::world_clock_for_agents(a(0), None)),
+        "inspectSceneMap" => Ok(inspect_scene_map(a(0), a(1), a(2), a(3).as_bool().unwrap_or(false))),
+        "answerKnownLore" => {
+            let options = sk_agents::player_request_router::KnownLoreOptions {
+                viewer: a(2).get("viewer").cloned(), actor_id: a(2).get("actorId").cloned(),
+            };
+            Ok(optional(sk_agents::player_request_router::answer_known_lore(a(0).as_str().unwrap_or(""), a(1), &options)))
+        }
+        "matchesRenderedLorePlan" => Ok(Value::Bool(matches_rendered_lore_plan(a(0).as_str().unwrap_or(""), a(1)))),
+        "narratorClicheCatalog" => serde_json::to_value(sk_narration_base::narrator_craft_quality::NARRATOR_CLICHE_CATALOG).map_err(fault),
+        "findNarratorCliches" => {
+            let matches = a(0).as_array().into_iter().flatten().flat_map(|text| sk_narration_base::narrator_craft_quality::find_narrator_cliches(Some(text)));
+            serde_json::to_value(matches.collect::<Vec<_>>()).map_err(fault)
+        }
         "buildMap" => build_map(a(0)),
         "readMap" => read_map(a(0)),
         "editMap" => {
@@ -233,7 +390,14 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, Failure> {
             Some(map) => map_output(&map),
             None => Ok(Value::Null),
         },
+        "authoredLocationMapIds" => Ok(json!(sk_map_core::authored_location_maps::authored_location_map_ids())),
+        "mapPreviewPresets" => Ok(sk_map_core::map_quality::MAP_PREVIEW_PRESETS.clone()),
+        "previewSceneGeometry" => preview_scene_geometry(a(0), a(1)),
         "materializeCatalogItem" => Ok(sk_items::item_catalog::materialize_catalog_item(a(0).as_str().unwrap_or(""), args.get(1).filter(|value| !value.is_null()))),
+        "classicEncounterMonsterIds" => {
+            let records = sk_encounters::encounter_assembler::classic_theme_roster(a(0).as_str().unwrap_or("")).map_err(fault)?;
+            Ok(Value::Array(records.iter().map(|record| record["id"].clone()).collect()))
+        }
         "buildCombatLabState" => sk_tactics::combat_lab_setup::build_combat_lab_state(args.first(), &sk_tactics::combat_lab_setup::Sources::default()).map_err(fault),
         "normalizeCampaignState" => sk_rules::normalize::normalize_campaign_state(a(0)).map_err(halt),
         "replayEvents" => sk_rules::replay::replay_events(a(0), a(1).as_array().map(Vec::as_slice).unwrap_or_default()).map_err(halt),
@@ -411,6 +575,32 @@ mod tests {
         let cell = |x: i64, y: i64| read["cells"].as_array().unwrap().iter().find(|cell| cell["x"] == x && cell["y"] == y).cloned().unwrap();
         assert_eq!(cell(4, 3)["passable"], false);
         assert_eq!(cell(0, 0)["passable"], true);
+    }
+
+    #[test]
+    fn stand_lore_trace_requires_verbatim_material() {
+        let material = json!({
+            "found": [],
+            "heard": [{ "who": "Король Арес", "line": "Саргат сжёг заставу десять дней назад." }],
+            "known": [],
+        });
+        let plan = [json!({ "kind": "heard", "index": 0 })];
+        let rendered = sk_agents::lore_voice::render_lore_plan(&plan, &material);
+        let checked = |answer: &str| call("matchesRenderedLorePlan", &[json!(answer), material.clone()]).expect("сверка");
+        assert_eq!(checked(&rendered), true);
+        assert_eq!(checked(&(rendered + " Это сделал король.")), false);
+    }
+
+    #[test]
+    fn stand_checks_scene_text_against_the_map() {
+        let map = call("buildMap", &[json!({
+            "options": { "width": 6, "height": 4, "fill": { "passable": true, "revealed": true } },
+        })]).expect("карта");
+        let checked = call("inspectSceneMap", &[map["map"].clone(), json!("Стоим у колодца."), Value::Null, json!(true)]).expect("сверка");
+        assert_eq!(checked["missingObjects"][0]["id"], "well");
+        assert_eq!(checked["passableCells"], 24);
+        assert_eq!(checked["propCount"], 0);
+        assert!(checked["problems"].is_array());
     }
 
     #[test]

@@ -38,7 +38,6 @@ function objectsNamed(root, prefix) {
 /** Наибольший подъём верха плитки (`TILE_JITTER` в src/board3d-landscape.ts). */
 const TILE_JITTER = 0.012
 /** Высота дверного полотна: стена 0.95 минус притолока (`board3d-scene.ts`). */
-const DOOR_LEAF_HEIGHT = 0.82
 
 test('3D-сцена создаёт пол только для раскрытых клеток', () => {
   const map = mapOf({ revealed: [{ x: 1, y: 1 }, { x: 2, y: 1 }] })
@@ -117,7 +116,7 @@ test('дверь и предмет получают основание по вы
   const groundTop = ground.geometry.getAttribute('position').getY(0)
   assert.ok(groundTop + 0.4 >= 0 && groundTop + 0.4 <= TILE_JITTER)
   const leaf = objectsNamed(scene.group, 'door-leaf:0,0,e:closed')[0]
-  assert.ok(Math.abs(leaf.position.y - (1 + DOOR_LEAF_HEIGHT / 2)) < 1e-6, 'дверь стоит на максимуме двух раскрытых сторон ребра')
+  assert.ok(Math.abs(leaf.position.y - (1 + leaf.geometry.parameters.height / 2)) < 1e-6, 'дверь стоит на максимуме двух раскрытых сторон ребра')
   const prop = scene.group.getObjectByName('prop:raised-prop')
   assert.ok(Math.abs(prop.position.y + 0.4) < 1e-6, 'опора следует за видимой клеткой футпринта')
   scene.dispose()
@@ -133,7 +132,7 @@ test('высота скрытого соседа не поднимает вид�
   setDoor(map, { id: 'hidden-high-door', x: 1, y: 0, dir: 'e', state: 'closed' })
   const scene = scene3d.createBoard3DScene(map)
   const leaf = objectsNamed(scene.group, 'door-leaf:1,0,e:closed')[0]
-  assert.ok(Math.abs(leaf.position.y - (0.4 + DOOR_LEAF_HEIGHT / 2)) < 1e-6, 'туманная клетка не участвует в основании двери')
+  assert.ok(Math.abs(leaf.position.y - (0.4 + leaf.geometry.parameters.height / 2)) < 1e-6, 'туманная клетка не участвует в основании двери')
   const ground = scene.group.getObjectByName('ground-plane')
   assert.equal(ground.geometry.getAttribute('position').count, 12, 'скрытая высокая клетка не появляется на поверхности')
   scene.dispose()

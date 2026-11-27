@@ -11,7 +11,7 @@ use sk_core::indexmap::IndexMap;
 use sk_core::js;
 
 use super::abort::{race, AbortController, AbortScope, SignalLink};
-use super::attempt_trace::{current_model_call_budget, finish_model_attempt, start_model_attempt};
+use super::attempt_trace::{current_model_call_budget, finish_model_attempt, model_call_role, start_model_attempt};
 use super::{
     coalesce, llm_timer_delay, option_fields, positive_integer_number, prop, spread_object, utf16_head, CallHooks, CallScope, CampaignSnapshot, DeltaHandler, LlmClient, LlmError, LlmErrorExt, LlmFuture, RouterAiClient,
 };
@@ -173,6 +173,9 @@ impl FallbackLlmClient {
     }
 
     fn mark_failure(&self, member: &FallbackMember, error: &LlmError) {
+        if matches!(error.code_str(), "LLM_TURN_DEADLINE" | "LLM_ATTEMPT_BUDGET") {
+            return;
+        }
         let key = member.key();
         let (failures, last_success_at) = {
             let statuses = lock(&self.statuses);
@@ -267,7 +270,7 @@ impl FallbackLlmClient {
         let remaining = deadline.map(|(started, requested)| requested - started.elapsed().as_secs_f64() * 1_000.0);
         if let (Some(remaining), Some((_, requested))) = (remaining, deadline) {
             if remaining <= 0.0 {
-                return Err(LlmError::timeout(requested));
+                return Err(budget_timeout(requested, "LLM_TURN_DEADLINE"));
             }
         }
         // Запас резервной модели: зависший основной запрос иначе израсходует
@@ -280,13 +283,16 @@ impl FallbackLlmClient {
             let reserve = if index == 0 && count > 1 { (requested * 0.6).floor() } else { remaining };
             1f64.max(remaining.min(cloud_remaining.unwrap_or(remaining)).min(model_limit.unwrap_or(remaining)).min(reserve))
         });
-        let attempt_scope = attempt_budget.map(|budget| AbortScope::new(budget, shared_signal));
+        let attempt_scope = attempt_budget.map(|budget| AbortScope::with_timeout_error(budget, shared_signal, budget_timeout(budget, "LLM_ATTEMPT_BUDGET")));
         let mut fields = option_fields(options);
         if member.provider_fallback {
             fields.insert("model".into(), Value::String(member.key()));
         }
-        if let Some(budget) = attempt_budget {
-            fields.insert("timeoutMs".into(), js::num(budget));
+        if let Some((_, requested)) = deadline {
+            // Сокращение до остатка выполняет внешний сигнал попытки. У
+            // транспорта остаётся полный срок, чтобы его собственный таймер
+            // не обогнал сигнал и не выдал урезание бюджета за сбой модели.
+            fields.insert("timeoutMs".into(), js::num(requested));
         }
         let sub_options = Value::Object(fields);
         let hooks = CallHooks {
@@ -314,7 +320,7 @@ impl FallbackLlmClient {
         let role_limit = js::number(coalesce(options.get("timeoutMs"), prop(Some(input), "timeoutMs")));
         let role_timeout = (role_limit.is_finite() && role_limit > 0.0).then_some(role_limit);
         let started = tokio::time::Instant::now();
-        let turn_budget = current_model_call_budget(role_timeout, self.provider_fallback.is_some());
+        let turn_budget = current_model_call_budget(model_call_role(input, options), role_timeout, self.provider_fallback.is_some());
         if turn_budget.is_some_and(|(ms, _)| ms <= 0.0) {
             return Err(LlmError::llm("Общий срок модельного хода истёк", "LLM_TURN_DEADLINE"));
         }
@@ -327,7 +333,7 @@ impl FallbackLlmClient {
         let _timer = TimerGuard(deadline_controller.clone().map(|controller| {
             tokio::spawn(async move {
                 tokio::time::sleep(llm_timer_delay(requested_timeout)).await;
-                controller.abort(LlmError::timeout(requested_timeout));
+                controller.abort(budget_timeout(requested_timeout, "LLM_TURN_DEADLINE"));
             })
         }));
         let external = scope.hooks.signal.clone();
@@ -423,11 +429,23 @@ impl FallbackLlmClient {
         }
         // Таймер попытки может сработать раньше общего на долю миллисекунды:
         // если истекли все попытки, причина остаётся timeout.
-        if has_deadline && !attempts.is_empty() && attempts.iter().all(|attempt| attempt.get("code").and_then(Value::as_str) == Some("LLM_TIMEOUT")) {
-            return Err(LlmError::timeout(requested_timeout));
+        if has_deadline && !attempts.is_empty()
+            && attempts.iter().all(|attempt| matches!(attempt["code"].as_str(), Some("LLM_TIMEOUT" | "LLM_TURN_DEADLINE" | "LLM_ATTEMPT_BUDGET")))
+        {
+            return Err(if attempts.iter().all(|attempt| attempt["code"] == "LLM_TIMEOUT") {
+                LlmError::timeout(requested_timeout)
+            } else {
+                budget_timeout(requested_timeout, "LLM_TURN_DEADLINE")
+            });
         }
         Err(LlmError::llm("All configured RouterAI models failed", "LLM_FALLBACK_EXHAUSTED").with_detail("attempts", Value::Array(attempts)))
     }
+}
+
+fn budget_timeout(timeout_ms: f64, code: &str) -> LlmError {
+    let mut error = LlmError::timeout(timeout_ms);
+    error.code = Some(code.into());
+    error
 }
 
 impl LlmClient for FallbackLlmClient {

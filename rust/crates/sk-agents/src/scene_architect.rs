@@ -590,6 +590,11 @@ fn known_world_destination_by_name(state: &Value, name: &str) -> Option<Value> {
     Some(destination_entry(location, region_of(state, location)))
 }
 
+/// ID открытой точки карты по имени, в том числе без доступной дороги к ней.
+pub fn known_world_destination_id_for_name(state: &Value, name: &str) -> Option<String> {
+    known_world_destination_by_name(state, name)?.get("id")?.as_str().map(str::to_string)
+}
+
 /// Известная точка карты по авторитетному идентификатору.
 fn known_world_destination_by_id(state: &Value, location_id: Option<&Value>) -> Option<Value> {
     let location = sk_geometry::world_map::world_location_by_id(get(Some(state), "worldMap"), &clean(location_id, 120))?;
@@ -600,12 +605,23 @@ fn known_world_destination_by_id(state: &Value, location_id: Option<&Value>) -> 
     Some(destination_entry(location, region_of(state, location)))
 }
 
+/// Проверить известную цель и проходимость пути, не раскрывая тайные точки.
+pub fn world_travel_destination(state: &Value, name: &str, id: Option<&Value>) -> Option<String> {
+    let destination = match id {
+        Some(id) if js::truthy(Some(id)) => known_world_destination_by_id(state, Some(id)),
+        _ => known_world_destination_by_name(state, name),
+    }?;
+    let here = state["worldMap"]["currentLocationId"].as_str();
+    let target_id = destination["id"].as_str()?;
+    (Some(target_id) != here && !known_world_route_to(state, &destination, true).is_empty()).then(|| target_id.to_string())
+}
+
 fn building_place_name(value: &str) -> bool {
     test(re!(r"(?<![\p{L}])(?:таверн|трактир|постоял|харчевн|корчм|кабак|гостиниц|лавк|храм|часовн)\p{L}*", "iu"), value)
 }
 
 /// Кратчайший по числу открытых сегментов путь до известной точки.
-fn known_world_route_to(state: &Value, target: &Value) -> Vec<Value> {
+fn known_world_route_to(state: &Value, target: &Value, visible_only: bool) -> Vec<Value> {
     let map = get(Some(state), "worldMap");
     let (Some(Value::Array(locations)), Some(Value::Array(routes))) = (get(map, "locations"), get(map, "routes")) else { return Vec::new() };
     if !js::truthy(target.get("id")) {
@@ -627,7 +643,8 @@ fn known_world_route_to(state: &Value, target: &Value) -> Vec<Value> {
     while cursor < queue.len() && !previous.contains_key(&target_id) {
         let current_id = queue[cursor].clone();
         for route in routes {
-            if !js::truthy(Some(route)) || js::is_false(get(Some(route), "discovered")) {
+            let concealed_edge = js::is_true(route.get("hidden")) || is_str(route.get("visibility"), "gm_only");
+            if !js::truthy(Some(route)) || js::is_false(get(Some(route), "discovered")) || (visible_only && concealed_edge) {
                 continue;
             }
             let from = js::string(get(Some(route), "from"));
@@ -641,7 +658,8 @@ fn known_world_route_to(state: &Value, target: &Value) -> Vec<Value> {
             };
             let next = if next_id.is_empty() { None } else { by_id.get(&next_id).copied() };
             let Some(next) = next else { continue };
-            if js::is_false(next.get("known")) || previous.contains_key(&next_id) {
+            let concealed = js::is_true(next.get("hidden")) || is_str(next.get("visibility"), "gm_only");
+            if js::is_false(next.get("known")) || (visible_only && concealed) || previous.contains_key(&next_id) {
                 continue;
             }
             previous.insert(next_id.clone(), Some(current_id.clone()));
@@ -663,7 +681,7 @@ fn known_world_route_to(state: &Value, target: &Value) -> Vec<Value> {
         current_id = parent;
     }
     // Заведение внутри поселения: выйти из таверны значит оказаться в городе.
-    if ids.len() > 2 {
+    if !visible_only && ids.len() > 2 {
         let start = by_id.get(&ids[0]).copied();
         let next = by_id.get(&ids[1]).copied();
         let scene_theme = coalesce(path(Some(state), &["scene", "theme"]), path(Some(state), &["scene", "map", "theme"]));
@@ -727,6 +745,10 @@ pub struct PlanRequest {
 
 /// `fallbackPlan(...)`: канонический план новой сцены без модели.
 pub fn fallback_plan(state: &Value, request: &PlanRequest) -> Value {
+    fallback_plan_with_route(state, request, false)
+}
+
+fn fallback_plan_with_route(state: &Value, request: &PlanRequest, whole_route: bool) -> Value {
     use sk_scenario::party_exit_intent::{nominative_place_phrase, objective_remainder, onward_route_objective, onward_route_target};
     let from = {
         let from = clean(or(path(Some(state), &["scene", "location"]), path(Some(state), &["scene", "title"])), 120);
@@ -741,8 +763,9 @@ pub fn fallback_plan(state: &Value, request: &PlanRequest) -> Value {
     let destination_by_id = known_world_destination_by_id(state, Some(&string_value(&request.destination_location_id)));
     let chosen = if !hinted.is_empty() || destination_by_id.is_some() { None } else { Some(fallback_destination(state, &from)) };
     let intended = destination_by_id.or_else(|| if hinted.is_empty() { None } else { known_world_destination_by_name(state, &hinted) });
-    let route = intended.as_ref().map(|intended| known_world_route_to(state, intended)).unwrap_or_default();
+    let route = intended.as_ref().map(|intended| known_world_route_to(state, intended, whole_route)).unwrap_or_default();
     let routed = match route.len() {
+        _ if whole_route => route.last().cloned(),
         0 => None,
         1 => route.first().cloned(),
         _ => route.get(1).cloned(),
@@ -794,7 +817,7 @@ pub fn fallback_plan(state: &Value, request: &PlanRequest) -> Value {
     let chapter = {
         let chapter = js::number(path(Some(state), &["adventure", "chapter"]));
         let chapter = if chapter == 0.0 || chapter.is_nan() { 1.0 } else { chapter };
-        chapter.max(1.0) + if continues { 0.0 } else { 1.0 }
+        chapter.max(1.0) + if continues && !whole_route { 0.0 } else { 1.0 }
     };
     let old_hook = clean(path(Some(state), &["adventure", "currentHook"]), 240);
     let old_objective = clean(objective_value, 160);
@@ -846,9 +869,15 @@ pub fn fallback_plan(state: &Value, request: &PlanRequest) -> Value {
         string_value(if streets { "Шумная передышка за городскими стенами, где опасность прячется среди людей" } else { "Неизведанное место, в котором путь ещё предстоит найти" }),
     );
     result.insert("objective".into(), Value::String(objective));
+    if whole_route {
+        result.insert("travel_route".into(), Value::Array(route.iter().map(|node| node["id"].clone()).collect()));
+    }
     result.insert(
         "transition".into(),
-        Value::String(if continues || reached {
+        Value::String(if whole_route && route.len() > 2 {
+            let via = route[1..route.len() - 1].iter().map(|node| format!("«{}»", js::s(node.get("name")))).collect::<Vec<_>>().join(", ");
+            format!("Отряд идёт из «{from}» через {via} и прибывает в «{location}».")
+        } else if continues || reached {
             format!("Отряд идёт из «{from}» туда, куда звала цель, — к «{location}».")
         } else {
             format!("Отряд оставляет «{from}» позади и пускается в путь — к «{location}».")
@@ -1191,6 +1220,14 @@ impl SceneArchitectAgent {
     /// `plan({ action, state, decision, destinationHint, destinationLocationId,
     /// abandonsQuest })`: `{ sceneArgs, shopIntent, trace }`.
     pub async fn plan(&self, state: &Value, request: &PlanRequest) -> Value {
+        self.plan_with_route(state, request, false).await
+    }
+
+    pub async fn plan_world_travel(&self, state: &Value, request: &PlanRequest) -> Value {
+        self.plan_with_route(state, request, true).await
+    }
+
+    async fn plan_with_route(&self, state: &Value, request: &PlanRequest, whole_route: bool) -> Value {
         // ID приходит от клиента и доверенным становится только по точному
         // совпадению с известным узлом карты мира.
         let authoritative = known_world_destination_by_id(state, Some(&string_value(&request.destination_location_id)));
@@ -1200,7 +1237,10 @@ impl SceneArchitectAgent {
         let action = clean_str(&request.action, 2000);
         let decision = clean_str(&request.decision, 500);
         let plan_request = |hint: String, id: String| PlanRequest { action: action.clone(), decision: decision.clone(), destination_hint: hint, destination_location_id: id, abandons_quest: request.abandons_quest };
-        let fallback = fallback_plan(state, &plan_request(resolved_hint.clone(), authoritative_id.clone()));
+        let mut fallback = fallback_plan_with_route(state, &plan_request(resolved_hint.clone(), authoritative_id.clone()), whole_route);
+        if whole_route && fallback["objective_status"] == "continued" {
+            fallback["objective_status"] = json!("completed");
+        }
         let fallback_shop = sk_economy::scene_commerce::default_scene_shop_intent(Some(&fallback));
         let authored_id = match coalesce(fallback.get("location_id"), None) {
             Some(id) => js::s(Some(id)),
@@ -1236,7 +1276,7 @@ impl SceneArchitectAgent {
         let constraint = known_destination_constraint(state, &resolved_hint, &authoritative_id, get(Some(&result), "location"), &fallback_location, fallback.get("location_id"));
         let constrained_fallback = match &constraint.destination {
             Some(destination) if strict_eq(destination.get("id"), fallback.get("location_id")) => fallback.clone(),
-            Some(destination) => fallback_plan(state, &plan_request(js::s(destination.get("name")), js::s(destination.get("id")))),
+            Some(destination) => fallback_plan_with_route(state, &plan_request(js::s(destination.get("name")), js::s(destination.get("id"))), whole_route),
             None => fallback.clone(),
         };
         let mut scene_args = if constraint.rejected { fallback.clone() } else { normalize_plan(Some(&result), &constrained_fallback) };
@@ -1266,6 +1306,10 @@ impl SceneArchitectAgent {
         }
         if !constraint.exact_location.is_empty() && !constraint.rejected {
             scene_args["location"] = Value::String(constraint.exact_location.clone());
+        }
+        if whole_route {
+            scene_args["transition"] = fallback["transition"].clone();
+            scene_args["travel_route"] = fallback["travel_route"].clone();
         }
         let shop = if constraint.rejected { fallback_shop } else { sk_economy::scene_commerce::normalize_scene_shop_intent(get(Some(&result), "shop_intent"), Some(&scene_args)) };
         let mut trace = json!({ "agent": SCENE_ARCHITECT_AGENT_ID, "mode": "model", "model": client.model_value() });

@@ -94,7 +94,7 @@ export function authoredEnemyEntry(input: ActorModelInput, models: readonly Acto
   }
   const type = species[slug][1]
   const profile = type === 'undead' ? 'skeleton' : type === 'giant' || type === 'humanoid' ? 'warrior' : 'beast'
-  const low: Record<string,number> = { 'crawling-claw':.30, flameskull:.58, 'awakened-shrub':.72, basilisk:.80, 'giant-boar':.87, jackal:.6, hyena:.73 }
+  const low: Record<string,number> = { 'crawling-claw':.30, flameskull:.78, 'awakened-shrub':.72, basilisk:.80, 'giant-boar':.87, jackal:.6, hyena:.73 }
   return {key:prefix+slug, name_ru:species[slug][0], profile, height:low[slug]??1.25, url:null, outfit:'builtin', rights:{source:'Сказание',license:'original'}}
 }
 

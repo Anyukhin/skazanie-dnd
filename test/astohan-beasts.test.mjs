@@ -18,6 +18,10 @@ test('кампания получает отдельные звериные си
     assert.ok(bounds.min.y >= -.001, slug + ': лапы не должны проваливаться')
     assert.ok(model.children.some(child => child.name.startsWith('head')), slug + ': голова')
     assert.ok(model.children.some(child => child.name.startsWith('leg-')), slug + ': лапы')
+    const neck = new THREE.Box3().setFromObject(model.getObjectByName('neck'), true)
+    const head = new THREE.Box3().setFromObject(model.getObjectByName('head'), true)
+    const body = new THREE.Box3().setFromObject(model.getObjectByName('body'), true)
+    assert.ok(neck.intersectsBox(head) && neck.intersectsBox(body), slug + ': шея соединяет голову с корпусом')
   }
 })
 

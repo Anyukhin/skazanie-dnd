@@ -207,12 +207,12 @@ fn build(core: &Rc<GameCore>, state: &Arc<AppState>) -> Result<Orchestration, Fa
     let narrator = Arc::new(Narrator::new(match &llm {
         Some(client) => NarratorConfig::with_client(client.clone(), HOT_CLIENT_CLASS),
         None => NarratorConfig::default(),
-    }));
+    }).with_timeout_ms(state.config.ai_narrator_timeout_ms));
     let creative = CriticalNarrationCoordinator::new(narrator.clone());
     let npc_controller = NpcMoraleAgent::new(llm.clone().map(|client| RoleClient::new(client, HOT_CLIENT_CLASS)));
     let npc_social = Arc::new(NpcSocialController::new(llm.clone()).with_provider_name(HOT_CLIENT_CLASS));
     let lore_author = Arc::new(LoreAuthor::new(lore));
-    let action_adjudicator = Arc::new(ActionAdjudicator::new(llm.clone(), None, None));
+    let action_adjudicator = Arc::new(ActionAdjudicator::new(llm.clone(), Some(json!(state.config.ai_adjudicator_timeout_ms)), None));
     // `new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator,
     // actionAdjudicator, loreAuthor, rollRegistry })` (401).
     let autonomous = Arc::new(

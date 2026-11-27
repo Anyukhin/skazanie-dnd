@@ -31,10 +31,7 @@ export function isEncounterRequest(text, { npcId = '', requestKind = 'action' } 
   return /^(?:мы )?(?:ищем бой|хочу бой|начать бой|начинаем бой)$/u.test(normalizedRequest(text))
 }
 
-/** Это лишь выбор клиентского маршрута. Сервер проверяет происхождение решения. */
-export function isDirectorPartyDecision(interaction) {
-  return interaction?.type === 'vote' && String(interaction?.id ?? '').startsWith('autonomy-')
-}
+export { isDirectorPartyDecision } from './director-decision.mjs'
 
 /**
  * Решение отряда уже принято и ждёт только продолжения. Тогда «продолжим» в

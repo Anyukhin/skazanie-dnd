@@ -23,6 +23,19 @@ const TYPES: [&str; 3] = ["vote", "roll", "choice"];
 /// Версия политики решений отряда (`PARTY_DECISION_POLICY_VERSION`).
 pub const PARTY_DECISION_POLICY_VERSION: &str = "skazanie:party-decision-policy:v1";
 
+/// Версия для новых переходов. Голосующие и кворум фиксируются при открытии.
+pub const ROSTER_DECISION_POLICY_VERSION: &str = "skazanie:party-decision-policy:v2";
+
+pub fn roster_decision_policy(value: Option<&Value>) -> Value {
+    let mut policy = normalize_party_decision_policy(value);
+    policy["policyVersion"] = json!(ROSTER_DECISION_POLICY_VERSION);
+    normalize_party_decision_policy(Some(&policy))
+}
+
+pub fn uses_roster_quorum(interaction: &Value) -> bool {
+    interaction["policy"]["policyVersion"] == ROSTER_DECISION_POLICY_VERSION
+}
+
 /// Политика по умолчанию (`DEFAULT_PARTY_DECISION_POLICY`).
 pub static DEFAULT_PARTY_DECISION_POLICY: LazyLock<Value> = LazyLock::new(|| {
     json!({
@@ -139,14 +152,15 @@ pub fn normalize_party_decision_policy(value: Option<&Value>) -> Value {
     };
     let raw_ttl = coalesce(get(source, "decisionTtlMs"), coalesce(get(source, "decision_ttl_ms"), get(source, "ttlMs")));
     let hero = is_str(get(source, "voterScope"), "hero") || is_str(get(source, "voter_scope"), "hero");
+    let roster = is_str(get(source, "policyVersion"), ROSTER_DECISION_POLICY_VERSION);
     json!({
-        "schemaVersion": 1,
-        "policyVersion": PARTY_DECISION_POLICY_VERSION,
-        "voterScope": if hero { "hero" } else { "account" },
+        "schemaVersion": if roster { 2 } else { 1 },
+        "policyVersion": if roster { ROSTER_DECISION_POLICY_VERSION } else { PARTY_DECISION_POLICY_VERSION },
+        "voterScope": if hero && !roster { "hero" } else { "account" },
         "decisionTtlMs": safe_number(raw_ttl, DEFAULT_TTL_MS).clamp(1_000, 30 * 60 * 1_000),
-        "quorumMode": "majority_of_active_voters",
-        "disconnectAction": "abstain",
-        "expiryResolution": "plurality_first_option",
+        "quorumMode": if roster { "majority_of_roster" } else { "majority_of_active_voters" },
+        "disconnectAction": if roster { "retain" } else { "abstain" },
+        "expiryResolution": if roster { "cancel_without_majority" } else { "plurality_first_option" },
         "visibility": "party",
     })
 }
@@ -225,7 +239,9 @@ pub fn normalize_party_decision(value: &Value, policy: Option<&Value>) -> Decide
         _ => "vote".to_string(),
     };
     let kind_value = Value::String(kind.clone());
-    let decision_policy = normalize_party_decision_policy(coalesce(policy, field("policy")));
+    let recorded_policy = field("policy");
+    let policy = recorded_policy.filter(|value| value["policyVersion"] == ROSTER_DECISION_POLICY_VERSION).or(policy);
+    let decision_policy = normalize_party_decision_policy(coalesce(policy, recorded_policy));
     let voter_scope = s(decision_policy.get("voterScope"));
     let mut options: Vec<(String, String)> = Vec::new();
     for option in array(field("options")).iter().take(6) {
@@ -292,10 +308,11 @@ pub fn normalize_party_decision(value: &Value, policy: Option<&Value>) -> Decide
         json!(0)
     };
     let treaty = field("scenarioTreaty").filter(|reference| get(Some(reference), "schemaVersion").and_then(Value::as_i64) == Some(1));
-    let counted = if treaty.is_some() || active_voter_ids.is_empty() { eligible_voter_ids.len() } else { active_voter_ids.len() };
+    let roster = decision_policy["policyVersion"] == ROSTER_DECISION_POLICY_VERSION;
+    let counted = if treaty.is_some() || roster || active_voter_ids.is_empty() { eligible_voter_ids.len() } else { active_voter_ids.len() };
     let calculated_required = required_votes_for(Some(&kind_value), counted);
     let raw_required = safe_number(coalesce(field("requiredVotes"), field("required_votes")), calculated_required);
-    let required_votes = if treaty.is_some() { calculated_required } else { raw_required.min(counted as i64).max(0) };
+    let required_votes = if treaty.is_some() || roster { calculated_required } else { raw_required.min(counted as i64).max(0) };
     let destination = text(coalesce(field("destinationLocationId"), field("destination_location_id")), 120, "");
     let mut result = Map::new();
     result.insert("id".into(), Value::String(decision_id));
@@ -316,8 +333,9 @@ pub fn normalize_party_decision(value: &Value, policy: Option<&Value>) -> Decide
     result.insert("abstentions".into(), Value::Object(abstentions));
     result.insert("requiredVotes".into(), json!(required_votes));
     result.insert("voterScope".into(), Value::String(voter_scope));
+    let version = decision_policy["policyVersion"].clone();
     result.insert("policy".into(), decision_policy);
-    result.insert("policyVersion".into(), json!(PARTY_DECISION_POLICY_VERSION));
+    result.insert("policyVersion".into(), version);
     if kind == "roll" {
         result.insert("difficulty".into(), json!(safe_number(field("difficulty"), 12).clamp(5, 25)));
     }
@@ -624,6 +642,13 @@ fn party_decision_event(event_type: &str, actor_id: Option<&str>, context: &Part
     ])
 }
 
+fn cancel_without_quorum(interaction: &Value, context: &Participants) -> Value {
+    party_decision_event("PartyDecisionConsumed", None, context, vec![
+        ("interaction_id", interaction["id"].clone()),
+        ("reason", json!("quorum_not_reached")),
+    ])
+}
+
 fn votes_value(votes: &Map<String, Value>) -> Value {
     Value::Object(js_order(votes.clone()))
 }
@@ -789,6 +814,9 @@ pub fn resolve_party_vote(state: &Value, input: &Value) -> Decided<Value> {
         None => party_ids(state),
     };
     let context = participant_context(&interaction, &eligible);
+    if uses_roster_quorum(&interaction) && !ids(interaction.get("eligibleActorIds")).contains(&voter) {
+        return Err(PartyDecisionError::new("Герой не участвовал при открытии голосования", "ACTOR_FORBIDDEN"));
+    }
     let voter_id = assert_participant(&context, &voter, "Герой не участвовал при открытии голосования")?;
     let mut votes = clean_votes(&interaction, &context, false);
     let mut replaced: Option<String> = None;
@@ -852,7 +880,8 @@ pub fn resolve_party_abstain(state: &Value, input: &Value) -> Decided<Value> {
         }
     }
     let treaty = interaction.get("scenarioTreaty").is_some();
-    let required = if treaty { context.required } else { required_votes_for(interaction.get("type"), active.len()) };
+    let roster = uses_roster_quorum(&interaction);
+    let required = if treaty || roster { context.required } else { required_votes_for(interaction.get("type"), active.len()) };
     let next = Participants { active_voters: active.clone(), abstained_voters: abstained.clone(), required, ..context };
     let mut abstentions = spread_object(interaction.get("abstentions"));
     abstentions.insert(voter_id.clone(), json!("explicit"));
@@ -872,7 +901,7 @@ pub fn resolve_party_abstain(state: &Value, input: &Value) -> Decided<Value> {
     )];
     let winner = if treaty {
         (active.len() < required as usize || votes.len() == active.len()).then(|| "decline".to_string())
-    } else if active.is_empty() { options_of(&interaction).first().cloned() } else { winner_for(&interaction, &next, &votes, true) };
+    } else if !roster && active.is_empty() { options_of(&interaction).first().cloned() } else { winner_for(&interaction, &next, &votes, true) };
     if let Some(winner) = &winner {
         events.push(party_decision_event(
             "PartyDecisionResolved",
@@ -886,6 +915,9 @@ pub fn resolve_party_abstain(state: &Value, input: &Value) -> Decided<Value> {
                 ("resolution_reason", json!(if active.is_empty() { "all_voters_abstained" } else { "quorum_after_abstain" })),
             ],
         ));
+    }
+    if roster && winner.is_none() && active.len() < required as usize {
+        events.push(cancel_without_quorum(&interaction, &next));
     }
     Ok(json!({ "events": events, "votes": votes_value(&votes), "required": next.required, "resolvedOptionId": winner }))
 }
@@ -904,8 +936,8 @@ pub fn party_decision_active_voter_ids(interaction: &Value, connected_hero_ids: 
 /// activeVoterIds, abstainedVoterIds }`.
 pub fn party_decision_presence_events(state: &Value, input: &Value) -> Decided<Value> {
     let interaction = validate_party_vote_state(state, get(get(Some(state), "agentInteraction"), "id"), None)?;
-    // Разрыв соединения не отзывает голос и не меняет кворум договора.
-    if interaction.get("scenarioTreaty").is_some() {
+    // Разрыв соединения не отзывает голос и не меняет фиксированный кворум.
+    if interaction.get("scenarioTreaty").is_some() || uses_roster_quorum(&interaction) {
         return Ok(json!({ "events": [], "activeVoterIds": interaction["activeVoterIds"], "abstainedVoterIds": interaction["abstainedVoterIds"] }));
     }
     let context = participant_context(&interaction, &[]);
@@ -972,21 +1004,29 @@ pub fn party_decision_expiry_events(state: &Value, now: Option<f64>) -> Decided<
     }
     let context = participant_context(&interaction, &[]);
     let votes = clean_votes(&interaction, &context, false);
-    let winner = if interaction.get("scenarioTreaty").is_some() { "decline".to_string() }
-        else { winner_for(&interaction, &context, &votes, false).unwrap_or_default() };
-    Ok(json!({
-        "events": [party_decision_event(
+    let roster = uses_roster_quorum(&interaction);
+    let winner = if interaction.get("scenarioTreaty").is_some() {
+        "decline".to_string()
+    } else if roster && context.required == 0 {
+        String::new()
+    } else {
+        winner_for(&interaction, &context, &votes, roster).unwrap_or_default()
+    };
+    let mut events = vec![party_decision_event(
             "PartyDecisionExpired",
             None,
             &context,
             vec![
                 ("interaction_id", interaction["id"].clone()),
-                ("resolved_option_id", json!(winner)),
+                ("resolved_option_id", json!(&winner)),
                 ("votes", votes_value(&votes)),
                 ("abstained_voter_ids", strings_value(&context.abstained_voters)),
                 ("resolution_reason", json!("expired")),
                 ("expired_at", interaction.get("expiresAt").cloned().unwrap_or(Value::Null)),
             ],
-        )],
-    }))
+        )];
+    if roster && winner.is_empty() {
+        events.push(cancel_without_quorum(&interaction, &context));
+    }
+    Ok(json!({ "events": events }))
 }

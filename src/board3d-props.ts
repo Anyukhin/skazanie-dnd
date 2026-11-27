@@ -8,7 +8,7 @@ import { buildOathCircle } from './board3d-oath-circle'
 import { propDrawingFor, propVisualLayout, resolvePropAssetId, stampFit, PROP_DECAL_ALPHA, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
 import { detailPropAlias } from './detail-props'
 import type { TacticalProp } from './types'
-import { frontFacingEntry, propModelFit, propModelFloorFit, propModelFor, propModelTreeStretch } from './prop-model-catalog'
+import { frontFacingEntry, propModelFit, propModelFloorFit, propModelFor, propModelTreeStretch, propModelVerticalStretch } from './prop-model-catalog'
 import type { PropModelAssets } from './prop-model-assets'
 import type { SeeThrough } from './board3d-see-through'
 import { eldrinBarkTexture, eldrinOakGeometry } from './board3d-eldrin'
@@ -983,14 +983,22 @@ function buildTempleCrypt(resources: Resources, parent: THREE.Group, layout: Lay
   else if (kind === 'cave-pool') { flat(resources, parent, 'pool-edge', material(resources, 'earth', t.earth), width * 0.9, depth * 0.9); flat(resources, parent, 'pool-water', material(resources, 'water', t.water, { transparent: true, opacity: 0.76 }), width * 0.74, depth * 0.74, 0.04) }
   else if (kind === 'ore-vein') for (const [x, y, z] of [[-0.16, 0.28, 0], [0, 0.43, 0], [0.15, 0.3, 0]] as Array<[number, number, number]>) rock(resources, parent, 'ore-chunk', material(resources, 'ore', t.woodLight, { metalness: 0.3 }), [0.14, 0.22, 0.08], [x, y, z])
   else if (kind === 'roadside-shrine') { cube(resources, parent, 'shrine-base', stone, [0.65, 0.15, 0.38], [0, 0.08, 0]); for (const x of [-0.25, 0.25]) round(resources, parent, 'shrine-post', woodMaterial(t, resources), 0.08, 0.7, [x, 0.43, 0]); cone(resources, parent, 'shrine-roof', cloth, 0.8, 0.22, [0, 0.88, 0]) }
-  else if (kind === 'temple-banner') { cube(resources, parent, 'temple-banner-cloth', cloth, [Math.max(0.28, width), 0.7, 0.025], [0, 0.55, 0], undefined, false); round(resources, parent, 'temple-banner-pole', metal, 0.04, 1.05, [-width * 0.48, 0.52, 0], false) }
+  else if (kind === 'temple-banner') {
+    const height = 1.56 / layout.scale
+    cube(resources, parent, 'temple-banner-cloth', cloth, [Math.max(.28, width), height * .69, .025], [0, height * .59, 0], undefined, false)
+    round(resources, parent, 'temple-banner-pole', metal, .04, height, [-width * .48, height / 2, 0], false)
+  }
   else if (kind === 'cobweb') { for (const angle of [0, Math.PI / 4, Math.PI / 2, Math.PI * 3 / 4]) cube(resources, parent, 'cobweb-thread', material(resources, 'cobweb', t.stoneLight, { transparent: true, opacity: 0.55 }), [0.018, 0.018, 0.52], [0, 0.45, 0], [0, angle, 0], false) }
   else { cube(resources, parent, 'banner-cloth', cloth, [Math.max(0.28, width), 0.7, 0.025], [0, 0.55, 0], undefined, false); round(resources, parent, 'banner-pole', metal, 0.04, 1.05, [-width * 0.48, 0.52, 0], false) }
 }
 
 function buildWallOrSign(resources: Resources, parent: THREE.Group, layout: Layout, t: Tones, kind: string) {
   const { width, depth } = dimensions(layout), wood = woodMaterial(t, resources), cloth = material(resources, 'fabric', t.fabric), metal = material(resources, 'metal', t.metal)
-  if (kind === 'sign-board') { cube(resources, parent, 'sign-board', wood, [Math.max(0.4, width), 0.35, 0.04], [0, 0.56, 0]); round(resources, parent, 'sign-post', metal, 0.05, 0.72, [0, 0.36, 0]) }
+  if (kind === 'sign-board') {
+    const height = 1.52 / layout.scale
+    cube(resources, parent, 'sign-board', wood, [Math.max(.4, width), .35, .04], [0, height - .16, 0])
+    round(resources, parent, 'sign-post', metal, .075, height, [0, height / 2, 0])
+  }
   else if (kind === 'ore-vein') buildTempleCrypt(resources, parent, layout, t, kind)
   else if (kind === 'broom') { round(resources, parent, 'broom-handle', wood, 0.045, 0.75, [0, 0.38, 0], false); cube(resources, parent, 'broom-head', material(resources, 'broom', t.woodLight), [0.28, 0.1, 0.12], [0.08, 0.06, 0], [0, 0, -0.18], false) }
   else buildTableware(resources, parent, t, kind === 'cauldron' ? 'pot' : kind)
@@ -1181,8 +1189,8 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
       const entry = propModelFor(assets?.catalog, canonical, prop.id)
       const template = entry ? assets?.models.get(entry.key) : null
       const templateHinge = animatedHingeOf(template)
-      const qualityOverride = Boolean(entry && PROCEDURAL_QUALITY_MODEL_KEYS.has(entry.key))
-      const campfireStoneWithFlame = kind === 'campfire' && entry?.key === 'k-campfire_stones'
+      const qualityOverride = Boolean(entry && (PROCEDURAL_QUALITY_MODEL_KEYS.has(entry.key) || canonical === 'prayer_bench' && entry.key === 'q-bench'))
+      const campfireStoneWithFlame = kind === 'campfire' && ['k-campfire_stones', 'style-kenney-campfire-stones'].includes(entry?.key ?? '')
         && !INACTIVE_CAMPFIRE_STATES.has(prop.state)
       const useTemplate = !storyKind && Boolean(template) && !qualityOverride
         && (!openContainerState(prop.state) || Boolean(templateHinge))
@@ -1218,6 +1226,7 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         fitted.scale.setScalar(fit)
         // Дерево в 3D тянется вверх до своего роста; ширина кроны прежняя.
         fitted.scale.y *= propModelTreeStretch(canonical, size.y * fit * layout.scale)
+        fitted.scale.y *= propModelVerticalStretch(canonical, size.y * fit * layout.scale, entry?.key)
         if (castleThrone) {
           addCastleThroneBack(owned, fitted, size.x, size.y, -size.z * .38)
         }
@@ -1225,7 +1234,7 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         // над нулём: полочка, щит, стойка с крюками), поднимаем так, чтобы верх
         // пришёлся на WALL_MOUNT_TOP: иначе щит лежал у стены на полу.
         const hung = prop.mount?.kind === 'wall' && box.min.y > Math.max(.05, size.y * .1)
-        const lift = hung ? Math.max(0, WALL_MOUNT_TOP / layout.scale - size.y * fit) : 0
+        const lift = hung ? Math.max(0, WALL_MOUNT_TOP / layout.scale - size.y * fitted.scale.y) : 0
         fitted.position.y = lift
         if (hung) group.userData.wallLift = lift
         group.add(fitted)

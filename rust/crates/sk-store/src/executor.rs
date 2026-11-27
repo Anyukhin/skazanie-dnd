@@ -55,7 +55,7 @@ impl Producer {
         match self {
             // Групповой бросок решает исход голосования; разрешён явно, а
             // инвариант ниже не даёт ему тронуть владения Rules Engine.
-            Self::PartyDecision => &["PartyDecisionOpened", "PartyVoteCast", "PartyDecisionAbstained", "PartyDecisionResolved", "PartyDecisionExpired", "DieRolled"],
+            Self::PartyDecision => &["PartyDecisionOpened", "PartyVoteCast", "PartyDecisionAbstained", "PartyDecisionResolved", "PartyDecisionExpired", "PartyDecisionConsumed", "DieRolled"],
             Self::Presence => &["PartyDecisionAbstained", "PartyDecisionResolved"],
             // Только событие часов: пополнение лавки остаётся за Rules Engine.
             Self::EconomyClock => &["MerchantEconomyClockAdvanced"],

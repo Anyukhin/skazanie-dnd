@@ -1252,6 +1252,8 @@ pub fn ensure_campaign_world_map(state: &Value) -> Result<Value, String> {
     let last = history.and_then(Value::as_array).and_then(|items| items.last());
     let scene_field = |name: &str| scene.and_then(|scene| get(scene, name));
     let last_field = |name: &str| last.and_then(|entry| get(entry, name));
+    let entry_from = last_field("entry_from_location_id").and_then(Value::as_str)
+        .and_then(|id| world_location_by_id(world_map, id));
     reconcile_map(
         world_map,
         &ReconcileArgs {
@@ -1260,8 +1262,9 @@ pub fn ensure_campaign_world_map(state: &Value) -> Result<Value, String> {
             concept: get(state, "campaignConcept"),
             current_location: scene_field("location"),
             current_location_id: coalesce(scene_field("location_id"), scene_field("locationId")),
-            previous_location: last_field("location"),
-            previous_location_id: coalesce(last_field("location_id"), last_field("locationId")),
+            previous_location: entry_from.and_then(|location| location.get("name")).or_else(|| last_field("location")),
+            previous_location_id: entry_from.and_then(|location| location.get("id"))
+                .or_else(|| coalesce(last_field("location_id"), last_field("locationId"))),
             known_locations: Some(&known_locations),
             transition: get(adventure, "lastTransition"),
             scene,

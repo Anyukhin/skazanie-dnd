@@ -44,9 +44,8 @@ import { buildStyledFloors, buildStyledTerrainSides, floorKeyForCell } from './b
 import type { FloorReliefLevel } from './board3d-floor-relief'
 import { structuralLoadProps, structuralTemplate, type StructuralRole } from './board3d-structural'
 
-/** Высота срезанной стены в мировых единицах клетки. */
-/** Высота стены: выше пояса фигурки, как у наборных диорам, но не закрывает поле при взгляде сверху. */
-export const BOARD3D_WALL_HEIGHT = 0.95
+/** Высота стены в клетках. Кладка перед фигуркой открывает окно к камере. */
+export const BOARD3D_WALL_HEIGHT = 1.38
 /** Граница стены совпадает с границей клеток, как и в 2D-доске. */
 export const BOARD3D_WALL_THICKNESS = 1 / 6
 /** Небольшая отделка среза стены не меняет её игровую границу. */
@@ -1226,16 +1225,29 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   group.add(roofs.group)
   const edgeLayer = new THREE.Group()
   edgeLayer.name = 'edge-layer'
+  const seeThrough = createSeeThrough()
+  const wallWindows = (root: THREE.Group) => {
+    for (const name of ['cutaway-walls', 'wall-caps', 'wall-stone-courses']) {
+      root.getObjectByName(name)?.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return
+        for (const surface of Array.isArray(object.material) ? object.material : [object.material]) seeThrough.wall(surface)
+      })
+    }
+  }
   const styledEdgeOptions = { wallHeight: BOARD3D_WALL_HEIGHT, thickness: BOARD3D_WALL_THICKNESS, stoneCourses: landscapeDetail !== 'minimal', structuralAssets: structuralAssets as PropModelAssets | null, onTexture: roofTextureReady }
+  const styledWallLayer = (pack: GraphicsStylePack) => {
+    const layer = buildStyledEdges(map, pack, styledEdgeOptions)
+    wallWindows(layer.group)
+    return layer
+  }
   if (packHasWallLooks(initialPack)) {
-    styledEdges = buildStyledEdges(map, initialPack, styledEdgeOptions)
+    styledEdges = styledWallLayer(initialPack)
     group.add(styledEdges.group)
   } else {
     addEdgeScene(resources, map, edgeLayer, palette, options.landscapeDetail ?? 'reduced')
+    wallWindows(edgeLayer)
     group.add(edgeLayer)
   }
-  // Окно в кронах над фигурками: общие uniform-ы на все деревья сцены.
-  const seeThrough = createSeeThrough()
   let storyFrescoTexture: THREE.Texture | null = null
   const storyFrescoAbort = new AbortController()
   let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness, seeThrough, landscapeDetail, storyFrescoTexture)
@@ -1305,7 +1317,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
         if (bridges) group.add(bridges.group)
       }
       if (styledEdges && packHasWallLooks(resolvedStylePack) && loaded(edgeRoles)) {
-        const nextEdges = buildStyledEdges(map, resolvedStylePack, styledEdgeOptions)
+        const nextEdges = styledWallLayer(resolvedStylePack)
         styledEdges.dispose()
         styledEdges = nextEdges
         group.add(styledEdges.group)
@@ -1448,7 +1460,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     // Прежние стены снимаются только после удачной сборки новых: доска без
     // стен хуже доски со стенами прежнего вида.
     resolvedStylePack = pack
-    const nextEdges = buildStyledEdges(map, pack, styledEdgeOptions)
+    const nextEdges = styledWallLayer(pack)
     const nextRocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, landscapeKit, { skipMasonry: true })
     // Крыши того же стиля, в том же режиме, что выбран сейчас.
     const nextRoofs = createBoard3DRoofs(map, palette, {

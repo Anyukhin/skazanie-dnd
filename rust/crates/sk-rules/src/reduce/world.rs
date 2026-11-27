@@ -369,8 +369,14 @@ pub(super) fn party_decision_expired(state: &mut Value, event: &Event) -> Reduce
 /// `PartyDecisionConsumed` (24455–24460).
 pub(super) fn party_decision_consumed(state: &mut Value, event: &Event) -> Reduced {
     let resolved = js::string(event.payload.get("resolved_option_id"));
-    let consumed = interaction_matches(state, event)
-        && interaction(state).and_then(|interaction| interaction.get("resolvedOptionId")).and_then(Value::as_str) == Some(resolved.as_str());
+    let consumed = interaction_matches(state, event) && interaction(state).is_some_and(|current| {
+        current.get("resolvedOptionId").and_then(Value::as_str) == Some(resolved.as_str())
+            || (event.payload["reason"] == "quorum_not_reached"
+                && current.get("status").and_then(Value::as_str) == Some("open")
+                && sk_memory::party_decision::uses_roster_quorum(&Value::Object(current.clone())))
+            || (event.payload["reason"] == "travel_invalid_choice"
+                && current.get("status").and_then(Value::as_str) == Some("resolved"))
+    });
     if consumed {
         state["agentInteraction"] = Value::Null;
     }

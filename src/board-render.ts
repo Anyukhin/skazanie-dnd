@@ -1318,7 +1318,6 @@ export function drawEdgeSegments(context: BoardContext2D, scene: BoardScene, til
   ))
   for (const edge of edges) {
     if (edge.kind === 'none') continue
-    if (scene.artMode === 'map' && scene.art && edge.kind !== 'door') continue
     const owner = cellAt(scene.map, edge.x, edge.y)
     const neighborPosition = edgeNeighbor(edge)
     const neighbor = cellAt(scene.map, neighborPosition.x, neighborPosition.y)

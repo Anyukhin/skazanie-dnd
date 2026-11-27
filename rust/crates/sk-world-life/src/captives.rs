@@ -570,11 +570,15 @@ pub fn plan_captive_relocation_drafts(state: &Value) -> Vec<Value> {
     for captive in held_captives(state) {
         let npc_id = js::s(captive.get("npc_id"));
         let Some((_, npc)) = npcs.iter().find(|(id, _)| *id == npc_id) else { continue };
-        if comparable(get(Some(npc), "location")) == place_key {
+        let has_location_id = npc.get("location_id").and_then(Value::as_str).filter(|id| !id.is_empty());
+        if comparable(get(Some(npc), "location")) == place_key && has_location_id.is_none_or(|id| id == location_id) {
             continue;
         }
         let mut profile = spread(Some(npc));
         profile.insert("location".into(), string(place.clone()));
+        if has_location_id.is_some() {
+            profile.insert("location_id".into(), string(location_id.clone()));
+        }
         // `dossier: undefined` — в JSON поля нет.
         profile.shift_remove("dossier");
         drafts.push(json!({

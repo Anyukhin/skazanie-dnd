@@ -322,7 +322,9 @@ export function AgentInteractionCard({ interaction, players, playerId, canContin
   const votedVoters = new Set(Object.keys(interaction.votes).map((actorId) => interaction.voterByActorId?.[actorId] ?? actorId))
   const abstainedVoters = new Set(interaction.abstainedVoterIds ?? [])
   const treaty = Boolean(interaction.scenarioTreaty)
-  const canVote = !resolved && (!treaty || eligibleActors.includes(playerId) && !abstainedVoters.has(voterId ?? playerId))
+  const rosterQuorum = interaction.policy?.quorumMode === 'majority_of_roster'
+  const canVote = !resolved && (!(treaty || rosterQuorum)
+    || interaction.eligibleActorIds?.includes(playerId) && !abstainedVoters.has(voterId ?? playerId))
   return (
     <section className={['agent-interaction', 'agent-interaction--' + interaction.type, resolved ? 'resolved' : ''].join(' ')} aria-label="Групповое решение">
       <div className="agent-interaction__head">
@@ -331,7 +333,9 @@ export function AgentInteractionCard({ interaction, players, playerId, canContin
         <p>{interaction.description}</p>
         <small className="agent-interaction__policy">{treaty
           ? `Для согласия нужно ${quorum} голосов за ${ttlSeconds} с. Без кворума игра продолжится.`
-          : `Один голос на аккаунт · активны ${activeVoters} · отключение = воздержание · автоисход через ${ttlSeconds} с`}</small>
+          : rosterQuorum
+            ? `Нужно ${quorum} голосов за ${ttlSeconds} с. Голоса сохраняются при переподключении.`
+            : `Один голос на аккаунт · активны ${activeVoters} · отключение = воздержание · автоисход через ${ttlSeconds} с`}</small>
       </div>
       {interaction.type === 'roll' ? (
         <button className="agent-roll" onClick={onRoll} disabled={resolved}>

@@ -166,6 +166,12 @@ pub fn create_scene_transition_with(input: &Value, state: &Value, library: Optio
     };
     let completed_objective = text_or_value(field("completed_objective"), 160, scene_field("objective"))?;
     let previous_location_id = public_text(nullish(scene_field("location_id"), scene_field("locationId")), 120, "");
+    // Для входа важен последний отрезок пути. История главы по-прежнему
+    // описывает сцену, из которой отряд ушёл.
+    let last_stop = field("travel_route").and_then(Value::as_array)
+        .filter(|route| route.len() >= 2 && route.last().and_then(Value::as_str) == Some(requested_location_id.as_str()))
+        .and_then(|route| route[route.len() - 2].as_str())
+        .and_then(|id| world_location_by_id(world_map_before, id));
     let mut history_entry = Map::new();
     history_entry.insert("chapter".into(), Value::from(if objective_status == "continued" { chapter } else { (chapter - 1).max(1) }));
     history_entry.insert("title".into(), Value::String(text(scene_field("title"), 80, "Предыдущая сцена")));
@@ -178,6 +184,9 @@ pub fn create_scene_transition_with(input: &Value, state: &Value, library: Optio
     } else {
         "Герои покинули эту локацию.".to_string()
     };
+    if let Some(entry_from) = last_stop.and_then(|node| node.get("id")) {
+        history_entry.insert("entry_from_location_id".into(), entry_from.clone());
+    }
     history_entry.insert("objective".into(), completed_objective);
     history_entry.insert("outcome".into(), Value::String(text(field("outcome"), 240, &outcome_fallback)));
     history_entry.insert("status".into(), Value::String(objective_status.into()));
@@ -206,9 +215,11 @@ pub fn create_scene_transition_with(input: &Value, state: &Value, library: Optio
     insert_defined(&mut options, "concept", prop(state_ref, "campaignConcept"));
     options.insert("currentLocation".into(), location_value.clone());
     options.insert("currentLocationId".into(), Value::String(requested_location_id.clone()));
-    insert_defined(&mut options, "previousLocation", or(scene_field("location"), scene_field("title")));
+    let entry_from_location = last_stop.and_then(|node| node.get("name")).or_else(|| or(scene_field("location"), scene_field("title")));
+    let entry_from_id = last_stop.and_then(|node| node.get("id")).or_else(|| nullish(scene_field("location_id"), scene_field("locationId")));
+    insert_defined(&mut options, "previousLocation", entry_from_location);
     let scene_location = scene_location_id(state);
-    let previous_location_id_raw = nullish(nullish(scene_field("location_id"), scene_field("locationId")), None)
+    let previous_location_id_raw = nullish(entry_from_id, None)
         .cloned()
         .unwrap_or_else(|| Value::String(scene_location.clone()));
     options.insert("previousLocationId".into(), previous_location_id_raw);
@@ -275,7 +286,7 @@ pub fn create_scene_transition_with(input: &Value, state: &Value, library: Optio
     };
     let program_value = map_requirements.as_ref().map(|program| program.to_value());
     let stable_seed = stable_location_map_seed(world_ref, Some(&location_id_value), Some(&location_value));
-    let entry_side_new = entry_side_toward(world_ref, Some(&location_id_value), nullish(scene_field("location_id"), scene_field("locationId")));
+    let entry_side_new = entry_side_toward(world_ref, Some(&location_id_value), entry_from_id);
     let generated: Option<SceneGeometry> = if remembered_cells.is_some() {
         None
     } else {
@@ -352,7 +363,7 @@ pub fn create_scene_transition_with(input: &Value, state: &Value, library: Optio
     // её краю со стороны, откуда отряд пришёл на этот раз.
     let return_entrance = match &tactical {
         SceneMap::Stored(stored) => {
-            let side = entry_side_toward(world_ref, Some(&location_id_value), nullish(scene_field("location_id"), scene_field("locationId")));
+            let side = entry_side_toward(world_ref, Some(&location_id_value), entry_from_id);
             if side.is_empty() {
                 None
             } else {

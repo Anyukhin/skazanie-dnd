@@ -499,6 +499,7 @@ export type TacticalBoardProps = {
    * остаются как были.
    */
   lighting?: boolean
+  nighttime?: boolean
   /** Внешняя кнопка «Вся карта»; обычная карта сохраняет камеру без этого ключа. */
   viewResetKey?: string | number
   /** Просьба мини-карты поставить клетку в центр поля; `nonce` различает повторные клики. */
@@ -521,7 +522,7 @@ export type TacticalBoardProps = {
   autoFocusKey?: string
   /** В прокручиваемом стенде колесо страницы не должно случайно увеличивать карту. */
   wheelZoomRequiresAltKey?: boolean
-  trajectory?: { x1: number; y1: number; x2: number; y2: number } | null
+  trajectory?: { x1: number; y1: number; x2: number; y2: number; blockedCell?: BoardPoint | null } | null
   /** Наведение на пустую клетку без отдельного DOM-узла, в обоих видах карты. */
   onCellHover?: (point: BoardPoint | null) => void
   onCancelAiming?: () => void
@@ -599,7 +600,7 @@ function MovePreviewMarks({ preview, columns }: { preview: BoardMovePreview; col
 function TacticalBoard2D({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
   effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, combatAudio, conditions, conditionVersion, onBackgroundActivate, onCellHover, onCancelAiming, targetHint, movePreview,
-  levelIndex = 0, lighting = true, campaignId = '', artMode = 'backdrop', viewResetKey, wheelZoomRequiresAltKey = false, focusRequest, passClickThroughAnimation = false,
+  levelIndex = 0, lighting = true, nighttime = false, campaignId = '', artMode = 'backdrop', viewResetKey, wheelZoomRequiresAltKey = false, focusRequest, passClickThroughAnimation = false,
 }: TacticalBoardProps) {
   const cameraKey = boardCameraKey(map?.locationId, levelIndex, campaignId)
   const [zoom, setZoom] = useState(() => cameraByLocation.get(cameraKey)?.zoom ?? 1)
@@ -1609,7 +1610,7 @@ function TacticalBoard2D({
         data-animation-playing={animationsEnabled !== false && Boolean(activeAnimation || animationQueue.length)}
         style={{ '--board-columns': columns, '--board-rows': rows, width: `calc(var(--cell) * ${columns})`, height: `calc(var(--cell) * ${rows})` } as React.CSSProperties}
       >
-        <canvas ref={canvasRef} className="board-canvas" aria-hidden="true" />
+        <canvas ref={canvasRef} className={lighting && nighttime ? 'board-canvas night' : 'board-canvas'} aria-hidden="true" />
         {decoration}
         {movePreview && <MovePreviewLayer preview={movePreview} columns={columns} rows={rows} />}
         <div

@@ -118,7 +118,12 @@ function humanoid(slug: string, p: MaterialSet) {
     if (slug === 'troll') {
       for (const side of [-1, 1]) cone(root, 'troll-ear', .08, .24, [side * .26, 1.27, .02], p.bone, [0, 0, side * .9])
       club(root, p.dark, false, 1)
-    } else club(root, p.dark, slug === 'hill-giant', 1)
+    } else if (slug === 'hill-giant') {
+      limb(root, 'hill-giant-trunk', [.56, .41, .20], [.39, 1.58, -.02], .099, p.dark)
+      sphere(root, 'hill-giant-trunk-knot', .145, [.38, 1.60, -.02], p.dark, [1, 1.5, 1])
+      const pelt = sphere(root, 'hill-giant-hide-mantle', .30, [-.29, .98, -.09], p.dark, [1.36, .56, 1.09])
+      pelt.rotation.z = .48
+    } else club(root, p.dark)
   }
   root.scale.setScalar(tall / 1.35)
   return root

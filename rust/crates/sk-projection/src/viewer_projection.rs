@@ -904,8 +904,7 @@ fn public_enemy_image(value: Option<&Value>) -> String {
     }
 }
 
-/// `maskedActorIdentity(actor)`.
-fn masked_actor_identity(actor: Option<&Value>) -> bool {
+fn concealed_actor_identity(actor: Option<&Value>) -> bool {
     if ["masked", "is_masked", "identity_masked", "identityMasked", "masked_identity"].iter().any(|key| js::is_true(get(actor, key)))
         || js::is_false(get(actor, "identified"))
         || js::is_false(get(actor, "identity_known"))
@@ -914,8 +913,17 @@ fn masked_actor_identity(actor: Option<&Value>) -> bool {
     }
     let name = text_of(coalesce(get(actor, "name"), get(actor, "character")), 160);
     text::test(
-        re!(r"^(?:\?+|unknown|неизвестн|неопознан|безымянн|скрыт|маскир|masked|тайн(?:ый|ое|ая)|враг|существо|creature|enemy)(?:\s|$)", "iu"),
+        re!(r"^(?:\?+|unknown|неизвестн\p{L}*|неопознан\p{L}*|безымянн\p{L}*|скрыт\p{L}*|маскир\p{L}*|masked|тайн(?:ый|ое|ая))(?:\s|$)", "iu"),
         &name,
+    )
+}
+
+/// Общая подпись годится для карточки, а размер скрывается, пока вид
+/// противника остаётся неясным.
+fn masked_actor_identity(actor: Option<&Value>) -> bool {
+    concealed_actor_identity(actor) || text::test(
+        re!(r"^(?:враг|существо|creature|enemy)(?:\s|$)", "iu"),
+        &text_of(coalesce(get(actor, "name"), get(actor, "character")), 160),
     )
 }
 
@@ -1006,27 +1014,30 @@ pub fn public_enemy_for(enemy: Option<&Value>, state: Option<&Value>, actor_id: 
     let id = text_of(coalesce(get(source, "id"), get(source, "actor_id")), 120);
     let knowledge = enemy_knowledge_for(state, &id, &actor);
     let exact_health = exact_enemy_health_known(state, &id, &actor);
-    let image = public_enemy_image(get(source, "image"));
-    let creature_type = text_of(get(source, "creature_type"), 80);
-    let legendary = public_legendary_for(enemy, state, &id)?;
-    let footprint = public_enemy_footprint_for(state, enemy);
+    let masked = concealed_actor_identity(source);
     let mut out = Map::new();
     out.insert("id".into(), Value::String(id.clone()));
-    out.insert("name".into(), text_value(get(source, "name"), 120));
-    if let Some(legendary) = legendary {
-        out.insert("boss".into(), Value::Bool(true));
-        out.insert("legendary".into(), legendary);
+    out.insert("name".into(), if masked { json!("Неизвестное существо") } else { text_value(get(source, "name"), 120) });
+    if !masked {
+        if let Some(legendary) = public_legendary_for(enemy, state, &id)? {
+            out.insert("boss".into(), Value::Bool(true));
+            out.insert("legendary".into(), legendary);
+        }
     }
     out.insert("x".into(), Value::from(integer(get(source, "x"), 0)));
     out.insert("y".into(), Value::from(integer(get(source, "y"), 0)));
-    if let Some(footprint) = footprint {
-        out.insert("footprint".into(), footprint);
-    }
-    if !image.is_empty() {
-        out.insert("image".into(), Value::String(image));
-    }
-    if !creature_type.is_empty() {
-        out.insert("creature_type".into(), Value::String(creature_type));
+    if !masked {
+        if let Some(footprint) = public_enemy_footprint_for(state, enemy) {
+            out.insert("footprint".into(), footprint);
+        }
+        let image = public_enemy_image(get(source, "image"));
+        if !image.is_empty() {
+            out.insert("image".into(), Value::String(image));
+        }
+        let creature_type = text_of(get(source, "creature_type"), 80);
+        if !creature_type.is_empty() {
+            out.insert("creature_type".into(), Value::String(creature_type));
+        }
     }
     let alive = !js::is_false(get(source, "alive")) && (!js::present(get(source, "hp")) || integer(get(source, "hp"), 0) > 0);
     out.insert("alive".into(), Value::Bool(alive));
@@ -1042,7 +1053,7 @@ pub fn public_enemy_for(enemy: Option<&Value>, state: Option<&Value>, actor_id: 
     if exact_enemy_fact(knowledge, "speed") {
         out.insert("speed".into(), Value::from(sk_rules::speed::effective_speed_feet(state.unwrap_or(&Value::Null), enemy, &id)));
     }
-    if exact_enemy_fact(knowledge, "stat_block") && js::present(get(source, "stat_block_id")) {
+    if !masked && exact_enemy_fact(knowledge, "stat_block") && js::present(get(source, "stat_block_id")) {
         out.insert("stat_block_id".into(), text_value(get(source, "stat_block_id"), 120));
     }
     Ok(Value::Object(out))
@@ -2447,7 +2458,20 @@ fn player_room(raw_state: &Value, user: Option<&Value>, actor: &Value) -> R<Valu
         room.insert("autonomy".into(), autonomy);
     }
     let room_value = Value::Object(room);
-    let appearances = actor_appearances_for_viewer(Some(&room_value));
+    let mut appearances = actor_appearances_for_viewer(Some(&room_value));
+    // Рост меньше клетки виден у открытого врага. Рост больших фигур
+    // по-прежнему берётся из площади, которую зритель вправе целиком видеть.
+    for enemy in arr(get(visible_ref, "enemies")) {
+        let Some(stature @ ("tiny" | "small")) = enemy.get("size").and_then(Value::as_str) else { continue };
+        if masked_actor_identity(Some(enemy)) {
+            continue;
+        }
+        let source = Some(enemy);
+        let id = text_of(coalesce(get(source, "id"), get(source, "actor_id")), 120);
+        if let Some(appearance) = appearances.get_mut(&id).and_then(Value::as_object_mut) {
+            appearance.insert("stature".into(), json!(stature));
+        }
+    }
     let hints = suggested(&room_value, actor)?;
     let Value::Object(mut room) = room_value else { return Ok(room_value) };
     room.insert("actor_appearances".into(), appearances);

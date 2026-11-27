@@ -442,18 +442,30 @@ pub async fn persist_interaction_projection(core: Rc<GameCore>, accounts: Arc<Ac
     if eligible.is_empty() {
         eligible.extend(party_members.iter().cloned());
     }
-    let snapshot = {
+    let stable_travel = interaction["type"] == "vote" && interaction.get("destinationLocationId").and_then(Value::as_str)
+        .is_some_and(|destination| !destination.is_empty());
+    let policy = stable_travel.then(|| sk_memory::party_decision::roster_decision_policy(state.get("partyDecisionPolicy")));
+    let (snapshot, eligible) = {
         let campaign = campaign_id.to_string();
         let snapshot_state = state.clone();
-        let heroes = eligible.clone();
-        crate::core::blocking(move || crate::access::party_voter_snapshot(&accounts, &campaign, &snapshot_state, &heroes)).await??
+        let policy_for_snapshot = policy.clone();
+        crate::core::blocking(move || -> Result<(Value, Vec<String>), Failure> {
+            if let Some(policy) = policy_for_snapshot {
+                let memberships = accounts.list_campaign_memberships(&campaign)?;
+                let eligible = crate::access::claimed_party_heroes(&memberships, &party_members);
+                let snapshot = crate::access::party_voter_snapshot_with(&memberships, &campaign, &json!({ "partyDecisionPolicy": policy }), &eligible);
+                return Ok((snapshot, eligible));
+            }
+            let snapshot = crate::access::party_voter_snapshot(&accounts, &campaign, &snapshot_state, &eligible)?;
+            Ok((snapshot, eligible))
+        }).await??
     };
     let mut decision_options = Map::new();
     decision_options.insert("eligibleHeroIds".into(), js::strings_value(eligible));
     decision_options.insert("eligibleVoterIds".into(), snapshot.get("eligibleVoterIds").cloned().unwrap_or(Value::Null));
     decision_options.insert("voterByHeroId".into(), snapshot.get("voterByHeroId").cloned().unwrap_or(Value::Null));
-    if let Some(policy) = state.get("partyDecisionPolicy") {
-        decision_options.insert("policy".into(), policy.clone());
+    if let Some(policy) = policy.or_else(|| state.get("partyDecisionPolicy").cloned()) {
+        decision_options.insert("policy".into(), policy);
     }
     let opened = sk_memory::party_decision::party_decision_opened_event(interaction, None, &Value::Object(decision_options)).map_err(party_failure)?;
     let journal = HookedJournal(&core.events);

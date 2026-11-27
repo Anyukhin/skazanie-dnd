@@ -1342,11 +1342,16 @@ fn roster_for(records: &[Value], validated: &Validated, proposal_hash: &str, qua
     select_encounter_roster(RosterRequest { records, party_levels: &levels, difficulty: validated.difficulty, seed: Some(&seed), maximum_creatures: Some(&maximum) })
 }
 
-fn assemble_classic(validated: &Validated, proposal_hash: &str, available: &[&Cell]) -> Result<Value, AssembleFailure> {
+/// Кандидаты MM14 из той же темы, по которой собирается встреча.
+pub fn classic_theme_roster(theme: &str) -> Result<&'static [Value], AssembleFailure> {
     let by_theme = CLASSIC_BY_THEME.as_ref().map_err(|error| AssembleFailure::Content(error.clone()))?;
+    Ok(by_theme.get(theme).map(Vec::as_slice).unwrap_or(&[]))
+}
+
+fn assemble_classic(validated: &Validated, proposal_hash: &str, available: &[&Cell]) -> Result<Value, AssembleFailure> {
+    let records = classic_theme_roster(validated.theme)?;
     let content = default_dndsu_2014_content().map_err(|error| AssembleFailure::Content(error.to_string()))?;
     let quantity_cap = ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures.min(validated.party.len() * 2).min(available.len());
-    let records = by_theme.get(validated.theme).map(Vec::as_slice).unwrap_or(&[]);
     let mut selection = roster_for(records, validated, proposal_hash, quantity_cap)?;
     let proposal_id = format!("encounter-proposal-{}", &proposal_hash[..24]);
     let build = |selected: &[Value]| -> Result<Vec<Value>, AssembleFailure> {

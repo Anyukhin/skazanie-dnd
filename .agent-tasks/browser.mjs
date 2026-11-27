@@ -333,7 +333,7 @@ export class CdpBrowser {
     ])
     if (this.chromeProcess.exitCode == null) this.chromeProcess.kill()
     this.connection.close()
-    if (safeTemporaryProfile(this.profileDir)) await rm(this.profileDir, { recursive: true, force: true })
+    if (safeTemporaryProfile(this.profileDir)) await rm(this.profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 })
   }
 }
 
@@ -342,6 +342,7 @@ export async function launchBrowser({
   pageCount = DEFAULT_PAGE_COUNT,
   timeoutMs = DEFAULT_TIMEOUT,
   windowSize = { width: 1440, height: 1000 },
+  gpu = false,
 } = {}) {
   if (!Number.isSafeInteger(pageCount) || pageCount < 1 || pageCount > 20) {
     throw new RangeError('pageCount must be an integer from 1 to 20')
@@ -360,7 +361,7 @@ export async function launchBrowser({
     '--disable-component-update',
     '--disable-extensions',
     '--disable-sync',
-    '--disable-gpu',
+    ...(gpu ? [] : ['--disable-gpu']),
     '--hide-scrollbars',
     '--mute-audio',
     `--window-size=${windowSize.width},${windowSize.height}`,
@@ -389,7 +390,7 @@ export async function launchBrowser({
   } catch (error) {
     connection?.close()
     if (chromeProcess.exitCode == null) chromeProcess.kill()
-    if (safeTemporaryProfile(profileDir)) await rm(profileDir, { recursive: true, force: true })
+    if (safeTemporaryProfile(profileDir)) await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 })
     throw error
   }
 }

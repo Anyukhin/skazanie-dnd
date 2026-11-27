@@ -14,6 +14,7 @@ import { contractFiles } from './kit/run-contract.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const FORBIDDEN = ['server/', 'archive/']
+const SOURCE_EXTENSIONS = ['.mjs', '.js', '.ts', '.tsx']
 
 /** Относительные спецификаторы модуля: `import … from`, `export … from`, `import('…')`. */
 function relativeImports(/** @type {string} */ source) {
@@ -47,9 +48,11 @@ function forbiddenChain(entry, memo, stack = new Set()) {
   /** @type {string[] | null} */
   let found = null
   const file = join(ROOT, entry)
-  if (existsSync(file) && /\.(?:mjs|js)$/u.test(entry)) {
+  if (existsSync(file) && SOURCE_EXTENSIONS.some((extension) => entry.endsWith(extension))) {
     for (const specifier of relativeImports(readFileSync(file, 'utf8'))) {
-      const target = relative(ROOT, resolve(dirname(file), specifier)).replaceAll('\\', '/')
+      const path = resolve(dirname(file), specifier)
+      const source = existsSync(path) ? path : SOURCE_EXTENSIONS.map((extension) => path + extension).find(existsSync) ?? path
+      const target = relative(ROOT, source).replaceAll('\\', '/')
       const chain = forbiddenChain(target, memo, stack)
       if (chain) {
         found = [entry, ...chain]
@@ -68,6 +71,15 @@ test('контрактные тесты не импортируют server/ и �
   const memo = new Map()
   const offenders = files.map((file) => forbiddenChain(file, memo)).filter((chain) => chain !== null)
   assert.deepEqual(offenders.map((chain) => chain.join(' → ')), [], 'контрактный тест готовит входы через test/kit/fixtures.mjs, а не JS-библиотекой')
+})
+
+test('стенд Асстохана не импортирует JS-сервер даже через вспомогательные модули', () => {
+  // Рецепты героя подгружаются через compileClientModules, поэтому их
+  // исходник проверяется как отдельная точка входа.
+  const entries = ['eval/astohan-playthrough.mjs', 'src/astohan-pilot-builds.ts']
+  const memo = new Map()
+  const offenders = entries.map((entry) => forbiddenChain(entry, memo)).filter((chain) => chain !== null)
+  assert.deepEqual(offenders.map((chain) => chain.join(' → ')), [])
 })
 
 test('сторож видит статический, реэкспортный и динамический импорт, но не комментарий', () => {

@@ -540,8 +540,9 @@ function boardMapFor(state: GameState): TacticalMap | null {
   return boardMaps.get(key) ?? null
 }
 
-export function boardTrajectoryBlockReason(state: GameState, from: { x: number; y: number }, to: { x: number; y: number }) {
+export function boardTrajectoryTrace(state: GameState, from: { x: number; y: number }, to: { x: number; y: number }) {
   const cells = new Map(state.scene.cells.map((cell) => [`${cell.x},${cell.y}`, cell]))
+  const visibleCell = (x: number, y: number) => cells.get(`${x},${y}`)?.revealed === true
   // Стена на ребре клетки (`server/thin-walls.mjs`) и закрытая дверь режут
   // линию так же, как на сервере (`sightEdgeBlocked` в tactical-geometry):
   // по обеим кромкам диагонального шага и на последнем шаге — в клетку цели.
@@ -554,18 +555,27 @@ export function boardTrajectoryBlockReason(state: GameState, from: { x: number; 
   const dy = -Math.abs(to.y - y)
   const sy = y < to.y ? 1 : -1
   let error = dx + dy
+  let visible = visibleCell(x, y)
   while (x !== to.x || y !== to.y) {
     const twice = 2 * error
     if (twice >= dy) { error += dy; x += sx }
     if (twice <= dx) { error += dx; y += sy }
-    if (map && sightEdgeBlocked(map, previous, { x, y })) return `Линию огня перекрывает стена у клетки ${x + 1}:${y + 1}`
+    visible &&= visibleCell(x, y)
+    if (previous.x !== x && previous.y !== y) visible &&= visibleCell(x, previous.y) && visibleCell(previous.x, y)
+    if (map && sightEdgeBlocked(map, previous, { x, y })) {
+      return { visible, obstruction: { x, y, reason: `Линию огня перекрывает стена у клетки ${x + 1}:${y + 1}` } }
+    }
     previous = { x, y }
-    if (x === to.x && y === to.y) return null
+    if (x === to.x && y === to.y) break
     const cell = cells.get(`${x},${y}`)
-    if (!cell) return `Траектория выходит за край карты у клетки ${x + 1}:${y + 1}`
-    if (cell.type === 'wall') return `Линию огня перекрывает стена в клетке ${x + 1}:${y + 1}`
+    if (!cell) return { visible, obstruction: { x, y, reason: `Траектория выходит за край карты у клетки ${x + 1}:${y + 1}` } }
+    if (cell.type === 'wall') return { visible, obstruction: { x, y, reason: `Линию огня перекрывает стена в клетке ${x + 1}:${y + 1}` } }
   }
-  return null
+  return { visible, obstruction: null }
+}
+
+export function boardTrajectoryBlockReason(state: GameState, from: { x: number; y: number }, to: { x: number; y: number }) {
+  return boardTrajectoryTrace(state, from, to).obstruction?.reason ?? null
 }
 
 export function combatState(state: GameState): CombatMechanics {

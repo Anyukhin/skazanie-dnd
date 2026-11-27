@@ -878,5 +878,15 @@ pub fn startup_nudges(core: &Rc<GameCore>, codes: &[String]) {
     for campaign_id in codes {
         nudge_combat(core, campaign_id);
         nudge_world_clocks(core, campaign_id);
+        let core = core.clone();
+        let code = campaign_id.clone();
+        let _ = spawn_in_context(async move {
+            let Some(app) = app() else { return };
+            let Ok(room) = get_room(&core, &code) else { return };
+            let Some(state) = room.state.as_ref() else { return };
+            if let Err(error) = crate::director_transition::settle_world_travel(&core, &app, &code, state).await {
+                eprintln!("[Сказание] Не удалось исполнить решение о переходе {code}: {}", error.message);
+            }
+        });
     }
 }

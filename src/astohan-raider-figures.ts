@@ -69,30 +69,64 @@ function raiderHumanoid(root: THREE.Object3D, style: RaiderSlug) {
     pauldron.position.set(-.20, .12, 0)
     add(torso, pauldron, 'shoulder')
   }
-  if (style === 'berserker') {
-    const fur = new THREE.Mesh(new THREE.TorusGeometry(.16, .045, 8, 18), material('#4d392f', { roughness: 1 }))
-    fur.rotation.x = Math.PI / 2
-    fur.position.set(0, .14, 0)
-    add(torso, fur, 'fur-collar')
+  if (style === 'bandit-captain') {
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(.205, .175, .12, 5), material('#68352f'))
+    hat.scale.z = 1.17
+    hat.rotation.y = Math.PI / 5
+    hat.position.set(0, .16, .012)
+    add(head, hat, 'captain-hat')
   }
-  if (style === 'bandit' || style === 'berserker') {
+  if (style === 'veteran') {
+    const shield = new THREE.Mesh(new THREE.CylinderGeometry(.22, .16, .052, 7), material('#6e796b', { metalness: .18 }))
+    shield.rotation.x = Math.PI / 2
+    shield.scale.z = 1.40
+    shield.position.set(.22, -.025, -.19)
+    add(torso, shield, 'veteran-backplate')
+  }
+  if (style === 'berserker') {
+    const fur = material('#896451', { roughness: 1 })
+    for (const side of [-1, 1]) {
+      const shoulder = new THREE.Mesh(new THREE.SphereGeometry(.17, 8, 5), fur)
+      shoulder.scale.set(1.32, .73, .92)
+      shoulder.position.set(side * .27, .15, 0)
+      shoulder.rotation.z = side * -.38
+      add(torso, shoulder, 'fur-shoulder-' + side)
+    }
+  }
+  if (style === 'bandit') {
     const hood = new THREE.Mesh(new THREE.SphereGeometry(.17, 9, 6), material(dark, { roughness: .94 }))
     hood.scale.set(1.12, .86, .92)
-    hood.position.set(0, .04, .015)
+    hood.position.set(0, .075, -.045)
     add(head, hood, 'hood')
   }
   if (style === 'orc') {
+    const skin = material('#6a7442', { roughness: .91 })
     const tusk = material('#c9b993', { roughness: .94 })
+    const jaw = new THREE.Mesh(new THREE.SphereGeometry(.17, 10, 7), skin)
+    jaw.scale.set(1.24, .62, .81)
+    jaw.position.set(0, -.062, .11)
+    add(head, jaw, 'orc-jaw')
     for (const side of [-1, 1]) {
-      const tooth = new THREE.Mesh(new THREE.ConeGeometry(.028, .12, 6), tusk)
-      tooth.position.set(side * .065, -.055, .13)
-      tooth.rotation.z = side * -.22
+      const tooth = new THREE.Mesh(new THREE.ConeGeometry(.040, .16, 6), tusk)
+      tooth.position.set(side * .095, -.036, .218)
+      tooth.rotation.z = side * -.28
       add(head, tooth, 'tusk-' + side)
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(.073, .196, 6), skin)
+      ear.position.set(side * .18, .03, -.02)
+      ear.rotation.z = side * -1.13
+      add(head, ear, 'orc-ear-' + side)
     }
+    const hide = new THREE.Mesh(new THREE.BoxGeometry(.34, .23, .36), material('#5c4c32'))
+    hide.position.set(-.244, .10, .008)
+    hide.rotation.z = .45
+    add(torso, hide, 'orc-hide-shoulder')
   }
   if (style === 'hobgoblin') {
-    const crest = new THREE.Mesh(new THREE.BoxGeometry(.13, .23, .035), material('#8f392f', { roughness: .74 }))
-    crest.position.set(0, .17, -.01)
+    const helmet = new THREE.Mesh(new THREE.CylinderGeometry(.15, .205, .18, 7), material('#5e4236', { metalness: .14 }))
+    helmet.position.set(0, .095, -.025)
+    add(head, helmet, 'hobgoblin-helmet')
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(.082, .27, .30), material('#a1442f', { roughness: .74 }))
+    crest.position.set(0, .253, -.035)
     add(head, crest, 'crest')
   }
   root.userData.astohanRaiderStyle = style
@@ -113,6 +147,8 @@ function customGnoll() {
     ear.position.set(side * .20, 1.35, 0); ear.rotation.z = side * -.42; add(root, ear, 'gnoll-ear-' + side)
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(.08, .40, 4, 8), fur)
     arm.position.set(side * .38, .75, .05); arm.rotation.z = side * -.38; add(root, arm, 'gnoll-arm-' + side)
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(.073, .37, 4, 8), dark)
+    leg.position.set(side * .16, .26, .02); leg.rotation.x = -.34; add(root, leg, 'gnoll-leg-' + side)
     const tooth = new THREE.Mesh(new THREE.ConeGeometry(.025, .13, 5), boneMaterial)
     tooth.position.set(side * .07, 1.10, .41); tooth.rotation.x = Math.PI; add(root, tooth, 'gnoll-tooth-' + side)
   }
@@ -131,6 +167,8 @@ function customBugbear() {
   for (const side of [-1, 1]) {
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(.09, .53, 4, 8), fur)
     arm.position.set(side * .43, .73, 0); arm.rotation.z = side * -.28; add(root, arm, 'bugbear-arm-' + side)
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(.126, .28, 4, 8), dark)
+    leg.position.set(side * .22, .26, .04); leg.rotation.z = side * .23; add(root, leg, 'bugbear-leg-' + side)
     const ear = new THREE.Mesh(new THREE.ConeGeometry(.10, .23, 6), fur)
     ear.position.set(side * .24, 1.57, .01); ear.rotation.z = side * -.35; add(root, ear, 'bugbear-ear-' + side)
   }

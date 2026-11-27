@@ -107,3 +107,5 @@ pub const REACTION_PREFERENCE_ACTION_IDS: [&str; 6] = ["uncanny-dodge", "parry",
 pub fn reaction_preference_label(id: &str) -> Option<&'static str> {
     REACTION_PREFERENCE_LABELS.iter().find(|(key, _)| *key == id).map(|(_, label)| *label)
 }
+/// Смысл отметки `TurnEnded.payload.auto_skip_reason` для хода NPC без цели.
+pub const NPC_NO_TARGET_SKIP: &str = "npc-no-target";

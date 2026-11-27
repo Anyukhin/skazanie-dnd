@@ -109,6 +109,20 @@ test('готовый рисунок сохраняет координаты не
     'непроходимая вода также берётся из согласованного рисунка')
 })
 
+test('готовый рисунок не прячет действующую стену на ребре клетки', () => {
+  const map = createTacticalMap({ width: 2, height: 1, seed: 'painted-wall' })
+  setCell(map, 0, 0, { passable: true, revealed: true })
+  setCell(map, 1, 0, { passable: true, revealed: true })
+  setEdge(map, 0, 0, 1, 0, { kind: 'wall', blocksMove: true, blocksSight: true })
+  const context = recordingContext()
+  render.drawEdgeSegments(context, {
+    map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 40,
+    art: { image: {}, width: 80, height: 40 }, artMode: 'map',
+  }, { tileX: 0, tileY: 0 })
+  assert.ok(context.ops.some(op => op.op === 'fillRect' && op.x < 40 && op.x + op.width > 40 && op.height === 40),
+    'линия видна на той же границе, что у серверного ребра')
+})
+
 function sampleMap() {
   const map = createTacticalMap({ width: 5, height: 4, locationId: 'loc-1', seed: 'seed-1', theme: 'keep' })
   addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', label: 'Зал' })

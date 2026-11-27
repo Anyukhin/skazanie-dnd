@@ -1156,6 +1156,36 @@ struct TravelFacts {
     no_route: bool,
 }
 
+fn route_is_wild(graph: &Graph<'_>, route: &Value) -> bool {
+    WILD_ROUTE_KINDS.contains(&jstext::lower(&clean(route.get("kind"), 30)).as_str())
+        || route_endpoints(graph, route).iter().any(|location| WILD_BIOMES.contains(&location_biome(graph, Some(location)).as_str()))
+}
+
+/// Стоимость заявленного пути по отрезкам. Каждый отрезок должен быть открыт.
+pub fn checked_world_route_minutes(state: &Value, route_ids: &[Value], destination_id: &str) -> Option<i64> {
+    let graph = world_travel_graph(state)?;
+    let origin = graph_location(&graph, Some(&json!(graph.current_location_id)), path(state, &["scene", "location"]))?;
+    if route_ids.len() < 2 || route_ids.first() != origin.get("id") || route_ids.last().and_then(Value::as_str) != Some(destination_id) {
+        return None;
+    }
+    let mut total = 0;
+    for segment in route_ids.windows(2) {
+        let (from, to) = (segment[0].as_str()?, segment[1].as_str()?);
+        let location = graph.by_id.get(to)?;
+        if js::is_false(location.get("known")) || js::is_true(location.get("hidden")) || is_str(location.get("visibility"), "gm_only") {
+            return None;
+        }
+        let route = graph.routes.iter().find(|route| {
+            let (a,b) = route_ends(route);
+            ((a == from && b == to) || (a == to && b == from))
+                && !js::is_true(route.get("hidden")) && !is_str(route.get("visibility"), "gm_only")
+        })?;
+        let band = distance_band_for(segment_distance(&graph, route));
+        total += travel_base_minutes(band) + if route_is_wild(&graph, route) { 30 } else { 0 };
+    }
+    Some(total)
+}
+
 fn graph_travel_facts(graph: &Graph<'_>, origin: &Value, destination: &Value) -> TravelFacts {
     let Some(segments) = route_path(graph, &clean(origin.get("id"), 120), &clean(destination.get("id"), 120)) else {
         let biome = path_biome(graph, &[origin, destination], destination);
@@ -1173,10 +1203,7 @@ fn graph_travel_facts(graph: &Graph<'_>, origin: &Value, destination: &Value) ->
     let danger_risk = segments
         .iter()
         .fold(0.0, |worst, route| js_max(worst, route_danger_risk(&jstext::lower(&clean(route.get("danger"), 40)))));
-    let wilderness = segments.iter().any(|route| {
-        WILD_ROUTE_KINDS.contains(&jstext::lower(&clean(route.get("kind"), 30)).as_str())
-            || route_endpoints(graph, route).iter().any(|location| WILD_BIOMES.contains(&location_biome(graph, Some(location)).as_str()))
-    });
+    let wilderness = segments.iter().any(|route| route_is_wild(graph, route));
     let along: Vec<&Value> = segments.iter().flat_map(|route| route_endpoints(graph, route)).collect();
     let biome = path_biome(graph, &along, destination);
     TravelFacts {

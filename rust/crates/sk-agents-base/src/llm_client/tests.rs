@@ -963,31 +963,28 @@ async fn fallback_uses_provider_reserve_after_last_cloud_retryable_failure() {
     assert_eq!(taken(&log), ["router", "paid-reserve", "qwen3:14b"]);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn shared_turn_deadline_leaves_the_last_five_seconds_for_provider_reserve() {
     let log = calls();
-    let primary = scripted("cloud", &log, |_, options, _| async move {
-        assert!(options["timeoutMs"].as_f64().unwrap_or_default() <= 75.0);
-        Err(LlmError::llm("bad JSON", "LLM_RESPONSE_INVALID"))
-    });
-    let local = scripted("qwen3:14b", &log, |_, options, _| async move {
-        assert!(options["timeoutMs"].as_f64().unwrap_or_default() <= 120.0);
-        answer("локальный ответ", "qwen3:14b")
-    });
+    let primary = scripted("cloud", &log, |_, _, _| std::future::pending::<Result<Value, LlmError>>());
+    let local = scripted("qwen3:14b", &log, |_, _, _| async { answer("локальный ответ", "qwen3:14b") });
     let chain = FallbackLlmClient::new(FallbackLlmClientConfig {
         clients: vec![FallbackMember::new(primary)],
         provider_fallback: Some(FallbackMember::new(local).as_provider_fallback()),
         ..FallbackLlmClientConfig::default()
     }).expect("каскад");
     with_model_attempt_trace_budget(120.0, 50.0, async {
-        let result = chain.complete(&input(), &json!({ "timeoutMs": 200.0, "usageRole": "narrator" })).await.expect("резерв");
+        let start = tokio::time::Instant::now();
+        let result = chain.complete(&input(), &json!({ "timeoutMs": 200.0, "usageRole": "npc_social" })).await.expect("резерв");
+        assert_eq!(start.elapsed(), Duration::from_millis(70));
         assert_eq!(result["model"], "qwen3:14b");
+        assert_eq!(result["fallback_attempts"][0]["code"], "LLM_ATTEMPT_BUDGET");
         assert_eq!(taken(&log), ["cloud", "qwen3:14b"]);
     }).await;
 }
 
-#[tokio::test]
-async fn late_role_uses_only_local_and_cannot_reset_the_deadline() {
+#[tokio::test(start_paused = true)]
+async fn a_shared_role_cannot_reset_the_deadline_but_the_narrator_has_its_own() {
     let log = calls();
     let primary = scripted("cloud", &log, |_, _, _| async { answer("облако", "cloud") });
     let local = scripted("local", &log, |_, _, _| async { answer("локальный ответ", "local") });
@@ -999,12 +996,54 @@ async fn late_role_uses_only_local_and_cannot_reset_the_deadline() {
     with_model_attempt_trace_budget(300.0, 200.0, async {
         chain.complete(&input(), &json!({ "role": "action_adjudicator" })).await.expect("облако");
         tokio::time::sleep(Duration::from_millis(110)).await;
-        chain.complete(&input(), &json!({ "role": "narrator" })).await.expect("резерв");
+        chain.complete(&input(), &json!({ "role": "npc_social" })).await.expect("резерв");
         assert_eq!(taken(&log), ["cloud", "local"]);
         tokio::time::sleep(Duration::from_millis(210)).await;
-        let error = chain.complete(&input(), &json!({ "role": "narrator" })).await.expect_err("срок хода закончился");
+        let error = chain.complete(&input(), &json!({ "role": "npc_social" })).await.expect_err("срок хода закончился");
         assert_eq!(error.code.as_deref(), Some("LLM_TURN_DEADLINE"));
+        let narration = chain.complete(&input(), &json!({ "role": "narrator", "timeoutMs": 500.0 })).await.expect("свой срок");
+        assert_eq!(narration["model"], "cloud");
+        assert_eq!(taken(&log), ["cloud", "local", "cloud"]);
     }).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn shortened_attempts_keep_the_model_first_but_provider_errors_cool_it_down() {
+    let log = calls();
+    let count = AtomicUsize::new(0);
+    let primary = scripted("primary", &log, move |_, _, _| {
+        let attempt = count.fetch_add(1, Ordering::SeqCst);
+        async move {
+            if attempt == 1 || attempt == 2 {
+                tokio::time::sleep(Duration::from_millis(80)).await;
+            }
+            if attempt == 4 || attempt == 5 {
+                return Err(LlmError::llm("HTTP 503", "LLM_PROVIDER_ERROR").with_detail("status", json!(503)));
+            }
+            answer("основная", "primary")
+        }
+    });
+    let backup = scripted("backup", &log, |_, _, _| async { answer("резерв", "backup") });
+    let chain = cascade(vec![primary, backup]);
+    let options = json!({ "timeoutMs": 100 });
+    let first = chain.complete(&input(), &options).await.expect("успешная основная модель");
+    assert_eq!(first["model"], "primary");
+    for _ in 0..2 {
+        let result = chain.complete(&input(), &options).await.expect("ответ резерва");
+        assert_eq!(result["model"], "backup");
+        assert_eq!(result["fallback_attempts"], json!([{ "model": "primary", "code": "LLM_ATTEMPT_BUDGET" }]));
+        assert_eq!(chain.health()[0]["state"], "ready");
+        assert_eq!(chain.health()[0]["failures"], 0);
+    }
+    let last = chain.complete(&input(), &options).await.expect("основную пробуют первой");
+    assert_eq!(last["model"], "primary");
+    assert_eq!(taken(&log), ["primary", "primary", "backup", "primary", "backup", "primary"]);
+    for state in ["ready", "cooldown"] {
+        let result = chain.complete(&input(), &options).await.expect("провайдер вернул 503, ответил резерв");
+        assert_eq!(result["fallback_attempts"], json!([{ "model": "primary", "code": "LLM_PROVIDER_ERROR" }]));
+        assert_eq!(chain.health()[0]["state"], state);
+        assert_eq!(chain.health()[0]["last_error_code"], "LLM_PROVIDER_ERROR");
+    }
 }
 
 #[tokio::test]

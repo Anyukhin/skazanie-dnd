@@ -67,6 +67,14 @@ pub struct Config {
     pub ai_max_tokens: f64,
     /// `Number(DND_AI_MODEL_TIMEOUT_MS || 9000)`.
     pub ai_model_timeout_ms: f64,
+    /// Общий срок прочих модельных ролей в ходе.
+    pub ai_turn_timeout_ms: f64,
+    /// Отдельный срок Судьи свободного действия.
+    pub ai_adjudicator_timeout_ms: f64,
+    /// Отдельный срок Рассказчика после коммита.
+    pub ai_narrator_timeout_ms: f64,
+    /// Часть срока для настроенного локального резерва.
+    pub ai_local_reserve_ms: f64,
     /// `Number(DND_AI_PROBE_TIMEOUT_MS || 15000)`.
     pub ai_probe_timeout_ms: f64,
     /// `Number(DND_AI_FAILURE_COOLDOWN_MS || 120000)`.
@@ -134,6 +142,11 @@ fn non_empty(value: Option<String>) -> Option<String> {
 /// `Number(process.env.X || fallback)`.
 fn env_number(env: &dyn Fn(&str) -> Option<String>, name: &str, fallback: f64) -> f64 {
     non_empty(env(name)).map_or(fallback, |text| sk_core::js::parse_number(&text))
+}
+
+fn env_model_ms(env: &dyn Fn(&str) -> Option<String>, name: &str, fallback: f64, minimum: f64) -> f64 {
+    let value = env_number(env, name, fallback);
+    if (minimum..=(i32::MAX as f64)).contains(&value) { value } else { fallback }
 }
 
 /// `String(x ?? '').trim().toLowerCase()`.
@@ -215,6 +228,10 @@ impl Config {
             allowed_ai_models,
             ai_max_tokens: env_number(env, "DND_AI_MAX_TOKENS", 1200.0),
             ai_model_timeout_ms: env_number(env, "DND_AI_MODEL_TIMEOUT_MS", 9_000.0),
+            ai_turn_timeout_ms: env_model_ms(env, "DND_AI_TURN_TIMEOUT_MS", sk_agents_base::llm_client::DEFAULT_MODEL_TURN_TIMEOUT_MS, 1.0),
+            ai_adjudicator_timeout_ms: env_model_ms(env, "DND_AI_ADJUDICATOR_TIMEOUT_MS", sk_agents::action_adjudicator::ACTION_ADJUDICATOR_DEFAULT_TIMEOUT_MS as f64, 1.0),
+            ai_narrator_timeout_ms: env_model_ms(env, "DND_AI_NARRATOR_TIMEOUT_MS", sk_agents::narrator::NARRATOR_DEFAULT_TIMEOUT_MS as f64, 1.0),
+            ai_local_reserve_ms: env_model_ms(env, "DND_AI_LOCAL_RESERVE_MS", sk_agents_base::llm_client::DEFAULT_LOCAL_MODEL_RESERVE_MS, 0.0),
             ai_probe_timeout_ms: env_number(env, "DND_AI_PROBE_TIMEOUT_MS", 15_000.0),
             ai_failure_cooldown_ms: env_number(env, "DND_AI_FAILURE_COOLDOWN_MS", 120_000.0),
             ai_daily_token_limit: env_number(env, "DND_AI_DAILY_TOKEN_LIMIT", 2_000_000.0),
@@ -332,6 +349,23 @@ mod tests {
         assert_eq!(zero.ai_max_tokens, 0.0, "'0' — истинная строка, Number('0') = 0");
         assert_eq!(zero.recap_gap_hours, 16.0);
         assert!(config(&[("DND_AI_MAX_TOKENS", "много")]).ai_max_tokens.is_nan());
+    }
+
+    #[test]
+    fn model_turn_and_role_time_limits_are_read_independently() {
+        let tuned = config(&[
+            ("DND_AI_TURN_TIMEOUT_MS", "2500"),
+            ("DND_AI_ADJUDICATOR_TIMEOUT_MS", "9000"),
+            ("DND_AI_NARRATOR_TIMEOUT_MS", "15000"),
+            ("DND_AI_LOCAL_RESERVE_MS", "0"),
+        ]);
+        assert_eq!(tuned.ai_turn_timeout_ms, 2500.0);
+        assert_eq!(tuned.ai_adjudicator_timeout_ms, 9000.0);
+        assert_eq!(tuned.ai_narrator_timeout_ms, 15000.0);
+        assert_eq!(tuned.ai_local_reserve_ms, 0.0);
+        let invalid = config(&[("DND_AI_TURN_TIMEOUT_MS", "Infinity"), ("DND_AI_NARRATOR_TIMEOUT_MS", "0")]);
+        assert_eq!(invalid.ai_turn_timeout_ms, 12000.0);
+        assert_eq!(invalid.ai_narrator_timeout_ms, 12000.0);
     }
 
     #[test]

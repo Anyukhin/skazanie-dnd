@@ -165,6 +165,7 @@ test/combat-lab-observer-api.test.mjs  # права, справочники, о�
 # /generated/items и generate-image; поставщик — startFakeProvider на 127.0.0.1.
 test/item-images-api.test.mjs           # картинка предмета через учёт расхода: completed/failed, 429 LLM_QUOTA_EXCEEDED до провайдера
 test/ollama-fallback-api.test.mjs        # локальные текстовые роли после HTTP 402 и без облачного ключа
+test/model-turn-deadlines-api.test.mjs   # сроки Судьи и Рассказчика на обычном ходе через HTTP
 test/npc-portraits-api.test.mjs         # права и видимость, 302 заглушки, кеш с ETag и 304, лимит генераций, restart
 test/location-illustrations-api.test.mjs # подготовка при выключенном флаге, рантайм только из кеша, перегенерация меняет ETag
 
@@ -178,6 +179,7 @@ test/authored-dialogue-narrate-api.test.mjs # авторская реплика 
 test/stream-live-access-api.test.mjs   # живой поток закрывается после logout, истечения сессии и снятия доступа
 test/stream-backpressure-api.test.mjs  # медленный читатель: комнаты схлопнуты до последней
 test/combat-critical-turn-api.test.mjs # крит врага без модели: конец хода на строке боя (кости данными)
+test/npc-turn-fallback-api.test.mjs    # ход NPC при перекрытой линии, летопись, повтор и restart
 test/combat-journal-order-api.test.mjs # порядок хроники при атаке по возможности, restart, повтор (кости данными)
 test/shillelagh-api.test.mjs           # «Дубинка» друида через API, restart (кости данными)
 test/sneak-attack-http.test.mjs        # Скрытая атака: права, ключ, журнал через readJournal, restart
@@ -208,3 +210,5 @@ test/melee-obstruction-api.test.mjs # ближний удар и прогноз 
 test/astohan-pilot-progression-api.test.mjs # импорт четырёх листов, повышение до 10-го и боевые действия варвара
 test/scenario-treaty-completion-api.test.mjs # договор до и во время боя, восстановление незавершённого эпилога
 test/scenario-knight.test.mjs # ночное появление Каэлана, бой и мирный путь через команды игрока
+test/world-route-vote-api.test.mjs # состав голосования, перезапуск, отмена и один переход по всей дороге
+test/encounter-scene-departure-api.test.mjs # бывшие участники боя, пленный и спутник после смены сцены
