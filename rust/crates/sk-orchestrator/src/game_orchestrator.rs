@@ -227,6 +227,7 @@ pub struct NarrationOptions {
     pub known_rule_ids: Vec<Value>,
     pub recent_narrations: Vec<String>,
     pub on_progress: Option<ProgressCallback>,
+    pub forbidden_hidden_terms: Vec<String>,
 }
 
 /// Рассказчик хода (`narrator.render`).
@@ -243,6 +244,7 @@ impl TurnNarrator for Narrator {
                 timeout_ms: None,
                 recent_narrations: Value::Array(options.recent_narrations.into_iter().map(Value::String).collect()),
                 on_progress: options.on_progress,
+                forbidden_hidden_terms: options.forbidden_hidden_terms,
             };
             Narrator::render(self, brief, render).await.map_err(|error| match error {
                 NarratorError::Security(error) => security_error(error),
@@ -706,6 +708,21 @@ fn narration_world_facts(state: &Value, message: &str, events: &[Value]) -> Vec<
         })
         .filter(|fact| js::truthy(fact.get("id")) && js::truthy(fact.get("summary")))
         .take(NARRATION_WORLD_FACT_LIMIT)
+        .collect()
+}
+
+/// Факты с личным или закрытым доступом не поступают в промпт общего
+/// рассказа. Отличимые выражения из них остаются только в проверке текста.
+fn narration_hidden_terms(state: &Value) -> Vec<String> {
+    let facts = list(at(Some(state), &["worldMemory", "facts"]));
+    let shared = |fact: &Value| matches!(fact.get("visibility").and_then(Value::as_str), Some("public" | "party"));
+    let terms = |fact: &Value| ["summary", "object"].into_iter().filter_map(|key| {
+        fact.get(key).and_then(Value::as_str).map(|value| text::lower(text::trim(value).trim_end_matches(['.', '!', '?'])))
+    }).filter(|term| term.chars().count() >= 8 && term.contains(' ')).collect::<Vec<_>>();
+    let public: Vec<String> = facts.iter().filter(|fact| shared(fact)).flat_map(terms).collect();
+    let mut seen = HashSet::new();
+    facts.iter().filter(|fact| !shared(fact)).flat_map(terms)
+        .filter(|term| !public.iter().any(|known| known.contains(term)) && seen.insert(term.clone()))
         .collect()
 }
 
@@ -2466,6 +2483,17 @@ pub struct HandleInput {
 }
 
 impl HandleInput {
+    fn start_narration(&self, state_version: Option<&Value>) -> Option<ProgressCallback> {
+        let payload = json!({ "stateVersion": state_version });
+        if let Some(start) = &self.on_narration_start {
+            start(&payload);
+        }
+        self.on_narration_progress.clone().map(|callback| {
+            let progress: ProgressCallback = Arc::new(move |text: &str| callback(text, &payload));
+            progress
+        })
+    }
+
     pub fn new(fields: Value) -> Self {
         Self { fields, ..Self::default() }
     }
@@ -3034,6 +3062,7 @@ impl GameOrchestrator {
         turn_id: &str,
         started: i64,
         resolved_action: Option<&str>,
+        input: &HandleInput,
     ) -> OrchestratorResult<Value> {
         let state = nullish(free_action.get("state"), None).cloned().unwrap_or_else(|| authoritative_state.clone());
         let kind = kind_of(&free_action);
@@ -3157,7 +3186,13 @@ impl GameOrchestrator {
         if narrate_committed_improvisation {
             let render_started = self.now_ms();
             let outcome = match (&self.narrator, self.recent_narrations_for(campaign_id)) {
-                (Some(narrator), Ok(recent)) => narrator.render(&brief, NarrationOptions { known_rule_ids: Vec::new(), recent_narrations: recent, on_progress: None }).await,
+                (Some(narrator), Ok(recent)) => {
+                    let on_progress = input.start_narration(state.get("state_version"));
+                    narrator.render(&brief, NarrationOptions {
+                        known_rule_ids: Vec::new(), recent_narrations: recent, on_progress,
+                        forbidden_hidden_terms: narration_hidden_terms(&state),
+                    }).await
+                }
                 (_, Err(error)) => Err(error),
                 (None, _) => Err(type_error("narrator.render is not a function")),
             };
@@ -4503,7 +4538,7 @@ impl GameOrchestrator {
             if let (Some(duplicate), Some(trace)) = (&duplicate, &request_trace) {
                 if let Some(free_action) = self.legacy_free_action_result(&campaign_id, duplicate, trace)? {
                     let mut response = self
-                        .free_action_response(free_action, &campaign_id, &player_id, &viewer, &message, &intent, &retrieval_queries, &retrieved_rules, &plan, &authoritative_state, &idempotency_key, Some(request_fingerprint), &turn_id, started, resolved)
+                        .free_action_response(free_action, &campaign_id, &player_id, &viewer, &message, &intent, &retrieval_queries, &retrieved_rules, &plan, &authoritative_state, &idempotency_key, Some(request_fingerprint), &turn_id, started, resolved, &input)
                         .await?;
                     for key in ["narration", "provider", "prompt_version", "verification"] {
                         if let Some(value) = at(Some(trace), &["narration_result", key]) {
@@ -4527,7 +4562,7 @@ impl GameOrchestrator {
             let _ = manual_roll;
             let free_action = self.unknown_action_handler.handle_unknown_action(&request).await?;
             return self
-                .free_action_response(free_action, &campaign_id, &player_id, &viewer, &message, &intent, &retrieval_queries, &retrieved_rules, &plan, &authoritative_state, &idempotency_key, Some(request_fingerprint), &turn_id, started, resolved)
+                .free_action_response(free_action, &campaign_id, &player_id, &viewer, &message, &intent, &retrieval_queries, &retrieved_rules, &plan, &authoritative_state, &idempotency_key, Some(request_fingerprint), &turn_id, started, resolved, &input)
                 .await;
         }
         if let Some(npc_id) = social_request.as_ref().filter(|_| duplicate.is_none()) {
@@ -4946,17 +4981,7 @@ impl GameOrchestrator {
         let unverified_discovery_failure = has_failed_discovery_check(&committed_events);
         let structured_mechanics = (input.field("commands").is_some_and(Value::is_array) || maneuver || unverified_discovery_failure) && deterministic_narrator.is_none();
         let streams_model = !idempotent_replay && deterministic_response.is_none() && stored_social.is_none() && !structured_mechanics;
-        let state_version_payload = json!({ "stateVersion": committed.get("state_version").cloned().unwrap_or(Value::Null) });
-        if streams_model {
-            if let Some(start) = &input.on_narration_start {
-                start(&state_version_payload);
-            }
-        }
-        let progress: Option<ProgressCallback> = input.on_narration_progress.clone().map(|callback| {
-            let payload = state_version_payload.clone();
-            let wrapped: ProgressCallback = Arc::new(move |text_value: &str| callback(text_value, &payload));
-            wrapped
-        });
+        let progress = streams_model.then(|| input.start_narration(committed.get("state_version"))).flatten();
         drop(brief_span);
         let narration_span = sk_store::perf::span("orch.narration");
         let narration = if let Some(authored) = &authored_narration {
@@ -4972,7 +4997,10 @@ impl GameOrchestrator {
         } else {
             let narrator = self.narrator.as_ref().ok_or_else(|| type_error("Cannot read properties of null (reading 'render')"))?;
             let recent = self.recent_narrations_for(&campaign_id)?;
-            narrator.render(&brief, NarrationOptions { known_rule_ids: resolved_rule_ids.clone(), recent_narrations: recent, on_progress: progress }).await?
+            narrator.render(&brief, NarrationOptions {
+                known_rule_ids: resolved_rule_ids.clone(), recent_narrations: recent, on_progress: progress,
+                forbidden_hidden_terms: narration_hidden_terms(&committed_state),
+            }).await?
         };
         drop(narration_span);
         let _tail_span = sk_store::perf::span("orch.response_and_trace");

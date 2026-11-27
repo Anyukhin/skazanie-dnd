@@ -574,7 +574,12 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
         for key in ["commands", "requestCommands", "commandCapability"] {
             js::delete(&mut fields, key);
         }
-        let input = HandleInput { fields, director_capability: false, on_narration_start: Some(start.clone()), on_narration_progress: Some(progress.clone()) };
+        let public_narration = !conversation_only && explicit_npc_id.is_empty() && !text::trim_start(action).starts_with('/');
+        let input = HandleInput {
+            fields, director_capability: false,
+            on_narration_start: public_narration.then(|| start.clone()),
+            on_narration_progress: public_narration.then(|| progress.clone()),
+        };
         let mut result = sk_agents_base::llm_client::with_model_attempt_trace_budget(
             app.config.ai_turn_timeout_ms, app.config.ai_local_reserve_ms, services.game.handle(input),
         ).await.map_err(orchestrator_failure)?;

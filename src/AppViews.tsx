@@ -6,7 +6,7 @@ import {
   Swords, Target, Users, Volume2, VolumeX, X, Check, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff, Gavel,
 } from 'lucide-react'
 
-import { fetchWithTimeout } from './ai-client'
+import { fetchWithTimeout, subscribeNarrationPreview } from './ai-client'
 import { SERVER_WIDTH_KEY } from './dungeon-map-parts'
 import { PaletteSettingsCard } from './hud-parts'
 import {
@@ -464,8 +464,51 @@ export function BeastChronicleEntry({ card, timestamp }: { card: BeastChronicleC
   </article>
 }
 
-export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, suggestedActions, sceneKey, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak }: {
-  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; suggestedActions: Array<{ id: string; text: string }>; sceneKey: string; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null
+function ChronicleNarrationPreview({ campaignId, connected, messages, visible }: {
+  campaignId: string; connected: boolean; messages: Message[]; visible: boolean
+}) {
+  const [pending, setPending] = useState(() => new Map<string, string>())
+  const canonicalIds = useMemo(() => new Set(messages.map((message) => message.id)), [messages])
+
+  useEffect(() => {
+    if (!connected) {
+      setPending((current) => current.size ? new Map() : current)
+      return
+    }
+    return subscribeNarrationPreview(campaignId, ({ messageId, phase, text, replayed }) => {
+      if (phase === 'start' || (replayed && phase !== 'streaming')) return
+      setPending((current) => {
+        if (phase === 'aborted' || !text) {
+          if (!current.has(messageId)) return current
+          const next = new Map(current)
+          next.delete(messageId)
+          return next
+        }
+        return current.get(messageId) === text ? current : new Map(current).set(messageId, text)
+      })
+    })
+  }, [campaignId, connected])
+
+  useEffect(() => {
+    setPending((current) => {
+      if (![...current.keys()].some((id) => canonicalIds.has(id))) return current
+      return new Map([...current].filter(([id]) => !canonicalIds.has(id)))
+    })
+  }, [canonicalIds])
+
+  if (!connected || !visible) return null
+  return [...pending].filter(([id]) => !canonicalIds.has(id)).map(([id, text]) => (
+    <article className="message narrator" data-narration-preview key={id}>
+      <div className="message-body">
+        <div className="message-meta"><strong>Рассказчик</strong></div>
+        <p aria-live="polite">{chronicleMessageText(text)}</p>
+      </div>
+    </article>
+  ))
+}
+
+export function ChatPanel({ campaignId, connected, messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, suggestedActions, sceneKey, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak }: {
+  campaignId: string; connected: boolean; messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; suggestedActions: Array<{ id: string; text: string }>; sceneKey: string; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
@@ -627,6 +670,7 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
             </div>
           </article>
         ))}
+        <ChronicleNarrationPreview key={campaignId} campaignId={campaignId} connected={connected} messages={messages} visible={chronicleMatchesFilter('narrator', filter)} />
         {typingActorIds.length > 0 && <div className="typing player-typing"><span /><span /><span /> {typingActorIds.map((actorId) => players.find((player) => player.id === actorId)?.character ?? actorId).join(', ')} формулирует намерение…</div>}
         {isNarrating && <div className="typing"><span /><span /><span /> Рассказчик меняет мир…</div>}
         <div ref={endRef} />

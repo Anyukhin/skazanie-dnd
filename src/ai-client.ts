@@ -169,7 +169,7 @@ function narrationPreviewCampaignId(value: string) {
   return String(value || '').toUpperCase()
 }
 
-function subscribeNarrationPreview(campaignId: string, listener: NarrationPreviewListener) {
+export function subscribeNarrationPreview(campaignId: string, listener: NarrationPreviewListener) {
   const key = narrationPreviewCampaignId(campaignId)
   const listeners = narrationPreviewListeners.get(key) ?? new Set()
   listeners.add(listener)

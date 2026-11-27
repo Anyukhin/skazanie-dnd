@@ -326,6 +326,7 @@ fn replay_render(instance: &Instance, event: &Value, runtime: &tokio::runtime::R
         timeout_ms: decode(options.get("timeoutMs")),
         recent_narrations: decode(options.get("recentNarrations")).unwrap_or(Value::Null),
         on_progress: options["has_progress"].as_bool().unwrap_or(false).then(|| Arc::new(move |text: &str| lock(&sink).push(text.to_string())) as narrator::ProgressCallback),
+        forbidden_hidden_terms: Vec::new(),
     };
     let calls = event["calls"].as_array().cloned().unwrap_or_default();
     if let Some(client) = instance.client.as_ref() {
