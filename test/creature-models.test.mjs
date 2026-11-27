@@ -31,7 +31,7 @@ test('сервер узнаёт зверя по слову имени и по т
 
 const enemy = (label) => ({ id: label, label, kind: 'enemy', appearance: { version: 2, profile: actorProfileFor({ kind: 'enemy', name: label }), equipment: 'unknown', loadout: {} } })
 
-test('фигурка зверя выбирается по имени врага, волк остаётся общим зверем', () => {
+test('фигурка зверя выбирается по имени врага, для волка сохраняется базовая модель', () => {
   const pick = (label) => models.resolveModelProfile(enemy(label), manifest).key
   assert.equal(pick('Гигантская крыса 1'), 'rat')
   assert.equal(pick('Гигантский паук 2'), 'spider')
@@ -39,7 +39,7 @@ test('фигурка зверя выбирается по имени врага,
   assert.equal(pick('Гигантская лягушка'), 'frog')
   assert.equal(pick('Гигантская ядовитая змея'), 'snake')
   assert.equal(pick('Волк 3'), 'wolf')
-  assert.equal(pick('Бурый медведь'), 'wolf', 'своей модели медведя нет')
+  assert.equal(pick('Бурый медведь'), 'astohan-figure-brown-bear')
   // Членистоногие без своей модели рисуются пауком, а не волком.
   assert.equal(pick('Скорпион'), 'spider')
   assert.equal(pick('Гигантский огненный жук'), 'spider')

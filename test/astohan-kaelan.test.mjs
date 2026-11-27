@@ -8,7 +8,7 @@ const { modules: [kaelan, resourcesModule] } = await compileClientModules([
   'src/board3d-prop-resources.ts',
 ])
 
-test('Каэлан имеет коня, чёрные латы и призрачное лицо над пустым воротом', () => {
+test('Каэлан имеет коня, чёрные латы, призрачное лицо и клинок «Лунный Судья»', () => {
   const owned = resourcesModule.resources()
   const parent = new THREE.Group()
   const model = kaelan.buildAstohanKaelan(parent)
@@ -19,8 +19,9 @@ test('Каэлан имеет коня, чёрные латы и призрач�
   assert.ok(names.has('kaelan-horse-leg'))
   assert.ok(names.has('kaelan-armor-skirt'))
   assert.ok(names.has('kaelan-ghost-collar'))
+  assert.ok(names.has('empty-neck'))
   assert.ok(names.has('kaelan-floating-head'))
-  assert.ok(names.has('kaelan-lance-tip'))
+  assert.ok(names.has('kaelan-moon-judge'))
   assert.equal(model.userData.astohanKaelan, true)
   assert.equal(model.userData.recommendedHeight, 2.05)
   assert.equal(model.userData.board3dPickable, undefined)
