@@ -351,6 +351,10 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, Failure> {
             None => Ok(Value::Null),
         },
         "materializeCatalogItem" => Ok(sk_items::item_catalog::materialize_catalog_item(a(0).as_str().unwrap_or(""), args.get(1).filter(|value| !value.is_null()))),
+        "classicEncounterMonsterIds" => {
+            let records = sk_encounters::encounter_assembler::classic_theme_roster(a(0).as_str().unwrap_or("")).map_err(fault)?;
+            Ok(Value::Array(records.iter().map(|record| record["id"].clone()).collect()))
+        }
         "buildCombatLabState" => sk_tactics::combat_lab_setup::build_combat_lab_state(args.first(), &sk_tactics::combat_lab_setup::Sources::default()).map_err(fault),
         "normalizeCampaignState" => sk_rules::normalize::normalize_campaign_state(a(0)).map_err(halt),
         "replayEvents" => sk_rules::replay::replay_events(a(0), a(1).as_array().map(Vec::as_slice).unwrap_or_default()).map_err(halt),

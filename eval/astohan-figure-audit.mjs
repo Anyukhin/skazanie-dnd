@@ -6,9 +6,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createServer } from 'vite'
 import { withBrowser } from '../.agent-tasks/browser.mjs'
-import { classicMonstersForTheme } from '../server/encounter-assembler.mjs'
 import { freePort } from '../test/free-port.mjs'
-import { buildCombatLabState, createCampaignState, normalizeCampaignState, serverCall } from '../test/kit/fixtures.mjs'
+import { buildCombatLabState, createCampaignState, normalizeCampaignState, serverBatch, serverCall } from '../test/kit/fixtures.mjs'
 
 const output = 'tmp/astohan-figure-audit'
 const projection = state => serverCall('campaignStateForViewer', state, { role: 'player' }, state.players[0].id)
@@ -30,24 +29,27 @@ function figure(state, record, kind) {
 async function encounterFigures(scenario) {
   const themes = scenario.locations.map(location => location.encounter?.theme).filter(Boolean)
   themes.push(scenario.attention.finale.ready_ambush.theme)
-  // Состав тем MM14 из совместимой библиотеки. Сами боевые записи и их
-  // публичное представление строит бинарь Rust, как на боевом стенде.
-  const catalogue = new Map([...new Set(themes)].flatMap(theme => classicMonstersForTheme(theme).map(record => [record.id, record])))
-  assert.ok(catalogue.size > 50, 'эталон включает все четыре темы Асстохана')
-  const records = [...catalogue.values()]
+  const uniqueThemes = [...new Set(themes)]
+  assert.equal(uniqueThemes.length, 4, 'аудит включает все четыре темы Асстохана')
+  const pools = await serverBatch(uniqueThemes.map(theme => ['classicEncounterMonsterIds', theme]))
+  const counts = Object.fromEntries(uniqueThemes.map((theme, index) => [theme, pools[index].length]))
+  const records = [...new Set(pools.flat())]
+  assert.ok(records.every(id => typeof id === 'string' && id))
+  assert.equal(records.length, 53, 'размер объединения изменился, проверьте состав тем')
   const rows = []
   const checks = []
   for (let index = 0; index < records.length; index += 3) {
     const batch = records.slice(index, index + 3)
     const state = await buildCombatLabState({
       mapId: 'forest-clearing', party,
-      enemies: batch.map((record, place) => ({ monsterId: record.id, x: place * 3, y: 6 })),
+      enemies: batch.map((monsterId, place) => ({ monsterId, x: place * 3, y: 6 })),
     })
     const visible = await projection(state)
     assert.equal(visible.enemies.length, batch.length)
     for (const enemy of visible.enemies) {
       const original = state.enemies.find(record => record.id === enemy.id)
       const row = figure(visible, enemy, 'enemy')
+      row.statBlockId = original.stat_block_id
       const expectedSide = { large: 2, huge: 3, gargantuan: 4 }[original.size] ?? 1
       if (row.side !== expectedSide) checks.push(`${enemy.name}: площадь ${row.side}, ожидалась ${expectedSide}`)
       if (['tiny', 'small'].includes(original.size) && row.actor.appearance.stature !== original.size) {
@@ -56,7 +58,8 @@ async function encounterFigures(scenario) {
       rows.push(row)
     }
   }
-  return { rows, checks }
+  assert.deepEqual(new Set(rows.map(row => row.statBlockId)), new Set(records))
+  return { rows, checks, counts }
 }
 
 async function storyFigures(scenario) {
@@ -124,7 +127,7 @@ function silhouetteFailures(captures) {
 }
 
 const scenario = await serverCall('scenarioForWorldTemplate', 'astohan-plains')
-const { rows: enemies, checks } = await encounterFigures(scenario)
+const { rows: enemies, checks, counts } = await encounterFigures(scenario)
 const named = await storyFigures(scenario)
 const masked = await maskedFigures(checks)
 await mkdir(output, { recursive: true })
@@ -154,7 +157,12 @@ try {
           return drawAstohanFigureAtlas(rows, atlasMode)
         }, figures, mode)
         if (mode === 'color') {
+          assert.equal(result.captures.length, figures.length)
           checks.push(...silhouetteFailures(result.captures))
+          if (section === 'enemies') {
+            result.themes = counts
+            result.captures.forEach((capture, index) => { capture.statBlockId = figures[index].statBlockId })
+          }
           if (section === 'named') {
             const hidden = result.captures.find(entry => entry.id === scenario.attention.stranger.npc_id)
             if (hidden?.key !== 'astohan-ash-traveler' || hidden.side !== 1) checks.push('Незнакомец выдал свой облик')
