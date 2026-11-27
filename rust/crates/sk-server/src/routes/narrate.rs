@@ -425,6 +425,12 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
     let progress: NarrationProgress = {
         let (hub, transport, campaign, id) = (hub.clone(), transport.clone(), campaign_id.clone(), message_id.to_string());
         Arc::new(move |text: &str, _progress: &Value| {
+            // Рассказ свободной заявки начала заранее не объявляет: кадр
+            // начала уходит вместе с первой проверенной фразой модели.
+            let announced = lock(&transport).started;
+            if !announced && hub.start(&campaign, &id).is_ok() {
+                lock(&transport).started = true;
+            }
             if hub.progress(&campaign, &id, text).is_ok() {
                 lock(&transport).last_progress = text.to_string();
             }

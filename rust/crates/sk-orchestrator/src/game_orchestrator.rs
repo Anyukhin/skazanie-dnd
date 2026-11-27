@@ -228,6 +228,8 @@ pub struct NarrationOptions {
     pub recent_narrations: Vec<String>,
     pub on_progress: Option<ProgressCallback>,
     pub forbidden_hidden_terms: Vec<String>,
+    /// Запасной текст не идёт в поток порцией (`RenderOptions::model_progress_only`).
+    pub model_progress_only: bool,
 }
 
 /// Рассказчик хода (`narrator.render`).
@@ -245,6 +247,7 @@ impl TurnNarrator for Narrator {
                 recent_narrations: Value::Array(options.recent_narrations.into_iter().map(Value::String).collect()),
                 on_progress: options.on_progress,
                 forbidden_hidden_terms: options.forbidden_hidden_terms,
+                model_progress_only: options.model_progress_only,
             };
             Narrator::render(self, brief, render).await.map_err(|error| match error {
                 NarratorError::Security(error) => security_error(error),
@@ -2484,10 +2487,18 @@ pub struct HandleInput {
 
 impl HandleInput {
     fn start_narration(&self, state_version: Option<&Value>) -> Option<ProgressCallback> {
-        let payload = json!({ "stateVersion": state_version });
         if let Some(start) = &self.on_narration_start {
-            start(&payload);
+            start(&json!({ "stateVersion": state_version }));
         }
+        self.narration_progress(state_version)
+    }
+
+    /// Поток фраз без объявления начала. Рассказ свободной заявки часто
+    /// оказывается шаблоном, который никто не генерирует: кадр начала перед
+    /// ним обещал бы игроку текст модели. Начало объявляет получатель потока
+    /// вместе с первой проверенной фразой.
+    fn narration_progress(&self, state_version: Option<&Value>) -> Option<ProgressCallback> {
+        let payload = json!({ "stateVersion": state_version });
         self.on_narration_progress.clone().map(|callback| {
             let progress: ProgressCallback = Arc::new(move |text: &str| callback(text, &payload));
             progress
@@ -3187,10 +3198,11 @@ impl GameOrchestrator {
             let render_started = self.now_ms();
             let outcome = match (&self.narrator, self.recent_narrations_for(campaign_id)) {
                 (Some(narrator), Ok(recent)) => {
-                    let on_progress = input.start_narration(state.get("state_version"));
+                    let on_progress = input.narration_progress(state.get("state_version"));
                     narrator.render(&brief, NarrationOptions {
                         known_rule_ids: Vec::new(), recent_narrations: recent, on_progress,
                         forbidden_hidden_terms: narration_hidden_terms(&state),
+                        model_progress_only: true,
                     }).await
                 }
                 (_, Err(error)) => Err(error),
@@ -5003,6 +5015,7 @@ impl GameOrchestrator {
             narrator.render(&brief, NarrationOptions {
                 known_rule_ids: resolved_rule_ids.clone(), recent_narrations: recent, on_progress: progress,
                 forbidden_hidden_terms: narration_hidden_terms(&committed_state),
+                model_progress_only: false,
             }).await?
         };
         drop(narration_span);
