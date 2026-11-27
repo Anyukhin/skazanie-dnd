@@ -13,6 +13,8 @@ test('бандитские гуманоиды получают костюм на
     root.add(torso, head)
     figures.decorateRaider(root, slug)
     assert.ok(root.getObjectByName('astohan-raider-belt'), slug)
+    if (slug === 'bandit-captain') assert.ok(head.getObjectByName('astohan-raider-captain-hat'))
+    if (slug === 'veteran') assert.ok(torso.getObjectByName('astohan-raider-veteran-backplate'))
     assert.ok(root.children.every(child => child.userData.board3dPickable !== true), slug)
   }
 })
@@ -25,5 +27,6 @@ test('гнолл и багбир имеют самостоятельные чи�
     const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3())
     assert.ok(size.y > 1 && size.x > .4 && size.z > .3, slug)
     assert.ok(root.children.length >= 4, slug)
+    for (const side of [-1, 1]) assert.ok(root.getObjectByName(`astohan-raider-${slug}-leg-${side}`))
   }
 })

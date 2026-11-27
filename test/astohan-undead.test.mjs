@@ -7,14 +7,15 @@ const { modules: [undead] } = await compileClientModules(['src/astohan-undead.ts
 const profiles = {
   'crawling-claw': ['claw-palm', 'claw-tip-0'],
   flameskull: ['flameskull-cranium', 'flame-tongue-0'],
-  specter: ['ghost-tail', 'ghost-face'],
-  banshee: ['ghost-tail', 'ghost-face'],
+  specter: ['ghost-tail', 'specter-cowl'],
+  banshee: ['banshee-hair--1', 'banshee-sleeve-1'],
+  ghost: ['ghost-shroud', 'ghost-face'],
   mummy: ['mummy-bandage-0', 'mummy-veil'],
   ghoul: ['ghoul-torso', 'ghoul-claw-1'],
-  ghast: ['ghoul-torso', 'ghoul-claw-1'],
+  ghast: ['ghast-shoulder-spine-1', 'ghast-tongue'],
   wight: ['wight-cloak', 'wight-blade'],
-  'vampire-spawn': ['wight-cloak', 'wight-blade'],
-  zombie: ['wight-cloak', 'wight-blade'],
+  'vampire-spawn': ['vampire-coat-tail-1', 'vampire-raised-collar-1'],
+  zombie: ['zombie-reaching-arm-1', 'zombie-reaching-hand--1'],
   'minotaur-skeleton': ['minotaur-skull', 'minotaur-horn-1'],
 }
 

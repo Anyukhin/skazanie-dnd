@@ -165,6 +165,14 @@ function insignia(root: THREE.Object3D, style: AstohanNpcStyle, orientation: 'gl
     part(head,'ferryman-earring',new THREE.TorusGeometry(.018,.005,7,15),brass,[.103,.073,.022])
     const hemp=mat('#a58a60')
     for(let i=0;i<3;i++)part(torso,'mooring-rope',new THREE.TorusGeometry(.068,.008,6,22),hemp,[.156,-.21-i*.010,front*.068],[0,.46,0]).scale.y=1.43
+    const oar = new THREE.Group()
+    oar.name = 'ferryman-oar'
+    oar.position.set(-.20, -.16, -front * .24)
+    oar.rotation.z = .51
+    torso.add(oar)
+    const ash = mat('#966c48')
+    part(oar, 'oar-shaft', new THREE.CylinderGeometry(.024, .026, .93, 8), ash, [0, .07, 0])
+    part(oar, 'oar-blade', new THREE.SphereGeometry(1, 10, 7), ash, [0, .58, 0]).scale.set(.115, .235, .025)
   }
 }
 
@@ -192,10 +200,8 @@ function applyStyle(root: THREE.Object3D, style: AstohanNpcStyle, orientation: '
       const bark = mat('#4b3827', { roughness: .98 })
       const resin = mat('#d7a43b', { roughness: .35, emissive: '#5a3711', emissiveIntensity: .18 })
       const torso = parentByName(root, ['trunk', 'torso', 'rig-torso'])
-      // `elder-tree` is a single unrigged bust.  Its face sits around y=1.7,
-      // z=.45; using humanoid bone offsets there put the guard plates at the
-      // floor and hid the resin eyes inside the trunk.  Keep the humanoid path
-      // bone-local, but place the bust's bark shields in its authored frame.
+      // Лицо ствола около y=1,7 и z=0,45. При отсутствии костей накладки
+      // используют координаты ствола.
       const bust = torso === root
       const shieldY = bust ? 1.30 : .16
       const shieldZ = bust ? .30 : -.08
@@ -208,6 +214,10 @@ function applyStyle(root: THREE.Object3D, style: AstohanNpcStyle, orientation: '
       const eyeX = bust ? .18 : .07
       part(head, 'resin-eye-left', new THREE.SphereGeometry(.026, 7, 5), resin, [-eyeX, eyeY, eyeZ])
       part(head, 'resin-eye-right', new THREE.SphereGeometry(.026, 7, 5), resin, [eyeX, eyeY, eyeZ])
+      if (bust) for (const side of [-1, 1]) {
+        part(root, 'trent-branch-' + side, new THREE.CylinderGeometry(.10, .25, 1.04, 7), bark, [side * .71, 1.18 + side * .09, -.14], [0, 0, -side * .69])
+        part(root, 'trent-fork-' + side, new THREE.ConeGeometry(.13, .61, 6), bark, [side * 1.06, 1.76 + side * .09, -.12], [0, 0, side * .20])
+      }
       break
     }
   }

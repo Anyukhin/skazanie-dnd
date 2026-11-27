@@ -69,6 +69,20 @@ function raiderHumanoid(root: THREE.Object3D, style: RaiderSlug) {
     pauldron.position.set(-.20, .12, 0)
     add(torso, pauldron, 'shoulder')
   }
+  if (style === 'bandit-captain') {
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(.205, .175, .12, 5), material('#68352f'))
+    hat.scale.z = 1.17
+    hat.rotation.y = Math.PI / 5
+    hat.position.set(0, .16, .012)
+    add(head, hat, 'captain-hat')
+  }
+  if (style === 'veteran') {
+    const shield = new THREE.Mesh(new THREE.CylinderGeometry(.22, .16, .052, 7), material('#6e796b', { metalness: .18 }))
+    shield.rotation.x = Math.PI / 2
+    shield.scale.z = 1.40
+    shield.position.set(.22, -.025, -.19)
+    add(torso, shield, 'veteran-backplate')
+  }
   if (style === 'berserker') {
     const fur = new THREE.Mesh(new THREE.TorusGeometry(.16, .045, 8, 18), material('#4d392f', { roughness: 1 }))
     fur.rotation.x = Math.PI / 2
@@ -113,6 +127,8 @@ function customGnoll() {
     ear.position.set(side * .20, 1.35, 0); ear.rotation.z = side * -.42; add(root, ear, 'gnoll-ear-' + side)
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(.08, .40, 4, 8), fur)
     arm.position.set(side * .38, .75, .05); arm.rotation.z = side * -.38; add(root, arm, 'gnoll-arm-' + side)
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(.073, .37, 4, 8), dark)
+    leg.position.set(side * .16, .26, .02); leg.rotation.x = -.34; add(root, leg, 'gnoll-leg-' + side)
     const tooth = new THREE.Mesh(new THREE.ConeGeometry(.025, .13, 5), boneMaterial)
     tooth.position.set(side * .07, 1.10, .41); tooth.rotation.x = Math.PI; add(root, tooth, 'gnoll-tooth-' + side)
   }
@@ -131,6 +147,8 @@ function customBugbear() {
   for (const side of [-1, 1]) {
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(.09, .53, 4, 8), fur)
     arm.position.set(side * .43, .73, 0); arm.rotation.z = side * -.28; add(root, arm, 'bugbear-arm-' + side)
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(.126, .28, 4, 8), dark)
+    leg.position.set(side * .22, .26, .04); leg.rotation.z = side * .23; add(root, leg, 'bugbear-leg-' + side)
     const ear = new THREE.Mesh(new THREE.ConeGeometry(.10, .23, 6), fur)
     ear.position.set(side * .24, 1.57, .01); ear.rotation.z = side * -.35; add(root, ear, 'bugbear-ear-' + side)
   }
