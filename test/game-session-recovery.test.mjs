@@ -122,12 +122,12 @@ const sameDeps = (left, right) => Array.isArray(left) && Array.isArray(right)
  * Монтирует хук в изолированном «браузере». `routes` — пары [регулярное
  * выражение по URL, обработчик]; всё прочее получает 404, как незнакомый путь.
  */
-function mountSession({ campaign = 'A', accountId = 'account-a', initialCampaignIds, onAccessRevoked, routes = [] } = {}) {
+function mountSession({ campaign = 'A', accountId = 'account-a', initialCampaignIds, invite = false, onAccessRevoked, routes = [] } = {}) {
   const localStorage = memoryStorage()
   const sessionStorage = memoryStorage()
   const timers = []
   const window = {
-    location: { search: `?room=${campaign}`, href: `http://localhost/?room=${campaign}` },
+    location: { search: `?room=${campaign}`, href: `http://localhost/?room=${campaign}`, hash: invite ? '#invite=test-token' : '' },
     history: {
       replaceState: (_state, _title, url) => {
         window.location.href = String(url)
@@ -244,10 +244,11 @@ const streamFor = (campaign) => FakeEventSource.instances.filter((source) => sou
 test('до вступления по приглашению не открываются ни комната, ни живой поток', async () => {
   const harness = mountSession({
     campaign: 'INVITED',
+    invite: true,
     initialCampaignIds: new Set(),
     routes: [[/\/api\/rooms\/INVITED$/u, () => json(200, { version: 1, state: roomState('INVITED') })]],
   })
-  harness.localStorage.setItem(ACTIVE_CAMPAIGN_KEY, 'OLD-ACCOUNT')
+  harness.localStorage.setItem(ACTIVE_CAMPAIGN_KEY, 'INVITED')
   const waiting = harness.render()
   assert.equal(waiting.state.sessionCode, '')
   assert.deepEqual(harness.requests, [])
@@ -257,6 +258,14 @@ test('до вступления по приглашению не открыва�
   assert.equal(harness.render().state.sessionCode, 'INVITED')
   assert.equal(harness.requests[0].url, '/api/rooms/INVITED')
   assert.ok(streamFor('INVITED'))
+  harness.unmount()
+})
+
+test('прямая ссылка на старую кампанию оставляет проверку доступа серверу', () => {
+  const harness = mountSession({ campaign: 'LEGACY', initialCampaignIds: new Set() })
+  assert.equal(harness.render().state.sessionCode, 'LEGACY')
+  assert.equal(harness.requests[0].url, '/api/rooms/LEGACY')
+  assert.ok(streamFor('LEGACY'))
   harness.unmount()
 })
 

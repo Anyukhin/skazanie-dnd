@@ -293,8 +293,9 @@ function transportFetch(input: RequestInfo | URL, init: RequestInit = {}) {
 
 function loadState(initialCampaignIds?: ReadonlySet<string>): GameState {
   const requested = new URLSearchParams(window.location.search).get('room')?.toUpperCase()
-  const previous = localStorage.getItem(ACTIVE_CAMPAIGN_KEY)?.toUpperCase()
-  const selected = [requested, previous].find(code => code && (!initialCampaignIds || initialCampaignIds.has(code)))
+  const inviting = requested && new URLSearchParams(window.location.hash.slice(1)).has('invite')
+  const pendingInvite = inviting && initialCampaignIds && !initialCampaignIds.has(requested)
+  const selected = pendingInvite ? '' : requested || localStorage.getItem(ACTIVE_CAMPAIGN_KEY)?.toUpperCase()
   // Пока комната не выбрана, показываем пустую оболочку, а не демо-мир.
   if (!selected) return structuredClone(emptyState)
   // Never restore a viewer-specific campaign projection from a cross-account
@@ -304,7 +305,7 @@ function loadState(initialCampaignIds?: ReadonlySet<string>): GameState {
 
 export function useGameSession(options: {
   accountId?: string
-  /** Комнаты, которые аккаунт может открыть до принятия приглашения. */
+  /** Членство для решения, требуется ли вступление по ссылке-приглашению. */
   initialCampaignIds?: ReadonlySet<string>
   /**
    * Сервер отозвал живой поток (аудит PR #131, LIVE-01/02). Обычно это
