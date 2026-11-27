@@ -231,13 +231,21 @@ pub async fn settle_world_travel(core: &Rc<GameCore>, app: &Arc<AppState>, campa
     let Some(decision) = pending_world_travel(state) else { return Ok(false) };
     let option_id = &decision["resolvedOptionId"];
     let Some(option) = decision["options"].as_array().into_iter().flatten().find(|option| &option["id"] == option_id) else {
-        return Ok(false);
+        close_travel(core, campaign_id, decision, "travel_invalid_choice")?;
+        return Ok(true);
     };
-    let eligible = decision["eligibleVoterIds"].as_array().map_or(0, Vec::len);
-    let required = eligible / 2 + 1;
+    let roster: sk_core::indexmap::IndexSet<&str> = decision["eligibleVoterIds"].as_array()
+        .into_iter().flatten().filter_map(Value::as_str).collect();
+    let eligible_actors: sk_core::indexmap::IndexSet<&str> = decision["eligibleActorIds"].as_array()
+        .into_iter().flatten().filter_map(Value::as_str).collect();
+    let required = roster.len() / 2 + 1;
+    let mut counted = sk_core::indexmap::IndexSet::new();
     let voters = decision["votes"].as_object().into_iter().flatten()
-        .filter(|(_, voted)| *voted == option_id)
-        .map(|(actor, _)| (actor.clone(), js::s(decision["voterByActorId"].get(actor))))
+        .filter(|(actor, voted)| *voted == option_id && eligible_actors.contains(actor.as_str()))
+        .filter_map(|(actor, _)| {
+            let voter_id = decision["voterByActorId"].get(actor)?.as_str()?;
+            (roster.contains(voter_id) && counted.insert(voter_id)).then(|| (actor.clone(), voter_id.to_string()))
+        })
         .collect::<Vec<_>>();
     if voters.len() < required {
         close_travel(core, campaign_id, decision, "travel_legacy_no_quorum")?;

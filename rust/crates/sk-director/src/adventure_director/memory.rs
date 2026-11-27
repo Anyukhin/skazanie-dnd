@@ -667,6 +667,10 @@ fn public_history_entry(value: &Value) -> Option<Value> {
     if !location_id.is_empty() {
         entry.insert("location_id".into(), Value::String(location_id));
     }
+    let entry_from = public_text(prop(value, "entry_from_location_id"), 120, "");
+    if !entry_from.is_empty() {
+        entry.insert("entry_from_location_id".into(), Value::String(entry_from));
+    }
     entry.insert("objective".into(), Value::String(public_text(prop(value, "objective"), 160, "")));
     entry.insert("outcome".into(), Value::String(public_text(prop(value, "outcome"), 240, "")));
     if let Some(status) = objective_status(prop(value, "status")) {

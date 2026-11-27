@@ -374,6 +374,8 @@ pub(super) fn party_decision_consumed(state: &mut Value, event: &Event) -> Reduc
             || (event.payload["reason"] == "quorum_not_reached"
                 && current.get("status").and_then(Value::as_str) == Some("open")
                 && sk_memory::party_decision::uses_roster_quorum(&Value::Object(current.clone())))
+            || (event.payload["reason"] == "travel_invalid_choice"
+                && current.get("status").and_then(Value::as_str) == Some("resolved"))
     });
     if consumed {
         state["agentInteraction"] = Value::Null;

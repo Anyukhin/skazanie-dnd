@@ -335,6 +335,7 @@ fn travel_decision_chronicle_entry(event: &Value) -> Option<Value> {
     }
     let text = match event["payload"]["reason"].as_str()? {
         "quorum_not_reached" | "travel_legacy_no_quorum" => "Переход отменён: отряд не набрал кворум.",
+        "travel_invalid_choice" => "Переход отменён: выбранный вариант исчез из решения отряда.",
         "travel_route_unavailable" => "Переход отменён: путь к выбранной точке закрыт.",
         "travel_roster_unavailable" => "Переход отменён: участники решения больше не могут его исполнить.",
         "travel_stayed" => "Отряд решил остаться.",

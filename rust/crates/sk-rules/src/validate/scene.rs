@@ -104,7 +104,20 @@ pub fn check_advance_scene(v: &mut Validation<'_>) -> Step {
             }
         }
     }
-    let args = normalize_scene_advance_args(v.command.get("scene_args")).map_err(Halt::Rule)?;
+    let raw_args = v.command.get("scene_args");
+    let mut args = normalize_scene_advance_args(raw_args).map_err(Halt::Rule)?;
+    // Маршрут передаёт только серверный Режиссёр. Дороги повторно проверяются
+    // на свежем состоянии перед построением карты и входом в сцену.
+    if let Some(route) = raw_args.and_then(|args| args.get("travel_route")).filter(|_| v.context.is_director()) {
+        let destination = args["location_id"].as_str().unwrap_or_default();
+        let allowed = route.as_array().is_some_and(|ids| {
+            sk_story::campaign_loop_policy::checked_world_route_minutes(v.state, ids, destination).is_some()
+        });
+        if !allowed {
+            return Err(rule("Путь к выбранной точке сейчас закрыт", "PARTY_TRAVEL_UNAVAILABLE"));
+        }
+        args["travel_route"] = route.clone();
+    }
     let args = sk_scenario::campaign_scenario::scenario_scene_args(v.state, &args);
     set_field(&mut v.command, "scene_args", args);
     let commerce = normalize_scene_commerce(v.command.get("scene_commerce")).map_err(Halt::Rule)?;
