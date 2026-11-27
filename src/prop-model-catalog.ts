@@ -171,8 +171,14 @@ export function frontFacingEntry<T extends Pick<PropModelEntry, 'key' | 'yaw' | 
 }
 
 /** Предел высоты модели предмета в клетках; `null` — высота не ограничена. */
-export function propModelMaxHeight(assetId: string, entry?: Pick<PropModelEntry, 'maxHeight'> | null): number | null {
-  if (assetId === 'single_book') return Math.min(entry?.maxHeight ?? Infinity, PROP_MODEL_MAX_HEIGHTS.single_book)
+export function propModelMaxHeight(assetId: string, entry?: { maxHeight?: number; key?: string } | null): number | null {
+  // Галька и простая куча костей не достигают высоты соседнего камня
+  // или авторских фрагментов скелета, лежащих в тех же категориях карты.
+  const physicalLimit = assetId === 'single_book' ? PROP_MODEL_MAX_HEIGHTS.single_book
+    : entry?.key === 'ref-quaternius-nature-pebble-square-4' ? .12
+      : entry?.key === 'style-sk-bone-pile' ? .39
+        : null
+  if (physicalLimit !== null) return Math.min(entry?.maxHeight ?? Infinity, physicalLimit)
   if (entry?.maxHeight !== undefined) return entry.maxHeight
   return Object.prototype.hasOwnProperty.call(PROP_MODEL_MAX_HEIGHTS, assetId) ? PROP_MODEL_MAX_HEIGHTS[assetId] : null
 }
@@ -180,7 +186,7 @@ export function propModelMaxHeight(assetId: string, entry?: Pick<PropModelEntry,
 /** Масштаб GLB в footprint до применения `prop.scale`. */
 export function propModelFit(
   assetId: string,
-  entry: Pick<PropModelEntry, 'size' | 'maxHeight'> | null | undefined,
+  entry: { size?: PropModelEntry['size']; maxHeight?: number; key?: string } | null | undefined,
   width: number,
   depth: number,
   fill: number,

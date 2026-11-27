@@ -184,6 +184,12 @@ test('на месте одной книги не появляется книга
   assert.ok(catalog.propModelFit('single_book', { size: [1, .4, .9], maxHeight: .28 }, 1, 1, .9) * .4 <= .11)
 })
 
+test('квадратная галька и куча костей сохраняют свой предел высоты', () => {
+  assert.equal(catalog.propModelMaxHeight('rock_small', { key: 'ref-quaternius-nature-pebble-square-4', maxHeight: .23 }), .12)
+  assert.equal(catalog.propModelMaxHeight('bone_heap', { key: 'style-sk-bone-pile', maxHeight: .72 }), .39)
+  assert.equal(catalog.propModelMaxHeight('rock_small', { key: 'style-kenney-castle-rocks-small' }), .20)
+})
+
 test('деревья в 3D вытягиваются до 16–20 фт, остальное не тянется', () => {
   // Дуб после вписывания 2,6 клетки (≈11,5 фт) — тянется до 4,1 клетки (18 фт).
   assert.ok(Math.abs(2.6 * catalog.propModelTreeStretch('tree_oak', 2.6) - 4.1) < 1e-9)

@@ -69,6 +69,29 @@ const REFERENCE_FEET = Object.freeze({
 })
 const CAPPED_FEET = Object.freeze({ tree_oak: 40, tree_birch: 35, tree_pine: 45, tree_spruce: 45, tree_dead: 30, pillar: 14, stalagmite: 6 })
 
+// Каталог карты использует один вид для физически разных моделей. Нормы
+// здесь относятся к назначению и устройству предмета, а не к его имени
+// в карте. Все варианты и их замеры остаются в общей строке.
+const PHYSICAL_PROFILES = {
+  bone_heap: { common: ['Куча костей', 1.5], models: {
+    'fossil-neck': ['Шея Вулканиса', 4], 'fossil-chest': ['Грудная клетка Вулканиса', 6],
+    'fossil-hips': ['Таз Вулканиса', 4], 'fossil-wing': ['Сложенное крыло Вулканиса', 2],
+  } },
+  boulder_split: { common: ['Расколотый валун', 3], models: { 'story-vulkanis-skull': ['Череп Вулканиса', 6] } },
+  cart: { common: ['Грузовая повозка', 4.5], models: {
+    'style-kenney-town-cart': ['Ручная тележка', 2.5],
+    'ref-quaternius-stall-cart-empty': ['Повозка с навесом', 6],
+  } },
+  fallen_log: { common: ['Ствол', 2], models: { 'style-kenney-log': ['Тонкая ветвь', 1] } },
+  flowers: { common: ['Цветущая куртина', 1.2], models: { 'ref-quaternius-nature-plant-7-big': ['Почвопокровные листья', .75] } },
+  fountain: { common: ['Фонтан с центральной чашей', 5], models: { 'style-kenney-town-fountain-round-detail': ['Низкий круглый бассейн', 3] } },
+  grave: { common: ['Целое надгробие', 3], models: { 'style-kenney-graveyard-grave-border-gravestone-broken': ['Сломанное надгробие', 1.8] } },
+  ritual_circle: { common: ['Рисунок обряда на земле', .2], models: { 'story-oath-circle': ['Кладка круга клятв', .65] } },
+  rock_small: { common: ['Небольшой камень', .7], models: {
+    'ref-quaternius-nature-pebble-round-3': ['Галька', .45], 'ref-quaternius-nature-pebble-square-4': ['Галька', .45],
+  } },
+}
+
 /** Рост существа по категории размера D&D, футы (середина диапазона книги). */
 const CREATURE_FEET = Object.freeze({ tiny: 1.5, small: 3.5, medium: 5.75, large: 11, huge: 22, gargantuan: 40 })
 const SIZE_CELLS = Object.freeze({ tiny: 1, small: 1, medium: 1, large: 2, huge: 3, gargantuan: 4 })
@@ -127,6 +150,39 @@ const round = (value, digits = 2) => Number(value.toFixed(digits))
 const human = humanCells()
 const feetToCells = human / HUMAN_FEET
 const toFeet = (cells) => cells / feetToCells
+
+function heightProblems(heights, reference, capped, variants) {
+  const ratio = reference ? median(heights) / reference : null
+  const spread = Math.max(...variants) / Math.max(.01, Math.min(...variants))
+  const problems = []
+  if (ratio !== null && ratio > TOLERANCE && !capped) problems.push(`выше нормы в ${round(ratio, 1)} раза`)
+  if (ratio !== null && ratio < 1 / TOLERANCE && !(capped && ratio >= .3)) problems.push(`ниже нормы в ${round(1 / ratio, 1)} раза`)
+  if (variants.length > 1 && spread > 2) problems.push(`варианты расходятся в ${round(spread, 1)} раза`)
+  return { ratio, spread, problems }
+}
+
+function physicalComparisons(assetId, record, variants) {
+  const profiles = PHYSICAL_PROFILES[assetId]
+  if (!profiles) return null
+  const byProfile = new Map()
+  for (const variant of variants) {
+    const [name, reference] = profiles.models[variant.key] ?? profiles.common
+    const group = byProfile.get(name) ?? { name, reference, variants: [], heights: [] }
+    group.variants.push(variant)
+    group.heights.push(...record.keys.get(variant.key).map(toFeet))
+    byProfile.set(name, group)
+  }
+  return [...byProfile.values()].map(({ name, reference, variants, heights }) => {
+    const { ratio, spread, problems } = heightProblems(heights, reference, false, variants.map(variant => variant.feet))
+    const measured = variants.map((variant) => {
+      const own = heightProblems(record.keys.get(variant.key).map(toFeet), reference, false, [variant.feet])
+      return { ...variant, ratio: round(own.ratio), problems: own.problems }
+    })
+    const outliers = measured.flatMap(variant => variant.problems.map(problem => `${variant.key} · ${problem}`))
+    return { name, reference, count: heights.length, feet: round(median(heights), 1), ratio: round(ratio), spread: round(spread),
+      variants: measured, problems: [...problems, ...outliers] }
+  })
+}
 
 /** @type {Map<string, {heights: number[], scales: number[], keys: Map<string, number[]>, sources: Set<string>, missing: number}>} */
 const byAsset = new Map()
@@ -201,17 +257,15 @@ for (const [assetId, record] of [...byAsset].sort(([a], [b]) => a.localeCompare(
   const feet = record.heights.map(toFeet)
   const reference = REFERENCE_FEET[assetId] ?? CAPPED_FEET[assetId] ?? null
   const capped = assetId in CAPPED_FEET
-  const ratio = reference ? median(feet) / reference : null
   const variants = [...record.keys].map(([key, list]) => ({ key, feet: round(toFeet(median(list)), 1), count: list.length }))
-  const spread = Math.max(...variants.map((v) => v.feet)) / Math.max(.01, Math.min(...variants.map((v) => v.feet)))
-  const problems = []
-  if (ratio !== null && (ratio > TOLERANCE && !capped)) problems.push(`выше нормы в ${round(ratio, 1)} раза`)
-  if (ratio !== null && ratio < 1 / TOLERANCE && !(capped && ratio >= .3)) problems.push(`ниже нормы в ${round(1 / ratio, 1)} раза`)
-  if (variants.length > 1 && spread > 2) problems.push(`варианты расходятся в ${round(spread, 1)} раза`)
+  const overall = heightProblems(feet, reference, capped, variants.map(variant => variant.feet))
+  const comparison = physicalComparisons(assetId, record, variants)
+  const problems = comparison ? comparison.flatMap(group => group.problems.map(problem => `${group.name} · ${problem}`)) : overall.problems
   rows.push({
     assetId, count: record.heights.length, reference, capped,
     feet: { min: round(Math.min(...feet), 1), median: round(median(feet), 1), max: round(Math.max(...feet), 1) },
-    ratio: ratio === null ? null : round(ratio), scale: round(median(record.scales)), variants, problems, sources: [...record.sources].slice(0, 4),
+    ratio: overall.ratio === null ? null : round(overall.ratio), variantSpread: round(overall.spread),
+    scale: round(median(record.scales)), variants, ...(comparison ? { comparison } : {}), problems, sources: [...record.sources].slice(0, 4),
   })
 }
 
