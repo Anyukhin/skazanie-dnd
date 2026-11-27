@@ -211,3 +211,4 @@ test/astohan-pilot-progression-api.test.mjs # импорт четырёх лис
 test/scenario-treaty-completion-api.test.mjs # договор до и во время боя, восстановление незавершённого эпилога
 test/scenario-knight.test.mjs # ночное появление Каэлана, бой и мирный путь через команды игрока
 test/world-route-vote-api.test.mjs # состав голосования, перезапуск, отмена и один переход по всей дороге
+test/encounter-scene-departure-api.test.mjs # бывшие участники боя, пленный и спутник после смены сцены

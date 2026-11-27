@@ -95,6 +95,44 @@ use crate::normalize::scene::private_adventure_buckets;
 
 // --- смена сцены, импорт карты, этажи --------------------------------------
 
+
+/// Оставляем следы участия в бою в реестрах прежнего места. Данные берём
+/// из состояния до перехода, как и прочие следствия SceneAdvanced.
+fn leave_encounter_participants(state: &mut Value) {
+    let mut stayed: IndexSet<String> = state["mechanics"]["encounter"]["enemy_ids"].as_array().into_iter().flatten()
+        .filter_map(Value::as_str).map(str::to_string).collect();
+    for enemy in state["enemies"].as_array().into_iter().flatten() {
+        stayed.insert(actor_id(enemy));
+        if let Some(npc_id) = enemy["origin"]["npc_id"].as_str() {
+            stayed.insert(npc_id.to_string());
+        }
+    }
+    for captive in sk_world_life::captives::held_captives(state) {
+        for key in ["actor_id", "npc_id"] {
+            if let Some(id) = captive[key].as_str() {
+                stayed.shift_remove(id);
+            }
+        }
+    }
+    for companion in sk_npc_world::beast_taming::beast_companions(state) {
+        if let Some(id) = companion["actor_id"].as_str() {
+            stayed.shift_remove(id);
+        }
+    }
+    stayed.shift_remove("");
+    if let Some(actors) = state.get_mut("actors").and_then(Value::as_array_mut) {
+        actors.retain(|actor| !stayed.contains(&actor_id(actor)));
+    }
+    let location_id = scene_location_id(state);
+    let location_name = s(state["scene"].get("location"));
+    if let Some(npcs) = state.get_mut("social").and_then(|social| social.get_mut("npcs")).and_then(Value::as_array_mut) {
+        for npc in npcs.iter_mut().filter(|npc| npc["id"].as_str().is_some_and(|id| stayed.contains(id))) {
+            npc["location_id"] = json!(&location_id);
+            npc["location"] = json!(&location_name);
+        }
+    }
+}
+
 /// `SceneAdvanced` (24461–24531).
 pub(super) fn scene_advanced(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
@@ -105,6 +143,9 @@ pub(super) fn scene_advanced(state: &mut Value, event: &Event) -> Reduced {
         let map = state.get("scene").and_then(|scene| scene.get("map")).cloned();
         remember_scene_map(state, Some(&Value::String(key.clone())), cells.as_ref(), map.as_ref());
         stash_level_entities(state, &key);
+    }
+    if payload["encounter_departure_version"] == 1 {
+        leave_encounter_participants(state);
     }
     let scene = payload.get("scene").filter(|scene| plain_object(Some(scene))).cloned().unwrap_or_else(js::obj);
     state["scene"] = scene;

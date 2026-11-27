@@ -452,6 +452,9 @@ pub fn advance_scene(r: &mut Resolve<'_>) -> Flow {
     put(&mut payload, "party_decision", r.command.get("party_decision"));
     put(&mut payload, "request_fingerprint", r.command.get("request_fingerprint"));
     payload.insert("summon_lifecycle_version".into(), json!(crate::constants::SUMMON_LIFECYCLE_VERSION));
+    if r.state["mechanics"]["encounter"]["status"] == "ended" {
+        payload.insert("encounter_departure_version".into(), json!(1));
+    }
     let mut scene_event = event_from(&r.command, "SceneAdvanced", Some(Value::Object(payload)), Some(&position_actors(&positions)));
     scene_event["event_id"] = json!(scene_event_id);
     r.events.push(scene_event.clone());
