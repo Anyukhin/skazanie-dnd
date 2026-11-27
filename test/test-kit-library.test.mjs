@@ -8,7 +8,6 @@ import { RouterAIClient } from '../server/llm-client.mjs'
 import { normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 import { dice, diceThen, fixedDice, maxDice, minDice } from './kit/dice.mjs'
 import { applyAll, assertReplayMatches, commitEvents, createCampaignStore, createEngine, reopenStore } from './kit/engine.mjs'
-import { createClient, expectStatus, startTestServer } from './kit/http.mjs'
 import { chatCompletion, startFakeProvider } from './kit/llm.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
@@ -68,7 +67,9 @@ test('движок: команда → события → журнал, replay �
   assert.equal(applyAll(head, direct.events).mechanics.world_time.elapsed_minutes, 61)
 })
 
-test('модель: локальный провайдер говорит протоколом RouterAI и подключается к серверу', { timeout: runnerTimeout(60_000) }, async (t) => {
+// Подключение сервера к заглушке — контрактный случай `test-kit.test.mjs`
+// «сервер подключается к локальному провайдеру набора»: здесь бинаря нет.
+test('модель: локальный провайдер говорит протоколом RouterAI', { timeout: runnerTimeout(60_000) }, async (t) => {
   const provider = await startFakeProvider(t, (request) => {
     if (request.path === '/chat/completions') return chatCompletion({ verdict: 'ok', model: request.body.model })
     return null
@@ -77,9 +78,4 @@ test('модель: локальный провайдер говорит про�
   const client = new RouterAIClient({ apiKey: 'kit-key', baseUrl: provider.baseUrl, model: 'kit/model' })
   assert.deepEqual(await client.completeJson({ messages: [{ role: 'user', content: 'проверка' }] }), { verdict: 'ok', model: 'kit/model' })
   assert.equal(provider.requests.at(-1).headers.authorization, 'Bearer kit-key')
-
-  const server = await startTestServer(t, { env: { ...provider.env, DND_AI_MODEL: 'kit/model', DND_AI_FALLBACK_MODELS: '' } })
-  const health = expectStatus(await createClient(server).get('/api/health'))
-  assert.equal(health.configured, true, 'сервер видит ключ заглушки')
-  assert.equal(health.model, 'kit/model')
 })
