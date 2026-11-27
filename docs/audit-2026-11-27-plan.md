@@ -321,16 +321,14 @@ README и `docs/rules-coverage.md`. То же для мультикласса.
 
 ### Этап 2 — осталось
 
-1. **Пробелы сторожей §5 в Rust:**
-   - карта читается только той, на которую указывает её хеш (`sk-store`
-     `maps.rs` `get` — теста на подменённое содержимое нет);
-   - отказы перестройки карты в бою, при голосовании и открытой проверке и
-     replay перестройки (было только в JS `map-import-command`);
-   - развязка сценария переживает replay (`sk-scenario` — без явного теста);
-   - replay зацепок предыстории (`hero-hooks`) — частично.
-2. **Бэкап базы Rust.** `sk_infra::backup_service` готов и проверен, но у
-   бинаря нет подкоманды `backup`; `pnpm backup` умеет только файловое
-   `storage/` JS. Нужна подкоманда (create / verify / restore) и правка
+1. ~~**Пробелы сторожей §5 в Rust**~~ — сделано 2026-11-27: хеш карты
+   (`sk-store/tests/event_store.rs` `map_blob_is_read_only_by_its_own_hash`),
+   отказы и replay перестройки (`sk-rules/tests/map_import_rules.rs`),
+   развязка сценария после replay (`sk-rules/tests/scenario_ending_replay.rs`),
+   replay зацепок (`sk-agents/tests/a2_semantics.rs`).
+2. ~~**Бэкап базы Rust**~~ — сделано 2026-11-27: подкоманда
+   `skazanie-server backup` (create / verify / compare / restore, формат
+   `pnpm backup`, отказ при живом писателе), `sk-server/tests/storage_backup.rs`,
    `docs/rust-docker.md` §«Резервная копия тома».
 3. **Контракт на чистый HTTP.** Контрактные тесты строят состояния правилами
    JS-библиотеки (`server/rules-engine.mjs` и др.), в наборе `test/kit`

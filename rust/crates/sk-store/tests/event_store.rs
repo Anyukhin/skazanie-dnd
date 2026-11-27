@@ -461,6 +461,28 @@ fn rcv02_seed_with_lost_map_is_unusable() {
     recovery(fixture.reopen().load("seed-without-map", &LoadOptions::default()).expect_err("карта потеряна"), "SEED_SNAPSHOT_UNUSABLE");
 }
 
+/// AGENTS.md §5: карта читается только той, на которую указывает её хеш.
+/// Подменённое под тем же адресом тело не отдаётся ни прямым чтением, ни
+/// загрузкой кампании — снимок с такой картой непригоден, как с потерянной.
+#[test]
+fn map_blob_is_read_only_by_its_own_hash() {
+    let fixture = Fixture::new(0);
+    let map = json!({ "width": 1, "height": 1, "cells": [{ "x": 0, "y": 0, "terrain": "floor" }] });
+    let forged = json!({ "width": 1, "height": 1, "cells": [{ "x": 0, "y": 0, "terrain": "lava" }] });
+    let reference = fixture.store.with_connection_mut(|conn| sk_store::maps::put(conn, &map)).expect("карта");
+    let hash = reference["hash"].as_str().expect("хеш").to_string();
+    let read = |hash: &str| fixture.store.with_connection_mut(|conn| sk_store::maps::get(conn, hash)).expect("чтение");
+    assert!(matches!(read(&hash), sk_store::maps::BlobRead::Found(found) if found == map));
+    assert!(matches!(read(&"0".repeat(64)), sk_store::maps::BlobRead::Missing));
+    assert!(matches!(read("not-a-hash"), sk_store::maps::BlobRead::Corrupt));
+
+    init(&fixture.store, "forged-map", json!({ "hp": 3, "scene": { "map": map.clone() } }));
+    let forged_body = serde_json::to_string(&forged).expect("JSON");
+    fixture.store.with_connection_mut(|conn| Ok(conn.execute("UPDATE map_blobs SET body = ?1 WHERE hash = ?2", rusqlite::params![forged_body, hash])?)).expect("подмена");
+    assert!(matches!(read(&hash), sk_store::maps::BlobRead::Corrupt), "подменённое тело не читается");
+    recovery(fixture.reopen().load("forged-map", &LoadOptions::default()).expect_err("подменённая карта"), "SEED_SNAPSHOT_UNUSABLE");
+}
+
 #[test]
 fn maps_round_trip_through_snapshots() {
     let fixture = Fixture::new(1);

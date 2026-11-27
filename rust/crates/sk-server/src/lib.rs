@@ -61,6 +61,7 @@ pub mod startup;
 pub mod state;
 pub mod static_files;
 pub mod storage_audit;
+pub mod storage_backup;
 pub mod streams;
 pub mod test_hooks;
 pub mod url;

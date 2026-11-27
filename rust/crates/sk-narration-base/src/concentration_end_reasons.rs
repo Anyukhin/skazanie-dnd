@@ -30,6 +30,7 @@ pub const CONCENTRATION_END_REASON_LABELS: &[(&str, &str)] = &[
     ("save-success", "цель прошла спасбросок"),
     ("action-save", "цель вырвалась, потратив действие"),
     ("action-other", "эффект снят действием"),
+    ("awakened", "спящую цель разбудили"),
     ("break-free", "цель вырвалась"),
     ("steady-nerves", "цель совладала со страхом"),
     ("extinguished", "пламя потушено"),

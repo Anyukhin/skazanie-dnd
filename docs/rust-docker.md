@@ -208,8 +208,31 @@ JS-сервер в архиве (`archive/js-server/README.md`). Игры, сы�
 
 ## Резервная копия тома
 
-`pnpm backup` работает с файловым `./storage` прежнего JS-сервера, том Rust-сервиса он не видит; подкоманды бэкапа базы у бинаря пока нет (`docs/audit-2026-11-27-plan.md`). Снять
-архив тома (сервис остановлен, чтобы не копировать файлы на ходу):
+Копию снимает сам бинарь, подкоманда `backup`: тот же зашифрованный формат,
+что у `pnpm backup` (архив одного проверяется и восстанавливается другим),
+ключ — `DND_BACKUP_KEY` из `.env` не короче 32 байт. Без того же ключа
+восстановить копию нельзя. Том с хоста не виден, поэтому подкоманда
+запускается в том же образе. Сервис на это время остановлен. Пока сервер
+пишет, копия отказывает (`BACKUP_WRITER_ACTIVE`):
+
+```bash
+docker compose -f compose.rust.yaml stop skazanie-rust
+docker compose -f compose.rust.yaml run --rm --no-deps -v ./backups:/app/backups skazanie-rust backup
+docker compose -f compose.rust.yaml start skazanie-rust
+```
+
+Файл — `./backups/skazanie-<дата>.skzbackup`. Проверка и восстановление:
+
+```bash
+docker compose -f compose.rust.yaml run --rm --no-deps -v ./backups:/app/backups skazanie-rust backup verify /app/backups/<файл>
+skazanie-server backup restore <файл> <пустой-каталог>      # или pnpm backup -- restore …
+```
+
+`verify` проверяет шифрование и SHA-256 каждого файла, а не целостность
+кампаний; после восстановления — `skazanie-server audit-storage --storage
+<каталог>`. Справка — `skazanie-server backup --help`.
+
+Незашифрованный архив тома без ключа (на случай, когда ключа нет):
 
 ```bash
 docker compose -f compose.rust.yaml stop
@@ -218,4 +241,4 @@ docker run --rm -v skazanie-rust_storage:/data:ro -v ./backups:/backup debian:bo
 docker compose -f compose.rust.yaml start
 ```
 
-Архив не зашифрован — в нём данные игроков, хранить как `./backups`.
+В нём данные игроков открытым текстом, хранить как `./backups`.

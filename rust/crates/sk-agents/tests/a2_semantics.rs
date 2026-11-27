@@ -444,3 +444,53 @@ fn party_option_label_never_cuts_inside_quotes() {
     assert!(sk_core::text::len(&label) <= 100);
     assert_eq!(label.matches('«').count(), label.matches('»').count());
 }
+
+/// Кости не нужны: плетение — факты, профиль хранителя и нить без бросков.
+struct NoRolls;
+
+impl sk_dice::Rng for NoRolls {
+    fn randint(&mut self, _minimum: i64, _maximum: i64) -> Result<i64, sk_dice::DiceError> {
+        panic!("плетение зацепок не бросает кости")
+    }
+}
+
+/// AGENTS.md §5: зацепки плетутся один раз на героя путём заготовок ведущего
+/// и replay сходится (`test/hero-hooks.test.mjs` в архиве JS).
+#[test]
+fn woven_hooks_commit_once_per_hero_and_replay_to_the_same_state() {
+    let state = grey_pier();
+    let llm = RecordingLlm::new(vec![Reply::Json(good_answer())], None);
+    let weaver = HeroHookWeaver::new(HeroHookWeaverConfig { llm_client: Some(role_client(&llm)), ..HeroHookWeaverConfig::default() });
+    let woven = block_on(weaver.weave(&state, "HOOKS", None));
+    let plans = woven["plans"].as_array().cloned().unwrap_or_default();
+    assert_eq!(plans.len(), 2);
+
+    let mut current = sk_rules::normalize::normalize_campaign_state(&state).expect("нормализация");
+    let mut journal = Vec::new();
+    for plan in &plans {
+        let commands = plan["commands"].as_array().cloned().unwrap_or_default();
+        let mut dice = sk_rules::dice_record::ServiceDice::new(sk_dice::DiceService::deterministic(NoRolls, "hooks"));
+        let mut uuid = sk_rules::context::sequence_uuids("hooks");
+        let context = sk_rules::context::Context::from_json(&json!({ "isDirector": true }));
+        let resolved = sk_rules::resolve::api::resolve_commands(&commands, &current, &mut dice, &context, false, &mut uuid).unwrap_or_else(|error| panic!("{}: {error}", plan["idempotency_key"]));
+        assert!(resolved.pending.is_none(), "плетение не ждёт решения");
+        assert!(!resolved.events.is_empty());
+        journal.extend(resolved.events);
+        current = sk_rules::normalize::normalize_campaign_state(&resolved.state).expect("нормализация итога");
+    }
+
+    // Зацепки — скрытые заготовки с героем; второй раз плести нечего.
+    for hero in ["fighter", "wizard"] {
+        let facts = hooks::hero_hook_facts(&current, hero);
+        assert!(!facts.is_empty(), "{hero}: зацепка в памяти мира");
+        assert!(facts.iter().all(|fact| fact["predicate"] == "gm_secret" && fact["visibility"] == "gm_only"), "{hero}: зацепка скрыта");
+    }
+    assert!(hooks::heroes_needing_hooks(&current).is_empty(), "один раз на героя");
+    assert!(weaver.pending_hero_ids(&current, "HOOKS").is_empty());
+
+    // Replay журнала от исходного состояния даёт ту же память мира и нити.
+    let replayed = sk_rules::normalize::normalize_campaign_state(&sk_rules::replay::replay_events(&state, &journal).expect("replay")).expect("нормализация");
+    assert_eq!(replayed["worldMemory"], current["worldMemory"], "replay даёт те же факты и нити");
+    assert_eq!(replayed["social"], current["social"], "replay даёт тот же профиль хранителя");
+    assert_eq!(llm.calls().len(), 1, "модель зовётся один раз");
+}

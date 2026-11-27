@@ -2044,6 +2044,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sk-attention",
+ "sk-buildings",
  "sk-character",
  "sk-chargen",
  "sk-combat-base",

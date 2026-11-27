@@ -97,7 +97,6 @@ test/astohan-scene-clues-api.test.mjs      # авторские улики че�
 test/lore-testimony-api.test.mjs           # ответ хранителя сохраняет сроки и атрибуцию свидетельства
 test/party-recollection-api.test.mjs       # публичные обещания и показания переживают смену места и перезапуск
 test/gm-fallback-api.test.mjs              # свидетельство NPC и уточнение способа без модели
-test/scenario-treaty-completion-api.test.mjs # договор с Саргатом: эпилог в том же HTTP-шаге и без нового боя
 test/lockpick-command-api.test.mjs          # кнопки взлома двери и сундука, экспертиза по правилам 2014
 test/spell-components-api.test.mjs         # компоненты заклинаний
 test/spell-reaction-http.test.mjs          # реакция «Искусная острота» с получателем

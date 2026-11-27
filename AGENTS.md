@@ -67,9 +67,10 @@ pnpm models:scale     # рост предметов и фигурок в фут�
 pnpm props:atlas      # атлас предметов: --sheets assets-src/prop-stamps, затем pnpm props:rights
 pnpm terrain:tiles    # фактуры пола и стен из assets-src/floor-wall-stamps, затем pnpm terrain:rights
 pnpm talespire:assets # таблица ассетов TaleSpire (--dir или TALESPIRE_DIR)
-pnpm backup           # зашифрованная копия файлового storage прежнего JS-сервера в ./backups;
-                      # нужен DND_BACKUP_KEY. Подкоманды бэкапа базы Rust пока нет
-                      # (docs/audit-2026-11-27-plan.md)
+skazanie-server backup  # зашифрованная копия storage (база SQLite и файлы) в ./backups при
+                      # остановленном сервере; verify | compare | restore, нужен DND_BACKUP_KEY.
+                      # Тома Docker — docs/rust-docker.md «Резервная копия тома».
+                      # pnpm backup — тот же формат на Node для каталога на диске
 ```
 
 `*:rights` пишут хеши в `data/asset-rights.json` — без них `content:verify`
@@ -237,23 +238,23 @@ JS-сервер, его тесты и инструменты.
 | Игрок видит только разрешённое, в том числе в уже открытом живом потоке после logout, истечения сессии и смены доступа; прогноз удара не выдаёт закрытую КД процентом попадания | `sk-projection/tests/viewer_projection.rs`, `p1.rs`, `sk-tactics/tests/combat_forecast_disclosure.rs`, контракт `viewer-projection-api`, `stream-live-access-api` |
 | Рассказчик не создаёт событий и не объявляет смерть | `sk-agents/tests/a5_semantics.rs` |
 | NPC знает только своё, публичное и увиденное им самим; повтор своей реплики вырезается сервером; отказ ведёт к зацепке, а не в тупик | `sk-social/tests/npc_social_behaviour.rs`, `sk-agents/tests/a4_semantics.rs` |
-| Зацепки из предыстории плетутся один раз на героя путём заготовок ведущего, Режиссёр видит мотивы без текста зацепок; replay сходится — **частично**: отдельного теста replay в Rust нет (план) | `sk-agents/tests/a2_semantics.rs`, `sk-society/tests/post_commit_coordinator.rs` |
+| Зацепки из предыстории плетутся один раз на героя путём заготовок ведущего, Режиссёр видит мотивы без текста зацепок; replay сходится | `sk-agents/tests/a2_semantics.rs` (`woven_hooks_commit_once_per_hero_and_replay_to_the_same_state`), `sk-society/tests/post_commit_coordinator.rs` |
 | Летопись хода не пропадает на устаревшей проекции: слова игрока, строка хода и критическая реплика рассказчика идут по порядку до автохода врага и переживают перезапуск | контракт `combat-journal-order-api` |
 | Сгенерированная карта играбельна: дверь наружу, окна, комнаты, досягаемость, мебель не в проёмах и не за краем | `sk-map-core/tests/map_quality.rs` |
 | Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается; двадцать мест корпуса строятся без замечаний | `sk-settlements/tests/scene_program_layout.rs`, `sk-story/tests/map_library.rs`, `sk-director/tests/fixtures.rs` (корпус `test/fixtures/scene-programs/corpus.json`) |
 | В поселении у каждой двери дома есть дорога, на тропе ничего не стоит; отряд входит со стороны, откуда пришёл, а центр сцены стоит на площади | `sk-settlements/tests/settlement_generator.rs` (`DOOR_OFF_ROAD`, `PATH_BLOCKED`), `sk-director/tests/fixtures.rs` |
 | Рассказчик не описывает то, что сцена обещала, а карта не держит | `sk-agents/tests/a5_semantics.rs` (`ABSENT_LANDMARK_MENTIONED`) |
 | Команда факта, убеждения или слуха проходит, только если предикат есть в онтологии мира для этого вида записи и подлежащего; replay старых событий словарь не проверяет | `sk-memory/tests/world_ontology_write.rs`, `sk-society/tests/world_ontology.rs` |
-| Перестройка карты — только ведущему; та же схема события, что у импорта. Отказы в бою, при голосовании и открытой проверке и replay перестройки — **без теста в Rust** (план) | контракт `map-import-api` |
+| Перестройка карты — только ведущему, вне боя, голосования и открытой проверки; та же схема события, что у импорта, replay сходится | `sk-rules/tests/map_import_rules.rs`, контракт `map-import-api` |
 | Враг встречи появляется по эту сторону дверей и окон от отряда | `sk-encounters/tests/encounter_assembler.rs` |
 | Параллельные команды не перезаписывают друг друга молча | контракт `narrate-room-version-race`; `sk-rules/tests/skeleton.rs` (`expected_state_version`) |
 | Корпус тестов не ходит в интернет: каждый запуск сервера — с пустым `ROUTERAI_API_KEY` или локальным `ROUTERAI_BASE_URL` | контракт `test-network-isolation`, `sk-server/tests/config_isolation.rs` |
 | Запрос не роняет сервер: тело — только JSON-объект, необработанная ошибка маршрута завершает свой запрос ответом 500 | контракт `map-import-api`, `recovery-required-api` |
 | Весь вызов модели и картинок идёт через учёт расхода; известный usage непригодного ответа тоже записывается | `sk-infra/tests/usage_ledger.rs`, контракт `item-images-api` |
 | Медленный читатель живого потока не копит кадры: комната и присутствие схлопываются до последнего состояния, очередь соединения ограничена, отзыв прав уходит напрямую | `sk-infra/tests/narration_stream.rs`, контракт `stream-backpressure-api` |
-| Библиотечная постройка выбирается, только если исправны все её этажи. Карта читается только той, на которую указывает её хеш, — **без теста в Rust** (план) | `sk-story/tests/map_library.rs` |
-| Бэкап не снимается с работающего на том же storage сервера без явного `--allow-live` | `sk-infra/tests/backup_service.rs`, контракт `storage-backup-cli` |
-| Кампания по сценарию идёт по его узлам, финал — исход боя с главным противником в логове; развязка переживает replay — **частично** (план) | `sk-scenario/tests/campaign_scenario.rs` |
+| Библиотечная постройка выбирается, только если исправны все её этажи. Карта читается только той, на которую указывает её хеш | `sk-story/tests/map_library.rs`, `sk-store/tests/event_store.rs` (`map_blob_is_read_only_by_its_own_hash`) |
+| Бэкап не снимается с работающего на том же storage сервера без явного `--allow-live` | `sk-infra/tests/backup_service.rs`, `sk-server/tests/storage_backup.rs` (подкоманда на базе SQLite), контракт `storage-backup-cli` |
+| Кампания по сценарию идёт по его узлам, финал — исход боя с главным противником в логове; развязка переживает replay | `sk-scenario/tests/campaign_scenario.rs`, `sk-rules/tests/scenario_ending_replay.rs` |
 | Внимание главного противника — вывод из журнала, игроку не видно; незнакомца ставит и раскрывает только сервер, выдох — серверными бросками; засаду и внезапность финала решает счёт, а не Режиссёр | `sk-attention/tests/scenario_attention.rs` |
 
 Если новый инвариант нельзя привязать к тесту — он ещё не инвариант, а намерение.

@@ -1007,6 +1007,21 @@ pub fn mundane_action_outcome(value: &str, context: &MundaneContext) -> Option<V
     if text::test(impossible_feat(), &value) {
         return Some(json!({ "kind": "impossible", "narration": format!("{hero} примеривается — «{quote}», — но это не по силам ни одному смертному. Какой способ мир позволит: рычаг, заклинание, помощь отряда? Попытка ничего не расходует.") }));
     }
+    if text::test(hostile_act(), &value) {
+        return Some(json!({ "kind": "hostile", "narration": format!("Здесь пока нет врагов, и мирный человек сам не станет противником: «{quote}» бой не начинает. Надавить можно и без драки — пригрозить (Запугивание), потребовать ответа или обезоружить хитростью. Если отряд решил драться всерьёз, схватку начинает ведущий. Попытка ничего не расходует.") }));
+    }
+    if let Some(spell_names) = &context.spell_names {
+        if text::test(spell_act(), &value) && !mentioned_spell_name(&value, spell_names) {
+            let known: Vec<String> = spell_names.iter().map(|name| clean(name, 60)).filter(|name| !name.is_empty()).collect();
+            let narration = if known.is_empty() {
+                format!("{hero} не владеет магией: заклинаний у героя нет. Опишите, как добиться своего руками, словом или снаряжением. Попытка ничего не расходует.")
+            } else {
+                let more = if known.len() > 8 { " и другие" } else { "" };
+                format!("Такого заклинания {hero} не знает. Сотворить можно: {}{more}. Назовите заклинание из списка или опишите, чего добиться без магии. Попытка ничего не расходует.", known[..known.len().min(8)].join(", "))
+            };
+            return Some(json!({ "kind": "unknown_spell", "narration": narration }));
+        }
+    }
     if let Some(narration) = impossible_manual_feat_refusal(&value) {
         return Some(json!({ "kind": "impossible", "narration": narration }));
     }
@@ -1026,20 +1041,8 @@ pub fn mundane_action_outcome(value: &str, context: &MundaneContext) -> Option<V
         };
         return Some(json!({ "kind": "method", "narration": format!("Цель понятна. {question} Попытка ничего не расходует.") }));
     }
-    if text::test(hostile_act(), &value) {
-        return Some(json!({ "kind": "hostile", "narration": format!("Здесь пока нет врагов, и мирный человек сам не станет противником: «{quote}» бой не начинает. Надавить можно и без драки — пригрозить (Запугивание), потребовать ответа или обезоружить хитростью. Если отряд решил драться всерьёз, схватку начинает ведущий. Попытка ничего не расходует.") }));
-    }
-    if let Some(spell_names) = &context.spell_names {
-        if text::test(spell_act(), &value) && !mentioned_spell_name(&value, spell_names) {
-            let known: Vec<String> = spell_names.iter().map(|name| clean(name, 60)).filter(|name| !name.is_empty()).collect();
-            let narration = if known.is_empty() {
-                format!("{hero} не владеет магией: заклинаний у героя нет. Опишите, как добиться своего руками, словом или снаряжением. Попытка ничего не расходует.")
-            } else {
-                let more = if known.len() > 8 { " и другие" } else { "" };
-                format!("Такого заклинания {hero} не знает. Сотворить можно: {}{more}. Назовите заклинание из списка или опишите, чего добиться без магии. Попытка ничего не расходует.", known[..known.len().min(8)].join(", "))
-            };
-            return Some(json!({ "kind": "unknown_spell", "narration": narration }));
-        }
+    if context.in_combat {
+        return None;
     }
     let mut options = vec!["осмотреть место внимательнее".to_string()];
     if !context.npc_names.is_empty() {
