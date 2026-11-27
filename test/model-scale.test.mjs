@@ -105,7 +105,7 @@ test('сервер выводит категорию размера из ста�
   assert.equal(actorAppearanceFor('hero', { species: 'Коренастый полурослик', characterClass: 'Плут' }).stature, 'small')
   assert.equal('stature' in actorAppearanceFor('hero', { species: 'Человек', characterClass: 'Воин' }), false)
   assert.equal('stature' in actorAppearanceFor('enemy', { name: 'Разбойник', size: 'medium' }), false)
-  // Размер виден всем, как и сама фигурка: замаскированный враг его не теряет.
+  // Внутренняя карточка хранит размер. За его раскрытие отвечает проекция Rust.
   const masked = actorAppearanceFor('enemy', { name: 'Неизвестный', size: 'large', masked: true })
   assert.equal(masked.profile, 'warrior')
   assert.equal(masked.stature, 'large')
@@ -150,6 +150,38 @@ test('GLB стула при масштабе генератора держит �
   assert.ok(wide[0] * wideFit * .46 <= 1 + 1e-9)
   // Виду без предела вписывание не меняется.
   assert.equal(catalog.propModelFloorFit('table_long', .5, [2, .8, 1], .95, 2, 1), .5)
+})
+
+test('кровать из GLB поднята над полом, её след сохраняется', () => {
+  const entry = { key: 'raised-bed', assetIds: ['bed'], yaw: 0, size: [1, .24, 1.7] }
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...entry.size), new THREE.MeshBasicMaterial())
+  const assets = { catalog: { models: [entry] }, models: new Map([[entry.key, mesh]]) }
+  const library = props.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, assets)
+  try {
+    const model = library.create({ id: 'bed', assetId: 'bed', x: .5, y: 1, rotation: 0, scale: 1,
+      footprint: [{ x: 0, y: 0 }, { x: 0, y: 1 }] })
+    const bounds = new THREE.Box3().setFromObject(model)
+    assert.equal(model.userData.modelSource, 'glb')
+    assert.ok(bounds.min.y >= -.001 && bounds.max.y >= .54)
+    const size = bounds.getSize(new THREE.Vector3())
+    assert.ok(size.x <= 1 && size.z <= 2)
+  } finally {
+    library.dispose()
+    mesh.geometry.dispose()
+    mesh.material.dispose()
+  }
+})
+
+test('вывеска и храмовое знамя встают выше обычной фигурки без изменения места', () => {
+  for (const prop of ['sign_board', 'temple_banner']) {
+    const feet = heightFeet(prop, .8)
+    assert.ok(feet > 6 && feet < 8, `${prop}: ${feet} фт`)
+  }
+})
+
+test('на месте одной книги не появляется книга высотой с табурет', () => {
+  assert.equal(catalog.propModelMaxHeight('single_book', { maxHeight: .28 }), .11)
+  assert.ok(catalog.propModelFit('single_book', { size: [1, .4, .9], maxHeight: .28 }, 1, 1, .9) * .4 <= .11)
 })
 
 test('деревья в 3D вытягиваются до 16–20 фт, остальное не тянется', () => {

@@ -21,13 +21,13 @@ export type PropModelEntry = {
  * Предел высоты GLB-модели по каноническому asset id, в клетках до `prop.scale`.
  * Футпринт задаёт ширину и глубину, но высоту не ограничивает: тонкая модель
  * (метла, фонарный столб, бутылка), вписанная в клетку по ширине, вырастала
- * в несколько клеток. Шкала: герой 1.25–1.4, стена 0.68 (BOARD3D_WALL_HEIGHT),
+ * в несколько клеток. Шкала: герой 1.25–1.4, стена 1.38 (BOARD3D_WALL_HEIGHT),
  * столешница около 0.73. Вида без записи предел не касается (лестницы).
  */
 export const PROP_MODEL_MAX_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({
   // Посуда и мелочь — стоят на столах и полках.
   mug: .3, plate: .1, bowl_stew: .3, bottle: .42, jug: .42, bread_loaf: .098, cheese_wheel: .25,
-  candle: .4, dice_cup: .3, coin_pile: .057, coin_pouch: .115, cutting_board: .03, pot: .4, lute: .6,
+  candle: .4, dice_cup: .3, coin_pile: .057, coin_pouch: .115, cutting_board: .03, pot: .4, lute: .6, single_book: .11,
   // Бытовые предметы на полу.
   broom: .9, sack: .6, basket: .4, bucket: .3, offering_bowl: .5, urn: .6, bone_pile: .4,
   firewood_stack: .5, woodpile: .6, cauldron: .6, keg: .6, crate: .6, chest: .6, barrel: .75,
@@ -55,7 +55,7 @@ export const PROP_MODEL_MAX_HEIGHTS: Readonly<Record<string, number>> = Object.f
   market_stall: 2,
   // Природа.
   tree_oak: 2.8, tree_birch: 2.8, tree_pine: 3, tree_spruce: 3, tree_dead: 2.4, tree_stump: .4,
-  bush: .8, shrub: .6, grass_tuft: .3, flowers: .35, fern: .4, mushroom_cluster: .35,
+  bush: .8, shrub: .6, grass_tuft: .3, flowers: .35, fern: .4, mushroom_cluster: .25,
   rock_small: .20, boulder: 1, stalagmite: 1.2, rubble_heap: .5, fallen_log: .5,
 })
 
@@ -96,6 +96,12 @@ export function propModelTreeStretch(assetId: string, heightCells: number): numb
   const target = Object.prototype.hasOwnProperty.call(PROP_MODEL_TREE_HEIGHTS, assetId) ? PROP_MODEL_TREE_HEIGHTS[assetId] : 0
   if (!target || !(heightCells > 0)) return 1
   return Math.min(MAX_TREE_STRETCH, Math.max(1, target / heightCells))
+}
+
+/** Высота низких моделей, вписанных по ширине. */
+export function propModelVerticalStretch(assetId: string, heightCells: number, key?: string): number {
+  const minimum = assetId === 'bed' ? .55 : assetId === 'banner' ? 1.35 : key === 'style-extra-merchant-wagon' ? .98 : 0
+  return minimum && heightCells > 0 ? Math.max(1, minimum / heightCells) : 1
 }
 
 const MAX_HEIGHT_LIMIT = 8
@@ -166,6 +172,7 @@ export function frontFacingEntry<T extends Pick<PropModelEntry, 'key' | 'yaw' | 
 
 /** Предел высоты модели предмета в клетках; `null` — высота не ограничена. */
 export function propModelMaxHeight(assetId: string, entry?: Pick<PropModelEntry, 'maxHeight'> | null): number | null {
+  if (assetId === 'single_book') return Math.min(entry?.maxHeight ?? Infinity, PROP_MODEL_MAX_HEIGHTS.single_book)
   if (entry?.maxHeight !== undefined) return entry.maxHeight
   return Object.prototype.hasOwnProperty.call(PROP_MODEL_MAX_HEIGHTS, assetId) ? PROP_MODEL_MAX_HEIGHTS[assetId] : null
 }
