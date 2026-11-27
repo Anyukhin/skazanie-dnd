@@ -33,7 +33,7 @@ async function battleState(code, { wallBetweenActors = false } = {}) {
     return { x, y, type, revealed: true }
   })
   const board = wallBetweenActors
-    ? await tacticalMapFromLegacyCells(cells, { locationId: 'pier' }, [{ edge: [5, 12, 6, 12, { kind: 'wall' }] }])
+    ? { map: (await tacticalMapFromLegacyCells(cells, { locationId: 'pier' }, [{ edge: [5, 12, 6, 12, { kind: 'wall' }] }])).map }
     : { cells }
   const initiative = ['first', 'ogre', 'second'].map((actor_id, index) => ({ actor_id, total: 20 - index * 5 }))
   const action_economy = Object.fromEntries(initiative.map(({ actor_id }) => [
@@ -100,6 +100,7 @@ test('тонкая стена завершает ход врага без ата
   const messages = (state) => state.messages.filter(({ text }) => /Враг не нашёл цели/u.test(text))
   assert.equal(messages(after).length, 1)
   const beforeReplay = await readJournal(server, code)
+  assert.ok(beforeReplay.state.scene.cells.length > 0, 'сервер восстанавливает клетки из сохранённой карты')
   assert.ok(!beforeReplay.events.some((event) => event.actor_id === 'ogre' && event.event_type === 'AttackResolved'))
   assert.equal(beforeReplay.events.filter((event) => event.actor_id === 'ogre' && event.event_type === 'TurnEnded').length, 1)
 

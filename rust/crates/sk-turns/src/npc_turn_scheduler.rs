@@ -506,7 +506,10 @@ fn in_attack_range(state: &Value, attacker_id: &str, target_id: &str, profile: &
     let (Some(from), Some(target)) = (from, target) else { return false };
     let range = number(profile.get("range_feet"));
     let distance = distance_between(state, attacker_id, target_id, Some(from), Some(target));
-    let legacy_no_map = range <= CELL_FEET && list(path(Some(state), &["scene", "cells"])).is_empty();
+    let scene = state.get("scene");
+    // Каноническая карта и её ссылка в снимке лежат в одном поле.
+    // Пустой массив производных клеток сам по себе карту не отменяет.
+    let legacy_no_map = range <= CELL_FEET && !js::truthy(get(scene, "map")) && list(get(scene, "cells")).is_empty();
     distance >= CELL_FEET && distance <= range && (legacy_no_map || clear_between(state, attacker_id, target_id, Some(from), Some(target)))
 }
 
