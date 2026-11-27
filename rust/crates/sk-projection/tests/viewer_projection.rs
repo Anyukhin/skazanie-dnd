@@ -273,6 +273,46 @@ fn footprint_is_public_only_when_valid_and_fully_revealed() {
 }
 
 #[test]
+fn enemy_mask_hides_figure_identity_and_reveal_restores_stature() {
+    let cells: Vec<Value> = (0..3).flat_map(|y| (0..8).map(move |x| json!({ "x": x, "y": y, "type": "floor", "revealed": true }))).collect();
+    let mut source = json!({
+        "sessionCode": "MASK-FIGURES", "partyMemberIds": ["hero"],
+        "players": [{ "id": "hero", "character": "Лира", "hp": 10, "maxHp": 10, "x": 0, "y": 0, "inventory": [] }],
+        "enemies": [
+            { "id": "hidden", "name": "Саргат", "masked": true, "creature_type": "dragon", "size": "large",
+              "image": "/assets/npcs/astohan/astohan-sargat-v1.png", "hp": 80, "maxHp": 80, "x": 2, "y": 0,
+              "footprint": { "version": 1, "size": 2 } },
+            { "id": "small", "name": "Гигантская крыса", "creature_type": "beast", "size": "small", "hp": 4, "maxHp": 4, "x": 4, "y": 0 },
+            { "id": "tiny", "name": "Паук", "creature_type": "beast", "size": "tiny", "hp": 4, "maxHp": 4, "x": 5, "y": 0 },
+            { "id": "named-mask", "name": "Неопознанная тень", "creature_type": "dragon", "size": "tiny",
+              "image": "/assets/enemies/dnd-2014/young-red-dragon.png", "hp": 4, "maxHp": 4, "x": 6, "y": 0 },
+        ],
+        "scene": { "title": "Поле", "location": "Поле", "cells": cells },
+    });
+    let projected = room(&source, &user(), "hero");
+    for id in ["hidden", "named-mask"] {
+        let enemy = projected["enemies"].as_array().unwrap().iter().find(|enemy| enemy["id"] == id).expect("публичная клетка врага");
+        assert_eq!(enemy["name"], "Неизвестное существо");
+        for field in ["creature_type", "image", "footprint", "stat_block_id", "boss"] {
+            assert!(enemy.get(field).is_none(), "{id}: {field} выдаёт вид");
+        }
+        assert_eq!(projected["actor_appearances"][id], json!({ "version": 2, "profile": "warrior", "equipment": "unknown", "loadout": {} }));
+    }
+    for stature in ["small", "tiny"] {
+        assert_eq!(projected["actor_appearances"][stature]["stature"], stature);
+        assert_eq!(projected["actor_appearances"][stature]["profile"], "beast");
+    }
+    source["enemies"][0]["masked"] = json!(false);
+    let revealed = room(&source, &user(), "hero");
+    let sargat = &revealed["enemies"][0];
+    assert_eq!(sargat["name"], "Саргат");
+    assert_eq!(sargat["image"], "/assets/npcs/astohan/astohan-sargat-v1.png");
+    assert_eq!(sargat["creature_type"], "dragon");
+    assert_eq!(sargat["footprint"], json!({ "version": 1, "size": 2 }));
+    assert_eq!(revealed["actor_appearances"]["hidden"]["profile"], "dragon");
+}
+
+#[test]
 fn current_location_survives_world_map_limit() {
     let mut authored = private_state();
     authored["scene"]["location_id"] = json!("norvin");
