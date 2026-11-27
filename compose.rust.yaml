@@ -1,22 +1,22 @@
-# Rust-сервер «Сказания» рядом с JS-сервером (С19.3). Подробно —
-# docs/rust-docker.md.
+# Сервер игры «Сказания» (Rust). Подробно — docs/rust-docker.md.
 #
 #   docker compose -f compose.rust.yaml up -d --build
 #   docker compose -f compose.rust.yaml logs -f skazanie-rust
 #   docker compose -f compose.rust.yaml down          # том хранилища остаётся
 #
-# Отдельный проект (name ниже): compose.yaml и его контейнеры и сеть этот
-# файл не видит и не трогает; из ./storage — только каталог состояния
+# Отдельный проект (name ниже): прежний JS-контейнер (archive/js-server/
+# compose.yaml) и его сеть этот файл не видит; из ./storage — только каталог состояния
 # туннеля (storage/generated/.tunnel), откуда лаунчер читает публичную
-# ссылку. compose.override.yaml с ним не подхватывается — сертификат
+# ссылку. compose.override.yaml JS-сервера здесь не подхватывается — сертификат
 # антивируса подключён здесь же (local-ca).
 #
-# С 2026-10-31 Rust — основной сервер: START_DND.cmd поднимает этот файл
-# (с туннелем, профиль public) на 8787, если в .env DND_SERVER=rust.
-# Разовый перенос хранилища — tools/rust-cutover.ps1 (шаги ниже).
+# Rust — сервер игры (основной с 2026-10-31, единственный с 2026-11-27):
+# START_DND.cmd поднимает этот файл (с туннелем, профиль public) на 8787.
+# Разовый перенос кампаний прежнего JS-сервера — tools/rust-cutover.ps1
+# (шаги ниже).
 #
-# Переключение на 8787 вручную:
-#   1. docker compose stop skazanie            — остановить JS-сервис;
+# Перенос вручную:
+#   1. остановить прежний JS-контейнер, если жив (docs/rust-docker.md);
 #   2. pnpm backup (или копия ./storage)       — снимок старого хранилища;
 #   3. импорт старого storage в том Rust-сервиса (сначала с --dry-run):
 #        docker compose -f compose.rust.yaml run --rm --no-deps #          -v ./storage:/legacy-storage:ro skazanie-rust import-legacy --from /legacy-storage
@@ -24,8 +24,7 @@
 #        docker compose -f compose.rust.yaml run --rm --no-deps skazanie-rust audit-storage
 #   4. SKAZANIE_RUST_PORT=8787 в окружении (или в .env) и
 #        docker compose -f compose.rust.yaml up -d
-#   Откат: docker compose -f compose.rust.yaml down && docker compose up -d —
-#   ./storage JS-сервера импорт не меняет.
+#   ./storage JS-сервера импорт не меняет; отката на JS нет — сервер в архиве.
 name: skazanie-rust
 
 services:

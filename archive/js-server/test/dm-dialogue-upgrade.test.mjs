@@ -526,3 +526,33 @@ test('замер 31: «слова Оскара» — чьи слова, а не 
   assert.notDeepEqual(speechAddressee('Мирель записывает слова Оскара, закрывает тетрадь: «Пора к маяку. Борин, идём».', state, 'mirel'), { kind: 'npc', id: 'oskar' })
   assert.deepEqual(speechAddressee('Мирель находит Марту у окна и показывает ей монету: «Что вы видели?»', state, 'mirel'), { kind: 'npc', id: 'marta' })
 })
+
+test('аудит 2026-11-26: отыгрыш, «ближайший человек», сон и чужое заклинание без модели не кончаются вопросом «Чего герой хочет добиться»', async () => {
+  const { NpcSocialController } = await import('../server/npc-social-controller.mjs')
+  const { send, eventStore, state } = await fixture({ state: roomWithDoor(), npcSocialController: new NpcSocialController() })
+  const deadEnd = /хочет добиться/u
+
+  const song = await send('Пою похабную песню во всё горло, чтобы привлечь внимание')
+  assert.equal(song.clarification ?? null, null, song.narration)
+  assert.equal(song.check ?? null, null, 'песня без броска')
+  assert.equal(song.narration, 'Песня разносится вокруг — Мира Ветрокрыл оборачивается.')
+
+  const promise = await send('Обещаю старосте, что найду пропавших к завтрашнему вечеру')
+  assert.equal(promise.narration, 'Обещание звучит твёрдо — Мира Ветрокрыл оборачивается.')
+
+  const approach = await send('Подхожу к ближайшему человеку и спрашиваю о местных слухах')
+  assert.doesNotMatch(String(approach.narration), deadEnd, approach.narration)
+  assert.ok(approach.mechanics.some((event) => event.event_type === 'ActorMoved'), 'герой подходит к Мире')
+  assert.ok(approach.mechanics.some((event) => event.event_type === 'NpcConversationRecorded' && (event.payload?.npc_id ?? event.payload?.conversation?.npc_id) === 'mira'), 'и говорит с ней')
+
+  const spell = await send('Призываю метеоритный дождь на город')
+  assert.match(String(spell.narration), /^Ада не владеет магией/u, spell.narration)
+  assert.equal(spell.mechanics.length, 0, 'отказ ничего не коммитит')
+
+  const sleep = await send('Ложусь спать до утра')
+  const rest = sleep.mechanics.find((event) => event.event_type === 'RestStarted')
+  assert.equal(rest?.payload?.kind, 'long', 'сон до утра — долгий отдых')
+
+  const replayed = await eventStore.load(state.sessionCode)
+  assert.ok(replayed.state.state_version > state.state_version)
+})

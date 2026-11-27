@@ -31,7 +31,6 @@ const board = source('src/DungeonMap.tsx')
 const app = source('src/App.tsx')
 const session = source('src/useGameSession.ts')
 const styles = source('src/styles.css')
-const server = source('server/index.mjs')
 
 const INN = 'Трактир «У моста»'
 const PLAYER = { id: 'user-1', role: 'player', heroIds: ['hero'] }
@@ -231,54 +230,6 @@ test('у каждого события почты есть русская стр
     assert.match(summary, /[А-Яа-яЁё]/u)
   }
   assert.equal(sentEvents[0].payload.policy_id, COURIER_LETTERS_POLICY_ID, 'у механического решения обязан быть провенанс')
-})
-
-// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
-// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust — journal_letter и candidates_for
-// (rust/crates/sk-server/src/journal.rs).
-test('JS-only (server/index.mjs): конверт переживает перезагрузку комнаты и собирается в одной точке коммита', () => {
-  assert.match(server, /function journalLetter\(letter\)/u)
-  assert.match(server, /\.\.\.\(storedLetter \? \{ letter: storedLetter \} : \{\}\)/u)
-  assert.match(server, /eventsForChronicle\.map\(courierLetterChronicleEntry\)/u)
-})
-
-// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
-// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust — sanitize_player_letter_command
-// (COURIER_COMMAND_UNKNOWN_FIELD на reply_draft), rust/crates/sk-server/tests/command_guard.rs.
-test('JS-only (server/index.mjs): черновик ответа из браузера в команду не проходит', () => {
-  // Пришедший от клиента `reply_draft` был бы ответом NPC, написанным игроком:
-  // белый список полей санитайзера его не знает, а ставит его сервер сам и
-  // только после санитайзера.
-  const sanitizer = server.slice(server.indexOf('function sanitizePlayerLetterCommand'), server.indexOf('async function withCourierReplyDraft'))
-  assert.ok(sanitizer.length > 0)
-  assert.ok(!sanitizer.includes("'reply_draft'"), 'черновик ответа в белом списке полей команды быть не может')
-  assert.match(sanitizer, /COURIER_COMMAND_UNKNOWN_FIELD/u)
-  assert.match(server, /commands = \[await withCourierReplyDraft\(authoritativeBefore, commands\[0\]\)\]/u)
-  assert.match(server, /Письмо идёт отдельной атомарной командой/u)
-  // Модели нет — письмо всё равно уходит: механика от неё не зависит.
-  assert.match(server, /!npcSocialController\.llmClient\) return command/u)
-})
-
-// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
-// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). Порядок «сторож движка до модели» в Rust —
-// маршрут /commands (rust/crates/sk-server/src/routes/commands.rs); HTTP-проверки с
-// заглушкой модели пока нет ни в одном режиме.
-test('JS-only (server/index.mjs): модель зовут после отказов движка и не зовут на повторе', () => {
-  // Регресс ревью: `withCourierReplyDraft` ходила в модель **до** любой
-  // проверки. Бой, пустой кошелёк, четвёртое письмо, адресат в сцене — всё это
-  // отлавливалось уже после completion, и каждый такой клик списывал деньги
-  // впустую. Порядок здесь и есть исправление, поэтому он и проверяется
-  // порядком: сторож обязан стоять в исходнике выше вызова модели.
-  const guard = server.indexOf('assertSendLetterAllowed(authoritativeBefore, commands[0])')
-  const model = server.indexOf('await withCourierReplyDraft(authoritativeBefore, commands[0])')
-  assert.ok(guard > 0, 'дешёвые отказы движка обязаны спрашиваться в HTTP-слое')
-  assert.ok(model > 0)
-  assert.ok(guard < model, 'проверка движка обязана стоять до обращения к модели')
-  // Повтор того же `idempotency_key` возвращает уже подтверждённый коммит —
-  // писать под него новый черновик незачем. Тот же сторож стоит у соседнего
-  // соц.пути (`server/game-orchestrator.mjs`).
-  assert.match(server, /const duplicateLetter = await eventStore\.getByIdempotencyKey\(commandMatch\[1\], idempotencyKey\)/u)
-  assert.match(server, /if \(!duplicateLetter\) commands = \[await withCourierReplyDraft/u)
 })
 
 // ---------------------------------------------------------------------------

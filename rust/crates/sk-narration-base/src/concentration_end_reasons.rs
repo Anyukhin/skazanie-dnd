@@ -68,11 +68,13 @@ mod tests {
     #[test]
     fn every_reason_written_by_the_server_has_a_label() {
         // Сторож из JS-теста: причины, которые сервер пишет литералом в
-        // `ConcentrationEnded`, ищутся прямо в исходниках `server/*.mjs`.
-        let server = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../server");
+        // `ConcentrationEnded`, ищутся прямо в исходниках `server/*.mjs` —
+        // замороженной библиотеке и архиве прежнего сервера (2026-11-27).
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let pattern = re!(r"'ConcentrationEnded',\s*\{[^}]*?reason:\s*'([a-z_-]+)'", "gu");
         let mut literal = std::collections::BTreeSet::new();
-        for entry in std::fs::read_dir(&server).expect("каталог server") {
+        let entries = ["server", "archive/js-server/server"].iter().filter_map(|dir| std::fs::read_dir(root.join(dir)).ok()).flatten();
+        for entry in entries {
             let path = entry.expect("файл").path();
             if path.extension().and_then(|ext| ext.to_str()) != Some("mjs") {
                 continue;

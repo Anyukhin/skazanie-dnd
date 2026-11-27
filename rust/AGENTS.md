@@ -2,33 +2,42 @@
 
 Дополняет корневой `AGENTS.md` (язык, секреты, инварианты, критерий готовности
 действуют и здесь). **Начать с `rust/README.md`** — что сделано, почему и как
-устроено сейчас. Как переносить отдельный модуль JS — `rust/PORTING.md`;
-причины и журнал решений — `docs/rust-rewrite-plan.md`; статус по модулям —
-`rust/PORT-STATUS.md` (генерируется `node tools/rust-port-status.mjs`).
+устроено сейчас. Как шёл перенос модулей JS — `rust/PORTING.md`; причины и
+журнал решений — `docs/rust-rewrite-plan.md`; статус по модулям на момент
+архива JS — `rust/PORT-STATUS.md` (генератор в `archive/js-server/tools/`).
 
 ## 1. Статус и источник истины
 
 - `rust/` — Cargo workspace, сервер `skazanie-server` (крейт `sk-server`).
-  Все маршруты `server/index.mjs` перенесены. Контракт HTTP
-  (`test/contract-rust.list`) зелёный в обоих режимах.
-- **До переключения эталон — JS** (`server/*.mjs`). Rust повторяет его поведение:
-  те же ветки, коды ошибок, русские тексты байт в байт. Отличие от JS —
-  ошибка переноса. Баг JS переносится как есть и записывается в
-  `docs/rust-port-js-findings.md`; исправляют его в обоих серверах вместе,
-  отдельной задачей.
-- **Переключение на 8787 решает только владелец** (`docs/rust-docker.md`).
-  До него игра идёт на JS, а Rust поднимается рядом, на своём порту и своём
-  хранилище.
-- Правка поведения в `server/` до переключения переносится в `rust/` в той же
-  ветке или отдельной задачей. На расхождение срабатывают контракт в режиме
-  `rust`, корпус и эталоны с хешами файлов JS
-  (`spell_acceptance_audit::fixture_matches_working_tree`,
-  `route_lines_point_at_js_checks`).
+  С 2026-11-27 — **единственный сервер игры и эталон поведения**. Игра
+  владельца идёт на нём с 2026-10-31 (Docker, 8787). Прежний JS-сервер — в
+  `archive/js-server/` и не запускается (`archive/js-server/README.md`).
+- **Эталоны JS заморожены.** `rust/crates/*/fixtures/*.json(.gz)` и корпус
+  `tmp/corpus-v2` записаны с JS до архива и остаются регрессионными данными:
+  расхождение с ними — ошибка, пока не доказано, что поведение Rust изменено
+  намеренно. Тогда эталон правится вместе с кодом — данными, без JS, — а
+  причина записывается в `docs/rust-port-js-findings.md`. Генераторы
+  (`gen-*.mjs`, `capture-*.mjs`, `fixtures-env.mjs`) — в
+  `archive/js-server/rust/`.
+- **Исключение — эталон приёмки заклинаний** (`sk-combat-content`
+  `fixtures/spell-acceptance-audit.json`): он снят с рабочего дерева (хеши
+  `package.json`, клиента, тестов) и устаревает от их правки
+  (`fixture_matches_working_tree`). Пересоздать — генератором из архива,
+  временно положенным на прежнее место вместе с `fixtures-env.mjs`
+  (`node rust/crates/sk-combat-content/fixtures/gen-spell-acceptance-audit.mjs`),
+  после чего копии удалить.
+- **JS-библиотека `server/`** читается клиентом, инструментами и контрактом
+  (`server/README.md`). Поведение игры в ней не меняется; баг, общий с ней,
+  исправляется в Rust, а в `server/` — только если его видит клиент или
+  инструмент.
+- Контракт HTTP (`test/contract-rust.list`) гоняется против бинаря Rust
+  (`pnpm test:contract`), в CI — задача `contract` workflow `verify.yml`.
 
 ## 2. Устройство сервера (решения, которые не пересматривать молча)
 
 - **Диспетчер в порядке JS.** Маршруты — упорядоченная таблица
-  `(метод, матчер, обработчик)` в порядке `index.mjs`, а не дерево axum.
+  `(метод, матчер, обработчик)` в порядке прежнего `index.mjs`
+  (`archive/js-server/server/index.mjs`), а не дерево axum.
   От порядка зависят проваливание вниз по списку, 404 вместо 405 и
   регулярки путей.
 - **Однопоточное ядро** (`LocalSet`, `sk-server/src/core.rs`). Каждое
@@ -117,7 +126,7 @@
 - **Быстродействие.** Мемо нормализации (`sk-rules` `normalize::fixed_point`)
   держится на том, что нормализация — чистая функция входа и режима
   хранения. Новое скрытое состояние в нормализаторе это ломает. Бюджеты
-  горячего пути — `sk-server/tests/hot_path_budget.rs`, замер против JS —
+  горячего пути — `sk-server/tests/hot_path_budget.rs`, замер —
   `bench/hot-path.mjs`.
 - **Ход не зависит от длины журнала** (урок 11). Журнал целиком не читается
   на горячем пути и при старте: история нужного типа — `get_events_of_types`,
@@ -152,7 +161,7 @@
   новая версия и шаг миграции, иначе снимки прежней формы загрузятся как
   есть.
 - **Быстродействие.** Бюджеты горячего пути —
-  `sk-server/tests/hot_path_budget.rs`, замер против JS — `bench/hot-path.mjs`
+  `sk-server/tests/hot_path_budget.rs`, замер — `bench/hot-path.mjs`
   (`--trace`: отрезки `normalize.full`, `state.copy`, `store.*`; `этап#n` —
   сколько раз этап прошёл за запрос).
 
@@ -173,7 +182,8 @@
 | `sk-corpus` | сверка с корпусом записей JS (не входит в сервер) |
 
 Остальные крейты повторяют модули `server/*.mjs` по смыслу имени; какой
-JS-файл переносит модуль, сказано в его `//!`-шапке.
+JS-файл переносит модуль, сказано в его `//!`-шапке (файл может лежать уже в
+`archive/js-server/`).
 
 ## 4. Команды
 
@@ -194,16 +204,15 @@ cargo build --release -p sk-server --features test-hooks --bin skazanie-server
 ```bash
 pnpm rust:play                      # сыграть: сервер на 8788, хранилище tmp/rust-play/storage
 pnpm rust:play -- --offline         # то же без модели
-pnpm test:contract:rust             # контракт HTTP против Rust; нужен SKAZANIE_RUST_SERVER_BIN
-pnpm test:contract:js               # тот же контракт против JS
-node bench/hot-path.mjs             # замер горячего пути Rust против JS
-node tools/rust-port-status.mjs     # обновить rust/PORT-STATUS.md
-node eval/soak-parity.mjs           # боевой стенд одним сидом против JS и Rust; код 1 — расхождение
+pnpm test:contract                  # контракт HTTP против Rust; нужен SKAZANIE_RUST_SERVER_BIN
+node rust/crates/sk-server/bench/hot-path.mjs --impl rust      # замер горячего пути
+node rust/crates/sk-server/bench/long-journal.mjs …            # горячий путь на длинном журнале
+node eval/combat-http-soak.mjs      # бои через HTTP по темам бестиария; код 1 — аномалии
+node eval/astohan-seeds.mjs --seeds 2-3   # Асстохан ботом без модели
 ```
 
 - Ночной CI (`.github/workflows/rust-nightly.yml`, с ветки по умолчанию или
-  кнопкой Run workflow): паритет боевого стенда и Асстохан без модели на сидах
-  2–3 против Rust. Образ `Dockerfile.rust` собирается и отвечает на
+  кнопкой Run workflow): бои через HTTP и Асстохан без модели на сидах 2–3. Образ `Dockerfile.rust` собирается и отвечает на
   `/api/health` в задаче `docker` workflow `rust.yml`.
 
 - `SKAZANIE_RUST_SERVER_BIN` — бинарь, собранный с `--features test-hooks`.
@@ -218,19 +227,17 @@ node eval/soak-parity.mjs           # боевой стенд одним сид�
   `data/*.json`, которые читает сервер.
 - Docker: `Dockerfile.rust`, `compose.rust.yaml` (порт 8788, свой том) —
   `docs/rust-docker.md`. Docker поднимает только владелец.
-- Эталоны JS: `rust/crates/sk-*/fixtures/gen-*.mjs`, первая строка —
-  `import '../../../fixtures-env.mjs'`. После правки JS, на который смотрит
-  эталон, его пересоздают тем же скриптом.
+- Эталоны `rust/crates/*/fixtures` заморожены (§1); их генераторы — в
+  `archive/js-server/rust/`.
 
-## 5. Проверка перед слиянием в ветку переноса
+## 5. Проверка перед слиянием
 
 | Изменение | Что прогнать |
 | --- | --- |
 | крейт | `cargo test --release -p <крейт>`; сборка без предупреждений |
 | правило, редьюсер, нормализация | корпус: вывод `reducer` и `resolve … all` совпадает с последней сверкой ветки переноса — ни одного нового расхождения |
-| маршрут, проекция, права | контракт в обоих режимах (`rust` и `js`) с бинарём `test-hooks` |
+| маршрут, проекция, права | контракт (`pnpm test:contract`) с бинарём `test-hooks` |
 | горячий путь | `hot_path_budget` отдельно от остального: под нагрузкой он краснеет по времени |
-| слияние `main` | всё выше. JS-сторона `main` переносится в Rust в той же волне |
 
 Известные расхождения корпуса v2 (2026-10-31, `claude/rust-rewrite` после
 `rs/fix-rules`) — ни одно не ошибка переноса:
@@ -246,9 +253,9 @@ node eval/soak-parity.mjs           # боевой стенд одним сид�
 - `reducer` — 1 из 6831: `corpus-14232.jsonl:4`, исправленный
   `NpcRelationshipAdjusted` сразу пишет `relationship_tiers` (`rs/fix-saves`).
 
-Новое расхождение — ошибка, пока не доказано обратное. Исправление JS,
-которое меняет применение старых событий редьюсером, без решения владельца
-не делается: откатить и записать в P1 `docs/rust-port-js-findings.md`.
+Новое расхождение — ошибка, пока не доказано обратное. Правка Rust, которая
+меняет применение старых событий редьюсером, без решения владельца не
+делается: откатить и записать в P1 `docs/rust-port-js-findings.md`.
 
 ## 6. Безопасность запусков
 

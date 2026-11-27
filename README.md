@@ -9,9 +9,9 @@
 воззвания колдуна, Вдохновение барда, Лепка заклинаний, бой двумя оружиями,
 Дикий облик с выбором зверя, Источник магии, Убийца колоссов, «Возрождение»,
 реакции союзника на чужую атаку — Острое словцо и Оборона. Что работает и чего
-нет — в [покрытии правил](docs/rules-coverage.md); стенд `eval/level7-soak.mjs`
-гоняет отряды всех 12 классов, а бот кампании водит героев той же серверной
-автотактикой через HTTP-путь игрока.
+нет — в [покрытии правил](docs/rules-coverage.md); стенд отрядов всех 12 классов
+`eval/level7-soak.mjs` гонял JS-движок и ушёл в архив вместе с ним, а бот
+кампании водит героев серверной автотактикой через HTTP-путь игрока.
 
 Для первой игры выберите «Асстоханские равнины», редакцию 2014 и старт с
 7-го уровня. У каждого игрока в мастере есть четыре готовых листа. Для боя
@@ -740,12 +740,19 @@ EncounterAssembler остаётся ограниченным vertical slice. Е�
 
 ## Локальный запуск
 
-Нужны Node.js `>=20.19.0` и pnpm.
+Сервер игры — Rust (`rust/`, бинарь `skazanie-server`); клиент — React и Vite
+(`src/`). Нужны Node.js `>=20.19.0`, pnpm и Rust stable (на Windows —
+GNU-toolchain с MinGW, `rust/PORTING.md` §6).
 
 ```bash
 pnpm install
-pnpm dev
+pnpm dev            # vite :4173 и Rust-сервер :8788 (tmp/rust-play/storage)
+pnpm rust:play      # только сервер: :8788, своё хранилище; --offline — без модели
 ```
+
+Игра владельца — `START_DND.cmd` (Rust в Docker на 8787, раздел «Docker» ниже);
+`pnpm dev` и `pnpm rust:play` её не трогают. Прежний JS-сервер (`server/index.mjs`)
+с 2026-11-27 в архиве — [archive/js-server](archive/js-server/README.md).
 
 Vite покажет адрес интерфейса. При первом запуске задайте одноразовый `ADMIN_SETUP_TOKEN` или используйте Windows-лаунчер, который создаёт его автоматически. После первоначальной настройки обычный игрок регистрируется, открывает список кампаний и создаёт новый мир: сервер резервирует выбранные 1–5 безопасных слотов, а интерфейс требует закончить героя владельца до начала игры. Ссылка «Пригласить» содержит `?room=CODE`: каждый следующий зарегистрированный игрок получает ровно один ещё не занятый слот и проходит тот же мастер без панели управления миром. Приглашение одноразовое, поэтому для каждого гостя владелец создаёт отдельную ссылку.
 
@@ -771,17 +778,20 @@ DND_IMAGE_MODEL=openai/gpt-image-1
 ## Проверка проекта
 
 ```bash
-pnpm test
+pnpm test           # клиент, инструменты, общая JS-библиотека server/ — без сервера
 pnpm build
-pnpm rules:verify
-pnpm test:coverage
+pnpm test:contract  # контракт HTTP против Rust; бинарь с --features test-hooks в SKAZANIE_RUST_SERVER_BIN
+cd rust && cargo test --release --workspace --locked --no-fail-fast
 ```
+
+Правила работы с Rust-сервером — [rust/AGENTS.md](rust/AGENTS.md), устройство —
+[rust/README.md](rust/README.md).
 
 Замеры оптимизации каталога действий и боевого стенда, а также состав удалённого
 неиспользуемого кода: [оптимизация тестов](docs/test-performance-2026-09-07.md).
 Продолжение: [хранилище событий, маршруты карты и запуск тестов](docs/test-performance-2026-09-08.md).
 
-Тесты используют временные каталоги и не должны изменять рабочий `storage`. Актуальный suite покрывает reducer/replay, броски, P0-механику, idempotency и version conflicts, миграцию, Rule Pack/retrieval, границы LLM, security/verifier и traces. `test/mvp-player-cycle-api.test.mjs` запускает реальный HTTP-процесс и проходит единый пользовательский цикл: два обычных аккаунта создают и делят кампанию из четырёх героев, выполняют одну исследовательскую и две social-проверки через обычный `/api/narrate`, переживают restart во время диалога, получают от Director встречу минимум с тремя врагами, поочерёдно завершают весь бой только разрешёнными UI-командами и реакциями, переживают второй restart во время боя, получают server-owned XP/loot, восстанавливаются продолжительным отдыхом и переходят через три связанные сцены без обязательного второго боя. Общий gate — `pnpm verify`.
+Тесты используют временные каталоги и не должны изменять рабочий `storage`. Механику, replay, броски, idempotency, права и видимость держат тесты крейтов `rust/` и контракт HTTP. `test/mvp-player-cycle-api.test.mjs` (контракт) запускает реальный HTTP-процесс и проходит единый пользовательский цикл: два обычных аккаунта создают и делят кампанию из четырёх героев, выполняют одну исследовательскую и две social-проверки через обычный `/api/narrate`, переживают restart во время диалога, получают от Director встречу минимум с тремя врагами, поочерёдно завершают весь бой только разрешёнными UI-командами и реакциями, переживают второй restart во время боя, получают server-owned XP/loot, восстанавливаются продолжительным отдыхом и переходят через три связанные сцены без обязательного второго боя. Общий gate — `pnpm verify` (test + build) и контракт; в CI — `.github/workflows/verify.yml` и `rust.yml`.
 
 Для content/release и disaster-recovery gates см.
 [`docs/production-readiness.md`](docs/production-readiness.md):
@@ -789,43 +799,18 @@ pnpm test:coverage
 ```powershell
 pnpm content:verify
 pnpm release:verify
-pnpm cutover:audit
-pnpm cutover:verify
-pnpm backup -- verify D:\backups\skazanie.skzbackup
+rust\target\release\skazanie-server.exe check-content
+rust\target\release\skazanie-server.exe audit-storage --storage <каталог>
 ```
 
-## Миграция существующих кампаний
+## Перенос кампаний прежнего JS-сервера
 
-Сначала остановите запись, сделайте полную резервную копию `storage` вне дерева проекта и подтвердите редакцию правил кампании. Затем выполните только dry-run:
-
-```bash
-pnpm migrate:dry-run
-```
-
-Записывающая миграция запускается отдельно и создаёт byte-for-byte `.bak` перед изменением room JSON:
-
-```bash
-pnpm migrate
-```
-
-Старая metadata-миграция не выполняет cutover и не должна повторно запускаться над уже существующими event streams. Новые кампании создаются непосредственно в Event Store. Перед переносом старой кампании обязательны `cutover:audit`, replay-сверка, проверенная резервная копия и явный offline import. Полная процедура, критерии остановки и rollback описаны в [руководстве по миграции](docs/migration-guide.md) и [документе удаления legacy](docs/legacy-retirement.md).
-
-### Проверка ранее отсечённой памяти
-
-Обычный replay сохраняет прежнюю обработку старых событий; новые события
-используют `reducer_version: 15` и сохраняют записи сверх прежних лимитов.
-Для отдельной проверки остановите запись кампании и выполните:
-
-```bash
-pnpm world-memory:recover --source ./storage/engine --campaign ROOM-CODE --output ./recovery-preview-ROOM-CODE
-```
-
-Команда создаёт только новый каталог с исходной и восстановленной проекциями,
-событиями, различиями и manifest. Исходное хранилище не изменяется. Это проект
-восстановления, а не применённая миграция или полная резервная копия. Перед
-отдельным применением нужны штатная проверенная `pnpm backup`, просмотр всех
-различий и процедура отката. Отсутствующие в журнале данные не выдумываются;
-новые последствия, броски и вызовы модели при проверке не создаются.
+Кампании, сыгранные на JS-сервере (`./storage`, файлы), переносятся в базу
+Rust-сервера один раз: `powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1`
+(`-DryRun` — только проверка). Вручную — `skazanie-server import-legacy --from
+<копия storage JS> --to <новый каталог> --dry-run`, затем `audit-storage`
+(только чтение). `./storage` при этом только читается. Игры, сыгранные на Rust,
+обратно в JS не переносятся. Подробно — [Rust-сервер в Docker](docs/rust-docker.md).
 
 ## Основные API
 
@@ -920,32 +905,39 @@ X-Idempotency-Key: turn-damage-42
 
 ## Данные и архитектура
 
-- `storage/auth.json` — аккаунты и сессии;
-- `storage/rooms/*.json` — временная server-owned compatibility read-модель; публичная полная запись запрещена;
-- `storage/engine/` — immutable event batches, metadata и snapshots;
-- `storage/turn-traces/` — трассы авторитетных ходов, включая время и исход попыток каскада моделей;
-- `storage/generated/items/` — runtime-generated изображения предметов;
-- `storage/generated/npcs/` — hashed persistent cache портретов важных NPC. Во время игры картинки **не генерируются**: флаг `DND_RUNTIME_IMAGE_GENERATION` выключен по умолчанию, готовое из кеша отдаётся как обычно, а вместо отсутствующего показывается ролевая заглушка. Готовятся портреты заранее, режимом подготовки ассетов в админской зоне (`/api/campaigns/:id/asset-preparation`, доступ администратору и владельцу кампании, до 20 позиций за запуск общим счётом на все виды картинок, расход идёт в usage-леджер);
-- `storage/generated/locations/` — hashed persistent cache иллюстраций локаций. Готовятся тем же режимом подготовки; в игре (`GET /api/campaigns/:id/locations/:locationId/illustration`) картинка берётся **только из кеша** — модель оттуда не зовётся ни при каком флаге, а видимость локации решает проекция зрителя. Шапка сцены показывает готовую иллюстрацию, если она есть, и остаётся с библиотечной подложкой, если нет;
-- `data/rule_packs/srd_5_2_1/` — Rule Pack;
-- `prompts/*/v1.txt` — версионированные prompts ролей.
+- `<DND_STORAGE_DIR>/skazanie.sqlite` — база Rust-сервера: кампании, журнал
+  событий, снимки, карты по хешу, накладки комнат, аккаунты, сессии,
+  членство и приглашения; коммит, снимок и метаданные пишутся одной транзакцией;
+- рядом с базой — трассы ходов (`turn-traces/`), библиотека карт
+  (`map-library/`) и сгенерированные картинки (`generated/items/`,
+  `generated/npcs/`, `generated/locations/`). Во время игры картинки **не
+  генерируются**: флаг `DND_RUNTIME_IMAGE_GENERATION` выключен по умолчанию,
+  готовое берётся из кеша, вместо отсутствующего — ролевая заглушка; готовятся
+  они заранее режимом подготовки ассетов в админской зоне;
+- `data/` — каталоги контента и Rule Pack; сервер проверяет их при старте
+  (`skazanie-server check-content`);
+- `prompts/` — версионированные контракты ролей модели;
+- `server/` — общая JS-библиотека правил, которую читают клиент, инструменты
+  контента и контрактные тесты; сервером она больше не запускается
+  ([server/README.md](server/README.md)).
 
-Файловое хранилище рассчитано на один процесс и небольшую кампанию. Event commit и compatibility projection связаны outbox/checkpoint; acknowledgement выполняется только после совпадения канонического SHA-256. Для нескольких серверов нужен транзакционный repository, например PostgreSQL.
+Хранилище рассчитано на один процесс: два сервера на одном каталоге не стартуют
+(отметка писателя).
 
 Подробности: [путеводитель по документации](docs/README.md), [аудит MVP](docs/mvp-audit.md), [текущая архитектура](docs/current-architecture.md), [целевая архитектура](docs/target-architecture.md), [покрытие правил](docs/rules-coverage.md), [удаление legacy runtime](docs/legacy-retirement.md), [модель безопасности](docs/security-model.md) и [известные ограничения](docs/known-limitations.md).
 
 ## Docker и Windows-лаунчеры
 
 ```bash
-docker compose up -d --build
-docker compose --profile public up -d --build --remove-orphans
-docker compose logs -f skazanie
-docker compose down
+docker compose -f compose.rust.yaml up -d --build
+docker compose -f compose.rust.yaml --profile public up -d --build --remove-orphans
+docker compose -f compose.rust.yaml logs -f skazanie-rust
+docker compose -f compose.rust.yaml down
 ```
 
-Приложение доступно на `http://localhost:8787`. Для обычного запуска достаточно дважды нажать `START_DND.cmd`: он сам запускает Docker Desktop, ждёт готовность движка, собирает сервер, поднимает исходящий SSH-туннель Pinggy, проверяет здоровье приложения, сохраняет ссылку в `PUBLIC_LINK.txt`, копирует её в буфер обмена и открывает игру. `STATUS_DND.cmd` показывает состояние, а `STOP_DND.cmd` останавливает игру. Бесплатный адрес Pinggy периодически меняется; не публикуйте setup-ссылку.
+Для обычного запуска достаточно дважды нажать `START_DND.cmd`: он сам запускает Docker Desktop, ждёт готовность движка, собирает Rust-сервер (`compose.rust.yaml`, хранилище — том `skazanie-rust_storage`) и поднимает его на `http://localhost:8787`, поднимает исходящий SSH-туннель Pinggy, проверяет здоровье приложения, сохраняет ссылку в `PUBLIC_LINK.txt`, копирует её в буфер обмена и открывает игру. `STATUS_DND.cmd` показывает состояние, а `STOP_DND.cmd` останавливает игру. Бесплатный адрес Pinggy периодически меняется; не публикуйте setup-ссылку.
 
-С 2026-10-31 основной сервер — Rust: при `DND_SERVER=rust` в `.env` `START_DND.cmd` поднимает `compose.rust.yaml` (хранилище — том `skazanie-rust_storage`) вместо `compose.yaml`; при `DND_SERVER=js` или пустом значении — прежний JS-сервер на `./storage`. Разовый перенос кампаний со старого хранилища и переключение — `powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1` (`-DryRun` — только проверка). Подробно — [Rust-сервер в Docker](docs/rust-docker.md).
+Без значения или с `DND_SERVER=rust` в `.env` лаунчер поднимает Rust; любое другое значение (прежнее `DND_SERVER=js`) останавливает запуск с объяснением: JS-сервер в [архиве](archive/js-server/README.md). Подробно — [Rust-сервер в Docker](docs/rust-docker.md).
 
 ## Правила, лицензии и материалы
 

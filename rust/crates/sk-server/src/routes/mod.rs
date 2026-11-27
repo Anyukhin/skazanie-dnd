@@ -105,7 +105,8 @@ mod tests {
     #[test]
     fn route_lines_point_at_js_checks() {
         use crate::dispatch::Pattern;
-        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../server/index.mjs");
+        // JS-сервер в архиве с 2026-11-27: номера строк — по его последней версии.
+        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../archive/js-server/server/index.mjs");
         let text = std::fs::read_to_string(&source).unwrap_or_else(|error| panic!("{}: {error}", source.display()));
         let lines: Vec<&str> = text.lines().collect();
         let routes = table(Vec::new());

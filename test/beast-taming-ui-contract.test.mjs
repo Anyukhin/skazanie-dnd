@@ -8,7 +8,6 @@ const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const views = readFileSync(new URL('../src/AppViews.tsx', import.meta.url), 'utf8')
 const session = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
-const server = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
 
 test('клиент называет только зверя: СЛ, навык и паёк остаются серверными', () => {
   for (const type of BEAST_PLAYER_COMMAND_TYPES) {
@@ -38,13 +37,4 @@ test('ступень приручения приезжает в летопись
   }), null)
   assert.match(views, /export function BeastChronicleEntry/u)
   assert.match(views, /message\.beast \?/u)
-})
-
-// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
-// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust тот же путь в летопись —
-// candidates_for в rust/crates/sk-server/src/journal.rs (beast_chronicle_entry);
-// HTTP-сценария приручения пока нет ни в одном режиме.
-test('JS-only (server/index.mjs): карточка зверя идёт в летопись тем же путём, что конверт почты', () => {
-  // Тот же путь в летопись, что у конверта почты, — иначе карточка не дойдёт.
-  assert.match(server, /eventsForChronicle\.map\(beastChronicleEntry\)/u)
 })

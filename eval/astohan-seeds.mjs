@@ -6,7 +6,7 @@
  *
  *   node eval/astohan-seeds.mjs                       # сиды 1–5, по два сразу, 25 мин на сид
  *   node eval/astohan-seeds.mjs --seeds 1,4,9 --parallel 1 --minutes 20 --keep
- *   SKAZANIE_RUST_SERVER_BIN=… node eval/astohan-seeds.mjs --impl rust --parallel 1   # бинарь переноса
+ *   SKAZANIE_RUST_SERVER_BIN=… node eval/astohan-seeds.mjs --parallel 1   # сервер — бинарь Rust
  *
  * Итог — `<out>/summary.md` (таблица сидов и находки по видам) и
  * `<out>/summary.json`; отчёты каждого сида лежат в `<out>/seed-<N>/`.
@@ -44,15 +44,14 @@ const PARALLEL = Math.max(1, Number(option('parallel', 2)) || 1)
 const MINUTES = option('minutes', '25')
 const STAMP = new Date().toISOString().replace(/[:.]/gu, '-').slice(0, 19)
 const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP}-seeds${IMPL === 'rust' ? '-rust' : ''}`)))
-const BASE_PORT = 8800 + Math.floor(Math.random() * 40) * 2
 
 function runSeed(seed, index) {
   const out = join(OUT, `seed-${seed}`)
   // Rust-стенд берёт свободный порт сам (`eval/stand-server.mjs`).
-  const args = ['eval/astohan-playthrough.mjs', '--seed', String(seed), ...(IMPL === 'js' ? ['--port', String(BASE_PORT + index)] : []), '--out', out]
+  const args = ['eval/astohan-playthrough.mjs', '--seed', String(seed), '--out', out]
   if (MINUTES) args.push('--minutes', MINUTES)
   if (argv.includes('--keep')) args.push('--keep')
-  if (IMPL !== 'js') args.push('--impl', IMPL)
+  args.push('--impl', IMPL)
   return new Promise((resolveRun) => {
     const startedAt = Date.now()
     const child = spawn(process.execPath, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })

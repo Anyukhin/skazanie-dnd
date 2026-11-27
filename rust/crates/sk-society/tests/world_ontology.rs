@@ -16,16 +16,21 @@ use common::{Args, Fixture, Outcome};
 use serde_json::{json, Map, Value};
 use sk_society::world_ontology::*;
 
+/// Модули `server/*.mjs` прежнего дерева: замороженная библиотека `server/` и
+/// архив прежнего сервера `archive/js-server/server/` (2026-11-27).
 fn server_files() -> Vec<(String, String)> {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../server");
-    let mut names: Vec<String> = fs::read_dir(&dir)
-        .expect("каталог server/")
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let mut names: Vec<(String, PathBuf)> = ["server", "archive/js-server/server"]
+        .iter()
+        .filter_map(|dir| fs::read_dir(root.join(dir)).ok())
+        .flatten()
         .filter_map(Result::ok)
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| name.ends_with(".mjs"))
+        .map(|entry| (entry.file_name().to_string_lossy().into_owned(), entry.path()))
+        .filter(|(name, _)| name.ends_with(".mjs"))
         .collect();
+    assert!(!names.is_empty(), "нет исходников server/");
     names.sort();
-    names.into_iter().map(|name| (name.trim_end_matches(".mjs").to_string(), fs::read_to_string(dir.join(&name)).expect("модуль server/"))).collect()
+    names.into_iter().map(|(name, path)| (name.trim_end_matches(".mjs").to_string(), fs::read_to_string(path).expect("модуль server/"))).collect()
 }
 
 fn as_pairs(files: &[(String, String)]) -> Vec<(&str, &str)> {

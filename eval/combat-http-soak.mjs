@@ -15,39 +15,32 @@
  *   node eval/combat-http-soak.mjs
  *   SOAK_DIFFICULTIES=medium,hard SOAK_SEEDS=2 SOAK_THEME=crypt node eval/combat-http-soak.mjs
  *   SOAK_DICE_SEED=7 node eval/combat-http-soak.mjs                 # повторяемые кости (mulberry32)
- *   SKAZANIE_RUST_SERVER_BIN=… node eval/combat-http-soak.mjs --impl rust   # бинарь переноса
+ *
+ * Сервер — бинарь Rust из SKAZANIE_RUST_SERVER_BIN (`eval/stand-server.mjs`).
  *
  * Найдено им 2026-10-04: свободная заявка «бью» уходила безоружным ударом.
  */
-import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deriveCharacterSheet } from '../server/character-lifecycle.mjs'
 import { ENCOUNTER_THEMES } from '../server/encounter-assembler.mjs'
-import { applyGameEvent, normalizeCampaignState, previewApproachAttack } from '../server/rules-engine.mjs'
+import { previewApproachAttack } from '../server/rules-engine.mjs'
 import { shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
 import { STARTER_KIT_2024_POLICY, withStarterKit } from '../server/starter-kit.mjs'
 import { freePort, rustJournalEvents, spawnRustStand, standImpl } from './stand-server.mjs'
 
-// Реализация сервера: `js` (по умолчанию) или бинарь Rust-переноса (`eval/stand-server.mjs`).
+// Сервер — бинарь Rust (`eval/stand-server.mjs`); JS-сервер с 2026-11-27 в архиве.
 const IMPL = standImpl(process.argv.slice(2))
 // Сид костей сервера — тот же генератор, что у `eval/astohan-playthrough.mjs --seed`.
 const DICE_SEED = process.env.SOAK_DICE_SEED || null
-const PORT = Number(process.env.SOAK_PORT || (IMPL === 'rust' ? await freePort() : 8797))
+const PORT = Number(process.env.SOAK_PORT || await freePort())
 const base = `http://127.0.0.1:${PORT}`
 const storage = mkdtempSync(join(tmpdir(), 'skazanie-http-soak-'))
 const setupToken = 'http-soak-setup'
 let logs = ''
 const seedEnv = DICE_SEED == null ? {} : { PLAYTEST_DICE_SEED: String(DICE_SEED) }
-const child = IMPL === 'rust'
-  ? spawnRustStand({ port: PORT, storage, setupToken, env: { GAME_ENGINE_MODE: 'enforce', DND_COMBAT_TURN_TIMEOUT_MS: '3600000', ...seedEnv } })
-  : spawn(process.execPath, [...(DICE_SEED == null ? [] : ['--import', './eval/playtest-seeded-dice.mjs']), 'server/index.mjs'], {
-    cwd: process.cwd(),
-    env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(PORT), DND_STORAGE_DIR: storage, ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: setupToken, GAME_ENGINE_MODE: 'enforce', COOKIE_SECURE: 'false', NODE_ENV: 'test', DND_COMBAT_TURN_TIMEOUT_MS: '3600000', ...seedEnv },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+const child = spawnRustStand({ port: PORT, storage, setupToken, env: { GAME_ENGINE_MODE: 'enforce', DND_COMBAT_TURN_TIMEOUT_MS: '3600000', ...seedEnv } })
 child.stdout.on('data', (chunk) => { logs += chunk })
 child.stderr.on('data', (chunk) => { logs += chunk })
 const stop = () => { try { child.kill() } catch {} }
@@ -122,9 +115,7 @@ async function runEncounter(code, theme, difficulty, seed) {
       const ended = (current.battleLog ?? []).findLast((entry) => entry.type === 'combat-end')
       outcomes.push({ code, theme, difficulty, round: combat.round, reason: ended?.reason ?? '?', enemies: (current.enemies ?? []).map((enemy) => enemy.name).join(', '), heroesUp: current.players.filter((player) => player.hp > 0).length, ms: Date.now() - encounterStartedAt })
       // Журнал Rust — SQLite: читается подкомандой бинаря, как в test/kit/journal.mjs.
-      const list = IMPL === 'rust'
-        ? await rustJournalEvents(storage, code)
-        : await new FileEventStore({ rootDir: join(storage, 'engine'), reducer: applyGameEvent, normalizeState: normalizeCampaignState }).getEvents(code, { after_version: 0 })
+      const list = await rustJournalEvents(storage, code)
       const heroIds = new Set(current.players.map((player) => player.id))
       const stat = { heroAttacks: 0, heroHits: 0, heroDamage: 0, enemyAttacks: 0, enemyHits: 0, enemyDamage: 0, heroSpells: 0, perHero: {} }
       for (const event of list) {
@@ -246,4 +237,5 @@ for (const line of serverErrors) console.log(' ', line.slice(0, 300))
 // Бинарь Rust держит SQLite хранилища до выхода процесса: удалять — после выхода.
 if (child.exitCode == null) await new Promise((done) => { const timer = setTimeout(done, 5_000); child.once('exit', () => { clearTimeout(timer); done() }); stop() })
 rmSync(storage, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
-process.exit(0)
+// Аномалии — код 1: ночной прогон CI краснеет на них, как прежде на расхождении с JS.
+process.exit(anomalies.length ? 1 : 0)

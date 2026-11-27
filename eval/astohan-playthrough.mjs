@@ -17,7 +17,7 @@
  *    Режиссёр до финала арки или до лимита времени;
  *  - по пути ловит тупики, ответы 5xx, отказы законным командам, зависший бой;
  *  - в конце проверяет идемпотентность, перезапуск, проекцию второго игрока,
- *    replay (`tools/audit-cutover.mjs`), меряет текст рассказчика и пишет
+ *    replay (подкомандой `audit` бинаря), меряет текст рассказчика и пишет
  *    отчёт с оценкой.
  *
  *   node eval/astohan-playthrough.mjs                 # без модели, 3–15 мин до развязки
@@ -36,7 +36,6 @@
  * рассказчика для чтения глазами), `<out>/report.json` (всё для сравнения
  * прогонов). Ключ модели не печатается и в отчёт не попадает.
  */
-import { spawn, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -91,14 +90,14 @@ const PARTY = option('party', PILOT_BUILDS.builds.map((recipe) => recipe.id).joi
 // отряда 7-го уровня шёл по 14 раундов, и кампания не успевала до финала.
 const TACTICS = option('tactics', 'server')
 const SEED = option('seed', null)
-// Реализация сервера: `js` (по умолчанию) или бинарь Rust-переноса (`eval/stand-server.mjs`).
+// Сервер — бинарь Rust (`eval/stand-server.mjs`); JS-сервер с 2026-11-27 в архиве.
 const IMPL = standImpl(argv)
-if (IMPL === 'rust' && (LIVE || JUDGE)) {
-  console.error('--impl rust: только без модели (--live и --judge — для JS-сервера)')
+if (LIVE || JUDGE) {
+  console.error('--live и --judge были только у JS-сервера, а он в архиве (archive/js-server); на Rust прогон идёт без модели')
   process.exit(2)
 }
 const MINUTES = Number(option('minutes', LIVE ? 25 : 20))
-const PORT = Number(option('port', IMPL === 'rust' ? await freePort() : 8900 + Math.floor(Math.random() * 90)))
+const PORT = Number(option('port', await freePort()))
 const STAMP = new Date().toISOString().replace(/[:.]/gu, '-').slice(0, 19)
 const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP}${LIVE ? '-live' : ''}${IMPL === 'rust' ? '-rust' : ''}`)))
 const CODE = 'ASTOHAN-RUN'
@@ -186,20 +185,8 @@ const short = (text, limit = 400) => {
 let child = null
 let logs = ''
 function startServer() {
-  const preload = SEED == null ? [] : ['--import', './eval/playtest-seeded-dice.mjs']
-  const env = {
-    ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(PORT), DND_STORAGE_DIR: storage,
-    ADMIN_SETUP_TOKEN: setupToken, COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    // Ход героя бот делает за секунды; срок хода не должен отдавать его NPC.
-    DND_COMBAT_TURN_TIMEOUT_MS: '3600000',
-    ...(SEED == null ? {} : { PLAYTEST_DICE_SEED: String(SEED) }),
-  }
-  // Без --live ключ обнуляется явно: dotenv не перекрывает уже заданные
-  // переменные, и пустая строка выигрывает у ключа из .env.
-  if (!LIVE) env.ROUTERAI_API_KEY = ''
-  child = IMPL === 'rust'
-    ? spawnRustStand({ port: PORT, storage, setupToken, env: { DND_COMBAT_TURN_TIMEOUT_MS: env.DND_COMBAT_TURN_TIMEOUT_MS, ...(SEED == null ? {} : { PLAYTEST_DICE_SEED: String(SEED) }) } })
-    : spawn(process.execPath, [...preload, 'server/index.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  // Ход героя бот делает за секунды; срок хода не должен отдавать его NPC.
+  child = spawnRustStand({ port: PORT, storage, setupToken, env: { DND_COMBAT_TURN_TIMEOUT_MS: '3600000', ...(SEED == null ? {} : { PLAYTEST_DICE_SEED: String(SEED) }) } })
   child.stdout.on('data', (chunk) => { logs += chunk })
   child.stderr.on('data', (chunk) => { logs += chunk })
 }
@@ -1432,19 +1419,8 @@ async function restartAndCompare(reason) {
   else note(`- 🔁 перезапуск сервера (${reason}): состояние совпало, версия ${after.state_version}`)
 }
 
-function runCutoverAudit() {
-  const audit = spawnSync(process.execPath, ['tools/audit-cutover.mjs', '--storage', storage], { cwd: ROOT, encoding: 'utf8', timeout: 600_000, env: { ...process.env, ROUTERAI_API_KEY: '' } })
-  const output = `${audit.stdout ?? ''}${audit.stderr ?? ''}`
-  // Статус null без вывода — аудит не успел за отведённое время (длинная
-  // кампания на занятой машине), а не расхождение replay: это разные находки.
-  if (audit.status === null) finding('major', 'replay-audit-timeout', `audit-cutover не успел за 10 мин (${audit.signal ?? audit.error?.code ?? 'timeout'})`)
-  else if (audit.status !== 0) finding('critical', 'replay-audit', `audit-cutover вернул ${audit.status}: ${short(output, 400)}`)
-  return { status: audit.status, output: short(output, 2000) }
-}
-
-// Хранилище Rust — SQLite, `tools/audit-cutover.mjs` его не читает: та же
-// сверка снимков с replay подкомандой бинаря плюс перекрёстный replay журнала
-// Rust JS-редьюсером (`eval/stand-server.mjs`).
+// Сверка снимков SQLite с replay подкомандой бинаря плюс перекрёстный replay
+// журнала Rust JS-редьюсером (`eval/stand-server.mjs`).
 async function runRustCutoverAudit() {
   const audit = await rustCutoverAudit(storage, CODE)
   if (audit.status !== 0) finding('critical', 'replay-audit', `аудит журнала Rust упал: ${short(audit.output, 400)}`)
@@ -2155,7 +2131,7 @@ try {
   finding('blocker', 'run-aborted', short(error?.stack ?? error, 600))
 }
 await stopServer()
-const audit = IMPL === 'rust' ? await runRustCutoverAudit() : runCutoverAudit()
+const audit = await runRustCutoverAudit()
 let usage = null
 if (LIVE) {
   startServer()

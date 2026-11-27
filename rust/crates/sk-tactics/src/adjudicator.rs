@@ -641,7 +641,8 @@ pub fn create_plan(intent: Option<&Value>, state: &Value, retrieved_rules: Optio
             Ok(with(vec![("rule_ids", sources), ("wait", Value::Object(wait)), ("proposed_commands", json!([command])), ("confidence", js::num(0.9))]))
         }
         Some("rest") => {
-            let kind = if text::test(sk_core::re!(r"долг|продолж|long", "iu"), &js::string(raw_message)) { "long" } else { "short" };
+            // Сон до утра и ночёвка — долгий отдых, а не час передышки (аудит 2026-11-26).
+            let kind = if text::test(sk_core::re!(r"долг|продолж|long|спать|до\s+утра|заночу|ночуем", "iu"), &js::string(raw_message)) { "long" } else { "short" };
             let minutes = if kind == "long" { 480 } else { 60 };
             let sources = strings(&rule_ids_for(&[rule_ids::RESOURCE])?);
             let step = |command_type: &str| {

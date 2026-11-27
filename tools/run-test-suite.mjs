@@ -1,8 +1,15 @@
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
-import { spawn, spawnSync } from 'node:child_process'
-import { cpus } from 'node:os'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+
+import { contractFiles } from '../test/kit/run-contract.mjs'
+
+// `pnpm test`: тесты клиента, инструментов и общей JS-библиотеки — без сервера.
+// Контрактные HTTP-тесты из test/contract-rust.list идут против бинаря Rust
+// отдельной командой `pnpm test:contract` (нужен SKAZANIE_RUST_SERVER_BIN):
+// JS-сервера, против которого корпус гонялся раньше, с 2026-11-27 нет
+// (archive/js-server).
 
 // Тесты включают модель только через собственную заглушку.
 process.env.DND_AI_OLLAMA_MODEL = ''
@@ -10,13 +17,13 @@ process.env.OPENROUTER_API_KEY = ''
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)))
 const testDir = join(rootDir, 'test')
-const longRunningFile = 'mvp-player-cycle-api.test.mjs'
 const performanceFile = 'tactical-map-budget.test.mjs'
-const isolatedFiles = new Set([longRunningFile, performanceFile])
+const contract = new Set(contractFiles(readFileSync(join(testDir, 'contract-rust.list'), 'utf8')))
 const functionalFiles = readdirSync(testDir)
-  .filter((name) => name.endsWith('.test.mjs') && !isolatedFiles.has(name))
+  .filter((name) => name.endsWith('.test.mjs') && name !== performanceFile)
+  .map((name) => relative(rootDir, join(testDir, name)).replaceAll('\\', '/'))
+  .filter((file) => !contract.has(file))
   .sort()
-  .map((name) => relative(rootDir, join(testDir, name)))
 
 function runNode(args) {
   const result = spawnSync(process.execPath, args, {
@@ -32,88 +39,8 @@ function runNode(args) {
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
-function runNodeAsync(args) {
-  // В параллельной ветке spawnSync остановит чтение pipe MVP и может его заблокировать.
-  return new Promise((resolveStatus) => {
-    const child = spawn(process.execPath, args, {
-      cwd: rootDir,
-      env: process.env,
-      stdio: 'inherit',
-    })
-    child.once('error', (error) => {
-      console.error(error)
-      resolveStatus(1)
-    })
-    child.once('close', (status, signal) => {
-      if (signal) console.error(`Тестовый процесс завершён сигналом ${signal}`)
-      resolveStatus(signal ? 1 : status ?? 1)
-    })
-  })
-}
-
-// Полный MVP-сценарий сам поднимает HTTP-сервер, проигрывает контролируемый бой и
-// перезапускает процесс несколько раз. Рядом ещё с тремя файлами он упирается
-// в собственный timeout 600 с; одиночный замер 2026-07-31 занял 338 с.
-//
-// Временные бюджеты тоже нельзя измерять рядом с HTTP/e2e-процессами: shared
-// CPU превращает проверку регрессии в проверку загруженности runner.
-// Функциональный корпус остаётся параллельным, а оба чувствительных файла
-// получают собственные процессы; лимиты и performance-пороги не меняются.
-// Измеряем бюджеты на холодном runner до всего корпуса: даже функциональная часть
-// загружает shared CPU несколько минут, а долгий MVP-сценарий ещё несколько раз
-// поднимает HTTP-процессы. Пороги и число прогонов остаются прежними.
+// Временные бюджеты нельзя измерять рядом с остальным корпусом: shared CPU
+// превращает проверку регрессии в проверку загруженности машины. Бюджет
+// меряется первым, на холодной машине; пороги и число прогонов прежние.
 runNode(['--test', join('test', performanceFile)])
-
-// Дальше порядок зависит от машины. Изоляция MVP-сценария была защитой от
-// 2-ядерного раннера CI, где рядом он упирался в собственный тайм-аут. На
-// машине разработчика с запасом ядер это чистая потеря: сценарий занимает
-// ~220 с и просто ждёт, пока функциональный корпус (~95 с) освободит очередь.
-// Замер 2026-08-01 на 16 ядрах: последовательный прогон ~5,5 мин,
-// параллельный — 257 с (~4,3 мин), весь корпус зелёный: 1676/1676 + MVP 1/1. Пороги, лимиты и состав корпуса не меняются.
-const sharedRunner = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
-
-/**
- * Один повтор MVP-сценария — только на общем раннере. Кости положительного
- * сценария теперь задаёт тестовый Dice Service; случайное поражение больше
- * не является причиной нестабильности. Прежний повтор оставлен для ошибок
- * транспорта и запуска дочернего сервера под нагрузкой CI. Две неудачи
- * подряд по-прежнему означают падение. Локально повторов нет.
- */
-function runLongScenario() {
-  const args = ['--test', join('test', longRunningFile)]
-  if (!sharedRunner) { runNode(args); return }
-  const first = spawnSync(process.execPath, args, { cwd: rootDir, env: process.env, stdio: 'inherit' })
-  if (first.status === 0) return
-  console.error('MVP-сценарий упал на общем раннере — один повтор (см. комментарий выше)')
-  runNode(args)
-}
-
-const enoughCores = (cpus()?.length ?? 0) >= 8
-if (sharedRunner || !enoughCores) {
-  runNode(['--test', '--test-concurrency=4', ...functionalFiles])
-  runLongScenario()
-} else {
-  // MVP стартует первым и работает, пока идёт функциональный корпус; его
-  // вывод буферизуется и печатается после — иначе TAP двух процессов
-  // перемешается и сводку станет невозможно читать.
-  const mvp = spawn(process.execPath, ['--test', join('test', longRunningFile)], {
-    cwd: rootDir,
-    env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  let mvpOutput = ''
-  mvp.stdout.on('data', (chunk) => { mvpOutput += chunk })
-  mvp.stderr.on('data', (chunk) => { mvpOutput += chunk })
-  const mvpDone = new Promise((resolve) => {
-    mvp.once('error', (error) => { mvpOutput += `${error}\n`; resolve(1) })
-    mvp.once('close', (status) => resolve(status ?? 1))
-  })
-
-  const functionalStatus = await runNodeAsync(['--test', '--test-concurrency=4', ...functionalFiles])
-  // Дожидаемся обоих процессов, чтобы при ошибке корпуса MVP успел выполнить cleanup.
-  const mvpStatus = await mvpDone
-  // Unix пишет в pipe асинхронно: process.exit иначе обрывает большой журнал.
-  await new Promise((resolve, reject) => process.stdout.write(mvpOutput, (error) => error ? reject(error) : resolve()))
-  if (functionalStatus !== 0) process.exit(functionalStatus)
-  if (mvpStatus !== 0) process.exit(mvpStatus ?? 1)
-}
+runNode(['--test', '--test-concurrency=4', ...functionalFiles])

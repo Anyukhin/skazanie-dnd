@@ -1823,6 +1823,53 @@ fn speech_handover_pattern() -> &'static fancy_regex::Regex {
     re!(r"(?<![\p{L}\p{M}])(?:переда|отда|вруча|протягива)\p{L}*", "iu")
 }
 
+/// `PERFORMANCE_PATTERN`: отыгрыш без цели и броска — песня, пляска, молитва,
+/// тост, байка, обещание (аудит 2026-11-26).
+fn performance_pattern() -> &'static fancy_regex::Regex {
+    re!(r"(?<![\p{L}\p{M}])(?:пою|спою|поём|споём|напева\p{L}*|запева\p{L}*|горланю|горланим|играю\s+на\s+\p{L}+|наигрыва\p{L}*|танцую|пляшу|пляшем|молюсь|помолюсь|молимся|произношу\s+тост|поднимаю\s+(?:кружку|бокал|кубок|тост)|рассказываю\s+(?:байку|анекдот|историю|сказку|легенду)|травлю\s+байк\p{L}*|шучу|насвистыва\p{L}*|декламиру\p{L}*|обещаю|клянусь|даю\s+слово)(?![\p{L}\p{M}])", "iu")
+}
+
+/// `PERFORMANCE_SOUND[performanceNoun(message)]`: чем отыгрыш звучит в сцене.
+fn performance_sound(message: &str) -> &'static str {
+    let value = yo_lower(message);
+    let has = |pattern: &fancy_regex::Regex| text::test(pattern, &value);
+    if has(re!(r"(?:обещаю|клянусь|даю\s+слово)", "u")) {
+        "Обещание звучит твёрдо"
+    } else if has(re!(r"(?:молюсь|помолюсь|молимся)", "u")) {
+        "Молитва звучит негромко"
+    } else if has(re!(r"(?:тост|кружку|бокал|кубок)", "u")) {
+        "Тост звучит громко"
+    } else if has(re!(r"(?:танцую|пляшу|пляшем)", "u")) {
+        "Пляска не остаётся незамеченной"
+    } else if has(re!(r"(?:байк|анекдот|историю|сказку|легенду|шучу)", "u")) {
+        "Рассказ звучит над сценой"
+    } else if has(re!(r"(?:декламиру)", "u")) {
+        "Стихи звучат над сценой"
+    } else if has(re!(r"(?:насвистыва)", "u")) {
+        "Свист разносится вокруг"
+    } else if has(re!(r"(?:играю\s+на|наигрыва)", "u")) {
+        "Музыка разносится вокруг"
+    } else {
+        "Песня разносится вокруг"
+    }
+}
+
+/// `nearbySocialNpcId(message, state)`: просьба к «ближайшему человеку» или
+/// «местным» — разговор с кем-то из здешних (аудит 2026-11-26).
+fn nearby_social_npc_id(message: &str, state: &Value) -> String {
+    let person = re!(r"(?:ближайш\p{L}*\s+(?:человек\p{L}*|прохож\p{L}*|местн\p{L}*|посетител\p{L}*|жител\p{L}*)|(?<![\p{L}\p{M}])местн(?:ым|ых|ому|ого|ой)(?![\p{L}\p{M}])|кого-нибудь\s+из\s+(?:местных|здешних)|(?<![\p{L}\p{M}])здешн(?:им|их)(?![\p{L}\p{M}]))", "iu");
+    let verb = re!(r"(?<![\p{L}\p{M}])(?:спрашива\p{L}*|расспрашива\p{L}*|предлага\p{L}*|прошу|обраща\p{L}*|заговарива\p{L}*|узна[юё]\p{L}*)(?![\p{L}\p{M}])", "iu");
+    if !text::test(person, message) || !text::test(verb, message) {
+        return String::new();
+    }
+    list(at(Some(state), &["social", "npcs"]))
+        .iter()
+        .filter(scene_people_filter(state))
+        .find(|npc| js::truthy(get(Some(npc), "id")) && !is_str(get(Some(npc), "visibility"), "gm_only"))
+        .map(|npc| js::string(get(Some(npc), "id")))
+        .unwrap_or_default()
+}
+
 /// Сколько шагов одной заявки ведущий исполняет подряд без вопроса.
 pub const PLAN_STEP_LIMIT: f64 = 4.0;
 
@@ -2114,6 +2161,18 @@ fn deterministic_free_action_narration(free_action: &Value, message: &str, event
             return Ok(match nearby {
                 Some(npc) => format!("{} оборачивается на голос.", template(get(Some(npc), "name"))),
                 None => format!("{} говорит негромко — так, чтобы слышали только свои.", free_action_hero_name(events, state)),
+            });
+        }
+        // Песня, тост, обещание без кавычек — тоже сцена, а не пустой ответ.
+        if text::test(performance_pattern(), message) {
+            let nearby = list(at(Some(state), &["social", "npcs"]))
+                .iter()
+                .filter(scene_people_filter(state))
+                .find(|npc| js::truthy(get(Some(npc), "name")) && !is_str(get(Some(npc), "visibility"), "gm_only"));
+            let sound = performance_sound(message);
+            return Ok(match nearby {
+                Some(npc) => format!("{sound} — {} оборачивается.", template(get(Some(npc), "name"))),
+                None => format!("{sound}; рядом только свои."),
             });
         }
     }
@@ -4070,6 +4129,22 @@ impl GameOrchestrator {
                     intent = with(&intent, json!({ "intent": "improvised_action", "roleplay_speech": !acts_beyond_speech(&message), "targets": [], "missing_information": [], "requires_clarification": false }));
                 }
                 _ => {}
+            }
+        }
+        // Песня, тост, молитва, обещание в сцену — отыгрыш без броска; просьба к
+        // «ближайшему человеку» или «местным» — разговор с кем-то из здешних.
+        if !has_commands
+            && explicit_npc_id.is_empty()
+            && !original_combat
+            && ["improvised_action", "explore", "unknown", "social"].contains(&js::string(intent.get("intent")).as_str())
+            && !(is_str(intent.get("intent"), "social") && !list(intent.get("targets")).is_empty())
+        {
+            let nearby_npc_id = nearby_social_npc_id(&message, &visible_state);
+            let performance = text::test(performance_pattern(), &message);
+            if !nearby_npc_id.is_empty() && !performance {
+                intent = with(&intent, json!({ "intent": "social", "targets": [nearby_npc_id], "missing_information": [], "requires_clarification": false }));
+            } else if !js::is_true(intent.get("roleplay_speech")) && performance && !acts_beyond_speech(&message) {
+                intent = with(&intent, json!({ "intent": "improvised_action", "roleplay_speech": true, "targets": [], "missing_information": [], "requires_clarification": false }));
             }
         }
         let mut social_request: Option<String> = None;

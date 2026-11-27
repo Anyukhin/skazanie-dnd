@@ -10,25 +10,27 @@
 
 Нарушение любого пункта ломает сборку или тесты.
 
-- **`server/` — чистый ESM JavaScript (`.mjs`).** Не создавать `server/*.ts`.
-- **Типы на сервере — JSDoc, проверка по одному файлу.** `pnpm typecheck:server`
-  (`tsconfig.server.json`, `checkJs: false`) проверяет только файлы с
-  `// @ts-check` в первой строке; ошибки импортируемых модулей не считаются.
-  Каждый помеченный файл обязан стоять в `include` `tsconfig.server.json`
-  (сторож — `test/server-typecheck-coverage.test.mjs`); список даёт
-  `grep -rl '^// @ts-check' server/`. Типы — `@typedef`, `@param`, `@returns` и
-  приведение `/** @type {T} */ (expr)`, рантайм не меняется. Если для зелёного
-  нужна правка поведения — остановиться и вынести её отдельной задачей.
-  Форма тактической клетки (`SceneCell`) объявлена в `server/dynamic-map.mjs`.
+- **Сервер игры — Rust** (`rust/`, Cargo workspace, бинарь `skazanie-server`).
+  С 2026-11-27 он единственный сервер и эталон поведения; правила работы —
+  `rust/AGENTS.md`. Прежний JS-сервер — `archive/js-server/`: история, не
+  запускается; рабочее состояние — коммит, названный в его `README.md`.
+- **`server/` — замороженная JS-библиотека** (ESM `.mjs`): правила, карты и
+  каталоги, которые читают клиент (`src/`), инструменты контента (`tools/`),
+  стенды (`eval/`) и контрактные тесты (сборка состояний). Сервером не
+  запускается. Новое поведение игры — только в `rust/`; `server/` правится,
+  лишь если этого требует клиент или инструмент, и тогда то же поведение — в
+  Rust. Не создавать `server/*.ts`. Подробно — `server/README.md`.
 - **`src/` — TypeScript + React + Vite**, проверка `tsc --noEmit -p tsconfig.app.json`.
-- **Тесты — встроенный `node:test`, файлы `test/*.test.mjs`.** Jest, Vitest и
-  Playwright в проекте нет; браузерный сценарий проверяется вручную.
-- Node `>=20.19.0`, пакетный менеджер **pnpm**.
-- **`rust/` — перенос сервера на Rust** (Cargo workspace, бинарь
-  `skazanie-server`). До переключения эталон поведения — JS; правила работы с
-  Rust — `rust/AGENTS.md`.
-- Хранилище — `storage/` (переопределяется `DND_STORAGE_DIR`): у JS — файлы,
-  у Rust — SQLite в том же каталоге. Отдельного сервера БД нет.
+- **Тесты JS — встроенный `node:test`, файлы `test/*.test.mjs`**: модульные
+  (`pnpm test`) и контракт HTTP против бинаря Rust (`test/contract-rust.list`,
+  `pnpm test:contract`). Тесты сервера — `cargo test` в `rust/`. Jest, Vitest
+  и Playwright в проекте нет; браузерный сценарий проверяется вручную.
+- Node `>=20.19.0`, пакетный менеджер **pnpm**; Rust stable, на Windows —
+  GNU-toolchain с MinGW (`rust/PORTING.md` §6), сборка только `--release`.
+- Хранилище — SQLite `skazanie.sqlite` в `DND_STORAGE_DIR`; у игры владельца —
+  том Docker `skazanie-rust_storage`. Отдельного сервера БД нет. Прежнее
+  файловое `storage/` JS — только источник разового переноса
+  (`tools/rust-cutover.ps1`).
 - Версии в `package.json` — `^X.Y.Z`, совпадающие с `pnpm-lock.yaml`; менять
   только вместе с локом. Новые зависимости разрешены (решение владельца
   2026-10-13); в Rust — фиксировать в `Cargo.lock`.
@@ -36,40 +38,38 @@
 ## 2. Команды
 
 ```bash
-pnpm dev              # клиент (vite :4173) + сервер (:8787)
-pnpm dev:agent        # только сервер, server/index.mjs
-pnpm dev:client       # только vite
-pnpm start            # прод-запуск сервера
+pnpm dev              # vite :4173 + Rust-сервер :8788 (tmp/rust-play/storage)
+pnpm dev:client       # только vite; прокси — на AGENT_PORT (по умолчанию 8787)
+pnpm rust:play        # только Rust-сервер: :8788, своё хранилище; --offline — без модели
+                      # (игра владельца — Rust в Docker на 8787, START_DND.cmd)
 
-pnpm test                              # весь корпус, затем бюджет tactical-map отдельно
-node --test test/rules-engine.test.mjs # один файл — так проверять точечные правки
-pnpm build                             # tsc --noEmit + vite build
-pnpm typecheck:server                  # tsc по файлам с // @ts-check
-pnpm verify                            # test + typecheck:server + build; локально не запускать —
-                                       # полный прогон делает CI (.github/workflows/verify.yml)
+pnpm test                              # модульные тесты JS, затем бюджет tactical-map отдельно
+node --test test/<файл>.test.mjs       # один файл — так проверять точечные правки
+pnpm test:contract    # контракт HTTP против Rust; бинарь с --features test-hooks —
+                      # в SKAZANIE_RUST_SERVER_BIN (rust/AGENTS.md §4)
+pnpm build            # tsc --noEmit + vite build
+pnpm verify           # test + build; вместе с контрактом и cargo test всё гоняет CI
+                      # (.github/workflows/verify.yml, rust.yml)
+cargo test --release -p sk-<крейт>     # из rust/: тесты крейта; остальное — rust/AGENTS.md §4
 
-pnpm rules:verify     # rule-pack + rule-retriever
 pnpm content:verify   # целостность контента и лицензий
 pnpm spells:verify    # override заклинаний против каталога dnd.su;
                       # обязательно после правки data/dndsu-spell-mechanics-overrides.json
-pnpm cutover:audit    # расхождения room/snapshot/replay (данные не меняет)
+skazanie-server check-content          # каталоги data/ так, как их проверяет сервер при старте
+skazanie-server audit-storage --storage <каталог>  # журнал против replay; только чтение
 node tools/build-ascii-location-maps.mjs --all --check  # нарисованные карты мест
                       # (data/authored-maps/), без --check — запись в каталог
 pnpm maps:preview     # карта текстом без кампании: --location, --theme, --seed;
-                      # --preset all --audit — после правки генераторов карт
+                      # --preset all --audit — генераторы JS-библиотеки; карты игры
+                      # строит Rust, их сторож — cargo test -p sk-map-core и sk-settlements
 pnpm models:scale     # рост предметов и фигурок в футах против нормы D&D по корпусу
                       # карт; после правки каталога моделей, пределов высоты или роста
 pnpm props:atlas      # атлас предметов: --sheets assets-src/prop-stamps, затем pnpm props:rights
 pnpm terrain:tiles    # фактуры пола и стен из assets-src/floor-wall-stamps, затем pnpm terrain:rights
 pnpm talespire:assets # таблица ассетов TaleSpire (--dir или TALESPIRE_DIR)
-pnpm migrate:dry-run  # прогон миграций без записи
-pnpm backup           # зашифрованная копия storage в ./backups; нужен DND_BACKUP_KEY
-                      # (без него копия не расшифровывается). Справка —
-                      # node tools/storage-backup.mjs --help
-
-pnpm rust:play        # Rust-сервер для проверки рядом с игрой: :8788, tmp/rust-play/storage
-                      # (игра владельца — Rust в Docker на 8787, START_DND.cmd)
-pnpm test:contract:rust  # контракт HTTP против Rust; остальное — rust/AGENTS.md
+pnpm backup           # зашифрованная копия файлового storage прежнего JS-сервера в ./backups;
+                      # нужен DND_BACKUP_KEY. Подкоманды бэкапа базы Rust пока нет
+                      # (docs/audit-2026-11-27-plan.md)
 ```
 
 `*:rights` пишут хеши в `data/asset-rights.json` — без них `content:verify`
@@ -83,8 +83,9 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 - **Значения секретов не выводить** — ни в логи, ни в тесты, ни в коммиты, ни в
   ответ. Проверять наличие и формат `ROUTERAI_API_KEY` можно, печатать — нет:
   вывод остаётся в транскриптах. Показать ключ целиком может только владелец.
-- **`storage/` — рабочие данные пользователя.** Тесты используют временный
-  каталог; `storage/`, `data/` и сгенерированный контент не править без явной задачи.
+- **`storage/` и том `skazanie-rust_storage` — рабочие данные пользователя.**
+  Тесты используют временный каталог; хранилища, `data/` и сгенерированный
+  контент не править без явной задачи.
 - Не удалять и не переписывать чужие изменения в dirty worktree.
 
 ## 4. Карта кода
@@ -93,15 +94,19 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 авторитетного пути быть не должно:** создание кампании, загрузка, действия
 игроков, ходы NPC и автономный Director идут через один Rules Engine.
 
-**Каталоги:** `server/` — механика, оркестрация, persistence; `src/` — интерфейс;
-`prompts/` — версионированные контракты агентов; `test/` — проверки; `docs/` —
+**Каталоги:** `rust/` — сервер: механика, оркестрация, хранение (крейты —
+`rust/AGENTS.md` §3); `src/` — интерфейс; `prompts/` — версионированные
+контракты агентов; `test/` — проверки клиента и контракт HTTP; `docs/` —
 архитектура, покрытие, ограничения; `tools/` — аудиты и обслуживание;
-`server/migrations/` — миграции данных; `server/rules/` (`core`, `actors`,
-`tactical-geometry`) — части движка, реэкспортируемые `rules-engine.mjs`;
-`server/routes/` — HTTP-маршруты, вынесенные из `index.mjs`; `rust/` — тот же
-сервер на Rust (`rust/AGENTS.md`). Модули
-`server/rules/*` не импортируют `rules-engine.mjs`: граф без циклов держит
-`test/server-import-graph.test.mjs`.
+`server/` — замороженная JS-библиотека; `archive/js-server/` — прежний
+JS-сервер, его тесты и инструменты.
+
+**Имена модулей ниже — по JS.** Rust-модуль повторяет модуль JS по смыслу
+имени (`server/npc-social.mjs` → крейт `sk-social`, модуль `npc_social`), а его
+`//!`-шапка называет перенесённый файл. Поведение правится в Rust-модуле;
+одноимённый `server/*.mjs`, если он не ушёл в `archive/js-server/server/`, —
+замороженная копия для клиента и инструментов. Слои крейтов без циклов держит
+`sk-server/tests/crate_layers.rs`.
 
 **Ядро (единственные источники истины):**
 
@@ -112,15 +117,15 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 | `server/dice-service.mjs` | вся случайность; в тестах внедряется детерминированно |
 | `server/roll-registry.mjs` | `roll_id`/`check_id`, срок действия, защита от повторного применения |
 | `server/game-orchestrator.mjs` | оркестрация цикла `/api/narrate` |
-| `server/index.mjs` | HTTP-сервер и маршруты |
-| `server/store.mjs` | persistence поверх `storage/` |
+| `server/index.mjs` | HTTP-сервер и маршруты (в Rust — `sk-server`, таблица маршрутов в порядке JS) |
+| `server/store.mjs` | persistence (в Rust — `sk-store`, SQLite) |
 | `server/security.mjs` | членство, владелец героя, полномочия |
 | `server/viewer-projection.mjs` | что игрок имеет право видеть |
 
-**Агентные роли.** `server/llm-client.mjs` импортирует **только**
-`server/index.mjs`; остальные модули получают клиент внедрением
-(`this.llmClient.completeJson(...)`). Прямой импорт `llm-client` ломает тесты
-без ключа и детерминизм. Фактические привязки промптов (`readFileSync`):
+**Агентные роли.** Клиенты модели собираются только в `sk-server` (`main.rs` и
+тестовый набор) и уже обёрнутыми в учёт расхода попадают в `AppState`;
+остальные крейты получают клиент внедрением. Ядро не зависит от `sk-agents`
+(`rust/AGENTS.md` §2). Привязки промптов (роли — в `sk-agents`):
 
 | Файл | Промпт | Роль |
 | --- | --- | --- |
@@ -136,8 +141,8 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 | `server/hero-hooks.mjs` | `prompts/hero_hooks/v1.txt` | зацепки из предысторий героев: скрытые `gm_secret` с `hero_id`, личная нить; стадия `hero-hooks` после коммита |
 
 Других загрузок промптов нет. Остальные файлы в `prompts/` — прежние версии тех
-же контрактов и few-shot, оставлены как история. Сторож соответствия —
-`test/security.test.mjs`.
+же контрактов и few-shot, оставлены как история. Реестр загрузок —
+`sk-narration-base` `prompt_descriptors` (`loaded_prompt_ids`).
 
 **Детерминированные модули без LLM** — не называть их «агентами»:
 `adjudicator`, `intent-parser`, `world-memory`, `projection-integrity`,
@@ -146,14 +151,14 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 `map-quality`, `weather`, `offscreen-world`, `loot-containers`, `tavern-life`,
 `courier-letters`, `talespire-slab`, `talespire-import`, `map-library`,
 `thin-walls`, `room-floors`, `detail-props`, `scene-features`, `scene-dressing`,
-`reaction-preferences`, `campaign-scenario`, `scenario-attention`, `scenario-knight`, `combat-phrases` (все — `server/*.mjs`).
+`reaction-preferences`, `campaign-scenario`, `scenario-attention`, `scenario-knight`, `combat-phrases`.
 
 **Маршрутизация ввода:** `server/player-request-router.mjs` объявляет
 `PLAYER_REQUEST_ROLES`. `prompt_id` там — метаданные, а не привязка: его не
 читает ни один модуль, он стоит только у ролей, исполняемых моделью (строка или
 список вариантов). `worldkeeper` (детерминированный `answerKnownLore`) и
 `game_master` (Rules Engine) — без `prompt_id`. Сторож —
-`test/player-request-router.test.mjs`. Материал хранителя отбирает
+`sk-agents` `player_request_router` (`tests/a2_semantics.rs`). Материал хранителя отбирает
 `answerKnownLore`; голосом ведущего его пересказывает `lore-voice`
 (`lore_keeper/v1`), а не прошедший проверку пересказ уступает серверному ответу.
 
@@ -177,7 +182,7 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 `talespire-import` проецирует его на этажи и комнаты, `map-library` хранит
 библиотеку в `<storage>/map-library` и подбирает постройку в
 `generateSceneGeometryFor` (`adventure-director.mjs`). Команда ведущего —
-`ImportLocationMap`, маршрут — `server/routes/map-import-routes.mjs`.
+`ImportLocationMap`, маршрут — `sk-server` (`routes`).
 
 **Домен NPC (не путать):**
 
@@ -188,7 +193,7 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 - `npc-controller.mjs` (`NpcMoraleAgent`) — только мораль и перелом боя: вне
   момента морали `decide()` возвращает `null`;
 - `captives.mjs` — пленные после сдачи и нелетального нокаута, СЛ допроса, пощада;
-- `law-and-order.mjs` — розыск и стража. **Лист:** ничего из `server/` не
+- `law-and-order.mjs` — розыск и стража. **Лист:** ничего из сервера не
   импортирует, иначе замкнётся кольцо через `reputation-policy`;
 - `tavern-life.mjs` — досуг заведения; игроки за столом выводятся из сида и не
   хранятся; импортирует только `npc-positioning.mjs`;
@@ -211,45 +216,48 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 
 ## 5. Инварианты и их сторожа
 
-При изменении механики запускать соответствующий тест точечно
-(`node --test test/<файл>.test.mjs`). Новые тесты писать на общем наборе
-`test/kit/` (сервер с админом и игроками, кубики, движок с проверкой replay,
-заглушка модели, сборка клиентского TS) — как, описано в `docs/testing.md`.
-Свои копии `startServer`, `dice()` и `applyAll` не заводить. План дальнейших
-волн — `docs/scalability-roadmap.md`.
+При изменении механики запускать соответствующий тест точечно: тест крейта
+(`cargo test --release -p <крейт> --test <файл>`) или контрактный файл
+(`node --test test/<файл>.test.mjs` с `SKAZANIE_RUST_SERVER_BIN`). Новые
+контрактные тесты писать на общем наборе `test/kit/` (сервер с админом и
+игроками, кубики, заглушка модели, сборка клиентского TS) — как, описано в
+`docs/testing.md`; новые тесты механики — в крейте, который её владеет. Свои
+копии `startServer`, `dice()` и `applyAll` не заводить. Контракт — файлы
+`test/contract-rust.list`; крейты — `rust/crates/<крейт>/tests/`.
 
 | Инвариант | Сторож |
 | --- | --- |
-| Replay потока событий даёт то же состояние | `test/event-store.test.mjs`, `pnpm cutover:audit` |
-| Потеря хвоста журнала или seed-снимка — явный отказ `CAMPAIGN_RECOVERY_REQUIRED`, а не тихая загрузка старого состояния; отказ одной кампании не роняет сервер | `test/event-store.test.mjs`, `test/recovery-required-api.test.mjs` |
-| Повтор с тем же `idempotency_key` возвращает прежний commit; другая цель, тип команды, актор или endpoint под тем же ключом — `409 IDEMPOTENCY_CONFLICT` | `test/api-integration.test.mjs`, `test/game-flow-integration.test.mjs`, `test/command-retry-intent-api.test.mjs` |
-| Все броски серверные, один бросок не применяется дважды; механическая проверка принимает только кость своей карточки | `test/dice-service.test.mjs`, `test/roll-registry.test.mjs`, `test/roll-binding.test.mjs` |
-| Клиентские поля недоверенные (путь, дальность, цель) | `test/tactical-command-guard.test.mjs` |
-| Права, членство и владелец героя проверяются сервером | `test/security.test.mjs` |
-| Готового героя игрок не переписывает импортом; новый герой создаётся только с полным набором выборов первого уровня, в 2014 — с `phbCreation` | `test/character-lifecycle-engine.test.mjs`, `test/character-creation-2014.test.mjs` |
-| Игрок видит только разрешённое, в том числе в уже открытом живом потоке после logout, истечения сессии и смены доступа; прогноз удара не выдаёт закрытую КД процентом попадания | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs`, `test/stream-live-access-api.test.mjs`, `test/combat-forecast-disclosure.test.mjs` |
-| Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
-| NPC знает только своё, публичное и увиденное им самим; повтор своей реплики вырезается сервером; отказ ведёт к зацепке, а не в тупик | `test/npc-knowledge-leads.test.mjs` |
-| Зацепки из предыстории плетутся один раз на героя путём заготовок ведущего, replay сходится, Режиссёр видит мотивы без текста зацепок | `test/hero-hooks.test.mjs` |
-| Летопись хода не пропадает на устаревшей проекции: слова игрока, строка хода и критическая реплика рассказчика идут по порядку до автохода врага и переживают перезапуск | `test/combat-journal-order-api.test.mjs` |
-| Сгенерированная карта играбельна: дверь наружу, окна, комнаты, досягаемость, мебель не в проёмах и не за краем | `test/map-quality.test.mjs`, `pnpm maps:preview -- --preset all --audit` |
-| Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается; двадцать мест корпуса строятся без замечаний | `test/scene-program-layout.test.mjs`, `test/map-library.test.mjs`, `test/scene-program-corpus.test.mjs` |
-| В поселении у каждой двери дома есть дорога, на тропе ничего не стоит; отряд входит со стороны, откуда пришёл, а центр сцены стоит на площади | `test/settlement-generator.test.mjs` (`DOOR_OFF_ROAD`, `PATH_BLOCKED`), `test/scene-entry-road.test.mjs` |
-| Рассказчик не описывает то, что сцена обещала, а карта не держит | `test/narrator.test.mjs` (`ABSENT_LANDMARK_MENTIONED`) |
-| Команда факта, убеждения или слуха проходит, только если предикат есть в онтологии мира для этого вида записи и подлежащего; replay старых событий словарь не проверяет | `test/world-ontology-write.test.mjs`, `test/world-ontology.test.mjs` |
-| Перестройка карты — только ведущему, вне боя, голосования и открытой проверки; та же схема события, что у импорта, replay сходится | `test/map-import-command.test.mjs`, `test/map-import-api.test.mjs` |
-| Враг встречи появляется по эту сторону дверей и окон от отряда | `test/encounter-assembler.test.mjs` |
-| Параллельные команды не перезаписывают друг друга молча | `test/narrate-room-version-race.test.mjs`, `test/snapshot-projector-version.test.mjs` |
-| Корпус тестов не ходит в интернет: каждый запуск `server/index.mjs` либо с пустым `ROUTERAI_API_KEY`, либо с локальным `ROUTERAI_BASE_URL` | `test/test-network-isolation.test.mjs` |
-| Запрос не роняет сервер: тело — только JSON-объект, необработанная ошибка маршрута завершает свой запрос ответом 500 | `test/map-import-api.test.mjs`, `test/recovery-required-api.test.mjs` |
-| Весь вызов модели и картинок идёт через учёт расхода; известный usage непригодного ответа тоже записывается | `test/usage-ledger.test.mjs`, `test/item-images-api.test.mjs` |
-| Медленный читатель живого потока не копит кадры: комната и присутствие схлопываются до последнего состояния, очередь соединения ограничена, отзыв прав уходит напрямую | `test/narration-stream.test.mjs`, `test/stream-backpressure-api.test.mjs` |
-| Карта читается только той, на которую указывает её хеш; библиотечная постройка выбирается, только если исправны все её этажи | `test/map-store.test.mjs`, `test/map-library.test.mjs` |
-| Бэкап не снимается с работающего на том же storage сервера без явного `--allow-live` | `test/backup-service.test.mjs`, `test/storage-backup-cli.test.mjs` |
-| Кампания по сценарию идёт по его узлам, финал — исход боя с главным противником в логове, развязка переживает replay | `test/campaign-scenario.test.mjs` |
-| Внимание главного противника — вывод из журнала, игроку не видно; незнакомца ставит и раскрывает только сервер, выдох — серверными бросками; засаду и внезапность финала решает счёт, а не Режиссёр | `test/scenario-attention.test.mjs` |
+| Replay потока событий даёт то же состояние | `sk-store/tests/event_store.rs`, `sk-rules/tests/replay_corpus.rs`, `skazanie-server audit-storage` (`sk-server/tests/storage_audit.rs`) |
+| Потеря хвоста журнала или seed-снимка — явный отказ `CAMPAIGN_RECOVERY_REQUIRED`, а не тихая загрузка старого состояния; отказ одной кампании не роняет сервер | `sk-server/tests/server_c1.rs`, `journal_cli.rs`, контракт `recovery-required-api` |
+| Повтор с тем же `idempotency_key` возвращает прежний commit; другая цель, тип команды, актор или endpoint под тем же ключом — `409 IDEMPOTENCY_CONFLICT` | контракт `api-integration`, `command-retry-intent-api`; `sk-orchestrator/tests/game_semantics.rs` |
+| Все броски серверные, один бросок не применяется дважды; механическая проверка принимает только кость своей карточки | `sk-dice`, `sk-infra/tests/roll_registry.rs`, `sk-rules/tests/dice_pause.rs`, контракт `roll-binding` |
+| Клиентские поля недоверенные (путь, дальность, цель) | `sk-server/tests/command_guard.rs`, `test/tactical-command-guard.test.mjs` |
+| Права, членство и владелец героя проверяются сервером | `sk-tactics/tests/security.rs` |
+| Готового героя игрок не переписывает импортом; новый герой создаётся только с полным набором выборов первого уровня, в 2014 — с `phbCreation` | `sk-character/tests/character_lifecycle.rs`, `sk-heroes/tests/character_creation_phb.rs` |
+| Игрок видит только разрешённое, в том числе в уже открытом живом потоке после logout, истечения сессии и смены доступа; прогноз удара не выдаёт закрытую КД процентом попадания | `sk-projection/tests/viewer_projection.rs`, `p1.rs`, `sk-tactics/tests/combat_forecast_disclosure.rs`, контракт `viewer-projection-api`, `stream-live-access-api` |
+| Рассказчик не создаёт событий и не объявляет смерть | `sk-agents/tests/a5_semantics.rs` |
+| NPC знает только своё, публичное и увиденное им самим; повтор своей реплики вырезается сервером; отказ ведёт к зацепке, а не в тупик | `sk-social/tests/npc_social_behaviour.rs`, `sk-agents/tests/a4_semantics.rs` |
+| Зацепки из предыстории плетутся один раз на героя путём заготовок ведущего, Режиссёр видит мотивы без текста зацепок; replay сходится — **частично**: отдельного теста replay в Rust нет (план) | `sk-agents/tests/a2_semantics.rs`, `sk-society/tests/post_commit_coordinator.rs` |
+| Летопись хода не пропадает на устаревшей проекции: слова игрока, строка хода и критическая реплика рассказчика идут по порядку до автохода врага и переживают перезапуск | контракт `combat-journal-order-api` |
+| Сгенерированная карта играбельна: дверь наружу, окна, комнаты, досягаемость, мебель не в проёмах и не за краем | `sk-map-core/tests/map_quality.rs` |
+| Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается; двадцать мест корпуса строятся без замечаний | `sk-settlements/tests/scene_program_layout.rs`, `sk-story/tests/map_library.rs`, `sk-director/tests/fixtures.rs` (корпус `test/fixtures/scene-programs/corpus.json`) |
+| В поселении у каждой двери дома есть дорога, на тропе ничего не стоит; отряд входит со стороны, откуда пришёл, а центр сцены стоит на площади | `sk-settlements/tests/settlement_generator.rs` (`DOOR_OFF_ROAD`, `PATH_BLOCKED`), `sk-director/tests/fixtures.rs` |
+| Рассказчик не описывает то, что сцена обещала, а карта не держит | `sk-agents/tests/a5_semantics.rs` (`ABSENT_LANDMARK_MENTIONED`) |
+| Команда факта, убеждения или слуха проходит, только если предикат есть в онтологии мира для этого вида записи и подлежащего; replay старых событий словарь не проверяет | `sk-memory/tests/world_ontology_write.rs`, `sk-society/tests/world_ontology.rs` |
+| Перестройка карты — только ведущему; та же схема события, что у импорта. Отказы в бою, при голосовании и открытой проверке и replay перестройки — **без теста в Rust** (план) | контракт `map-import-api` |
+| Враг встречи появляется по эту сторону дверей и окон от отряда | `sk-encounters/tests/encounter_assembler.rs` |
+| Параллельные команды не перезаписывают друг друга молча | контракт `narrate-room-version-race`; `sk-rules/tests/skeleton.rs` (`expected_state_version`) |
+| Корпус тестов не ходит в интернет: каждый запуск сервера — с пустым `ROUTERAI_API_KEY` или локальным `ROUTERAI_BASE_URL` | контракт `test-network-isolation`, `sk-server/tests/config_isolation.rs` |
+| Запрос не роняет сервер: тело — только JSON-объект, необработанная ошибка маршрута завершает свой запрос ответом 500 | контракт `map-import-api`, `recovery-required-api` |
+| Весь вызов модели и картинок идёт через учёт расхода; известный usage непригодного ответа тоже записывается | `sk-infra/tests/usage_ledger.rs`, контракт `item-images-api` |
+| Медленный читатель живого потока не копит кадры: комната и присутствие схлопываются до последнего состояния, очередь соединения ограничена, отзыв прав уходит напрямую | `sk-infra/tests/narration_stream.rs`, контракт `stream-backpressure-api` |
+| Библиотечная постройка выбирается, только если исправны все её этажи. Карта читается только той, на которую указывает её хеш, — **без теста в Rust** (план) | `sk-story/tests/map_library.rs` |
+| Бэкап не снимается с работающего на том же storage сервера без явного `--allow-live` | `sk-infra/tests/backup_service.rs`, контракт `storage-backup-cli` |
+| Кампания по сценарию идёт по его узлам, финал — исход боя с главным противником в логове; развязка переживает replay — **частично** (план) | `sk-scenario/tests/campaign_scenario.rs` |
+| Внимание главного противника — вывод из журнала, игроку не видно; незнакомца ставит и раскрывает только сервер, выдох — серверными бросками; засаду и внезапность финала решает счёт, а не Режиссёр | `sk-attention/tests/scenario_attention.rs` |
 
 Если новый инвариант нельзя привязать к тесту — он ещё не инвариант, а намерение.
+Пробелы, помеченные «план», — в `docs/audit-2026-11-27-plan.md` (волна «Rust-only, этап 2»).
 
 ## 6. Порядок реализации механики
 
@@ -259,11 +267,10 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 4. Тесты на: успех, отказ, права, идемпотентность, replay. Случайность —
    через внедрённый детерминированный Dice Service.
 5. Схемы событий и контракты промптов **версионировать**. Сохранённые кампании и
-   старый replay не ломать без явной миграции в `server/migrations/`.
-6. Игра владельца с 2026-10-31 идёт на Rust-сервере (`DND_SERVER=rust`,
-   `docs/rust-docker.md`): правка поведения в `server/` без такой же правки в
-   `rust/` в игру не попадает. Переносить в той же ветке или отдельной задачей
-   (`rust/AGENTS.md` §1).
+   старый replay не ломать без явной миграции: версия схемы снимка и цепочка
+   `sk_rules::schema::migrations` (`rust/AGENTS.md` §2).
+6. Поведение игры меняется только в `rust/`. Правка `server/` в игру не
+   попадает: это замороженная библиотека клиента и инструментов (§1).
 
 **Статусы механики** (карточки заклинаний и действий, см. `docs/known-limitations.md`):
 
@@ -280,7 +287,7 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 стандартные ходы NPC — **только сервер, без модели**. Модель — там, где нужна
 новая творческая информация: исходная ситуация кампании, новая область, перелом
 боя и мораль, действительно нестандартное свободное действие. Расход — через
-`server/usage-ledger.mjs`. Не добавлять вызов LLM в горячий путь хода.
+учёт `sk-infra` `usage_ledger`. Не добавлять вызов LLM в горячий путь хода.
 
 ## 7. Язык
 
@@ -317,9 +324,9 @@ pnpm test:contract:rust  # контракт HTTP против Rust; осталь
 свобода и непрерывность кампании → художественное и визуальное качество`.
 
 **Остановиться и спросить пользователя**, если задача требует: миграции или
-удаления данных в `storage/` или тома `skazanie-rust_storage`, отката игры на
-JS-сервер (сыгранное на Rust назад не переносится) или повторного переноса
-настоящего `storage/`, изменения схемы событий без обратной совместимости,
+удаления данных в `storage/` или тома `skazanie-rust_storage`, возврата
+JS-сервера из архива (сыгранное на Rust назад не переносится) или повторного
+переноса настоящего `storage/`, изменения схемы событий без обратной совместимости,
 ослабления любого инварианта из раздела 5 или отступления от
 `docs/product-principles.md`.
 

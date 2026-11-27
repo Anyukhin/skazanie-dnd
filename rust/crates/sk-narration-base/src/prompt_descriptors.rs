@@ -55,25 +55,50 @@ pub fn repository_root() -> PathBuf {
 
 /// `loadedPromptIds()`: что модули `server/*.mjs` **на самом деле** читают —
 /// модуль → все `prompt_id` в порядке первого упоминания.
+/// Исходники JS — замороженная библиотека `server/` и архив прежнего сервера
+/// `archive/js-server/server/` (2026-11-27): вместе это дерево, с которого
+/// снят реестр.
 pub fn loaded_prompt_ids() -> io::Result<IndexMap<String, Vec<String>>> {
-    loaded_prompt_ids_in(&repository_root().join("server"), ".mjs")
+    let root = repository_root();
+    loaded_prompt_ids_in_dirs(&[root.join("server"), root.join("archive/js-server/server")], ".mjs")
 }
 
 /// То же для произвольного каталога исходников и расширения. Порядок модулей —
 /// по имени файла (в JS — порядок `readdirSync`, у ОС он не задан).
 pub fn loaded_prompt_ids_in(directory: &Path, extension: &str) -> io::Result<IndexMap<String, Vec<String>>> {
-    let mut names: Vec<String> = Vec::new();
-    for entry in std::fs::read_dir(directory)? {
-        let name = entry?.file_name().to_string_lossy().into_owned();
-        if name.ends_with(extension) {
-            names.push(name);
+    loaded_prompt_ids_in_dirs(&[directory.to_path_buf()], extension)
+}
+
+/// То же по нескольким каталогам: модули всех каталогов — одним списком по
+/// имени файла; несуществующий каталог пропускается, если найден хоть один.
+pub fn loaded_prompt_ids_in_dirs(directories: &[PathBuf], extension: &str) -> io::Result<IndexMap<String, Vec<String>>> {
+    let mut names: Vec<(String, PathBuf)> = Vec::new();
+    let mut last_error = None;
+    for directory in directories {
+        let entries = match std::fs::read_dir(directory) {
+            Ok(entries) => entries,
+            Err(error) => {
+                last_error = Some(error);
+                continue;
+            }
+        };
+        for entry in entries {
+            let name = entry?.file_name().to_string_lossy().into_owned();
+            if name.ends_with(extension) {
+                names.push((name.clone(), directory.join(&name)));
+            }
+        }
+    }
+    if names.is_empty() {
+        if let Some(error) = last_error {
+            return Err(error);
         }
     }
     names.sort();
     let pattern = re!(r"\.\.\/prompts\/([A-Za-z0-9_]+)\/([A-Za-z0-9_.-]+)\.txt", "g");
     let mut found: IndexMap<String, Vec<String>> = IndexMap::new();
-    for name in names {
-        let source = std::fs::read_to_string(directory.join(&name))?;
+    for (name, path) in names {
+        let source = std::fs::read_to_string(&path)?;
         for captures in pattern.captures_iter(&source).filter_map(Result::ok) {
             let part = |index: usize| captures.get(index).map_or("", |m| m.as_str());
             let prompt_id = format!("{}/{}", part(1), part(2));

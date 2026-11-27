@@ -23,7 +23,6 @@ import { twoPhaseCheckCommandFor } from '../src/game-session-state.mjs'
 const source = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8')
 const session = source('src/useGameSession.ts')
 const orchestrator = source('server/game-orchestrator.mjs')
-const server = source('server/index.mjs')
 const ui = source('src/tactical-ui.ts')
 
 const CHAPEL = 'Придорожная часовня'
@@ -91,16 +90,6 @@ test('молитва объявлена двухфазной и на клиен�
   // не ловится. Здесь остаётся только стык двух фаз — что сторож вообще
   // позван из разбора хода, а не объявлен и забыт.
   assert.match(orchestrator, /this\.assertShrinePrayerRollContext\(prayerCommand, prayerCheckContext\)/u)
-})
-
-// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
-// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). В Rust санитайзер — sanitize_player_blessing_command
-// (rust/crates/sk-server/src/command_guard.rs), сверка с JS — tests/command_guard_golden.rs;
-// отказ пакета — routes/commands.rs.
-test('JS-only (server/index.mjs): санитайзер сервера принимает молитву кнопкой и не принимает поджог', () => {
-  assert.match(server, /\['inspect', 'open', 'take', 'use', 'pray'\]\.includes\(intent\)/u)
-  assert.match(server, /sanitizePlayerBlessingCommand/u)
-  assert.match(server, /Благословение идёт отдельной атомарной командой/u)
 })
 
 test('благословение показывается на панели героя обычным условием', () => {
