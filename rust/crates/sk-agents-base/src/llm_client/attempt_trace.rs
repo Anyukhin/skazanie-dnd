@@ -10,6 +10,7 @@ use super::{LlmError, LlmErrorExt};
 tokio::task_local! {
     static MODEL_ATTEMPTS: RefCell<Vec<ModelAttempt>>;
     static MODEL_DEADLINE: ModelDeadline;
+    static ACTIVE_MODEL_ATTEMPT: usize;
 }
 
 #[derive(Clone, Copy)]
@@ -78,6 +79,28 @@ pub fn current_model_attempt_trace() -> Vec<Value> {
         }
         row
     }).collect()).unwrap_or_default()
+}
+
+pub(super) async fn with_model_attempt<F: Future>(attempt: Option<usize>, operation: F) -> F::Output {
+    match attempt {
+        Some(index) => ACTIVE_MODEL_ATTEMPT.scope(index, operation).await,
+        None => operation.await,
+    }
+}
+
+pub(super) fn record_generation_id(id: &str) {
+    if !sk_infra::usage_ledger::record_provider_generation_id(id) {
+        return;
+    }
+    if let Ok(index) = ACTIVE_MODEL_ATTEMPT.try_with(|index| *index) {
+        let _ = MODEL_ATTEMPTS.try_with(|attempts| {
+            if let Some(attempt) = attempts.borrow_mut().get_mut(index) {
+                if attempt.row.get("provider_generation_id").is_none() {
+                    attempt.row["provider_generation_id"] = json!(id);
+                }
+            }
+        });
+    }
 }
 
 fn identifier(value: &str) -> Option<&str> {

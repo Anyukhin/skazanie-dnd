@@ -10,6 +10,7 @@ import * as recovery from '../src/tactical-command-recovery.mjs'
 import * as roomStream from '../src/room-stream.mjs'
 import * as gameSessionState from '../src/game-session-state.mjs'
 import { canIssueUiTacticalCommand } from '../src/tactical-command-guard.mjs'
+import { isAutomaticWorldTravel } from '../src/director-decision.mjs'
 import { withLootTakenRecord } from '../src/loot-panel-rules.mjs'
 
 /**
@@ -122,12 +123,12 @@ const sameDeps = (left, right) => Array.isArray(left) && Array.isArray(right)
  * Монтирует хук в изолированном «браузере». `routes` — пары [регулярное
  * выражение по URL, обработчик]; всё прочее получает 404, как незнакомый путь.
  */
-function mountSession({ campaign = 'A', accountId = 'account-a', onAccessRevoked, routes = [] } = {}) {
+function mountSession({ campaign = 'A', accountId = 'account-a', initialCampaignIds, invite = false, onAccessRevoked, routes = [] } = {}) {
   const localStorage = memoryStorage()
   const sessionStorage = memoryStorage()
   const timers = []
   const window = {
-    location: { search: `?room=${campaign}`, href: `http://localhost/?room=${campaign}` },
+    location: { search: `?room=${campaign}`, href: `http://localhost/?room=${campaign}`, hash: invite ? '#invite=test-token' : '' },
     history: {
       replaceState: (_state, _title, url) => {
         window.location.href = String(url)
@@ -190,7 +191,9 @@ function mountSession({ campaign = 'A', accountId = 'account-a', onAccessRevoked
   }
   const context = {
     ...react,
-    emptyState: roomState(campaign, { campaign: 'Кампания не выбрана' }),
+    emptyState: initialCampaignIds
+      ? roomState('', { campaign: 'Кампания не выбрана', activePlayerId: '', players: [] })
+      : roomState(campaign, { campaign: 'Кампания не выбрана' }),
     ApiRequestError: client.ApiRequestError,
     autoRollEnabled: client.autoRollEnabled,
     fetchWithTimeout: client.fetchWithTimeout,
@@ -209,12 +212,13 @@ function mountSession({ campaign = 'A', accountId = 'account-a', onAccessRevoked
     latestSceneMapHash: () => '',
     resolveSceneMap: (scene) => scene,
     canIssueUiTacticalCommand,
+    isAutomaticWorldTravel,
     ...recovery,
     ...roomStream,
     ...gameSessionState,
   }
   const useGameSession = new Function(...Object.keys(context), `${hookCode}\nreturn useGameSession`)(...Object.values(context))
-  const props = { accountId, ...(onAccessRevoked ? { onAccessRevoked } : {}) }
+  const props = { accountId, initialCampaignIds, ...(onAccessRevoked ? { onAccessRevoked } : {}) }
   // Перерисовка: React сделал бы её сам после setState. Сначала очистки
   // сменившихся эффектов, потом сами эффекты — тем же порядком, что в React.
   // Эффект мог сам поменять состояние (например, применить отложенный
@@ -238,6 +242,46 @@ function mountSession({ campaign = 'A', accountId = 'account-a', onAccessRevoked
 }
 
 const streamFor = (campaign) => FakeEventSource.instances.filter((source) => source.url.includes(`/campaigns/${campaign}/stream`)).at(-1)
+
+test('разрешённый путь ожидает перехода сервера без второго запроса рассказчику', async () => {
+  const harness = mountSession()
+  harness.render()
+  streamFor('A').emit('room', { version: 2, state: roomState('A', { agentInteraction: {
+    id: 'travel', type: 'vote', status: 'resolved', resolvedOptionId: 'leave', destinationLocationId: 'astohan-ash-watch',
+    options: [{ id: 'leave', label: 'Идём на заставу' }],
+  } }) })
+  await harness.render().continueAgentInteraction('hero')
+  assert.equal(harness.requests.some(request => request.url === '/api/narrate'), false)
+  harness.unmount()
+})
+
+test('до вступления по приглашению не открываются ни комната, ни живой поток', async () => {
+  const harness = mountSession({
+    campaign: 'INVITED',
+    invite: true,
+    initialCampaignIds: new Set(),
+    routes: [[/\/api\/rooms\/INVITED$/u, () => json(200, { version: 1, state: roomState('INVITED') })]],
+  })
+  harness.localStorage.setItem(ACTIVE_CAMPAIGN_KEY, 'INVITED')
+  const waiting = harness.render()
+  assert.equal(waiting.state.sessionCode, '')
+  assert.deepEqual(harness.requests, [])
+  assert.equal(FakeEventSource.instances.length, 0)
+
+  await waiting.switchCampaign('INVITED')
+  assert.equal(harness.render().state.sessionCode, 'INVITED')
+  assert.equal(harness.requests[0].url, '/api/rooms/INVITED')
+  assert.ok(streamFor('INVITED'))
+  harness.unmount()
+})
+
+test('прямая ссылка на старую кампанию оставляет проверку доступа серверу', () => {
+  const harness = mountSession({ campaign: 'LEGACY', initialCampaignIds: new Set() })
+  assert.equal(harness.render().state.sessionCode, 'LEGACY')
+  assert.equal(harness.requests[0].url, '/api/rooms/LEGACY')
+  assert.ok(streamFor('LEGACY'))
+  harness.unmount()
+})
 
 test('REC-04: после смены кампании отложенный снимок прежней не возвращает её на экран, а снимок новой применяется', async () => {
   const narrate = []

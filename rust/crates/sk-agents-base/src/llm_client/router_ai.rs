@@ -21,6 +21,7 @@ use sk_narration_base::jsx;
 use sk_narration_base::model_style_profiles::supports_json_schema;
 
 use super::abort::{race, AbortScope};
+use super::attempt_trace::record_generation_id;
 use super::sse::{parse_router_ai_event_stream, ChunkSource, StreamOptions};
 use super::{
     coalesce, index0, is_js_object, llm_provider_for, normalize_assistant_message, normalize_request, optional_number_in_range, positive_integer_number, positive_or, prop, provider_request_body, spread_object, strict_json_parse, usable_json_schema, wants_json,
@@ -385,6 +386,9 @@ impl RouterAiClient {
     async fn exchange(&self, prepared: &Prepared, hooks: &CallHooks, scope: &AbortScope) -> Result<Value, LlmError> {
         let signal = scope.signal();
         let response = race(self.send(jsx::stringify(&prepared.wire)), Some(&signal)).await?;
+        if let Some(id) = response.headers().get("x-generation-id").and_then(|value| value.to_str().ok()) {
+            record_generation_id(id);
+        }
         let status = response.status().as_u16();
         if !(200..=299).contains(&status) {
             return Err(LlmError::llm(format!("{} ответил HTTP {status}", self.provider_label), "LLM_PROVIDER_ERROR").with_detail("status", Value::from(status)));
@@ -413,6 +417,9 @@ impl RouterAiClient {
         }
         let max_bytes = self.max_response_bytes;
         let payload = race(async move { parse_provider_body(&decode_body(&read_all(response).await?), max_bytes) }, Some(&signal)).await?;
+        if let Some(id) = payload.get("id").and_then(Value::as_str) {
+            record_generation_id(id);
+        }
         let usage = coalesce(payload.get("usage"), None).cloned().unwrap_or(Value::Null);
         let mut message = with_known_usage(Some(&usage), normalize_assistant_message(prop(index0(payload.get("choices")), "message"), request, self.max_tool_calls))?;
         let model = if self.provider == "ohmylama" { Value::String(body_model) } else { coalesce(payload.get("model"), None).cloned().unwrap_or(Value::String(body_model)) };

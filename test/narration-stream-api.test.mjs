@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { startTestServer } from './kit/http.mjs'
-import { startFakeProvider } from './kit/llm.mjs'
+import { addPlayer, createCampaign, expectStatus, setupAdmin, startTestServer } from './kit/http.mjs'
+import { chatCompletion, startFakeProvider } from './kit/llm.mjs'
+import { readJournal } from './kit/journal.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
@@ -25,6 +26,14 @@ async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}
 
 const sessionCookie = (result) => result.response.headers.get('set-cookie')?.split(';')[0]
 const narrationId = (key) => `narration-${createHash('sha256').update(key).digest('hex').slice(0, 20)}`
+
+const freeDecision = {
+  route: 'check', destination: '', npc_hint: '',
+  goal_summary: 'Понять порядок насечек', approach_summary: 'Сверяет отражение с насечками', obstacle: 'Линии трудно различить',
+  activity_kind: 'routine', duration_class: 'brief', ability: 'int', skill: 'investigation', plausibility: 'trivial', risk: 'none',
+  required_means: [], action_cost: 'action', effect: 'none', effect_target: '', hazard: '', prop_id: '', target_id: '', item_id: '',
+  proficiency: 'none', consequence_type: 'time', success_detail: 'Различает порядок линий.', surface_detail: '', failure_detail: 'Блики закрывают насечки.',
+}
 
 async function openStream(baseUrl, campaignId, cookie, signal) {
   const response = await fetch(`${baseUrl}/api/campaigns/${campaignId}/stream`, {
@@ -158,6 +167,95 @@ function finishStream(res, text = '') {
   })}\n\n`)
   res.end('data: [DONE]\n\n')
 }
+
+test('свободная заявка показывает проверенную фразу после commit и заменяет отклонённый черновик', { timeout: runnerTimeout(55_000) }, async (t) => {
+  const code = 'STREAMFREE'
+  const allowed = 'Ада убирает ладонь.'
+  const hidden = 'тайная печать'
+  const dangerous = '999 HP'
+  const gates = Array.from({ length: 3 }, () => {
+    let resolve
+    const promise = new Promise((done) => { resolve = done })
+    return { promise, resolve }
+  })
+  const abort = new AbortController()
+  t.after(() => {
+    abort.abort()
+    for (const gate of gates) gate.resolve()
+  })
+
+  let server
+  let calls = 0
+  const versions = []
+  const provider = await startFakeProvider(t, async ({ method, path, body }, res) => {
+    if (method !== 'POST' || path !== '/chat/completions') return null
+    if (!body.stream) {
+      const judge = body.messages[0]?.content?.includes('ROLE: Free Action Adjudicator')
+      const repair = body.messages.some((entry) => entry.content.includes('Этот вариант сервер отклонил'))
+      return chatCompletion(judge ? freeDecision : repair ? 'Герой получает 999 HP.' : { ok: true }, { model: 'test/stream' })
+    }
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    const index = calls++
+    if (index >= gates.length) return finishStream(res, 'Герой получает 999 HP.')
+    versions.push((await readJournal(server, code)).state_version)
+    writeDelta(res, allowed)
+    await gates[index].promise
+    return finishStream(res, [
+      ' Из пустого проёма тянет прохладой.',
+      ' Тайная печать спрятана за синей плитой.',
+      ' Герой получает 999 HP.',
+    ][index])
+  })
+  server = await startTestServer(t, {
+    storagePrefix: 'skazanie-free-action-stream-',
+    env: { ...provider.env, DND_AI_MODEL: 'test/stream', DND_AI_FALLBACK_MODELS: 'test/stream' },
+  })
+  const { client: admin } = await setupAdmin(server)
+  const state = campaignState(code)
+  state.scene.cells.push({ x: 0, y: 0, type: 'floor', revealed: true })
+  await createCampaign(admin, { code, state })
+  const { client: player } = await addPlayer(server, admin, code, { heroIds: ['hero-1'] })
+  const { client: companion } = await addPlayer(server, admin, code, { heroIds: ['hero-2'] })
+  const streams = await Promise.all([player, companion].map((viewer) => openStream(server.baseUrl, code, viewer.cookie, abort.signal)))
+
+  const actions = [
+    'Сопоставляю отражение на медной пластине с насечками, чтобы понять их порядок',
+    'Сверяю отражение на медной пластине с насечками, чтобы понять их порядок',
+    'Сравниваю отражение с насечками на медной пластине, чтобы понять их порядок',
+  ]
+  for (const [index, action] of actions.entries()) {
+    const before = (await readJournal(server, code)).state_version
+    const idempotency_key = 'free-stream-' + index
+    const id = narrationId(idempotency_key)
+    const pending = player.post('/api/narrate', { campaign_id: code, actor_id: 'hero-1', action, idempotency_key, request_kind: 'action' })
+    for (const stream of streams) {
+      const prefix = await nextNarration(stream, id, 'streaming')
+      assert.equal(prefix.payload.text, allowed)
+      assertPublicNarrationPayload(prefix.payload)
+    }
+    assert.ok(versions[index] > before)
+    gates[index].resolve()
+    const result = expectStatus(await pending)
+    for (const stream of streams) {
+      for (;;) {
+        const frame = await nextNarration(stream, id)
+        assert.ok(!frame.payload.text.toLowerCase().includes(hidden))
+        assert.ok(!frame.payload.text.includes(dangerous))
+        if (frame.payload.phase !== 'streaming') {
+          assert.equal(frame.payload.phase, index === 0 ? 'complete' : 'replaced')
+          assert.equal(frame.payload.text, result.narration)
+          break
+        }
+      }
+    }
+    const narrationResult = JSON.stringify({
+      narration: result.narration, verification: result.verification,
+    })
+    assert.ok(!narrationResult.toLowerCase().includes(hidden), narrationResult)
+    assert.ok(!narrationResult.includes(dangerous), narrationResult)
+  }
+  assert.ok(provider.requests.every(({ text }) => !text.toLowerCase().includes(hidden)))
+})
 
 test('HTTP/SSE повествование изолировано, восстанавливается и завершается канонически', { timeout: runnerTimeout(90_000) }, async (t) => {
   const aborters = []

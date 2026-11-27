@@ -6,7 +6,7 @@ import {
   Swords, Target, Users, Volume2, VolumeX, X, Check, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff, Gavel,
 } from 'lucide-react'
 
-import { fetchWithTimeout } from './ai-client'
+import { fetchWithTimeout, subscribeNarrationPreview } from './ai-client'
 import { SERVER_WIDTH_KEY } from './dungeon-map-parts'
 import { PaletteSettingsCard } from './hud-parts'
 import {
@@ -17,6 +17,7 @@ import { chronicleFollowAfterScroll, chronicleMatchesFilter, chronicleMessageTex
 import type { NarrationVoiceMode } from './narration-tts.mjs'
 import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
 import { journalQuestFocus } from './journal-quests.mjs'
+import { isAutomaticWorldTravel } from './director-decision.mjs'
 import { journalChapterNumber } from './scene-chapter'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
@@ -362,7 +363,7 @@ export function AgentInteractionCard({ interaction, players, playerId, canContin
         })}
       </div>}
       {canVote && interaction.type !== 'roll' && <button className="agent-abstain" onClick={onAbstain}>Воздержаться</button>}
-      {resolved && !treaty && <button className="agent-continue" onClick={onContinue} disabled={!canContinue} title={canContinue ? 'Передать подтверждённое решение Рассказчику' : 'Продолжить может владелец выбранного героя'}><Sparkles size={14} />Продолжить историю: {winner?.label}</button>}
+      {resolved && !treaty && !isAutomaticWorldTravel(interaction) && <button className="agent-continue" onClick={onContinue} disabled={!canContinue} title={canContinue ? 'Передать подтверждённое решение Рассказчику' : 'Продолжить может владелец выбранного героя'}><Sparkles size={14} />Продолжить историю: {winner?.label}</button>}
     </section>
   )
 }
@@ -374,6 +375,15 @@ export function stakesTitle(stakes: NonNullable<Message['stakes']>) {
   const both = skill && ability ? `${skill} (${ability})` : name
   const category = stakes.difficulty_category ? DIFFICULTY_LABELS[stakes.difficulty_category] ?? '' : ''
   return `${both} · СЛ ${stakes.difficulty}${category ? ` · ${category}` : ''}`
+}
+
+function ChronicleMessageMeta({ message }: { message: Message }) {
+  return <div className="message-meta">
+    <strong>{message.author}</strong><time>{message.timestamp}</time>
+    {(message.narrationOrigin === 'template' || message.narrationOrigin === 'interrupted') && (
+      <span className="message-origin">Ответ без модели</span>
+    )}
+  </div>
 }
 
 /**
@@ -454,8 +464,51 @@ export function BeastChronicleEntry({ card, timestamp }: { card: BeastChronicleC
   </article>
 }
 
-export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, suggestedActions, sceneKey, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak }: {
-  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; suggestedActions: Array<{ id: string; text: string }>; sceneKey: string; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null
+function ChronicleNarrationPreview({ campaignId, connected, messages, visible }: {
+  campaignId: string; connected: boolean; messages: Message[]; visible: boolean
+}) {
+  const [pending, setPending] = useState(() => new Map<string, string>())
+  const canonicalIds = useMemo(() => new Set(messages.map((message) => message.id)), [messages])
+
+  useEffect(() => {
+    if (!connected) {
+      setPending((current) => current.size ? new Map() : current)
+      return
+    }
+    return subscribeNarrationPreview(campaignId, ({ messageId, phase, text, replayed }) => {
+      if (phase === 'start' || (replayed && phase !== 'streaming')) return
+      setPending((current) => {
+        if (phase === 'aborted' || !text) {
+          if (!current.has(messageId)) return current
+          const next = new Map(current)
+          next.delete(messageId)
+          return next
+        }
+        return current.get(messageId) === text ? current : new Map(current).set(messageId, text)
+      })
+    })
+  }, [campaignId, connected])
+
+  useEffect(() => {
+    setPending((current) => {
+      if (![...current.keys()].some((id) => canonicalIds.has(id))) return current
+      return new Map([...current].filter(([id]) => !canonicalIds.has(id)))
+    })
+  }, [canonicalIds])
+
+  if (!connected || !visible) return null
+  return [...pending].filter(([id]) => !canonicalIds.has(id)).map(([id, text]) => (
+    <article className="message narrator" data-narration-preview key={id}>
+      <div className="message-body">
+        <div className="message-meta"><strong>Рассказчик</strong></div>
+        <p aria-live="polite">{chronicleMessageText(text)}</p>
+      </div>
+    </article>
+  ))
+}
+
+export function ChatPanel({ campaignId, connected, messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, suggestedActions, sceneKey, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak }: {
+  campaignId: string; connected: boolean; messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; suggestedActions: Array<{ id: string; text: string }>; sceneKey: string; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
@@ -587,7 +640,7 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
         ) : (
           <article key={message.id} className={`message ${message.speaker}`}>
             <div className="message-body">
-              <div className="message-meta"><strong>{message.author}</strong><time>{message.timestamp}</time></div>
+              <ChronicleMessageMeta message={message} />
               <p>{chronicleMessageText(message.text)}</p>
               {/* Ставки: что проверялось, против какой СЛ и чем грозил провал.
                   Сервер считал их и раньше, но игрок их не видел. */}
@@ -617,6 +670,7 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
             </div>
           </article>
         ))}
+        <ChronicleNarrationPreview key={campaignId} campaignId={campaignId} connected={connected} messages={messages} visible={chronicleMatchesFilter('narrator', filter)} />
         {typingActorIds.length > 0 && <div className="typing player-typing"><span /><span /><span /> {typingActorIds.map((actorId) => players.find((player) => player.id === actorId)?.character ?? actorId).join(', ')} формулирует намерение…</div>}
         {isNarrating && <div className="typing"><span /><span /><span /> Рассказчик меняет мир…</div>}
         <div ref={endRef} />
@@ -779,7 +833,7 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
           {state.messages.map((message, index) => (
             <article className={`journal-entry ${message.speaker}`} key={message.id}>
               <div className="journal-marker">{message.speaker === 'narrator' ? <Sparkles size={15} /> : index + 1}</div>
-              <div><div className="message-meta"><strong>{message.author}</strong><time>{message.timestamp}</time></div><p>{message.text}</p>
+              <div><ChronicleMessageMeta message={message} /><p>{message.text}</p>
               {message.roll && <span className={`compact-roll ${message.roll.success ? 'success' : ''}`}><Dices size={14} />{message.roll.label}: <b>{message.roll.total}</b></span>}</div>
             </article>
           ))}

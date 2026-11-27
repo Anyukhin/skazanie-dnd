@@ -227,6 +227,7 @@ pub struct NarrationOptions {
     pub known_rule_ids: Vec<Value>,
     pub recent_narrations: Vec<String>,
     pub on_progress: Option<ProgressCallback>,
+    pub forbidden_hidden_terms: Vec<String>,
 }
 
 /// Рассказчик хода (`narrator.render`).
@@ -243,6 +244,7 @@ impl TurnNarrator for Narrator {
                 timeout_ms: None,
                 recent_narrations: Value::Array(options.recent_narrations.into_iter().map(Value::String).collect()),
                 on_progress: options.on_progress,
+                forbidden_hidden_terms: options.forbidden_hidden_terms,
             };
             Narrator::render(self, brief, render).await.map_err(|error| match error {
                 NarratorError::Security(error) => security_error(error),
@@ -706,6 +708,21 @@ fn narration_world_facts(state: &Value, message: &str, events: &[Value]) -> Vec<
         })
         .filter(|fact| js::truthy(fact.get("id")) && js::truthy(fact.get("summary")))
         .take(NARRATION_WORLD_FACT_LIMIT)
+        .collect()
+}
+
+/// Факты с личным или закрытым доступом не поступают в промпт общего
+/// рассказа. Отличимые выражения из них остаются только в проверке текста.
+fn narration_hidden_terms(state: &Value) -> Vec<String> {
+    let facts = list(at(Some(state), &["worldMemory", "facts"]));
+    let shared = |fact: &Value| matches!(fact.get("visibility").and_then(Value::as_str), Some("public" | "party"));
+    let terms = |fact: &Value| ["summary", "object"].into_iter().filter_map(|key| {
+        fact.get(key).and_then(Value::as_str).map(|value| text::lower(text::trim(value).trim_end_matches(['.', '!', '?'])))
+    }).filter(|term| term.chars().count() >= 8 && term.contains(' ')).collect::<Vec<_>>();
+    let public: Vec<String> = facts.iter().filter(|fact| shared(fact)).flat_map(terms).collect();
+    let mut seen = HashSet::new();
+    facts.iter().filter(|fact| !shared(fact)).flat_map(terms)
+        .filter(|term| !public.iter().any(|known| known.contains(term)) && seen.insert(term.clone()))
         .collect()
 }
 
@@ -2347,7 +2364,7 @@ fn deterministic_free_action_narration(free_action: &Value, message: &str, event
 }
 
 /// `turnPromptVersions(narration)`: честные версии промптов хода.
-fn turn_prompt_versions(narration: Option<&Value>) -> Value {
+fn turn_prompt_versions(narration: Option<&Value>, agent_contexts: &[Value]) -> Value {
     let mut by_role: IndexMap<&str, &str> = IndexMap::new();
     for descriptor in PROMPT_DESCRIPTORS {
         by_role.insert(descriptor.role, descriptor.prompt_id);
@@ -2356,9 +2373,12 @@ fn turn_prompt_versions(narration: Option<&Value>) -> Value {
         Some(version) => version.clone(),
         None => by_role.get("narrator").map_or(Value::Null, |id| str_value(*id)),
     };
+    let adjudicator = agent_contexts.iter().find(|context| is_str(context.get("role"), "action_adjudicator"))
+        .and_then(|context| context.get("contract_version").and_then(Value::as_str))
+        .or_else(|| by_role.get("action_adjudicator").copied());
     json!({
         "intent_parser": null,
-        "action_adjudicator": by_role.get("action_adjudicator").map_or(Value::Null, |id| str_value(*id)),
+        "action_adjudicator": adjudicator.map_or(Value::Null, str_value),
         "narrator": narrator,
         "verifier": null,
     })
@@ -2463,6 +2483,17 @@ pub struct HandleInput {
 }
 
 impl HandleInput {
+    fn start_narration(&self, state_version: Option<&Value>) -> Option<ProgressCallback> {
+        let payload = json!({ "stateVersion": state_version });
+        if let Some(start) = &self.on_narration_start {
+            start(&payload);
+        }
+        self.on_narration_progress.clone().map(|callback| {
+            let progress: ProgressCallback = Arc::new(move |text: &str| callback(text, &payload));
+            progress
+        })
+    }
+
     pub fn new(fields: Value) -> Self {
         Self { fields, ..Self::default() }
     }
@@ -3031,6 +3062,7 @@ impl GameOrchestrator {
         turn_id: &str,
         started: i64,
         resolved_action: Option<&str>,
+        input: &HandleInput,
     ) -> OrchestratorResult<Value> {
         let state = nullish(free_action.get("state"), None).cloned().unwrap_or_else(|| authoritative_state.clone());
         let kind = kind_of(&free_action);
@@ -3154,7 +3186,13 @@ impl GameOrchestrator {
         if narrate_committed_improvisation {
             let render_started = self.now_ms();
             let outcome = match (&self.narrator, self.recent_narrations_for(campaign_id)) {
-                (Some(narrator), Ok(recent)) => narrator.render(&brief, NarrationOptions { known_rule_ids: Vec::new(), recent_narrations: recent, on_progress: None }).await,
+                (Some(narrator), Ok(recent)) => {
+                    let on_progress = input.start_narration(state.get("state_version"));
+                    narrator.render(&brief, NarrationOptions {
+                        known_rule_ids: Vec::new(), recent_narrations: recent, on_progress,
+                        forbidden_hidden_terms: narration_hidden_terms(&state),
+                    }).await
+                }
                 (_, Err(error)) => Err(error),
                 (None, _) => Err(type_error("narrator.render is not a function")),
             };
@@ -3335,6 +3373,9 @@ impl GameOrchestrator {
         if js::truthy(free_action.get("context_metadata")) {
             set(&mut trace_plan, "agent_contexts", json!([free_action["context_metadata"].clone()]));
         }
+        if let Some(reading) = reading.filter(|reading| !committed_events.is_empty() && reading.is_object()) {
+            set(&mut trace_plan, "free_action_reading", reading.clone());
+        }
         let trace = TraceInput {
             turn_id: turn_id.into(),
             campaign_id: campaign_id.into(),
@@ -3363,6 +3404,47 @@ impl GameOrchestrator {
             self.recover_missing_trace(trace);
         }
         Ok(response)
+    }
+
+    /// У старых завершённых заявок трасса хранит решение и итоговый текст,
+    /// а журнал хранит исполненные события. По ним можно вернуть прежний исход.
+    fn legacy_free_action_result(&self, campaign_id: &str, duplicate: &Value, trace: &Value) -> OrchestratorResult<Option<Value>> {
+        if at(Some(trace), &["adjudication_plan", "free_action_reading"]).is_some() {
+            return Ok(None);
+        }
+        let recorded = list(duplicate.get("events"));
+        let Some(ruling) = recorded.iter()
+            .filter(|event| is_str(event.get("event_type"), "RulingRecorded"))
+            .filter_map(|event| at(Some(event), &["payload", "ruling"]))
+            .find(|value| is_str(at(Some(value), &["provenance", "source"]), "free-action-adjudication")) else {
+            return Ok(None);
+        };
+        let check = recorded.iter().find(|event| is_str(event.get("event_type"), "AbilityCheckResolved"));
+        let kind = match (ruling.get("selected_option").and_then(Value::as_str), at(check, &["payload", "success"]).and_then(Value::as_bool)) {
+            (Some("auto-success"), _) => "auto_success",
+            (Some("ability-check"), Some(true)) => "check_success",
+            (Some("ability-check"), Some(false)) => "check_failure",
+            _ => return Ok(None),
+        };
+        let Some(before) = trace.get("state_version_before").and_then(Value::as_i64) else { return Ok(None) };
+        let Some(after) = trace.get("state_version_after").and_then(Value::as_i64).filter(|version| *version > before) else { return Ok(None) };
+        let ids = list(trace.get("events")).iter().filter_map(|event| event.get("event_id").and_then(Value::as_str)).collect::<HashSet<_>>();
+        if ids.is_empty() {
+            return Ok(None);
+        }
+        let mut events = recorded.to_vec();
+        if events.len() != ids.len() || events.iter().any(|event| !ids.contains(js::string(event.get("event_id")).as_str())) {
+            let Some(event_range) = self.event_store.events_between(campaign_id, before, Some(after)) else { return Ok(None) };
+            events = event_range?.into_iter().filter(|event| ids.contains(js::string(event.get("event_id")).as_str())).collect();
+            if events.len() != ids.len() {
+                return Ok(None);
+            }
+        }
+        let state = self.event_store.load_at(campaign_id, after)?.state;
+        Ok(Some(json!({
+            "kind": kind, "duplicate": true, "state": state, "events": events,
+            "rolls": trace.get("rolls"), "ruling": trace.get("ruling"), "stakes": ruling.get("stakes"),
+        })))
     }
 
     /// `voiceLore(lore, { message, state, playerId })`: пересказ материала
@@ -4452,6 +4534,20 @@ impl GameOrchestrator {
 
         if free_action_request {
             let turn_id = structured_command_turn_id(&campaign_id, &idempotency_key);
+            let resolved = pending_clarification.as_ref().map(|_| message.as_str());
+            if let (Some(duplicate), Some(trace)) = (&duplicate, &request_trace) {
+                if let Some(free_action) = self.legacy_free_action_result(&campaign_id, duplicate, trace)? {
+                    let mut response = self
+                        .free_action_response(free_action, &campaign_id, &player_id, &viewer, &message, &intent, &retrieval_queries, &retrieved_rules, &plan, &authoritative_state, &idempotency_key, Some(request_fingerprint), &turn_id, started, resolved, &input)
+                        .await?;
+                    for key in ["narration", "provider", "prompt_version", "verification"] {
+                        if let Some(value) = at(Some(trace), &["narration_result", key]) {
+                            set(&mut response, key, value.clone());
+                        }
+                    }
+                    return Ok(response);
+                }
+            }
             let confirmed_action = !standalone_action && pending_clarification.as_ref().is_some_and(|pending| is_str(at(Some(pending), &["original_intent", "pending_step"]), "proposal") && is_str(pending.get("action"), &message));
             let request = UnknownAction {
                 campaign_id: campaign_id.clone(),
@@ -4461,12 +4557,12 @@ impl GameOrchestrator {
                 intent: Some(intent.clone()),
                 verified_roll: verified_roll.clone(),
                 confirmed_action,
+                replay_reading: at(request_trace.as_ref(), &["adjudication_plan", "free_action_reading"]).cloned(),
             };
             let _ = manual_roll;
             let free_action = self.unknown_action_handler.handle_unknown_action(&request).await?;
-            let resolved = pending_clarification.as_ref().map(|_| message.as_str());
             return self
-                .free_action_response(free_action, &campaign_id, &player_id, &viewer, &message, &intent, &retrieval_queries, &retrieved_rules, &plan, &authoritative_state, &idempotency_key, Some(request_fingerprint), &turn_id, started, resolved)
+                .free_action_response(free_action, &campaign_id, &player_id, &viewer, &message, &intent, &retrieval_queries, &retrieved_rules, &plan, &authoritative_state, &idempotency_key, Some(request_fingerprint), &turn_id, started, resolved, &input)
                 .await;
         }
         if let Some(npc_id) = social_request.as_ref().filter(|_| duplicate.is_none()) {
@@ -4885,17 +4981,7 @@ impl GameOrchestrator {
         let unverified_discovery_failure = has_failed_discovery_check(&committed_events);
         let structured_mechanics = (input.field("commands").is_some_and(Value::is_array) || maneuver || unverified_discovery_failure) && deterministic_narrator.is_none();
         let streams_model = !idempotent_replay && deterministic_response.is_none() && stored_social.is_none() && !structured_mechanics;
-        let state_version_payload = json!({ "stateVersion": committed.get("state_version").cloned().unwrap_or(Value::Null) });
-        if streams_model {
-            if let Some(start) = &input.on_narration_start {
-                start(&state_version_payload);
-            }
-        }
-        let progress: Option<ProgressCallback> = input.on_narration_progress.clone().map(|callback| {
-            let payload = state_version_payload.clone();
-            let wrapped: ProgressCallback = Arc::new(move |text_value: &str| callback(text_value, &payload));
-            wrapped
-        });
+        let progress = streams_model.then(|| input.start_narration(committed.get("state_version"))).flatten();
         drop(brief_span);
         let narration_span = sk_store::perf::span("orch.narration");
         let narration = if let Some(authored) = &authored_narration {
@@ -4911,7 +4997,10 @@ impl GameOrchestrator {
         } else {
             let narrator = self.narrator.as_ref().ok_or_else(|| type_error("Cannot read properties of null (reading 'render')"))?;
             let recent = self.recent_narrations_for(&campaign_id)?;
-            narrator.render(&brief, NarrationOptions { known_rule_ids: resolved_rule_ids.clone(), recent_narrations: recent, on_progress: progress }).await?
+            narrator.render(&brief, NarrationOptions {
+                known_rule_ids: resolved_rule_ids.clone(), recent_narrations: recent, on_progress: progress,
+                forbidden_hidden_terms: narration_hidden_terms(&committed_state),
+            }).await?
         };
         drop(narration_span);
         let _tail_span = sk_store::perf::span("orch.response_and_trace");
@@ -5179,7 +5268,7 @@ impl GameOrchestrator {
             ("request_fingerprint", Some(trace.request_fingerprint.clone().map_or(Value::Null, Value::String))),
             ("proposal_id", Some(str_value(proposal_id_for(&trace.campaign_id, &seed)))),
             ("engine_mode", Some(str_value("enforce"))),
-            ("prompt_versions", Some(turn_prompt_versions(narration))),
+            ("prompt_versions", Some(turn_prompt_versions(narration, &agent_contexts))),
             ("model_identifiers", Some(model_identifiers(narration))),
             ("agent_contexts", Some(Value::Array(agent_contexts))),
             ("intent", trace.intent.clone()),

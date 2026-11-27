@@ -243,6 +243,7 @@ fn location_illustration(ctx: &mut RouteCtx) -> RouteFuture<'_> {
         let user = require_user(ctx).await?;
         let campaign_id = ctx.param(0).to_uppercase();
         let location_id = crate::url::decode_uri_component(ctx.param(1)).ok_or_else(|| ApiError::coded(StatusCode::BAD_REQUEST, "Некорректный location_id", "INVALID_LOCATION_ID"))?;
+        let availability_only = ctx.search_param("availability").as_deref() == Some("1");
         let state = ctx.state.clone();
         let room = get_room(&state, &campaign_id).await?;
         if room.state.is_none() {
@@ -259,7 +260,12 @@ fn location_illustration(ctx: &mut RouteCtx) -> RouteFuture<'_> {
             let Some(location) = visible_location_profile(&projected, Some(&Value::String(location_id.clone()))) else {
                 return Ok(Some(Err(ApiError::coded(StatusCode::NOT_FOUND, "Локация не найдена", "LOCATION_NOT_VISIBLE"))));
             };
-            let cached = state.images.illustrations.cached(&campaign_id, location.get("id").unwrap_or(&Value::Null)).await.map_err(|error| Failure::new(error.to_string(), error.code()))?;
+            let location_id = location.get("id").unwrap_or(&Value::Null);
+            if availability_only {
+                let available = state.images.illustrations.has_cached(&campaign_id, location_id).await.map_err(|error| Failure::new(error.to_string(), error.code()))?;
+                return Ok(Some(Ok(json(StatusCode::OK, &json!({ "available": available })))));
+            }
+            let cached = state.images.illustrations.cached(&campaign_id, location_id).await.map_err(|error| Failure::new(error.to_string(), error.code()))?;
             let Some(illustration) = cached else {
                 return Ok(Some(Err(ApiError::coded(StatusCode::NOT_FOUND, "Иллюстрация ещё не подготовлена", "LOCATION_ILLUSTRATION_ABSENT"))));
             };

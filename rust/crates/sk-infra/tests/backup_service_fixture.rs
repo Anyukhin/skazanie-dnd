@@ -1,4 +1,4 @@
-//! Совместимость формата копии с JS (`fixtures/gen-backup-service.mjs`):
+//! Совместимость формата копии с JS (`fixtures/verify-backup-service.mjs`):
 //! копию, снятую Node, Rust проверяет и восстанавливает; копию, снятую Rust,
 //! проверяет и восстанавливает Node (если он есть: `SK_NODE` или установка
 //! Codex). Секрет эталона выдуман и в манифесте лежит открыто.
@@ -91,10 +91,10 @@ fn rust_backup_has_js_layout_and_is_restored_by_js() {
         return;
     };
     let output = std::process::Command::new(node)
-        .arg(fixture_path("gen-backup-service.mjs"))
-        .arg("verify")
+        .arg(fixture_path("verify-backup-service.mjs"))
         .arg(&backup)
         .arg(fixture_path("backup-js.json"))
+        .arg(root.path().join("restored-by-js"))
         .output()
         .expect("node");
     let stdout = String::from_utf8_lossy(&output.stdout);

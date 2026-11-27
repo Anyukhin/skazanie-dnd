@@ -406,8 +406,21 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
   // Готовой картинки у локации может и не быть — это норма, а не ошибка.
   // Поэтому изображение грузится незаметно и проявляется только после
   // `onLoad`: пока его нет, шапка выглядит ровно как раньше.
-  const [locationArtReady, setLocationArtReady] = useState(false)
-  useEffect(() => { setLocationArtReady(false) }, [locationArtUrl])
+  const [cachedLocationArt, setCachedLocationArt] = useState('')
+  const [loadedLocationArt, setLoadedLocationArt] = useState('')
+  useEffect(() => {
+    if (!scenicBackdrop || !locationArtUrl) return
+    const controller = new AbortController()
+    void fetch(`${locationArtUrl}?availability=1`, { cache: 'no-store', signal: controller.signal })
+      .then(async response => response.ok ? await response.json() as { available: boolean } : null)
+      .then(result => {
+        if (!controller.signal.aborted) setCachedLocationArt(result?.available ? locationArtUrl : '')
+      })
+      .catch(error => {
+        if (!controller.signal.aborted) console.warn('Не удалось проверить иллюстрацию локации:', error)
+      })
+    return () => controller.abort()
+  }, [locationArtUrl, scenicBackdrop])
   const objectiveRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     if (!objectiveExpanded) return
@@ -424,13 +437,13 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
         {/* Иллюстрация самого места ложится поверх библиотечной подложки в тот
             же кадр: рамка и затемнение у них общие — шапка остаётся одной
             карточкой, а не обрастает вторым блоком. */}
-        {locationArtUrl && <img
-          className={`scene-location-art ${locationArtReady ? 'ready' : ''}`}
+        {locationArtUrl && cachedLocationArt === locationArtUrl && <img
+          className={`scene-location-art ${loadedLocationArt === locationArtUrl ? 'ready' : ''}`}
           src={locationArtUrl}
           alt=""
           decoding="async"
-          onLoad={() => setLocationArtReady(true)}
-          onError={() => setLocationArtReady(false)}
+          onLoad={() => setLoadedLocationArt(locationArtUrl)}
+          onError={() => setLoadedLocationArt('')}
         />}
       </span>}
       {/* Подписи у иллюстрации нет: она печатала ровно то же `location`, что
@@ -859,7 +872,11 @@ function pendingCheckKey(check: Pick<PendingCheck, 'check_id' | 'playerId' | 'ac
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
   // Сервер отозвал живой поток (аудит PR #131, LIVE-01/02): один раз сверяем
   // аккаунт. Завершённый вход вернёт `user: null`, и откроется экран входа.
-  const gameSession = useGameSession({ accountId: account.id, onAccessRevoked: onAccountRefresh })
+  const gameSession = useGameSession({
+    accountId: account.id,
+    initialCampaignIds: account.role === 'admin' ? undefined : new Set(account.campaignMemberships?.map(membership => membership.campaignId)),
+    onAccessRevoked: onAccountRefresh,
+  })
   const { confirmPendingAction, cancelPendingAction } = gameSession
   const { advanceAdventure, directorBusy } = gameSession
   const { pendingTacticalCommand, retryPendingTacticalCommand } = gameSession
@@ -1042,14 +1059,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     [sceneLocationKey, sceneTheme],
   )
   // Иллюстрация локации отдаётся **только из кеша кампании**: во время игры
-  // картинки не генерируются, их готовит ведущий заранее. Нет в кеше — сервер
-  // честно отвечает 404, и шапка остаётся с библиотечной подложкой.
+  // картинки не генерируются, их готовит ведущий заранее. Шапка проверяет
+  // наличие картинки в кеше, чтобы запрашивать только подготовленный файл.
   //
   // Старые сцены могут не иметь канонического location_id. Для них запасной
   // источник иллюстрации — текущая точка карты мира.
   const locationArtId = state.scene.location_id ?? state.worldMap?.currentLocationId ?? ''
   const locationArtUrl = locationArtId
-    ? `/api/campaigns/${state.sessionCode}/locations/${encodeURIComponent(locationArtId)}/illustration`
+    ? `/api/campaigns/${encodeURIComponent(state.sessionCode)}/locations/${encodeURIComponent(locationArtId)}/illustration`
     : ''
   const joinAttempted = useRef(false)
   const isAdmin = account.role === 'admin'
@@ -1891,7 +1908,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             chronicleStatus={roomHeaderBar}
             freeRoll={combatActive ? undefined : <DiceTray key={state.sessionCode} panel latestRoll={state.lastDiceRoll} onRoll={(sides) => rollFreeDie(activePlayer.id, sides)} />}
           >
-            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => { void continueSceneInteraction() }} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
+            <ChatPanel campaignId={state.sessionCode} connected={connectionState === 'connected'} messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => { void continueSceneInteraction() }} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
           </DungeonMap>
         </div>}
         {view === 'world-map' && <WorldMapView state={state} busy={travelBlocked} onTravel={(action) => {
@@ -2099,7 +2116,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
 function App() {
   const auth = useAuth()
   if (!auth.user) return <AuthScreen loading={auth.loading} error={auth.error} setupRequired={auth.setupRequired} onLogin={auth.login} onRegister={auth.register} onSetupAdmin={auth.setupAdmin} />
-  return <GameApp account={auth.user} onAccountRefresh={auth.refresh} onLogout={auth.logout} />
+  return <GameApp key={auth.user.id} account={auth.user} onAccountRefresh={auth.refresh} onLogout={auth.logout} />
 }
 
 export default App

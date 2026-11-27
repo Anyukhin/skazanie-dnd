@@ -28,6 +28,7 @@ import {
 import { withLootTakenRecord } from './loot-panel-rules.mjs'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
+import { isAutomaticWorldTravel } from './director-decision.mjs'
 import { stagedCommandsForPilotBuild, type AstohanPilotBuild } from './astohan-pilot-builds'
 import {
   clearPendingNarrate,
@@ -291,9 +292,11 @@ function transportFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   return fetch(input, memoryTransportRequestInit(init))
 }
 
-function loadState(): GameState {
+function loadState(initialCampaignIds?: ReadonlySet<string>): GameState {
   const requested = new URLSearchParams(window.location.search).get('room')?.toUpperCase()
-  const selected = requested || localStorage.getItem(ACTIVE_CAMPAIGN_KEY)?.toUpperCase()
+  const inviting = requested && new URLSearchParams(window.location.hash.slice(1)).has('invite')
+  const pendingInvite = inviting && initialCampaignIds && !initialCampaignIds.has(requested)
+  const selected = pendingInvite ? '' : requested || localStorage.getItem(ACTIVE_CAMPAIGN_KEY)?.toUpperCase()
   // Пока комната не выбрана, показываем пустую оболочку, а не демо-мир.
   if (!selected) return structuredClone(emptyState)
   // Never restore a viewer-specific campaign projection from a cross-account
@@ -303,6 +306,8 @@ function loadState(): GameState {
 
 export function useGameSession(options: {
   accountId?: string
+  /** Членство для решения, требуется ли вступление по ссылке-приглашению. */
+  initialCampaignIds?: ReadonlySet<string>
   /**
    * Сервер отозвал живой поток (аудит PR #131, LIVE-01/02). Обычно это
    * обновление аккаунта через `/api/auth/me`: завершённый вход вернёт экран
@@ -313,7 +318,7 @@ export function useGameSession(options: {
   const accountId = String(options.accountId ?? '').trim()
   const onAccessRevokedRef = useRef(options.onAccessRevoked)
   onAccessRevokedRef.current = options.onAccessRevoked
-  const [state, setState] = useState<GameState>(loadState)
+  const [state, setState] = useState<GameState>(() => loadState(options.initialCampaignIds))
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
   const [lastDialogueAnswer, setLastDialogueAnswer] = useState('')
   const [pendingClarification, setPendingClarification] = useState<ActionClarification | null>(null)
@@ -790,6 +795,7 @@ export function useGameSession(options: {
       author: metaCommand ? 'Разбор правил' : 'Рассказчик',
       timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
       text: aiResult.narration, roll: aiResult.effects.roll ?? roll, turnConsumed: metaCommand ? undefined : consumesTurn,
+      ...(aiResult.narration_origin ? { narrationOrigin: aiResult.narration_origin } : {}),
       // Ставки приходили в ответе, но нигде не показывались: игрок узнавал СЛ
       // и цену провала только из объяснения `/why`, если додумывался спросить.
       ...(aiResult.stakes ? { stakes: aiResult.stakes } : {}),
@@ -1363,7 +1369,7 @@ export function useGameSession(options: {
     const idle: CommandOutcome = { ok: false, error: 'Нет принятого решения, которое можно продолжить.' }
     if (!interaction || interaction.status !== 'resolved') return idle
     // Типизированное решение исполняет сервер и восстанавливает при reconnect.
-    if (interaction.questAbandonment || interaction.questAcceptance || interaction.scenarioTreaty) return idle
+    if (interaction.questAbandonment || interaction.questAcceptance || interaction.scenarioTreaty || isAutomaticWorldTravel(interaction)) return idle
     const winner = interaction.options.find((option) => option.id === interaction.resolvedOptionId)
     if (!winner) return idle
     return submitAction(`[РЕШЕНИЕ ГРУППЫ] ${winner.label}`, playerId)

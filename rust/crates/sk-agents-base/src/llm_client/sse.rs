@@ -202,6 +202,9 @@ impl StreamState {
             return Ok(());
         }
         let payload = strict_json_parse(data.as_str(), &StrictJsonOptions::new("RouterAI SSE event", "object").max_bytes(self.event_limit))?;
+        if let Some(id) = payload.get("id").and_then(Value::as_str) {
+            super::attempt_trace::record_generation_id(id);
+        }
         if js::truthy(payload.get("error")) {
             let code = js::s(prop(payload.get("error"), "code"));
             return Err(LlmError::llm("RouterAI stream returned an error event", "LLM_PROVIDER_ERROR").with_detail("providerCode", Value::String(utf16_head(&code, 80))));
@@ -210,7 +213,10 @@ impl StreamState {
             self.model = Some(js::s(payload.get("model")));
         }
         if js::present(payload.get("usage")) {
-            self.usage = payload.get("usage").cloned();
+            if let Some(usage) = payload.get("usage") {
+                sk_infra::usage_ledger::record_provider_usage(usage);
+                self.usage = Some(usage.clone());
+            }
         }
         let delta = prop(index0(payload.get("choices")), "delta");
         if length_truthy(prop(delta, "tool_calls")) || length_truthy(prop(delta, "toolCalls")) {

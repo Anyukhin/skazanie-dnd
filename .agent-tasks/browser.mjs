@@ -107,6 +107,17 @@ class CdpConnection {
     })
   }
 
+  on(method, listener, sessionId = null) {
+    const key = `${sessionId ?? ''}:${method}`
+    const listeners = this.listeners.get(key) ?? new Set()
+    listeners.add(listener)
+    this.listeners.set(key, listeners)
+    return () => {
+      listeners.delete(listener)
+      if (!listeners.size) this.listeners.delete(key)
+    }
+  }
+
   close() {
     this.#rejectAll(new Error('CDP connection closed by runner'))
     if (this.webSocket.readyState === WebSocket.OPEN || this.webSocket.readyState === WebSocket.CONNECTING) {
@@ -135,6 +146,10 @@ export class CdpPage {
 
   command(method, params = {}, timeoutMs) {
     return this.connection.send(method, params, this.sessionId, timeoutMs)
+  }
+
+  on(method, listener) {
+    return this.connection.on(method, listener, this.sessionId)
   }
 
   async navigate(url, { waitUntil = 'load', timeoutMs = DEFAULT_TIMEOUT } = {}) {
@@ -273,7 +288,8 @@ async function waitForDevToolsFile(profileDir, chromeProcess, timeoutMs) {
       const [port, browserPath] = (await readFile(activePortPath, 'utf8')).trim().split(/\r?\n/u)
       if (port && browserPath) return `ws://127.0.0.1:${port}${browserPath}`
     } catch (error) {
-      if (error?.code !== 'ENOENT') throw error
+      // На Windows Chromium кратко держит файл открытым, пока пишет порт.
+      if (error?.code !== 'ENOENT' && error?.code !== 'EBUSY') throw error
     }
     await wait(50)
   }
@@ -284,6 +300,10 @@ function safeTemporaryProfile(profileDir) {
   const temporaryRoot = resolve(tmpdir())
   const candidate = resolve(profileDir)
   return candidate.startsWith(`${temporaryRoot}${sep}`) && basename(candidate).startsWith('skazanie-cdp-')
+}
+
+async function removeTemporaryProfile(profileDir) {
+  if (safeTemporaryProfile(profileDir)) await rm(profileDir, { recursive: true, force: true, maxRetries: 12, retryDelay: 200 })
 }
 
 export class CdpBrowser {
@@ -333,7 +353,7 @@ export class CdpBrowser {
     ])
     if (this.chromeProcess.exitCode == null) this.chromeProcess.kill()
     this.connection.close()
-    if (safeTemporaryProfile(this.profileDir)) await rm(this.profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 })
+    await removeTemporaryProfile(this.profileDir)
   }
 }
 
@@ -390,17 +410,24 @@ export async function launchBrowser({
   } catch (error) {
     connection?.close()
     if (chromeProcess.exitCode == null) chromeProcess.kill()
-    if (safeTemporaryProfile(profileDir)) await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 })
+    await removeTemporaryProfile(profileDir)
     throw error
   }
 }
 
 export async function withBrowser(options, task) {
   const browser = await launchBrowser(options)
+  let taskError
   try {
     return await task(browser)
+  } catch (error) {
+    taskError = error
+    throw error
   } finally {
-    await browser.close()
+    await browser.close().catch((cleanupError) => {
+      if (taskError) throw new AggregateError([taskError, cleanupError], taskError.message)
+      throw cleanupError
+    })
   }
 }
 

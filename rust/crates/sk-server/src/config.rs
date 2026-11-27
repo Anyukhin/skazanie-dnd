@@ -71,6 +71,8 @@ pub struct Config {
     pub ai_turn_timeout_ms: f64,
     /// Отдельный срок Судьи свободного действия.
     pub ai_adjudicator_timeout_ms: f64,
+    /// Короткий промпт Судьи v11 для замера с теми же входами.
+    pub ai_compact_adjudicator_prompt: bool,
     /// Отдельный срок Рассказчика после коммита.
     pub ai_narrator_timeout_ms: f64,
     /// Часть срока для настроенного локального резерва.
@@ -230,6 +232,7 @@ impl Config {
             ai_model_timeout_ms: env_number(env, "DND_AI_MODEL_TIMEOUT_MS", 9_000.0),
             ai_turn_timeout_ms: env_model_ms(env, "DND_AI_TURN_TIMEOUT_MS", sk_agents_base::llm_client::DEFAULT_MODEL_TURN_TIMEOUT_MS, 1.0),
             ai_adjudicator_timeout_ms: env_model_ms(env, "DND_AI_ADJUDICATOR_TIMEOUT_MS", sk_agents::action_adjudicator::ACTION_ADJUDICATOR_DEFAULT_TIMEOUT_MS as f64, 1.0),
+            ai_compact_adjudicator_prompt: env("DND_AI_ADJUDICATOR_PROMPT").is_some_and(|version| version == "v11"),
             ai_narrator_timeout_ms: env_model_ms(env, "DND_AI_NARRATOR_TIMEOUT_MS", sk_agents::narrator::NARRATOR_DEFAULT_TIMEOUT_MS as f64, 1.0),
             ai_local_reserve_ms: env_model_ms(env, "DND_AI_LOCAL_RESERVE_MS", sk_agents_base::llm_client::DEFAULT_LOCAL_MODEL_RESERVE_MS, 0.0),
             ai_probe_timeout_ms: env_number(env, "DND_AI_PROBE_TIMEOUT_MS", 15_000.0),

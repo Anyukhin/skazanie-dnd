@@ -252,6 +252,9 @@ pub fn journal_entry_at(entry: &Value, now_ms: i64) -> Value {
     stored.insert("timestamp".into(), Value::String(clock_label(now_ms)));
     stored.insert("text".into(), Value::String(text::head(&js::string(field("text")), 2000)));
     stored.insert("turnConsumed".into(), Value::Bool(js::truthy(field("turnConsumed"))));
+    if let Some(origin @ ("model" | "template" | "interrupted")) = field("narrationOrigin").and_then(Value::as_str).filter(|_| speaker == "narrator") {
+        stored.insert("narrationOrigin".into(), Value::String(origin.into()));
+    }
     if js::truthy(field("knowledge_gate")) {
         stored.insert("knowledge_gate".into(), field("knowledge_gate").cloned().unwrap_or(Value::Null));
     }

@@ -25,6 +25,7 @@
  *   node eval/astohan-playthrough.mjs --impl rust --treaty --seed 2   # расследование и эпилог сразу после договора
  *   node eval/astohan-playthrough.mjs --party fighter,cleric   # быстрый прогон вдвоём
  *   node eval/astohan-playthrough.mjs --tactics bot            # простая политика выбора заклинаний и ударов
+ *   node --env-file=.env eval/astohan-playthrough.mjs --impl rust --live --judge
  *   node eval/astohan-playthrough.mjs --minutes 20 --out tmp/astohan-playtest/run1
  *   SKAZANIE_RUST_SERVER_BIN=… node eval/astohan-playthrough.mjs --impl rust --seed 7   # бинарь переноса
  *
@@ -34,7 +35,7 @@
  * прогонов). Ключ модели не печатается и в отчёт не попадает.
  */
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -48,6 +49,8 @@ import { freePort, rustCutoverAudit, rustJournalEvents, spawnRustStand, standImp
 import { combatJournalStats } from './astohan-combat-stats.mjs'
 import { seedPassed, victoryFor } from './astohan-seed-status.mjs'
 import { budgetCriterion, playthroughUsage } from './playthrough-usage.mjs'
+import { startAstohanBudgetRouter } from './astohan-model-budget.mjs'
+import { astohanRoleReport, judgeAstohanNarration } from './astohan-model-review.mjs'
 import { traceLoreAnswer } from './lore-trace.mjs'
 import { narrationConsistency, sceneContinuity, sceneMapConsistency } from './consistency-checks.mjs'
 
@@ -80,8 +83,8 @@ const TACTICS = option('tactics', 'server')
 const SEED = option('seed', null)
 // Сервер — бинарь Rust (`eval/stand-server.mjs`); JS-сервер с 2026-11-27 в архиве.
 const IMPL = standImpl(argv)
-if (LIVE || JUDGE) {
-  console.error('--live и --judge были только у JS-сервера, а он в архиве (archive/js-server); на Rust прогон идёт без модели')
+if (JUDGE && !LIVE) {
+  console.error('Флаг --judge требует --live')
   process.exit(2)
 }
 const { modules: [pilotBuilds] } = await compileClientModules(['src/astohan-pilot-builds.ts'])
@@ -105,6 +108,16 @@ mkdirSync(OUT, { recursive: true })
 const storage = mkdtempSync(join(tmpdir(), 'skazanie-astohan-'))
 const template = JSON.parse(readFileSync(join(ROOT, 'data', 'campaign-worlds-v1.json'), 'utf8')).templates.find((entry) => entry.id === TEMPLATE_ID)
 if (!template) throw new Error(`В каталоге нет мира ${TEMPLATE_ID}`)
+const budgetRouter = LIVE ? await startAstohanBudgetRouter({
+  liveKey: process.env.ROUTERAI_API_KEY,
+  upstream: process.env.ROUTERAI_BASE_URL || undefined,
+}) : null
+let budgetStop = null
+const budgetStopMessages = {
+  STAND_BUDGET_EXCEEDED: 'Остатка потолка 20 ₽ не хватило ни на одну попытку завершившегося запроса.',
+  STAND_TARIFF_UNVERIFIED: 'Для попыток завершившегося запроса не удалось подтвердить верхнюю границу тарифа.',
+  STAND_PROVIDER_EXCEEDED_QUOTE: 'Поставщик сообщил списание выше объявленного тарифа. Новые запросы заблокированы.',
+}
 
 // ---------------------------------------------------------------------------
 // Журнал прогона: находки, хроника, замеры
@@ -162,9 +175,13 @@ const short = (text, limit = 400) => {
 
 let child = null
 let logs = ''
-function startServer() {
+function startServer({ model = true } = {}) {
   // Ход героя бот делает за секунды; срок хода не должен отдавать его NPC.
-  child = spawnRustStand({ port: PORT, storage, setupToken, env: { DND_COMBAT_TURN_TIMEOUT_MS: '3600000', ...(SEED == null ? {} : { PLAYTEST_DICE_SEED: String(SEED) }) } })
+  child = spawnRustStand({ port: PORT, storage, setupToken, env: {
+    DND_COMBAT_TURN_TIMEOUT_MS: '3600000',
+    ...(SEED == null ? {} : { PLAYTEST_DICE_SEED: String(SEED) }),
+    ...(model ? budgetRouter?.env : null),
+  } })
   child.stdout.on('data', (chunk) => { logs += chunk })
   child.stderr.on('data', (chunk) => { logs += chunk })
 }
@@ -188,6 +205,9 @@ process.on('exit', () => { try { child?.kill() } catch { /* уже остано�
 
 async function request(path, { method = 'GET', account, body, key, timeoutMs = 120_000 } = {}) {
   const started = Date.now()
+  const modelAction = method === 'POST' && (path === '/api/narrate' || path.endsWith('/autonomy/advance'))
+  if (modelAction && budgetStop) throw new Error(budgetStop)
+  const checkpoint = modelAction ? budgetRouter?.checkpoint() : null
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -223,6 +243,9 @@ async function request(path, { method = 'GET', account, body, key, timeoutMs = 1
     if (response.status >= 500) {
       stats.http5xx += 1
       finding('critical', 'http-5xx', `${method} ${route} → ${response.status}: ${short(parsed?.error ?? text, 300)}`, { code: parsed?.code })
+    }
+    if (checkpoint && (budgetStop = budgetRouter.stopReason(checkpoint))) {
+      throw new Error(budgetStop)
     }
     return { status: response.status, body: parsed, text, ms, response }
   }
@@ -558,7 +581,7 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
     steps.push(answer)
     final = answer
     const text = String(answer.narration ?? '')
-    if (text) { note(`> ${short(text, 1400)}`); narrations.push({ kind: 'reply', action, label, text }) }
+    if (text) { note(`> ${short(text, 1400)}`); narrations.push({ kind: 'reply', action, label, text, origin: answer.narration_origin }) }
     if (text && answer.provider === 'NpcSocialController') {
       stats.npcReplies += 1
       if (NPC_BRUSH_OFF.test(text)) {
@@ -631,7 +654,10 @@ async function sayFollowUp(body, account, steps) {
     return null
   }
   steps.push(result.body)
-  if (result.body.narration) { note(`> ${short(result.body.narration, 1400)}`); narrations.push({ kind: 'roll', action: body.action, label: 'после броска', text: String(result.body.narration) }) }
+  if (result.body.narration) {
+    note(`> ${short(result.body.narration, 1400)}`)
+    narrations.push({ kind: 'roll', action: body.action, label: 'после броска', text: String(result.body.narration), origin: result.body.narration_origin })
+  }
   return result.body
 }
 
@@ -1745,14 +1771,6 @@ function narrationSample(limit = 14) {
   return Array.from({ length: limit }, (_, index) => unique[Math.floor(index * step)])
 }
 
-/** Цена токенов модели из последнего снимка каталога RouterAI (₽ за токен). */
-function modelPricing(model) {
-  try {
-    const catalogs = readdirSync(join(ROOT, 'eval')).filter((name) => /^routerai-catalog-.*\.json$/u.test(name)).sort()
-    const catalog = JSON.parse(readFileSync(join(ROOT, 'eval', catalogs.at(-1)), 'utf8'))
-    return catalog.data.find((entry) => entry.id === model)?.pricing ?? null
-  } catch { return null }
-}
 /**
  * Оценка текста от 1 до 10. Без судьи — только то, что меряется надёжно:
  * повторы, служебные коды, штампы, пустые ответы. Судья (1–5) заменяет её,
@@ -1854,13 +1872,10 @@ function npcTalkDetailFree() {
 async function usageReport() {
   const usage = await request('/api/admin/usage', { account: accounts.admin })
   if (usage.status !== 200 || !usage.body.usage) return null
-  // Каталог даёт только оценку. При каскаде суммарные токены нельзя отнести
-  // к одному тарифу, а реальный расход поставщика остаётся в журнале.
-  const model = usage.body.models?.length === 1 ? usage.body.models[0].model : ''
-  return playthroughUsage(usage.body.usage, stats.narrate + stats.directorSteps, model, model ? modelPricing(model) : null)
+  return playthroughUsage(usage.body.usage, stats.narrate + stats.directorSteps)
 }
 
-function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
+function writeReport(final, scorecard, usage, audit, quality, judge, sample, roles, budget, adjudicator) {
   const minutes = ((Date.now() - startedAt) / 60_000).toFixed(1)
   const byRoute = {}
   for (const entry of timings) (byRoute[entry.route] ??= []).push(entry.ms)
@@ -1898,8 +1913,24 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
     '## Текст рассказчика',
     '',
     `Ответов ${quality.samples}, в среднем ${quality.average_chars} знаков. Повторы ${quality.repeated_share_pct} %, пересечение 3-грамм между ответами ${quality.ngram_overlap_pct} %, коротких (< 40 знаков) ${quality.short_share_pct} %, служебных кодов ${quality.raw_identifiers}, штампов ${quality.cliches}${quality.cliche_examples.length ? ` (${quality.cliche_examples.map((entry) => `«${entry}»`).join(', ')})` : ''}.`,
-    judge ? `Судья ${judge.model}: средняя ${judge.average ?? '—'}/5 по ${judge.verdicts.length} ответам, ≈${judge.cost_rub} ₽. Главные замечания: ${judge.verdicts.map((entry) => entry.issue).filter(Boolean).slice(0, 6).map((issue) => `«${short(issue, 120)}»`).join('; ') || 'нет'}.` : 'Судья не запускался (флаг --judge).',
+    judge ? `Судья ${judge.model}. Средняя ${judge.average ?? '—'}/5 по ${judge.verdicts.length} из ${judge.planned} ответов. Ошибок ${judge.errors}, обрывов ${judge.interrupted}.${judge.stop_reason ? ` Остановка ${judge.stop_reason}.` : ''} Главные замечания — ${judge.verdicts.map((entry) => entry.issue).filter(Boolean).slice(0, 6).map((issue) => `«${short(issue, 120)}»`).join(', ') || 'нет'}.` : 'Судья не запускался (флаг --judge).',
     `Выборка из ${sample.length} ответов для чтения глазами — narration-sample.md.`,
+    '',
+    '## Источник ответов по ролям',
+    '',
+    ...(budget ? [`Общий потолок игры и судьи ${budget.limit_rub} ₽. Подтверждено ${budget.known_rub} ₽, расход ${budget.unknown_requests} вызовов неизвестен (удержано ${budget.reserved_rub} ₽). До отправки отклонены ${budget.refused_budget} вызовов по бюджету и ${budget.refused_tariff} по тарифу.`, ''] : []),
+    '| Роль | Модель | Обрыв | Шаблон | Ошибка | Источник неизвестен | Доля модели | Доля без модели |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    ...Object.entries(roles).map(([role, row]) => {
+      const total = Object.values(row).reduce((sum, count) => sum + count, 0)
+      const share = (count) => total ? Math.round(100 * count / total) + ' %' : '—'
+      const withoutModel = role === 'narrator' ? row.template + row.interrupted : row.template
+      return `| ${role} | ${row.model} | ${row.interrupted} | ${row.template} | ${row.error} | ${row.unclassified} | ${share(row.model)} | ${share(withoutModel)} |`
+    }),
+    '',
+    'Для рассказчика учитывается итог реплики. Обрыв означает, что после прерывания игрок получил шаблон. Остальные игровые роли учитываются по трассам ходов или, для вызовов вне ходов, по журналу расхода. Судья проверяет выборку отдельно.',
+    '',
+    `Промпты Судьи в трассах ${adjudicator.prompt_versions.join(', ') || '—'}. Успешные ходы ${adjudicator.successful_turn_ms.length}, p50 ${adjudicator.p50_ms ?? '—'} мс, p95 ${adjudicator.p95_ms ?? '—'} мс. Известно ${adjudicator.input_tokens} входных токенов в ${adjudicator.attempts_with_input_tokens} попытках.`,
     '',
     '## Согласованность',
     '',
@@ -1950,7 +1981,7 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
     }),
   ].join('\n') + '\n')
   writeFileSync(join(OUT, 'transcript.md'), `# Хроника прогона ${STAMP}\n${transcript.join('\n')}\n`)
-  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, impl: IMPL, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, narration: { quality, judge }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
+  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, impl: IMPL, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, budget, adjudicator, narration: { quality, judge, roles }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
   const serverErrors = logs.split('\n').filter((line) => /error|ошибк|exception|unhandled/iu.test(line) && !/ROUTERAI|api[_-]?key/iu.test(line)).slice(0, 60)
   writeFileSync(join(OUT, 'server-errors.log'), serverErrors.join('\n'))
 }
@@ -2047,7 +2078,11 @@ try {
   final = await main()
 } catch (error) {
   fatal = error
-  finding('blocker', 'run-aborted', short(error?.stack ?? error, 600))
+  if (budgetStop) {
+    try { final = await room() } catch { /* снимок ещё не создан */ }
+  } else {
+    finding('blocker', 'run-aborted', short(error?.stack ?? error, 600))
+  }
 }
 await stopServer()
 const audit = await runRustCutoverAudit()
@@ -2060,7 +2095,7 @@ if (audit.report?.campaigns?.some((campaign) => campaign.campaign_id === CODE)) 
 }
 let usage = null
 if (LIVE) {
-  startServer()
+  startServer({ model: false })
   try { await waitForHealth(); usage = await usageReport() } catch { /* без замера */ }
   await stopServer()
   if (!usage) finding('critical', 'live-usage-unavailable', 'Журнал расхода недоступен. Успешные вызовы модели подтвердить не удалось.')
@@ -2068,9 +2103,19 @@ if (LIVE) {
 }
 const quality = await narrationQuality()
 const sample = narrationSample()
-const judge = null
+const judgeModel = process.env.DND_ASTOHAN_JUDGE_MODEL || 'z-ai/glm-5.3-flash'
+const judge = JUDGE && !budgetStop ? await judgeAstohanNarration(sample, budgetRouter, judgeModel) : null
+await budgetRouter?.close()
+const budget = budgetRouter?.report() ?? null
+const { roles, adjudicator } = astohanRoleReport(storage, CODE, narrations, judge)
+adjudicator.p50_ms = percentile(adjudicator.successful_turn_ms, 50)
+adjudicator.p95_ms = percentile(adjudicator.successful_turn_ms, 95)
+budgetStop = budget?.exceeded_quote ? 'STAND_PROVIDER_EXCEEDED_QUOTE' : budgetStop || judge?.stop_reason
+if (budgetStop) finding('blocker', budgetStop, budgetStopMessages[budgetStop])
+if (judge && sample.length && !judge.verdicts.length) finding('major', 'judge-without-verdicts', 'Судья не оценил реплики выборки.')
 const scorecard = grade(final, usage, audit, quality, judge)
-writeReport(final, scorecard, usage, audit, quality, judge, sample)
+if (budgetStop) scorecard.status = budget.stop_reason = budgetStop
+writeReport(final, scorecard, usage, audit, quality, judge, sample, roles, budget, adjudicator)
 console.log(`\nИтог: ${scorecard.status}, оценка ${scorecard.overall}/10, блокеров ${scorecard.blockers}, критичных ${scorecard.critical}, серьёзных ${scorecard.major}`)
 console.log(`Отчёт: ${relative(ROOT, join(OUT, 'report.md'))}`)
 if (!KEEP) rmSync(storage, { recursive: true, force: true })

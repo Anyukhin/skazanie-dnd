@@ -574,7 +574,12 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
         for key in ["commands", "requestCommands", "commandCapability"] {
             js::delete(&mut fields, key);
         }
-        let input = HandleInput { fields, director_capability: false, on_narration_start: Some(start.clone()), on_narration_progress: Some(progress.clone()) };
+        let public_narration = !conversation_only && explicit_npc_id.is_empty() && !text::trim_start(action).starts_with('/');
+        let input = HandleInput {
+            fields, director_capability: false,
+            on_narration_start: public_narration.then(|| start.clone()),
+            on_narration_progress: public_narration.then(|| progress.clone()),
+        };
         let mut result = sk_agents_base::llm_client::with_model_attempt_trace_budget(
             app.config.ai_turn_timeout_ms, app.config.ai_local_reserve_ms, services.game.handle(input),
         ).await.map_err(orchestrator_failure)?;
@@ -620,6 +625,19 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
     let journal_key = if private_narration { format!("{idempotency_key}:private:{player_id}") } else { idempotency_key.clone() };
     // Приглашение к броску не является событием истории.
     let check_required = js::truthy(result.get("check")) || js::truthy(result.get("action_proposal"));
+    let narration_origin = if meta_command {
+        None
+    } else {
+        match result.pointer("/verification/origin/source").and_then(Value::as_str) {
+            Some("llm") => Some("model"),
+            Some("template") => {
+                let stopped = matches!(result.pointer("/verification/provider_error").and_then(Value::as_str),
+                    Some("NARRATION_DEADLINE" | "LLM_TIMEOUT" | "LLM_ABORTED" | "LLM_TURN_DEADLINE" | "LLM_ATTEMPT_BUDGET" | "LLM_ATTEMPT_INTERRUPTED"));
+                Some(if stopped { "interrupted" } else { "template" })
+            }
+            _ => None,
+        }
+    };
     let journal_narration_id = (!check_required && !text::trim(&js::s(result.get("narration"))).is_empty()).then(|| narration_message_id(&journal_key));
     let narration_entry = journal_narration_id.as_ref().map(|id| {
         let mut entry = Map::new();
@@ -628,6 +646,9 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
             entry.insert("text".into(), narration.clone());
         }
         entry.insert("speaker".into(), json!(if meta_command { "system" } else { "narrator" }));
+        if let Some(origin) = narration_origin {
+            entry.insert("narrationOrigin".into(), json!(origin));
+        }
         let author = if meta_command {
             Some(json!("Разбор правил"))
         } else if request_kind == "question" {
@@ -667,18 +688,25 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
     // Летопись пишется отдельным шагом и всегда.
     let entries: Vec<Value> = [player_entry, narration_entry].into_iter().flatten().collect();
     let journaled = append_room_journal(core, campaign_id, &entries)?;
-    let canonical_narration = match &journal_narration_id {
-        Some(id) => {
-            let written = get(journaled.as_ref().and_then(|room| room.state.as_ref()), "messages").and_then(Value::as_array).and_then(|messages| messages.iter().find(|message| js::string(message.get("id")) == *id)).and_then(|message| message.get("text")).filter(|text| !text.is_null());
-            Some(Value::String(js::string(written.or(result.get("narration")))))
-        }
-        None => result.get("narration").cloned(),
+    let canonical_entry = journal_narration_id.as_ref().and_then(|id| {
+        get(journaled.as_ref().and_then(|room| room.state.as_ref()), "messages")
+            .and_then(Value::as_array)
+            .and_then(|messages| messages.iter().find(|message| js::string(message.get("id")) == *id))
+    });
+    let canonical_narration = if journal_narration_id.is_some() {
+        let written = get(canonical_entry, "text").filter(|text| !text.is_null());
+        Some(Value::String(js::string(written.or(result.get("narration")))))
+    } else {
+        result.get("narration").cloned()
     };
     let mut patch = Map::new();
     patch.insert("request_kind".into(), json!(request_kind));
     patch.insert("narration".into(), canonical_narration.clone().unwrap_or(Value::Null));
     if let Some(id) = &journal_narration_id {
         patch.insert("narration_message_id".into(), Value::String(id.clone()));
+        if let Some(origin) = get(canonical_entry, "narrationOrigin") {
+            patch.insert("narration_origin".into(), origin.clone());
+        }
     }
     if let Some(engine_state) = &authoritative {
         let canonical = journaled.as_ref().and_then(|room| room.state.clone()).or_else(|| projected.as_ref().and_then(|room| room.state.clone())).unwrap_or_else(|| engine_state.clone());

@@ -1182,6 +1182,8 @@ pub struct UnknownAction {
     pub intent: Option<Value>,
     pub verified_roll: Option<Value>,
     pub confirmed_action: bool,
+    /// Прочтение завершённой заявки из проверенной серверной трассы.
+    pub replay_reading: Option<Value>,
 }
 
 impl UnknownAction {
@@ -1197,6 +1199,7 @@ impl UnknownAction {
             intent: field("intent").filter(|value| !value.is_null()).cloned(),
             verified_roll: field("verifiedRoll").filter(|value| !value.is_null()).cloned(),
             confirmed_action: js::truthy(field("confirmedAction")),
+            replay_reading: None,
         }
     }
 }
@@ -2367,7 +2370,7 @@ impl AutonomousCampaignOrchestrator {
         let stored_reading = if is_str(get(roll_context, "kind"), "free_action") && js::s(get(roll_context, "action_fingerprint")) == digest_text(&action) {
             nullish(get(roll_context, "reading"), None).cloned()
         } else {
-            None
+            previous_commit.as_ref().and(request.replay_reading.clone())
         };
         if verified_roll.is_some() {
             assert_free_action_confirmation(roll_context, &action, Some(&Value::from(loaded.state_version)))?;

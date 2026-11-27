@@ -3209,7 +3209,7 @@ struct ProgressContext {
     brief: Value,
     arc: Option<Value>,
     verifier: DeterministicNarrationVerifier,
-    known_rule_ids: Value,
+    verification_options: Value,
     recent: Vec<Value>,
     on_progress: Option<ProgressCallback>,
 }
@@ -3221,14 +3221,27 @@ struct ProgressState {
     blocked: bool,
 }
 
-fn verifier_options(known_rule_ids: &Value) -> Value {
-    json!({ "knownRuleIds": known_rule_ids })
+fn verifier_options(known_rule_ids: &Value, hidden: &[String]) -> Value {
+    json!({ "knownRuleIds": known_rule_ids, "forbiddenHiddenTerms": hidden })
+}
+
+fn contains_hidden_term(text: &str, options: &Value) -> bool {
+    let terms = arr(options.get("forbiddenHiddenTerms"));
+    if terms.is_empty() {
+        return false;
+    }
+    let text = text::lower(text);
+    terms.iter()
+        .filter_map(Value::as_str).any(|term| text.contains(&text::lower(term)))
 }
 
 fn provisional_narration_is_safe(prefix: &str, context: &ProgressContext) -> Result<bool, SecurityValidationError> {
+    if contains_hidden_term(prefix, &context.verification_options) {
+        return Ok(false);
+    }
     let arc = Some(&context.arc);
     let segment = current_narration_segment(prefix, &context.brief, arc, &context.recent);
-    let verification = context.verifier.verify(Some(&string_value(segment)), Some(&context.brief), Some(&verifier_options(&context.known_rule_ids)))?;
+    let verification = context.verifier.verify(Some(&string_value(segment)), Some(&context.brief), Some(&context.verification_options))?;
     let checked = verify_craft(prefix, &context.brief, arc, &verification, &context.recent);
     Ok(arr(prop(Some(&checked), "violations")).iter().all(|violation| is_str(prop(Some(violation), "code"), "ARC_RECAP_OMITTED")))
 }
@@ -3327,6 +3340,8 @@ pub struct RenderOptions {
     pub recent_narrations: Value,
     /// `onProgress`.
     pub on_progress: Option<ProgressCallback>,
+    /// Закрытые сведения для внутренней проверки, без передачи модели.
+    pub forbidden_hidden_terms: Vec<String>,
 }
 
 impl RenderOptions {
@@ -3334,7 +3349,7 @@ impl RenderOptions {
     /// recentNarrations }`); `onProgress` в JSON не помещается.
     pub fn from_json(options: &Value) -> Self {
         let field = |key: &str| prop(Some(options), key).cloned();
-        RenderOptions { known_rule_ids: field("knownRuleIds"), style: field("style"), timeout_ms: field("timeoutMs"), recent_narrations: field("recentNarrations").unwrap_or(Value::Null), on_progress: None }
+        RenderOptions { known_rule_ids: field("knownRuleIds"), style: field("style"), timeout_ms: field("timeoutMs"), recent_narrations: field("recentNarrations").unwrap_or(Value::Null), on_progress: None, forbidden_hidden_terms: Vec::new() }
     }
 }
 
@@ -3545,9 +3560,15 @@ impl Narrator {
         object(result)
     }
 
-    fn verify_text(&self, narration: &str, brief: &Value, arc: Option<&Option<Value>>, recent: &[Value], known_rule_ids: &Value) -> Result<Value, SecurityValidationError> {
+    fn verify_text(&self, narration: &str, brief: &Value, arc: Option<&Option<Value>>, recent: &[Value], options: &Value) -> Result<Value, SecurityValidationError> {
+        if contains_hidden_term(narration, options) {
+            // Закрытая фраза не должна попасть даже в замечание при новом запросе.
+            return Ok(json!({ "valid": false, "violations": [{
+                "code": "HIDDEN_INFORMATION_DISCLOSED", "message": "Ответ содержит закрытое сведение.",
+            }] }));
+        }
         let segment = current_narration_segment(narration, brief, arc, recent);
-        let verification = self.verifier.verify(Some(&string_value(segment)), Some(brief), Some(&verifier_options(known_rule_ids)))?;
+        let verification = self.verifier.verify(Some(&string_value(segment)), Some(brief), Some(options))?;
         Ok(verify_craft(narration, brief, arc, &verification, recent))
     }
 
@@ -3562,6 +3583,7 @@ impl Narrator {
             style = string_value(format!("{campaign_style}\n{}", js::string(Some(&style))));
         }
         let known_rule_ids = options.known_rule_ids.clone().unwrap_or_else(|| json!([]));
+        let verification_options = verifier_options(&known_rule_ids, &options.forbidden_hidden_terms);
         let recent_texts = bounded_recent_narrations(arr(Some(&options.recent_narrations)));
         let recent: Vec<Value> = recent_texts.iter().cloned().map(Value::String).collect();
         let prior_feedback = self.consume_recent_feedback(&recent_texts);
@@ -3609,7 +3631,7 @@ impl Narrator {
 
         let Some(client) = self.llm_client.as_ref() else {
             let narration = fallback_text()?;
-            let verification = self.verify_text(&narration, brief, arc, &recent, &known_rule_ids)?;
+            let verification = self.verify_text(&narration, brief, arc, &recent, &verification_options)?;
             return Ok(finish(narration, verification, "deterministic", None));
         };
 
@@ -3692,7 +3714,7 @@ impl Narrator {
                 brief: brief.clone(),
                 arc: arc_recap.clone(),
                 verifier: self.verifier.clone(),
-                known_rule_ids: known_rule_ids.clone(),
+                verification_options: verification_options.clone(),
                 recent: recent.clone(),
                 on_progress: if after_validation { None } else { on_progress.clone() },
             });
@@ -3711,18 +3733,19 @@ impl Narrator {
             Ok(narration) => narration,
             Err(error) => {
                 let narration = fallback_text()?;
-                let mut verification = object_or_empty(Some(&self.verify_text(&narration, brief, arc, &recent, &known_rule_ids)?));
+                let mut verification = object_or_empty(Some(&self.verify_text(&narration, brief, arc, &recent, &verification_options)?));
                 verification.insert("provider_error".into(), string_value(text::head(&error.code_or_name(), 80)));
                 return Ok(finish(narration, object(verification), "deterministic-provider-fallback", None));
             }
         };
         let narration = without_echo_of_player(&narration, brief);
-        let safety = self.verify_text(&narration, brief, arc, &recent, &known_rule_ids)?;
+        let safety = self.verify_text(&narration, brief, arc, &recent, &verification_options)?;
         if js::truthy(prop(Some(&safety), "valid")) && !narration.is_empty() {
             return Ok(finish(narration, safety, &self.client_name, token_usage));
         }
         let safety_violations = prop(Some(&safety), "violations").cloned().unwrap_or(Value::Null);
-        if !narration.is_empty() && !signal.as_ref().is_some_and(AbortSignal::aborted) && !self.json_only_client {
+        let disclosed = arr(Some(&safety_violations)).iter().any(|entry| is_str(entry.get("code"), "HIDDEN_INFORMATION_DISCLOSED"));
+        if !disclosed && !narration.is_empty() && !signal.as_ref().is_some_and(AbortSignal::aborted) && !self.json_only_client {
             let mut repair_request = request.clone();
             let mut messages = arr(request.get("messages")).to_vec();
             messages.push(json!({ "role": "assistant", "content": narration }));
@@ -3733,7 +3756,7 @@ impl Narrator {
                 token_usage = added_usage(token_usage, prop(Some(&repair), "usage").filter(|usage| !usage.is_null()).cloned());
                 let repaired = without_echo_of_player(text::trim(&js::s(prop(Some(&repair), "content"))), brief);
                 // Сбой проверки внутри правки в JS глотается вместе с её ошибкой.
-                if let Ok(repaired_verification) = self.verify_text(&repaired, brief, arc, &recent, &known_rule_ids) {
+                if let Ok(repaired_verification) = self.verify_text(&repaired, brief, arc, &recent, &verification_options) {
                     if !repaired.is_empty() && js::truthy(prop(Some(&repaired_verification), "valid")) {
                         let mut verification = object_or_empty(Some(&repaired_verification));
                         verification.insert("repaired_after".into(), safety_violations.clone());
@@ -3743,7 +3766,7 @@ impl Narrator {
             }
         }
         let fallback = fallback_text()?;
-        let mut verification = object_or_empty(Some(&self.verify_text(&fallback, brief, arc, &recent, &known_rule_ids)?));
+        let mut verification = object_or_empty(Some(&self.verify_text(&fallback, brief, arc, &recent, &verification_options)?));
         verification.insert("repaired_from".into(), safety_violations);
         let result = finish(fallback, object(verification), "deterministic-fallback", token_usage);
         drop(deadline);
