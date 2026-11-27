@@ -6,6 +6,7 @@
  *
  *   node eval/astohan-seeds.mjs                       # сиды 1–5, по два сразу, 25 мин на сид
  *   node eval/astohan-seeds.mjs --seeds 1,4,9 --parallel 1 --minutes 20 --keep
+ *   node eval/astohan-seeds.mjs --seeds 2 --direct-route
  *   SKAZANIE_RUST_SERVER_BIN=… node eval/astohan-seeds.mjs --parallel 1   # сервер — бинарь Rust
  *
  * Итог — `<out>/summary.md` (таблица сидов и находки по видам) и
@@ -52,6 +53,7 @@ function runSeed(seed, index) {
   const args = ['eval/astohan-playthrough.mjs', '--seed', String(seed), '--out', out]
   if (MINUTES) args.push('--minutes', MINUTES)
   if (argv.includes('--keep')) args.push('--keep')
+  if (argv.includes('--direct-route')) args.push('--direct-route')
   args.push('--impl', IMPL)
   return new Promise((resolveRun) => {
     const startedAt = Date.now()

@@ -29,6 +29,7 @@ import { previewApproachAttack } from '../server/rules-engine.mjs'
 import { shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
 import { STARTER_KIT_2024_POLICY, withStarterKit } from '../server/starter-kit.mjs'
 import { freePort, rustJournalEvents, spawnRustStand, standImpl } from './stand-server.mjs'
+import { assembleWithRateLimitPause } from './soak-encounter-assembly.mjs'
 
 // Сервер — бинарь Rust (`eval/stand-server.mjs`); JS-сервер с 2026-11-27 в архиве.
 const IMPL = standImpl(process.argv.slice(2))
@@ -104,7 +105,7 @@ async function runEncounter(code, theme, difficulty, seed) {
   if (created.status !== 201) { anomalies.push({ code, kind: 'create', error: created.text.slice(0, 300) }); return }
   await request(`/api/admin/users/${adminId}`, { method: 'PATCH', cookie, body: { heroIds: HEROES.map((entry) => entry.id) } })
   const room = await request(`/api/rooms/${code}`, { cookie })
-  const assembled = await request(`/api/campaigns/${code}/encounters/assemble`, { method: 'POST', cookie, body: { expected_state_version: room.body.state.state_version, difficulty, theme, seed: `soak-${seed}`, idempotency_key: `soak-enc-${code}` } })
+  const assembled = await assembleWithRateLimitPause(request, `/api/campaigns/${code}/encounters/assemble`, { method: 'POST', cookie, body: { expected_state_version: room.body.state.state_version, difficulty, theme, seed: `soak-${seed}`, idempotency_key: `soak-enc-${code}` } })
   if (assembled.status !== 200) { anomalies.push({ code, kind: 'assemble', theme, difficulty, error: assembled.text.slice(0, 300) }); return }
   let lastVersion = -1
   let stuck = 0

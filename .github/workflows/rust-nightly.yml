@@ -55,9 +55,9 @@ jobs:
           SOAK_DICE_SEED: '1'
         run: node eval/combat-http-soak.mjs
 
-      - name: Асстохан без модели — Rust
+      - name: Короткий путь Асстохана без модели — Rust
         if: ${{ !cancelled() }}
-        run: node eval/astohan-seeds.mjs --seeds 2-3 --parallel 2 --minutes 40
+        run: node eval/astohan-seeds.mjs --seeds 2-3 --parallel 2 --minutes 25 --direct-route
 
       - name: Отчёты стендов
         if: ${{ always() }}
