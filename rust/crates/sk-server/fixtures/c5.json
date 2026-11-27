@@ -15873,7 +15873,7 @@
       "status": 201,
       "body_norm": {
         "version": 1,
-        "state": "<sha256:4f50c562b2deeb2df8ff1f20ddeb17308d260461cc319daf47ecf9a5829b27f6:336126>",
+        "state": "<sha256:928c16ba07ccffa48da9b92fa45b88a87de49ae37403f3018f834445f6ce155a:336917>",
         "updatedAt": "<time>",
         "user": {
           "id": "<uuid>",
@@ -17446,7 +17446,7 @@
       "headers": {},
       "body": null,
       "status": 200,
-      "body_norm": "<sha256:f8fb41177549d7379c6ec9a585a48fb68691027b8197d20a9139225871c87d5e:83369>",
+      "body_norm": "<sha256:73a6dfb5bccbd0f803324dc50fb7511d0ab1cab7bb13cbf4dd5248ef2775bc5d:83822>",
       "headers_norm": {
         "content-disposition": "attachment; filename=\"combat-lab-report.json\""
       }
@@ -17947,8 +17947,8 @@
         "seed": 5,
         "frames": "<sha256:73267db5c504559f5eb0effadcd2070f43143451972886f63819510acdfb2fc0:113231>",
         "trace": {
-          "initial_state": "<sha256:567cbfa2c1552f43c1ed937d02bc23e2f537c5f11a920827b50c50d409127dba:31972>",
-          "final_state": "<canonical:5fd3e2aeff753740d6c10e0d75b6a71150ae5ee131de16638f58df9b154b70bc>",
+          "initial_state": "<sha256:774e0ee027303534a38ef3edc5657e0b2bb9f62bda3cd96aca5abf418632072d:32425>",
+          "final_state": "<canonical:c33c535e761b6eeb0b9de506d4cd2bb161a09890c11ca88f8907053f1545edd9>",
           "rolls": [
             {
               "min": 1,
@@ -18283,8 +18283,8 @@
           "<sha256:5b507ebac3287d69b290a0a3417c736faffb42e985a92dbde70a5a760579d15d:5809>"
         ],
         "trace": {
-          "initial_state": "<sha256:522bc71f52bc83418354ae5b0d4299a186d850bd608acefb0b976950f19a19a5:50634>",
-          "final_state": "<canonical:8e6d96090619cffd438b397b6c7a14cd9619d324dbc563af329d50839cadeef0>",
+          "initial_state": "<sha256:1ef8aadfebc5b81da68c03c23993650f1b9ca3d21e0c7c65957d662bab88c3b0:51087>",
+          "final_state": "<canonical:29eef5e49e4a538d47ce06437b13c170215115b0b65d3596f74a6d98bd634240>",
           "rolls": [
             {
               "min": 1,
@@ -18498,8 +18498,8 @@
           "<sha256:c027d2b59803ceaececdca87c1006692ce7552aba70202598500ded2ad953f89:6069>"
         ],
         "trace": {
-          "initial_state": "<sha256:90221be95c8734dc4d53fa5afdaf0ea194b9a0378aceed4bc3d517daac762f70:341552>",
-          "final_state": "<canonical:f5c4645d4dee327bce22d5dad39c7efc0700878218f58c2bf563ceac3cc2893f>",
+          "initial_state": "<sha256:c5bc0ed402113960570e720e58ff12ace877eb605f838b27f18d56c30cc4ab9e:342343>",
+          "final_state": "<canonical:32d58146a761005e6f80949bf423a2c5bc1e28a1425df55c13b4594ce15a111d>",
           "rolls": [
             {
               "min": 1,

@@ -504,7 +504,7 @@
       "status": 201,
       "body_norm": {
         "version": 1,
-        "state": "<sha256:3bf9acab2e935747b7e4d74e38283126570fe6bb352ccb94c6408b2a88254615:609716>",
+        "state": "<sha256:b61dcae9c81eaa3ff4d4090b33ceb9f814367cb87534c0f04b172737cda0e7c1:610622>",
         "updatedAt": "<time>",
         "user": {
           "id": "<uuid>",
@@ -562,7 +562,7 @@
       "status": 201,
       "body_norm": {
         "version": 1,
-        "state": "<sha256:db500a61fb8e9963ac0f3a57d17add0aefd6adae570b82f98178c91bd99e21f5:124174>",
+        "state": "<sha256:ac2221f424847a5a50eb89c692e20f36648ca30308bc8981712f13478cdfe4c1:124627>",
         "updatedAt": "<time>",
         "user": {
           "id": "<uuid>",
@@ -849,6 +849,26 @@
                   },
                   "mechanicsSupport": "partial",
                   "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "awaken",
+                  "name": "Разбудить",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием разбудить союзника рядом. Снимает с него «Усыпление» или «Гипнотический узор», если выбранный эффект принадлежит этому заклинанию.",
+                  "effect": {
+                    "kind": "awaken",
+                    "spellChoices": [
+                      "sleep",
+                      "hypnotic-pattern"
+                    ]
+                  },
+                  "mechanicsSupport": "verified",
                   "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
                   "exploration": "allowed"
                 },
@@ -1214,6 +1234,26 @@
                   },
                   "mechanicsSupport": "partial",
                   "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "awaken",
+                  "name": "Разбудить",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием разбудить союзника рядом. Снимает с него «Усыпление» или «Гипнотический узор», если выбранный эффект принадлежит этому заклинанию.",
+                  "effect": {
+                    "kind": "awaken",
+                    "spellChoices": [
+                      "sleep",
+                      "hypnotic-pattern"
+                    ]
+                  },
+                  "mechanicsSupport": "verified",
                   "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
                   "exploration": "allowed"
                 },
@@ -2377,6 +2417,26 @@
                   "exploration": "allowed"
                 },
                 {
+                  "id": "awaken",
+                  "name": "Разбудить",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием разбудить союзника рядом. Снимает с него «Усыпление» или «Гипнотический узор», если выбранный эффект принадлежит этому заклинанию.",
+                  "effect": {
+                    "kind": "awaken",
+                    "spellChoices": [
+                      "sleep",
+                      "hypnotic-pattern"
+                    ]
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
                   "id": "stabilize",
                   "name": "Стабилизировать",
                   "category": "common",
@@ -2738,6 +2798,26 @@
                   },
                   "mechanicsSupport": "partial",
                   "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "awaken",
+                  "name": "Разбудить",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием разбудить союзника рядом. Снимает с него «Усыпление» или «Гипнотический узор», если выбранный эффект принадлежит этому заклинанию.",
+                  "effect": {
+                    "kind": "awaken",
+                    "spellChoices": [
+                      "sleep",
+                      "hypnotic-pattern"
+                    ]
+                  },
+                  "mechanicsSupport": "verified",
                   "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
                   "exploration": "allowed"
                 },
@@ -3962,7 +4042,7 @@
       "status": 201,
       "body_norm": {
         "version": 1,
-        "state": "<sha256:fa5d97f1aa64c40daa2e7ed071de8cb935c75f615776627f44bd1ec673ee34c2:183941>",
+        "state": "<sha256:c6e3d964b47dc78065c35a40b5f561fb346f2b5334380bc7e9ea288a9a09e077:185300>",
         "updatedAt": "<time>",
         "user": {
           "id": "<uuid>",
@@ -4478,7 +4558,7 @@
       "body": null,
       "status": 200,
       "body_norm": {
-        "heroes": "<sha256:06242096bb1ed00574acca34e089a14e2a9056539eac9de6a62b67b40ee3bda2:57911>"
+        "heroes": "<sha256:b0081cf8092ba20df86e3a362103e8c59d27b1ddcdf21e229c6a7b9f8dd943fd:60196>"
       }
     },
     {

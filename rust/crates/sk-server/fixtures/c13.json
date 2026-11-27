@@ -1082,8 +1082,8 @@
           "ruleset_locked_at": "<time>",
           "engine_mode": "enforce",
           "players": [
-            "<sha256:973523a3ac2c781a5f063d0b01e6da978f0fd3dd94e208083290378a07c4e035:13636>",
-            "<sha256:7a61c728a293d09ddf4bf7e6d041f9d08c1e7a3f8e47fa5dac9e6ea5db4249ea:13533>"
+            "<sha256:a76a73f0cafb32d8f3754edb547347e7f5c30b73ded926e7d44e0f5df1c5c0cb:14089>",
+            "<sha256:cdfbdddcc198508954bc137a45feb1bf93fd292d3a0866690d471227eb8b45bc:13986>"
           ],
           "merchants": [
             {
@@ -2218,8 +2218,8 @@
           "ruleset_locked_at": "<time>",
           "engine_mode": "enforce",
           "players": [
-            "<sha256:973523a3ac2c781a5f063d0b01e6da978f0fd3dd94e208083290378a07c4e035:13636>",
-            "<sha256:7a61c728a293d09ddf4bf7e6d041f9d08c1e7a3f8e47fa5dac9e6ea5db4249ea:13533>"
+            "<sha256:a76a73f0cafb32d8f3754edb547347e7f5c30b73ded926e7d44e0f5df1c5c0cb:14089>",
+            "<sha256:cdfbdddcc198508954bc137a45feb1bf93fd292d3a0866690d471227eb8b45bc:13986>"
           ],
           "merchants": [
             {
@@ -3570,8 +3570,8 @@
           "ruleset_locked_at": "<time>",
           "engine_mode": "enforce",
           "players": [
-            "<sha256:973523a3ac2c781a5f063d0b01e6da978f0fd3dd94e208083290378a07c4e035:13636>",
-            "<sha256:bee92eadc229234bbf0e0cf099ae2196b1bd1d6bcb1a89ade4ddf92de82baaee:13638>"
+            "<sha256:a76a73f0cafb32d8f3754edb547347e7f5c30b73ded926e7d44e0f5df1c5c0cb:14089>",
+            "<sha256:09e9a00ad3c84d9320354b2edf9737b10605f807aa40da5eb17b0005036a37e4:14091>"
           ],
           "merchants": [
             {
@@ -4880,8 +4880,8 @@
           "ruleset_locked_at": "<time>",
           "engine_mode": "enforce",
           "players": [
-            "<sha256:973523a3ac2c781a5f063d0b01e6da978f0fd3dd94e208083290378a07c4e035:13636>",
-            "<sha256:bee92eadc229234bbf0e0cf099ae2196b1bd1d6bcb1a89ade4ddf92de82baaee:13638>"
+            "<sha256:a76a73f0cafb32d8f3754edb547347e7f5c30b73ded926e7d44e0f5df1c5c0cb:14089>",
+            "<sha256:09e9a00ad3c84d9320354b2edf9737b10605f807aa40da5eb17b0005036a37e4:14091>"
           ],
           "merchants": [
             {
@@ -6037,8 +6037,8 @@
           "ruleset_locked_at": "<time>",
           "engine_mode": "enforce",
           "players": [
-            "<sha256:973523a3ac2c781a5f063d0b01e6da978f0fd3dd94e208083290378a07c4e035:13636>",
-            "<sha256:7a61c728a293d09ddf4bf7e6d041f9d08c1e7a3f8e47fa5dac9e6ea5db4249ea:13533>"
+            "<sha256:a76a73f0cafb32d8f3754edb547347e7f5c30b73ded926e7d44e0f5df1c5c0cb:14089>",
+            "<sha256:cdfbdddcc198508954bc137a45feb1bf93fd292d3a0866690d471227eb8b45bc:13986>"
           ],
           "merchants": [
             {
@@ -7158,8 +7158,8 @@
           "ruleset_locked_at": "<time>",
           "engine_mode": "enforce",
           "players": [
-            "<sha256:973523a3ac2c781a5f063d0b01e6da978f0fd3dd94e208083290378a07c4e035:13636>",
-            "<sha256:7a61c728a293d09ddf4bf7e6d041f9d08c1e7a3f8e47fa5dac9e6ea5db4249ea:13533>"
+            "<sha256:a76a73f0cafb32d8f3754edb547347e7f5c30b73ded926e7d44e0f5df1c5c0cb:14089>",
+            "<sha256:cdfbdddcc198508954bc137a45feb1bf93fd292d3a0866690d471227eb8b45bc:13986>"
           ],
           "merchants": [
             {
@@ -8295,8 +8295,8 @@
           "ruleset_locked_at": "<time>",
           "engine_mode": "enforce",
           "players": [
-            "<sha256:8688067b22c95f283bf98dcf51a6ea7ea1545ad78831772cf9cce83da4ef8212:13636>",
-            "<sha256:d2428d01f39af71419684c89524d0eb6c0d3a4e17110a22faf71b1447dd1f0c2:13533>"
+            "<sha256:e2ae091714f377977779da1191607d2dc5b005a6fddf8a40b4364cd768494666:14089>",
+            "<sha256:6799cbd06934c5b7146eebfc66641110a6ded1a5180d7be6b77ac349cd2dba10:13986>"
           ],
           "merchants": [
             {
@@ -9266,8 +9266,8 @@
           "ruleset_locked_at": "<time>",
           "engine_mode": "enforce",
           "players": [
-            "<sha256:8688067b22c95f283bf98dcf51a6ea7ea1545ad78831772cf9cce83da4ef8212:13636>",
-            "<sha256:d2428d01f39af71419684c89524d0eb6c0d3a4e17110a22faf71b1447dd1f0c2:13533>"
+            "<sha256:e2ae091714f377977779da1191607d2dc5b005a6fddf8a40b4364cd768494666:14089>",
+            "<sha256:6799cbd06934c5b7146eebfc66641110a6ded1a5180d7be6b77ac349cd2dba10:13986>"
           ],
           "merchants": [
             {
@@ -10435,8 +10435,8 @@
           "ruleset_locked_at": "<time>",
           "engine_mode": "enforce",
           "players": [
-            "<sha256:8688067b22c95f283bf98dcf51a6ea7ea1545ad78831772cf9cce83da4ef8212:13636>",
-            "<sha256:cf9b65a7704e34ddbcfc37b67b88da298a5765ef25e4999cf9a5280f1d131339:13638>"
+            "<sha256:e2ae091714f377977779da1191607d2dc5b005a6fddf8a40b4364cd768494666:14089>",
+            "<sha256:e7801c392be8a0b063459b7eec8943e48498d18608d647cb96bfb8b822542663:14091>"
           ],
           "merchants": [
             {
@@ -11451,8 +11451,8 @@
           "ruleset_locked_at": "<time>",
           "engine_mode": "enforce",
           "players": [
-            "<sha256:973523a3ac2c781a5f063d0b01e6da978f0fd3dd94e208083290378a07c4e035:13636>",
-            "<sha256:7a61c728a293d09ddf4bf7e6d041f9d08c1e7a3f8e47fa5dac9e6ea5db4249ea:13533>"
+            "<sha256:a76a73f0cafb32d8f3754edb547347e7f5c30b73ded926e7d44e0f5df1c5c0cb:14089>",
+            "<sha256:cdfbdddcc198508954bc137a45feb1bf93fd292d3a0866690d471227eb8b45bc:13986>"
           ],
           "merchants": [
             {
@@ -12572,8 +12572,8 @@
           "ruleset_locked_at": "<time>",
           "engine_mode": "enforce",
           "players": [
-            "<sha256:973523a3ac2c781a5f063d0b01e6da978f0fd3dd94e208083290378a07c4e035:13636>",
-            "<sha256:7a61c728a293d09ddf4bf7e6d041f9d08c1e7a3f8e47fa5dac9e6ea5db4249ea:13533>"
+            "<sha256:a76a73f0cafb32d8f3754edb547347e7f5c30b73ded926e7d44e0f5df1c5c0cb:14089>",
+            "<sha256:cdfbdddcc198508954bc137a45feb1bf93fd292d3a0866690d471227eb8b45bc:13986>"
           ],
           "merchants": [
             {
@@ -13472,7 +13472,7 @@
               },
               "inventory": [],
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 0,
                 "capacity": 150,
@@ -14228,7 +14228,7 @@
               },
               "inventory": [],
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 0,
                 "capacity": 150,

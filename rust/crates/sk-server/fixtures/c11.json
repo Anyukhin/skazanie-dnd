@@ -291,7 +291,7 @@
       "status": 201,
       "body_norm": {
         "version": 1,
-        "state": "<sha256:3e15c96af9d081dbd1dc6d924c31f0c1b565def09da5ca30a331aecd6366768e:26685>",
+        "state": "<sha256:17182fa2c022184f5fbe80078c00b0bfcd0f57c96cac215df510b9d8a75e68d8:27611>",
         "updatedAt": "<time>",
         "user": {
           "id": "<uuid>",
@@ -466,7 +466,7 @@
       "status": 201,
       "body_norm": {
         "version": 1,
-        "state": "<sha256:56963ed6ed0e73cfaf24e5a4b418718b373b2d82ae3185a9d0f4bf816c87a6c1:26529>",
+        "state": "<sha256:ec77d03f22584573589cb7e0aaf6984b9b62c2483e3a97669d2cd5c8112bb5c5:27455>",
         "updatedAt": "<time>",
         "user": {
           "id": "<uuid>",
@@ -638,7 +638,7 @@
       "status": 201,
       "body_norm": {
         "version": 1,
-        "state": "<sha256:f1bc8081c00d22836a8a9ba8a2946d051db3b2adaa9087c14bbc8081c14482f5:26555>",
+        "state": "<sha256:40919fae1d5f8110eebfcc777c82f406e12dbef22506f2da27e70165c1cb23eb:27481>",
         "updatedAt": "<time>",
         "user": {
           "id": "<uuid>",
@@ -810,7 +810,7 @@
       "status": 201,
       "body_norm": {
         "version": 1,
-        "state": "<sha256:81fe7a9fd874a828981e29f8d3b2d0f274ab4b34e38495003d90d0d9920cac74:26543>",
+        "state": "<sha256:2058387868ed35c76755b716f0a0cb63250401a6475a087982c6cd43a74a7d53:27469>",
         "updatedAt": "<time>",
         "user": {
           "id": "<uuid>",
@@ -1573,7 +1573,7 @@
       "body_norm": {
         "version": 2,
         "updatedAt": "<time>",
-        "state": "<sha256:715f756401e9d92f3e9cecefe98ac19ef7d2d7fb3488e0bc7c1073204a569cac:29150>"
+        "state": "<sha256:6848334f5d5b80a710d3f653d26199af3585a19620884b0ea07582380967855c:30076>"
       }
     },
     {
@@ -1590,7 +1590,7 @@
       "body_norm": {
         "version": 2,
         "updatedAt": "<time>",
-        "state": "<sha256:715f756401e9d92f3e9cecefe98ac19ef7d2d7fb3488e0bc7c1073204a569cac:29150>"
+        "state": "<sha256:6848334f5d5b80a710d3f653d26199af3585a19620884b0ea07582380967855c:30076>"
       }
     },
     {
@@ -1801,7 +1801,7 @@
       "status": 200,
       "body_norm": {
         "version": 2,
-        "state": "<sha256:606125b6f44ad1ca0410c23397e2191fb7139a2453674c1275485af3d2a7795c:29169>",
+        "state": "<sha256:af7d5f4664b50e30085d77c84a6fdb23dac6e29fef45b909110319b98d6fcd69:30095>",
         "updatedAt": "<time>"
       }
     },
@@ -1829,7 +1829,7 @@
           "body_norm": {
             "version": 3,
             "updatedAt": "<time>",
-            "state": "<sha256:406ef482684abaaec4c24322444277e08d51cf9a1b0526863d6321b6ddea2737:29189>",
+            "state": "<sha256:95edffd8a2734142818fd51b154d2e857c0316fca5270ef2cbafd2ab6940a5b2:30115>",
             "mechanics": [
               {
                 "event_type": "PartyVoteCast",
@@ -1881,7 +1881,7 @@
           "body_norm": {
             "version": 3,
             "updatedAt": "<time>",
-            "state": "<sha256:406ef482684abaaec4c24322444277e08d51cf9a1b0526863d6321b6ddea2737:29189>",
+            "state": "<sha256:95edffd8a2734142818fd51b154d2e857c0316fca5270ef2cbafd2ab6940a5b2:30115>",
             "mechanics": [
               {
                 "event_type": "PartyVoteCast",
@@ -1992,7 +1992,7 @@
       "body_norm": {
         "version": 5,
         "updatedAt": "<time>",
-        "state": "<sha256:c608e2ca9cec46da9237aad0f855d4b33ea52015557365691b8e9778dfd8487c:28407>",
+        "state": "<sha256:d38f9efbf2b55856a798e360a7ff5be192d35408d2550233af11509ba2214db1:29333>",
         "mechanics": [
           {
             "event_type": "PartyVoteCast",
@@ -2096,7 +2096,7 @@
       "body_norm": {
         "version": 5,
         "updatedAt": "<time>",
-        "state": "<sha256:c608e2ca9cec46da9237aad0f855d4b33ea52015557365691b8e9778dfd8487c:28407>",
+        "state": "<sha256:d38f9efbf2b55856a798e360a7ff5be192d35408d2550233af11509ba2214db1:29333>",
         "mechanics": [
           {
             "event_type": "PartyVoteCast",
@@ -2195,7 +2195,7 @@
       "status": 200,
       "body_norm": {
         "version": 5,
-        "state": "<sha256:493c02c54c433fc7bf986a1be3b428954ba5281a5f32cca1db6712e5115ebfd2:28407>",
+        "state": "<sha256:5ecf078c3a07073438aba78355eb9597bdf8af10918531f8311b0c0c7567e287:29333>",
         "updatedAt": "<time>"
       }
     },
@@ -2213,7 +2213,7 @@
       "body_norm": {
         "version": 6,
         "updatedAt": "<time>",
-        "state": "<sha256:2814ce371174be99095f3100b8f000d8dbf4141da430aca3e7fcb28b6aee2d44:29430>"
+        "state": "<sha256:44e36086dc69aeb0aefd23566597bc7ee8ce9234216c00f16a157365f51f50ee:30356>"
       }
     },
     {
@@ -2230,7 +2230,7 @@
       "body_norm": {
         "version": 7,
         "updatedAt": "<time>",
-        "state": "<sha256:fa15b0a0ff882801a5424fd135a1800d8ef057014de330b284c922351bc79e4a:29455>",
+        "state": "<sha256:62d4e3ac3c949c52482877ac4be0927919d07a547eafbde109c49f0d856003ab:30381>",
         "mechanics": [
           {
             "event_type": "PartyDecisionAbstained",
@@ -2294,7 +2294,7 @@
       "body_norm": {
         "version": 7,
         "updatedAt": "<time>",
-        "state": "<sha256:fa15b0a0ff882801a5424fd135a1800d8ef057014de330b284c922351bc79e4a:29455>",
+        "state": "<sha256:62d4e3ac3c949c52482877ac4be0927919d07a547eafbde109c49f0d856003ab:30381>",
         "mechanics": [
           {
             "event_type": "PartyDecisionAbstained",
@@ -2374,7 +2374,7 @@
       "body_norm": {
         "version": 9,
         "updatedAt": "<time>",
-        "state": "<sha256:ed463784df688f0a7fd3c311d46024cf1cc7f0de486d9672b364eb89e6a1ecf7:28574>",
+        "state": "<sha256:9e0b85e001e62197b8382603be84b32c30d28b33975c8870dbfcf8bd6f8bf046:29500>",
         "mechanics": [
           {
             "event_type": "PartyVoteCast",
@@ -2471,7 +2471,7 @@
       "status": 200,
       "body_norm": {
         "version": 9,
-        "state": "<sha256:ed463784df688f0a7fd3c311d46024cf1cc7f0de486d9672b364eb89e6a1ecf7:28574>",
+        "state": "<sha256:9e0b85e001e62197b8382603be84b32c30d28b33975c8870dbfcf8bd6f8bf046:29500>",
         "updatedAt": "<time>"
       }
     },
@@ -2498,7 +2498,7 @@
       "body_norm": {
         "version": 2,
         "updatedAt": "<time>",
-        "state": "<sha256:2dbd8a9a83ccae58ab242a2d5ad09e4380a0be63a1cdd8635ac8827fe17909de:29019>"
+        "state": "<sha256:5bc1cede3d5211dfcc8a79971f27afe11444fd75d79f09525cf662c64d5d09b8:29945>"
       }
     },
     {
@@ -2531,7 +2531,7 @@
       "body_norm": {
         "version": 3,
         "updatedAt": "<time>",
-        "state": "<sha256:dd7e1115d6ff19f7f55ad8016ab9dbbcb2c9ce370feacaf56042989fe40f5910:29039>",
+        "state": "<sha256:c2d9d01490a380ae282df47b401b19f8516c98cac716d0a8fd104e1eb8fc3be6:29965>",
         "mechanics": [
           {
             "event_type": "PartyVoteCast",
@@ -2587,7 +2587,7 @@
       "status": 200,
       "body_norm": {
         "version": 3,
-        "state": "<sha256:dd7e1115d6ff19f7f55ad8016ab9dbbcb2c9ce370feacaf56042989fe40f5910:29039>",
+        "state": "<sha256:c2d9d01490a380ae282df47b401b19f8516c98cac716d0a8fd104e1eb8fc3be6:29965>",
         "updatedAt": "<time>"
       }
     },
@@ -2614,7 +2614,7 @@
       "body_norm": {
         "version": 2,
         "updatedAt": "<time>",
-        "state": "<sha256:41adec028e42c8cbef5f46e191cf67ea74b547ea99434bfe58f1ff11f39ec6c7:29157>"
+        "state": "<sha256:6cbe0af85b47d281d14c537f1ae31fc4fa6573d936a14b7d48cb221848fc7cd1:30083>"
       }
     },
     {
@@ -2653,7 +2653,7 @@
       "status": 200,
       "body_norm": {
         "version": 3,
-        "state": "<sha256:d4bcf0c4b8289a80c3fbeefcc7540dd0e7b63ee8dc818cd3e77cb8f8d48bcf98:28136>",
+        "state": "<sha256:b12fcdc2b77367d3d51c20023f82ea2fff3e0c3e4761ae0e95eeed0cbd740741:29062>",
         "updatedAt": "<time>"
       }
     },
@@ -2747,7 +2747,7 @@
       "body_norm": {
         "version": 3,
         "updatedAt": "<time>",
-        "state": "<sha256:76d4decd3b1f2acb09ba8eb1bf412ae66607ce97cf3282b4fba38c502cede0ac:29366>",
+        "state": "<sha256:d018d6baf08c2f4bc8f0707acf2eeba20ea309cb85c5e46022da0624492da7f4:30292>",
         "mechanics": [
           {
             "event_type": "DieRolled",
@@ -2862,7 +2862,7 @@
       "body_norm": {
         "version": 3,
         "updatedAt": "<time>",
-        "state": "<sha256:76d4decd3b1f2acb09ba8eb1bf412ae66607ce97cf3282b4fba38c502cede0ac:29366>",
+        "state": "<sha256:d018d6baf08c2f4bc8f0707acf2eeba20ea309cb85c5e46022da0624492da7f4:30292>",
         "mechanics": [
           {
             "event_type": "DieRolled",
@@ -2992,7 +2992,7 @@
       "body_norm": {
         "version": 3,
         "updatedAt": "<time>",
-        "state": "<sha256:f044f8d6dc48f5fdc430dafbf105f22374119be4f51e6445b1aec341e1805ea8:30677>",
+        "state": "<sha256:f8b17e140dd5ad8bde43b346de2e58b881076e8f40fe2688eb20c802a93fb7a4:31603>",
         "mechanics": [
           {
             "event_type": "PartyDecisionOpened",
@@ -3078,7 +3078,7 @@
       "status": 200,
       "body_norm": {
         "version": 3,
-        "state": "<sha256:aa93b8b494d2cad11713bb0162594912513f79ca87d7caafa7a076d77ca4afb6:29366>",
+        "state": "<sha256:ae28ad90805ee2e1b8139c3f247940b7169baeec7e47d8b3463c54a9c217427b:30292>",
         "updatedAt": "<time>"
       }
     }
