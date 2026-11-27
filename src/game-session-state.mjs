@@ -202,6 +202,11 @@ export function mergeAuthoritativeState(current, result) {
     turn_clock: authoritative.turn_clock ?? null,
     turn_phase_actor_ids: authoritative.turn_phase_actor_ids,
     messages: authoritative.messages ?? current.messages,
+    // Голосование и разговор меняются на той же карте. Ответ заявки уже
+    // увеличил версию комнаты, и кадр потока той же версии заменой не станет.
+    agentInteraction: authoritative.agentInteraction ?? null,
+    social: authoritative.social,
+    scene_dialogues: authoritative.scene_dialogues,
     engine_mode: authoritative.engine_mode ?? result.engine_mode ?? current.engine_mode,
     state_version: authoritative.state_version ?? result.state_version,
     ruleset_id: authoritative.ruleset_id,
@@ -214,7 +219,6 @@ export function mergeAuthoritativeState(current, result) {
       adventure: authoritative.adventure,
       worldMap: authoritative.worldMap,
       entities: authoritative.entities,
-      agentInteraction: authoritative.agentInteraction ?? null,
       activePlayerId: authoritative.activePlayerId ?? current.activePlayerId,
       tacticalTurn: authoritative.tacticalTurn,
       mapFeedback: authoritative.mapFeedback ?? [],

@@ -193,6 +193,31 @@ test('mergeAuthoritativeState: событие сцены забирает сце
   assert.equal(next.engine_mode, 'enforce')
 })
 
+test('ответ на предложение пути показывает голосование инициатору до перехода', () => {
+  const current = gameState()
+  const interaction = { id: 'travel', status: 'open', options: [{ id: 'leave', label: 'Путь на заставу' }] }
+  const opened = mergeAuthoritativeState(current, {
+    authoritative_state: gameState({ agentInteraction: interaction }),
+    mechanics: [{ event_type: 'PartyDecisionOpened' }],
+  })
+  assert.deepEqual(opened.agentInteraction, interaction)
+  assert.equal(opened.scene, current.scene)
+  assert.equal(mergeAuthoritativeState(opened, { authoritative_state: gameState({ agentInteraction: null }) }).agentInteraction, null)
+})
+
+test('ответ свободной реплики обновляет прошлые разговоры и доступные варианты', () => {
+  const current = gameState({ social: { conversations: [] }, scene_dialogues: { oren: { options: [] } } })
+  const social = { conversations: [{ npc_id: 'oren', npc_reply: 'Орен отвечает героям.' }] }
+  const scene_dialogues = { oren: { options: [{ id: 'followup' }] } }
+  const next = mergeAuthoritativeState(current, {
+    authoritative_state: gameState({ social, scene_dialogues }),
+    mechanics: [{ event_type: 'NpcConversationRecorded' }],
+  })
+  assert.deepEqual(next.social, social)
+  assert.deepEqual(next.scene_dialogues, scene_dialogues)
+  assert.equal(next.scene, current.scene)
+})
+
 test('mergeTacticalCommandState: игроки сервера поверх локального представления', () => {
   const current = gameState({
     players: [hero('hero', { abilities: { str: 10, dex: 14 }, currency: { gp: 1, sp: 5 }, portrait: 'local.png', portraitPosition: 'top' })],
