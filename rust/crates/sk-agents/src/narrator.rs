@@ -3381,6 +3381,7 @@ pub struct Narrator {
     verifier: DeterministicNarrationVerifier,
     feedback_verifier: Option<FeedbackVerifier>,
     async_feedback: bool,
+    default_timeout_ms: f64,
     feedback_memory: Mutex<IndexMap<String, FeedbackEntry>>,
     arc_recap_memory: Mutex<IndexSet<String>>,
 }
@@ -3410,9 +3411,15 @@ impl Narrator {
             verifier: config.verifier,
             feedback_verifier: config.feedback_verifier,
             async_feedback: config.async_feedback,
+            default_timeout_ms: NARRATOR_DEFAULT_TIMEOUT_MS as f64,
             feedback_memory: Mutex::new(IndexMap::new()),
             arc_recap_memory: Mutex::new(IndexSet::new()),
         }
+    }
+
+    pub fn with_timeout_ms(mut self, timeout_ms: f64) -> Self {
+        self.default_timeout_ms = timeout_ms;
+        self
     }
 
     fn schedule_feedback(&self, narration: &str, brief: &Value, options: Value) {
@@ -3607,7 +3614,7 @@ impl Narrator {
         };
 
         let requested_timeout = match options.timeout_ms.as_ref() {
-            None | Some(Value::Null) => NARRATOR_DEFAULT_TIMEOUT_MS as f64,
+            None | Some(Value::Null) => self.default_timeout_ms,
             Some(value) => js::number(Some(value)),
         };
         let deadline = (requested_timeout.is_finite() && requested_timeout > 0.0).then(|| Deadline::start(requested_timeout));

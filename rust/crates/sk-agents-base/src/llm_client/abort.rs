@@ -139,6 +139,10 @@ pub(crate) struct AbortScope {
 impl AbortScope {
     /// Требует среды tokio (таймер — отдельная задача).
     pub(crate) fn new(timeout_ms: f64, external: Option<&AbortSignal>) -> Self {
+        Self::with_timeout_error(timeout_ms, external, LlmError::timeout(timeout_ms))
+    }
+
+    pub(crate) fn with_timeout_error(timeout_ms: f64, external: Option<&AbortSignal>, error: LlmError) -> Self {
         let controller = AbortController::new();
         let timed_out = Arc::new(AtomicBool::new(false));
         let timer = {
@@ -147,7 +151,7 @@ impl AbortScope {
             tokio::spawn(async move {
                 tokio::time::sleep(llm_timer_delay(timeout_ms)).await;
                 timed_out.store(true, Ordering::SeqCst);
-                controller.abort(LlmError::timeout(timeout_ms));
+                controller.abort(error);
             })
         };
         let link = external.and_then(|signal| signal.link(&controller).map(|id| (signal.clone(), id)));

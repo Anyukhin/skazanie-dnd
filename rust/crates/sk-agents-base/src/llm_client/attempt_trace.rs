@@ -2,9 +2,8 @@
 
 use std::cell::RefCell;
 use std::future::Future;
-use std::time::Instant;
-
 use serde_json::{Value, json};
+use tokio::time::Instant;
 
 use super::{LlmError, LlmErrorExt};
 
@@ -26,30 +25,43 @@ struct ModelAttempt {
     finished: bool,
 }
 
+pub const DEFAULT_MODEL_TURN_TIMEOUT_MS: f64 = 12_000.0;
+pub const DEFAULT_LOCAL_MODEL_RESERVE_MS: f64 = 5_000.0;
+
 pub async fn with_model_attempt_trace<F: Future>(operation: F) -> F::Output {
-    with_model_attempt_trace_budget(12_000.0, 5_000.0, operation).await
+    with_model_attempt_trace_budget(DEFAULT_MODEL_TURN_TIMEOUT_MS, DEFAULT_LOCAL_MODEL_RESERVE_MS, operation).await
 }
 
 /// Начать трассировку хода с общим сроком и запасом для локального провайдера.
-/// Отдельный бюджет нужен тестам, чтобы проверять границу без двенадцатисекундного ожидания.
-pub(super) async fn with_model_attempt_trace_budget<F: Future>(total_ms: f64, reserve_ms: f64, operation: F) -> F::Output {
+pub async fn with_model_attempt_trace_budget<F: Future>(total_ms: f64, reserve_ms: f64, operation: F) -> F::Output {
     if MODEL_ATTEMPTS.try_with(|_| ()).is_ok() {
         operation.await
     } else {
         let total_ms = total_ms.max(1.0);
-        let reserve_ms = reserve_ms.max(0.0).min(total_ms);
+        let reserve_ms = reserve_ms.max(0.0);
         let deadline = ModelDeadline { deadline: Instant::now() + std::time::Duration::from_secs_f64(total_ms / 1_000.0), timeout_ms: total_ms, reserve_ms };
         MODEL_DEADLINE.scope(deadline, MODEL_ATTEMPTS.scope(RefCell::new(Vec::new()), operation)).await
     }
 }
 
 /// Срок роли и срок облачных попыток от начала вызова, в миллисекундах.
-pub(super) fn current_model_call_budget(role_timeout: Option<f64>, has_provider_fallback: bool) -> Option<(f64, Option<f64>)> {
+pub(super) fn current_model_call_budget(role: &str, role_timeout: Option<f64>, has_provider_fallback: bool) -> Option<(f64, Option<f64>)> {
     MODEL_DEADLINE.try_with(|deadline| {
-        let remaining_ms = deadline.deadline.saturating_duration_since(Instant::now()).as_secs_f64() * 1_000.0;
+        // Суд получает свой срок. Рассказчик начинает свой уже после коммита.
+        let independent = matches!(role, "action_adjudicator" | "narrator");
+        let remaining_ms = if independent {
+            role_timeout.unwrap_or(deadline.timeout_ms)
+        } else {
+            deadline.deadline.saturating_duration_since(Instant::now()).as_secs_f64() * 1_000.0
+        };
         let timeout_ms = role_timeout.unwrap_or(f64::INFINITY).min(remaining_ms);
         let cloud_ms = has_provider_fallback.then(|| {
-            (remaining_ms - deadline.reserve_ms).min(timeout_ms - timeout_ms * deadline.reserve_ms / deadline.timeout_ms)
+            if independent {
+                timeout_ms - deadline.reserve_ms.min(timeout_ms)
+            } else {
+                let reserve = deadline.reserve_ms.min(deadline.timeout_ms);
+                (remaining_ms - reserve).min(timeout_ms - timeout_ms * reserve / deadline.timeout_ms)
+            }
         });
         (timeout_ms, cloud_ms)
     }).ok()
@@ -73,6 +85,11 @@ fn identifier(value: &str) -> Option<&str> {
         && value.bytes().all(|b| b.is_ascii_alphanumeric() || b"_.-/:".contains(&b))).then_some(value)
 }
 
+pub(super) fn model_call_role<'a>(input: &'a Value, options: &'a Value) -> &'a str {
+    [options.get("usageRole"), options.get("role"), input.get("usageRole"), input.get("role")]
+        .into_iter().flatten().filter_map(Value::as_str).find_map(identifier).unwrap_or("unknown")
+}
+
 pub(super) fn start_model_attempt(input: &Value, options: &Value, provider: Option<&str>, model: &str, fallback_reason: Option<&'static str>) -> Option<usize> {
     MODEL_ATTEMPTS.try_with(|items| {
         let mut items = items.borrow_mut();
@@ -80,8 +97,7 @@ pub(super) fn start_model_attempt(input: &Value, options: &Value, provider: Opti
             return None;
         }
         let field = |key: &str| options.get(key).filter(|value| !value.is_null()).or_else(|| input.get(key));
-        let role = [options.get("usageRole"), options.get("role"), input.get("usageRole"), input.get("role")]
-            .into_iter().flatten().filter_map(Value::as_str).find_map(identifier).unwrap_or("unknown");
+        let role = model_call_role(input, options);
         let mut attempt = json!({
             "role": role,
             "provider": provider.and_then(identifier).unwrap_or("unknown"),

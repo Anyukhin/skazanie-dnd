@@ -575,7 +575,9 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
             js::delete(&mut fields, key);
         }
         let input = HandleInput { fields, director_capability: false, on_narration_start: Some(start.clone()), on_narration_progress: Some(progress.clone()) };
-        let mut result = services.game.handle(input).await.map_err(orchestrator_failure)?;
+        let mut result = sk_agents_base::llm_client::with_model_attempt_trace_budget(
+            app.config.ai_turn_timeout_ms, app.config.ai_local_reserve_ms, services.game.handle(input),
+        ).await.map_err(orchestrator_failure)?;
         // Судья свободных действий понял заявку как переход: коммита не было;
         // открывается та же карточка решения отряда, что и у фразы ухода.
         if result.get("free_action_outcome").and_then(Value::as_str) == Some("route_travel") {

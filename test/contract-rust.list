@@ -165,6 +165,7 @@ test/combat-lab-observer-api.test.mjs  # права, справочники, о�
 # /generated/items и generate-image; поставщик — startFakeProvider на 127.0.0.1.
 test/item-images-api.test.mjs           # картинка предмета через учёт расхода: completed/failed, 429 LLM_QUOTA_EXCEEDED до провайдера
 test/ollama-fallback-api.test.mjs        # локальные текстовые роли после HTTP 402 и без облачного ключа
+test/model-turn-deadlines-api.test.mjs   # сроки Судьи и Рассказчика на обычном ходе через HTTP
 test/npc-portraits-api.test.mjs         # права и видимость, 302 заглушки, кеш с ETag и 304, лимит генераций, restart
 test/location-illustrations-api.test.mjs # подготовка при выключенном флаге, рантайм только из кеша, перегенерация меняет ETag
 

@@ -59,7 +59,9 @@ mod test_server;
 mod tests;
 
 pub use abort::{AbortController, AbortSignal};
-pub use attempt_trace::{current_model_attempt_trace, with_model_attempt_trace};
+pub use attempt_trace::{
+    current_model_attempt_trace, with_model_attempt_trace, with_model_attempt_trace_budget, DEFAULT_LOCAL_MODEL_RESERVE_MS, DEFAULT_MODEL_TURN_TIMEOUT_MS,
+};
 pub use fake::{FakeHandler, FakeLlm, FakeLlmConfig, FakeReply};
 pub use fallback::{FallbackLlmClient, FallbackLlmClientConfig, FallbackMember};
 pub use image_http::RouterImageTransport;
