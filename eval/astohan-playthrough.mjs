@@ -112,6 +112,12 @@ const budgetRouter = LIVE ? await startAstohanBudgetRouter({
   liveKey: process.env.ROUTERAI_API_KEY,
   upstream: process.env.ROUTERAI_BASE_URL || undefined,
 }) : null
+let budgetStop = null
+const budgetStopMessages = {
+  STAND_BUDGET_EXCEEDED: 'Остатка потолка 20 ₽ не хватило ни на одну попытку завершившегося запроса.',
+  STAND_TARIFF_UNVERIFIED: 'Для попыток завершившегося запроса не удалось подтвердить верхнюю границу тарифа.',
+  STAND_PROVIDER_EXCEEDED_QUOTE: 'Поставщик сообщил списание выше объявленного тарифа. Новые запросы заблокированы.',
+}
 
 // ---------------------------------------------------------------------------
 // Журнал прогона: находки, хроника, замеры
@@ -169,12 +175,12 @@ const short = (text, limit = 400) => {
 
 let child = null
 let logs = ''
-function startServer() {
+function startServer({ model = true } = {}) {
   // Ход героя бот делает за секунды; срок хода не должен отдавать его NPC.
   child = spawnRustStand({ port: PORT, storage, setupToken, env: {
     DND_COMBAT_TURN_TIMEOUT_MS: '3600000',
     ...(SEED == null ? {} : { PLAYTEST_DICE_SEED: String(SEED) }),
-    ...budgetRouter?.env,
+    ...(model ? budgetRouter?.env : null),
   } })
   child.stdout.on('data', (chunk) => { logs += chunk })
   child.stderr.on('data', (chunk) => { logs += chunk })
@@ -199,6 +205,9 @@ process.on('exit', () => { try { child?.kill() } catch { /* уже остано�
 
 async function request(path, { method = 'GET', account, body, key, timeoutMs = 120_000 } = {}) {
   const started = Date.now()
+  const modelAction = method === 'POST' && (path === '/api/narrate' || path.endsWith('/autonomy/advance'))
+  if (modelAction && budgetStop) throw new Error(budgetStop)
+  const checkpoint = modelAction ? budgetRouter?.checkpoint() : null
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -234,6 +243,9 @@ async function request(path, { method = 'GET', account, body, key, timeoutMs = 1
     if (response.status >= 500) {
       stats.http5xx += 1
       finding('critical', 'http-5xx', `${method} ${route} → ${response.status}: ${short(parsed?.error ?? text, 300)}`, { code: parsed?.code })
+    }
+    if (checkpoint && (budgetStop = budgetRouter.stopReason(checkpoint))) {
+      throw new Error(budgetStop)
     }
     return { status: response.status, body: parsed, text, ms, response }
   }
@@ -1906,7 +1918,7 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample, rol
     '',
     '## Источник ответов по ролям',
     '',
-    ...(budget ? [`Общий потолок игры и судьи ${budget.limit_rub} ₽. Подтверждено ${budget.known_rub} ₽, расход ${budget.unknown_requests} вызовов неизвестен (удержано ${budget.reserved_rub} ₽). Отклонено до отправки ${budget.refused} вызовов.`, ''] : []),
+    ...(budget ? [`Общий потолок игры и судьи ${budget.limit_rub} ₽. Подтверждено ${budget.known_rub} ₽, расход ${budget.unknown_requests} вызовов неизвестен (удержано ${budget.reserved_rub} ₽). До отправки отклонены ${budget.refused_budget} вызовов по бюджету и ${budget.refused_tariff} по тарифу.`, ''] : []),
     '| Роль | Модель | Обрыв | Шаблон | Ошибка | Источник неизвестен | Доля модели | Доля без модели |',
     '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     ...Object.entries(roles).map(([role, row]) => {
@@ -2064,7 +2076,11 @@ try {
   final = await main()
 } catch (error) {
   fatal = error
-  finding('blocker', 'run-aborted', short(error?.stack ?? error, 600))
+  if (budgetStop) {
+    try { final = await room() } catch { /* снимок ещё не создан */ }
+  } else {
+    finding('blocker', 'run-aborted', short(error?.stack ?? error, 600))
+  }
 }
 await stopServer()
 const audit = await runRustCutoverAudit()
@@ -2077,7 +2093,7 @@ if (audit.report?.campaigns?.some((campaign) => campaign.campaign_id === CODE)) 
 }
 let usage = null
 if (LIVE) {
-  startServer()
+  startServer({ model: false })
   try { await waitForHealth(); usage = await usageReport() } catch { /* без замера */ }
   await stopServer()
   if (!usage) finding('critical', 'live-usage-unavailable', 'Журнал расхода недоступен. Успешные вызовы модели подтвердить не удалось.')
@@ -2085,14 +2101,16 @@ if (LIVE) {
 }
 const quality = await narrationQuality()
 const sample = narrationSample()
-const judgeModel = process.env.DND_ASTOHAN_JUDGE_MODEL || process.env.DND_AI_LORE_MODEL || 'google/gemini-2.5-flash-lite'
-const judge = JUDGE ? await judgeAstohanNarration(sample, budgetRouter, judgeModel) : null
+const judgeModel = process.env.DND_ASTOHAN_JUDGE_MODEL || 'z-ai/glm-5.3-flash'
+const judge = JUDGE && !budgetStop ? await judgeAstohanNarration(sample, budgetRouter, judgeModel) : null
 await budgetRouter?.close()
 const budget = budgetRouter?.report() ?? null
 const roles = astohanRoleReport(storage, CODE, narrations, judge)
-if (budget?.exceeded_quote) finding('blocker', 'provider-exceeded-quote', 'Поставщик сообщил списание выше объявленного тарифа. Новые запросы заблокированы.')
+budgetStop = budget?.exceeded_quote ? 'STAND_PROVIDER_EXCEEDED_QUOTE' : budgetStop || judge?.stop_reason
+if (budgetStop) finding('blocker', budgetStop, budgetStopMessages[budgetStop])
 if (judge && sample.length && !judge.verdicts.length) finding('major', 'judge-without-verdicts', 'Судья не оценил реплики выборки.')
 const scorecard = grade(final, usage, audit, quality, judge)
+if (budgetStop) scorecard.status = budget.stop_reason = budgetStop
 writeReport(final, scorecard, usage, audit, quality, judge, sample, roles, budget)
 console.log(`\nИтог: ${scorecard.status}, оценка ${scorecard.overall}/10, блокеров ${scorecard.blockers}, критичных ${scorecard.critical}, серьёзных ${scorecard.major}`)
 console.log(`Отчёт: ${relative(ROOT, join(OUT, 'report.md'))}`)

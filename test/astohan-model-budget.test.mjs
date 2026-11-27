@@ -57,7 +57,7 @@ test('игровой поток и прямой судья делят резер
   assert.equal(after.verdicts.length, 0)
   await router.close()
   assert.deepEqual(router.report(), {
-    limit_rub: 20, known_rub: 0, unknown_requests: 1, reserved_rub: 11, refused: 2, requests: 1, exceeded_quote: 0,
+    limit_rub: 20, known_rub: 0, unknown_requests: 1, reserved_rub: 11, refused: 2, refused_budget: 2, refused_tariff: 0, requests: 1, exceeded_quote: 0,
     unconfirmed_generations: [],
   })
   const sent = provider.requests.find((request) => request.method === 'POST')
@@ -94,11 +94,33 @@ test('общий tag нельзя использовать, если один и
   })
   const router = await startAstohanBudgetRouter({ upstream: provider.baseUrl })
   t.after(() => router.close())
+  const checkpoint = router.checkpoint()
   const response = await call(router)
   assert.equal(response.status, 429)
   assert.equal((await response.json()).error.code, 'STAND_TARIFF_UNVERIFIED')
   assert.equal((await call(router, scenario, { plugins: [{ id: 'web' }] })).status, 400)
   assert.equal(provider.requests.filter((request) => request.method === 'POST').length, 0)
+  assert.equal(router.stopReason(checkpoint), 'STAND_TARIFF_UNVERIFIED')
+  assert.equal(router.report().refused_tariff, 2)
+})
+
+test('отказ дорогой модели сохраняет возможность допустить более дешёвую', async (t) => {
+  const provider = await startFakeProvider(t, ({ path, method, body }) => {
+    if (method === 'GET') {
+      const rate = path.includes(scenario) ? .027 : .004
+      return catalog(path, [{ ...endpoint, pricing: { prompt: rate, completion: 0 } }])
+    }
+    return chatCompletion(verdict, { model: body.model, usage: { cost: .75 } })
+  })
+  const router = await startAstohanBudgetRouter({ upstream: provider.baseUrl })
+  t.after(() => router.close())
+  const checkpoint = router.checkpoint()
+  assert.equal((await call(router)).status, 429)
+  assert.equal(router.stopReason(checkpoint), 'STAND_BUDGET_EXCEEDED')
+  assert.equal((await call(router, judgeModel)).status, 200)
+  assert.equal(router.stopReason(checkpoint), null)
+  assert.equal(provider.requests.filter((request) => request.method === 'POST').length, 1)
+  assert.equal(router.report().refused_budget, 1)
 })
 
 test('сверка ID оборванной генерации учитывает фактическую цену и блокирует превышенный тариф', async (t) => {

@@ -36,8 +36,8 @@ export async function judgeAstohanNarration(sample, router, model) {
       })
       const data = await response.json()
       if (!response.ok) {
-        if (data.error?.code === 'STAND_BUDGET_EXCEEDED' || data.error?.code === 'STAND_TARIFF_UNVERIFIED') {
-          stop_reason = data.error.code
+        if (['STAND_BUDGET_EXCEEDED', 'STAND_TARIFF_UNVERIFIED', 'STAND_UNBOUNDED_REQUEST'].includes(data.error?.code)) {
+          stop_reason = data.error.code === 'STAND_UNBOUNDED_REQUEST' ? 'STAND_TARIFF_UNVERIFIED' : data.error.code
           break
         }
         if (data.error?.code === 'STAND_PROVIDER_INTERRUPTED') interrupted++

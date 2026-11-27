@@ -119,9 +119,16 @@ export async function startAstohanBudgetRouter({ liveKey, upstream = ROUTER_AI, 
   const entries = []
   const pending = new Set()
   let admitted = 0
-  let refused = 0
+  let refusedBudget = 0
+  let refusedTariff = 0
   let known = 0
   let closed = false
+
+  function refuse(response, reason) {
+    if (reason === 'STAND_BUDGET_EXCEEDED') refusedBudget++
+    else refusedTariff++
+    reply(response, 429, reason)
+  }
 
   function settle(entry, cost) {
     if (cost == null || entry.cost != null) return
@@ -154,8 +161,8 @@ export async function startAstohanBudgetRouter({ liveKey, upstream = ROUTER_AI, 
     }
     let body
     try { body = await readRequest(request) } catch { reply(response, 400, 'STAND_INVALID_REQUEST'); return }
-    if (!textRequest(body)) { reply(response, 400, 'STAND_UNBOUNDED_REQUEST'); return }
-    if (closed) { refused++; reply(response, 429, 'STAND_BUDGET_EXCEEDED'); return }
+    if (!textRequest(body)) { refusedTariff++; reply(response, 400, 'STAND_UNBOUNDED_REQUEST'); return }
+    if (closed) { refuse(response, 'STAND_BUDGET_EXCEEDED'); return }
     let quotes
     try {
       const modelPath = body.model.split('/').map(encodeURIComponent).join('/')
@@ -171,8 +178,7 @@ export async function startAstohanBudgetRouter({ liveKey, upstream = ROUTER_AI, 
     const quote = quotes.find(({ reserve }) => reserve <= limit - admitted)
     if (response.destroyed) return
     if (!quote || closed) {
-      refused++
-      reply(response, 429, quotes.length ? 'STAND_BUDGET_EXCEEDED' : 'STAND_TARIFF_UNVERIFIED')
+      refuse(response, quotes.length || closed ? 'STAND_BUDGET_EXCEEDED' : 'STAND_TARIFF_UNVERIFIED')
       return
     }
     admitted += quote.reserve
@@ -242,12 +248,20 @@ export async function startAstohanBudgetRouter({ liveKey, upstream = ROUTER_AI, 
     baseUrl,
     standKey,
     env: { ROUTERAI_BASE_URL: baseUrl, ROUTERAI_API_KEY: standKey },
+    checkpoint: () => ({ admitted: entries.length, budget: refusedBudget, tariff: refusedTariff }),
+    stopReason(checkpoint) {
+      if (entries.length !== checkpoint.admitted) return null
+      if (refusedBudget > checkpoint.budget) return 'STAND_BUDGET_EXCEEDED'
+      if (refusedTariff > checkpoint.tariff) return 'STAND_TARIFF_UNVERIFIED'
+      return null
+    },
     report() {
       const unknowns = entries.filter((entry) => entry.cost == null)
       return {
         limit_rub: LIMIT_RUB, known_rub: Number(known.toPrecision(14)),
         unknown_requests: unknowns.length, reserved_rub: unknowns.reduce((total, entry) => total + entry.reserve, 0) / SCALE,
-        refused, requests: entries.length, exceeded_quote: entries.filter((entry) => entry.status === 'exceeded_quote').length,
+        refused: refusedBudget + refusedTariff, refused_budget: refusedBudget, refused_tariff: refusedTariff,
+        requests: entries.length, exceeded_quote: entries.filter((entry) => entry.status === 'exceeded_quote').length,
         unconfirmed_generations: unknowns.map((entry) => entry.generationId).filter(Boolean),
       }
     },
