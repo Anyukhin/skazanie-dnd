@@ -236,6 +236,28 @@ fn only_a_dying_ally_is_stabilized() {
     }
 }
 
+#[test]
+fn awakening_targets_an_adjacent_ally_under_a_supported_spell() {
+    let mut state = stabilize_battle(json!({}));
+    state["players"][1]["hp"] = json!(20);
+    for conditions in [json!([]), json!([{ "id": "unconscious", "spell_id": "other-effect" }])] {
+        state["mechanics"]["conditions"]["fallen"] = conditions;
+        let step = plan_hero_combat_command(&state, "medic").expect("шаг");
+        assert_ne!(step.command["action_id"], "awaken");
+    }
+
+    state["mechanics"]["conditions"]["fallen"] = json!([{ "id": "magical-sleep", "spell_id": "sleep" }]);
+    let step = plan_hero_combat_command(&state, "medic").expect("шаг");
+    assert_eq!(step.command["action_id"], "awaken");
+    assert_eq!(step.command["target_id"], "fallen");
+    assert_eq!(step.command["wake_spell_id"], "sleep");
+    let context = sk_rules::context::Context::from_json(&json!({ "serverAuthoritativeCombat": true, "allowedActorIds": ["medic"] }));
+    let mut dice = sk_rules::dice_record::ServiceDice::new(sk_dice::DiceService::deterministic(sk_dice::FixedRng(10), "awaken"));
+    let mut next_id = || "awaken-tactics".to_string();
+    let result = sk_rules::resolve::api::resolve_command(&step.command, &state, &mut dice, &context, &mut next_id).expect("движок принимает план");
+    assert!(result.resolved().events.iter().any(|event| event["event_type"] == "ConditionRemoved" && event["payload"]["spell_id"] == "sleep"));
+}
+
 fn calm_state() -> Value {
     normalize_campaign_state(&json!({
         "sessionCode": "PLAN", "players": [hero("hero", json!({ "x": 1, "y": 1 }))], "enemies": [], "scene": { "title": "Зал", "location": "Зал", "cells": floor(6) },

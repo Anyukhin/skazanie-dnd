@@ -1458,7 +1458,7 @@ fn awaken_condition_allowed(spell_id: &str, condition: &str) -> bool {
     }
 }
 
-fn awaken_condition_matches(a: &Act, condition: &Value, spell_id: &str) -> bool {
+fn awaken_condition_matches(state: &Value, condition: &Value, spell_id: &str) -> bool {
     let name = condition_name(condition);
     if !awaken_condition_allowed(spell_id, &name) {
         return false;
@@ -1472,7 +1472,16 @@ fn awaken_condition_matches(a: &Act, condition: &Value, spell_id: &str) -> bool 
     let source = js::s(condition.get("source_actor"));
     let effect = js::s(condition.get("effect_id"));
     !source.is_empty() && !effect.is_empty()
-        && js::s(a.concentration_raw(&source).and_then(|entry| entry.get("effect_id"))) == effect
+        && js::s(sk_core::game::mechanics(state).get("concentration").and_then(|all| all.get(&source)).and_then(|entry| entry.get("effect_id"))) == effect
+}
+
+/// Заклинания, эффект которых действие «Разбудить» может снять с цели.
+pub fn awaken_candidates_for(state: &Value, target_id: &str) -> Vec<&'static str> {
+    let conditions = conditions_of(state, target_id);
+    ["sleep", "hypnotic-pattern"]
+        .into_iter()
+        .filter(|spell_id| conditions.iter().any(|condition| awaken_condition_matches(state, condition, spell_id)))
+        .collect()
 }
 
 fn awaken(r: &mut Resolve<'_>, a: &Act) -> Flow {
@@ -1480,10 +1489,7 @@ fn awaken(r: &mut Resolve<'_>, a: &Act) -> Flow {
         a.command.get("wake_spell_id"),
         a.command.get("spell_id"),
     ]).and_then(Value::as_str).unwrap_or("");
-    let candidates: Vec<&str> = ["sleep", "hypnotic-pattern"]
-        .into_iter()
-        .filter(|spell_id| conditions_of(&a.state, &a.target_key).iter().any(|condition| awaken_condition_matches(a, condition, spell_id)))
-        .collect();
+    let candidates = awaken_candidates_for(&a.state, &a.target_key);
     let spell_id = if !requested.is_empty() {
         requested
     } else if candidates.len() == 1 {
@@ -1501,7 +1507,7 @@ fn awaken(r: &mut Resolve<'_>, a: &Act) -> Flow {
     }
     let removed: Vec<Value> = conditions_of(&a.state, &a.target_key)
         .iter()
-        .filter(|condition| awaken_condition_matches(a, condition, spell_id))
+        .filter(|condition| awaken_condition_matches(&a.state, condition, spell_id))
         .cloned()
         .collect();
     a.spend(r)?;

@@ -1427,6 +1427,24 @@ fn add_action_candidates(candidates: &mut Candidates<'_, '_>, actor: &Value) -> 
             }
             continue;
         }
+        if id == "awaken" {
+            for ally in allies.iter().copied().filter(|ally| visible_living_ally(ally)) {
+                let target_id = combat_id(ally);
+                if target_id == actor_id || distance(&target_id) > range_or(action, 5) {
+                    continue;
+                }
+                let spells = sk_rules::resolve::awaken_candidates_for(state, &target_id);
+                if let Some(spell_id) = spells.first() {
+                    let mut fields = target_fields(target_id);
+                    fields.push(("wake_spell_id", json!(spell_id)));
+                    let command = action_command(&actor_id, &id_value, fields);
+                    if tactics.validates(&actor_id, &command) {
+                        candidates.add(command, 4_000.0, "Разбудить союзника под действием заклинания".into(), true);
+                    }
+                }
+            }
+            continue;
+        }
         if id == "stabilize" || id == "first-aid" {
             // Стабилизировать — только того, кто ещё бросает спасброски от смерти.
             let range = range_or(action, 5);
