@@ -32,13 +32,15 @@ function legs(root: THREE.Group, hide: THREE.Material, claw: THREE.Material, spr
 function face(root: THREE.Group, hide: THREE.Material, dark: THREE.Material, eye: THREE.Material, muzzle: THREE.Material,
   head: [number, number, number], headScale: [number, number, number], muzzlePosition: [number, number, number],
   muzzleScale: [number, number, number], earsHeight: number, earsRadius: number) {
-  sphere(root, 'head', headScale[0], head, hide, headScale)
+  const neck = sphere(root, 'neck', 1, [head[0], head[1] - .23, head[2] - .22], hide, [headScale[0] * .78, .37, .29])
+  neck.rotation.x = .53
+  sphere(root, 'head', 1, head, hide, headScale)
   sphere(root, 'muzzle', .16, muzzlePosition, muzzle, muzzleScale)
   for (const side of [-1, 1]) {
     sphere(root, 'eye-' + side, .028,
-      [head[0] + side * headScale[0] * .42, head[1] + .05, head[2] + headScale[2] * .55],
+      [head[0] + side * headScale[0] * .42, head[1] + .05, head[2] + headScale[2] * .90],
       eye, [1, 1, .55])
-    const headTop = head[1] + headScale[0] * headScale[1]
+    const headTop = head[1] + headScale[1]
     cone(root, 'ear-' + side, earsRadius, earsHeight,
       [side * earsRadius * 1.9, headTop - earsHeight * .20, head[2] - .02], dark)
   }
@@ -68,7 +70,7 @@ export function buildAstohanBeast(value: unknown): THREE.Group | null {
     legs(root, hide, claw, .3, .34, -.38, .66, .12)
     face(root, hide, dark, eye, muzzle, [0, 1.45, .54], [.38, .42, .38], [0, 1.34, .86], [.75, .65, .72], .22, .13)
     sphere(root, 'bear-nose', .08, [0, 1.35, .98], dark, [1.3, .75, .75])
-    tube(root, 'tail', [[0, .75, -.95], [0, .75, -1.1], [0, .88, -1.12]], .13, dark)
+    tube(root, 'tail', [[0, .75, -.71], [0, .75, -.86], [0, .88, -.93]], .13, dark)
   } else if (slug === 'giant-boar') {
     sphere(root, 'body', .48, [0, .68, -.05], hide, [1.18, .92, 1.62])
     sphere(root, 'boar-shoulder', .34, [0, .82, .36], hide, [1.28, .82, .72])
@@ -82,22 +84,22 @@ export function buildAstohanBeast(value: unknown): THREE.Group | null {
     sphere(root, 'body', .42, [0, .83, -.08], hide, [1.1, .9, 1.72]); legs(root, dark, claw, .25, .43, -.44, .58, .085)
     face(root, hide, dark, eye, muzzle, [0, 1.39, .69], [.32, .34, .34], [0, 1.3, .95], [.72, .58, .78], .15, .1)
     add(root, 'mane', new THREE.TorusGeometry(.38, .12, 8, 14), dark, [0, 1.3, .34], [.92, 1, 1.18], [Math.PI / 2, 0, 0])
-    tube(root, 'tail', [[0, .84, -.92], [.05, 1.05, -1.16], [.2, 1.22, -1.24]], .045, hide)
+    tube(root, 'tail', [[0, .84, -.72], [.05, 1.05, -1.08], [.2, 1.22, -1.24]], .045, hide)
     sphere(root, 'tail-tuft', .1, [.2, 1.22, -1.24], dark, [1, 1.25, 1])
   } else if (slug === 'hyena') {
     sphere(root, 'body', .4, [0, .72, -.08], hide, [1.08, .98, 1.55]); legs(root, dark, claw, .25, .4, -.41, .57, .08)
     face(root, hide, dark, eye, muzzle, [0, 1.26, .67], [.28, .38, .33], [0, 1.15, .94], [.74, .56, .95], .28, .1)
     for (let index = 0; index < 6; index += 1) cone(root, 'mane-' + index, .045, .22, [-.35 + index * .14, 1.12 + .04 * Math.sin(index), -.35], dark, [0, 0, Math.PI / 2])
-    tube(root, 'tail', [[0, .8, -.9], [.1, .94, -1.18], [.12, 1.06, -1.3]], .04, dark)
+    tube(root, 'tail', [[0, .8, -.63], [.1, .94, -1.05], [.12, 1.06, -1.3]], .04, dark)
   } else if (slug === 'jackal') {
     sphere(root, 'body', .32, [0, .68, -.12], hide, [1.02, .84, 1.62]); legs(root, dark, claw, .2, .42, -.43, .58, .06)
     face(root, hide, dark, eye, muzzle, [0, 1.36, .67], [.23, .31, .26], [0, 1.28, .93], [.57, .52, 1.12], .42, .075)
-    tube(root, 'tail', [[0, .82, -.93], [.08, 1, -1.17], [.04, 1.18, -1.27]], .035, dark)
+    tube(root, 'tail', [[0, .82, -.53], [.08, 1, -.91], [.04, 1.18, -1.15]], .035, dark)
   } else {
     const fiery = slug === 'hell-hound'
     sphere(root, 'body', .39, [0, .78, -.08], hide, [1.08, .94, 1.65]); legs(root, dark, claw, .23, .43, -.44, .61, .075)
     face(root, hide, dark, eye, muzzle, [0, 1.39, .72], [.28, .34, .3], [0, 1.27, .99], [.63, .55, .92], .32, .085)
-    tube(root, 'tail', [[0, .82, -.92], [.11, 1.06, -1.15], [.18, 1.22, -1.22]], .04, dark)
+    tube(root, 'tail', [[0, .82, -.67], [.11, 1.06, -1.04], [.18, 1.22, -1.22]], .04, dark)
     if (fiery) for (const [x, z] of [[-.24, -.35], [0, -.48], [.24, -.35]] as Array<[number, number]>) cone(root, 'ember-ridge', .055, .18, [x, 1.1, z], mat('#b84b36', { emissive: '#b84b36', emissiveIntensity: .36 }), [0, 0, Math.PI / 2])
   }
   const bounds = new THREE.Box3().setFromObject(root, true)

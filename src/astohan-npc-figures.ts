@@ -135,13 +135,30 @@ function insignia(root: THREE.Object3D, style: AstohanNpcStyle, orientation: 'gl
     oval(torso,'royal-clasp',brass,[.116,.241,front*.112],[.036,.029,.012])
   }
   if (style==='ivara'||style==='gedrik') {
-    oval(torso,'steel-cuirass',iron,[0,.104,front*.058],[.188,.19,.119])
+    const marshal = style === 'ivara'
+    oval(torso,'steel-cuirass',iron,[0,.104,front*(marshal ? .145 : .058)],[.188,.19,.119])
     for(let i=0;i<3;i++){
       const plate=ovalPlate(.174-i*.008,.059)
-      part(torso,'fauld',plate,iron,[0,-.023-i*.042,front*.025])
+      part(torso,'fauld',plate,iron,[0,-.023-i*.042,front*(marshal ? .12 : .025)])
+    }
+    if (marshal) {
+      const brightSteel = mat('#aeb8b7', { metalness: .32, roughness: .52 })
+      for (const side of [-1, 1]) {
+        const guard = part(torso, 'marshal-pauldron-' + side, new THREE.SphereGeometry(1, 10, 6), brightSteel, [side * .245, .19, front * .015], [0, 0, side * -.30])
+        guard.scale.set(.155, .089, .128)
+      }
+      part(torso, 'marshal-breastplate-edge', new THREE.BoxGeometry(.033, .265, .024), brightSteel, [0, .069, front * .25])
     }
   }
   if(style==='oren') {
+    const wool = mat('#393c56', { side: THREE.DoubleSide, roughness: .96 })
+    part(torso,'archive-robe',new THREE.CylinderGeometry(.172, .288, .82, 14, 1, true),wool,[0,-.335,0])
+    const binding = mat('#b19b78', { roughness: .92 })
+    for (const side of [-1, 1]) {
+      part(torso,'archive-robe-trim-' + side,new THREE.BoxGeometry(.031,.73,.018),binding,[side*.089,-.295,front*.214],[0,0,side*.105])
+      const sleeve = part(torso,'archive-robe-sleeve-' + side,new THREE.CylinderGeometry(.082,.111,.28,9),wool,[side*.225,.085,0],[0,0,side*.23])
+      sleeve.scale.z = 1.13
+    }
     for(let i=0;i<3;i++){
       const x=.152+.024*i
       part(torso,'archive-key-bow',new THREE.TorusGeometry(.015,.0035,6,12),brass,[x,-.191,front*.119])

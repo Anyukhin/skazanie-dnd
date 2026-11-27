@@ -16,7 +16,10 @@ test('сюжетные великаны и элементали получают
     assert.ok(root.children.length >= 3, `${slug}: нужен читаемый силуэт, а не одна коробка`)
     root.traverse(object => { if (object.isMesh) assert.equal(object.userData.board3dPickable, false, `${slug}: деталь не должна перехватывать выбор`) })
     if (!['air-elemental', 'water-elemental', 'awakened-shrub'].includes(slug)) assert.ok(root.getObjectByName(slug === 'ettin' ? 'ettin-left-eye' : slug === 'cyclops' ? 'cyclops-eye' : `${slug}-eye`), `${slug}: лицо должно иметь глаз`)
-    if (['ogre', 'troll', 'hill-giant', 'ettin', 'cyclops'].includes(slug)) assert.ok(root.getObjectByName('giant-club-head'), `${slug}: в руках должна быть дубина`)
+    if (['ogre', 'troll', 'hill-giant', 'ettin', 'cyclops'].includes(slug)) {
+      const club = slug === 'hill-giant' ? 'hill-giant-trunk-knot' : 'giant-club-head'
+      assert.ok(root.getObjectByName(club), `${slug}: в руках должна быть дубина`)
+    }
   }
 })
 
