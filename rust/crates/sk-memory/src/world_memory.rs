@@ -2730,6 +2730,11 @@ fn stem(token: &str) -> String {
     }
 }
 
+/// Слова для поиска по памяти без повторов, с учётом склонения.
+pub fn memory_search_terms(value: &str) -> HashSet<String> {
+    tokenize(value).iter().map(|word| stem(word)).collect()
+}
+
 const SYNONYM_GROUPS: [&[&str]; 6] = [
     &["город", "поселение", "столица", "деревня", "town", "city", "settlement"],
     &["дорога", "путь", "маршрут", "тракт", "trail", "route"],

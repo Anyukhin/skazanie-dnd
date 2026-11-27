@@ -291,7 +291,9 @@ async fn narrate_body(ctx: &mut RouteCtx, user: Value) -> Result<axum::response:
         let combat = at(Some(&trusted), &["mechanics", "combat"]);
         let combat_actor_id = js::s(get(index_of(get(combat, "initiative"), Some(nullish(get(combat, "active_index"), None).unwrap_or(&json!(0)))), "actor_id"));
         let death = at(Some(&trusted), &["mechanics", "death"]);
-        let blocked = if js::truthy(get(combat, "active")) && !combat_actor_id.is_empty() && player_id != combat_actor_id {
+        let blocked = if js::truthy(get(combat, "active")) && !combat_actor_id.is_empty()
+            && !sk_rules::combat::turn::is_own_combat_turn(&trusted, Some(&json!(player_id)))
+        {
             Some(ApiError::coded(StatusCode::CONFLICT, format!("Сейчас ходит другой участник: {combat_actor_id}"), "NOT_ACTIVE_ACTOR"))
         } else if get(death, "campaign_status").and_then(Value::as_str) == Some("party_defeated") {
             Some(ApiError::coded(StatusCode::CONFLICT, "Все герои погибли. Эта история завершена, продолжать игру в этом мире нельзя", "WORLD_ENDED"))

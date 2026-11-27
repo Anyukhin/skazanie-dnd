@@ -401,7 +401,7 @@ fn generate_item_image_route(ctx: &mut RouteCtx) -> RouteFuture<'_> {
                 "RUNTIME_IMAGE_GENERATION_DISABLED",
             ));
         }
-        if !state.config.model_configured() {
+        if !state.config.cloud_model_configured() {
             return Err(ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "Генератор изображений не настроен"));
         }
         // `readBody` — внутри `try` JS: ошибка тела — 502 с её текстом, а не 400.
