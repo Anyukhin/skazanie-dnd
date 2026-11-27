@@ -6,7 +6,8 @@
  *
  *   node eval/astohan-seeds.mjs                       # сиды 1–5, по два сразу, 25 мин на сид
  *   node eval/astohan-seeds.mjs --seeds 1,4,9 --parallel 1 --minutes 20 --keep
- *   SKAZANIE_RUST_SERVER_BIN=… node eval/astohan-seeds.mjs --impl rust --parallel 1   # бинарь переноса
+ *   node eval/astohan-seeds.mjs --seeds 2 --direct-route
+ *   SKAZANIE_RUST_SERVER_BIN=… node eval/astohan-seeds.mjs --parallel 1   # сервер — бинарь Rust
  *
  * Итог — `<out>/summary.md` (таблица сидов и находки по видам) и
  * `<out>/summary.json`; отчёты каждого сида лежат в `<out>/seed-<N>/`.
@@ -19,6 +20,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { standImpl } from './stand-server.mjs'
+import { endingFor, seedPassed, victoryFor } from './astohan-seed-status.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const argv = process.argv.slice(2)
@@ -44,15 +46,15 @@ const PARALLEL = Math.max(1, Number(option('parallel', 2)) || 1)
 const MINUTES = option('minutes', '25')
 const STAMP = new Date().toISOString().replace(/[:.]/gu, '-').slice(0, 19)
 const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP}-seeds${IMPL === 'rust' ? '-rust' : ''}`)))
-const BASE_PORT = 8800 + Math.floor(Math.random() * 40) * 2
 
 function runSeed(seed, index) {
   const out = join(OUT, `seed-${seed}`)
   // Rust-стенд берёт свободный порт сам (`eval/stand-server.mjs`).
-  const args = ['eval/astohan-playthrough.mjs', '--seed', String(seed), ...(IMPL === 'js' ? ['--port', String(BASE_PORT + index)] : []), '--out', out]
+  const args = ['eval/astohan-playthrough.mjs', '--seed', String(seed), '--out', out]
   if (MINUTES) args.push('--minutes', MINUTES)
   if (argv.includes('--keep')) args.push('--keep')
-  if (IMPL !== 'js') args.push('--impl', IMPL)
+  if (argv.includes('--direct-route')) args.push('--direct-route')
+  args.push('--impl', IMPL)
   return new Promise((resolveRun) => {
     const startedAt = Date.now()
     const child = spawn(process.execPath, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -93,11 +95,15 @@ const cell = (value) => String(value ?? '—').replace(/\|/gu, '\\|').replace(/\
 
 function summarize(results) {
   const rows = results.map(({ seed, report, code }) => {
-    if (!report) return { seed, status: `упал (${code})` }
+    if (!report) return { seed, status: `упал (${code})`, code }
     const { scorecard, stats, minutes } = report
+    const ending = endingFor(report)
     return {
       seed,
+      code,
       status: scorecard.status,
+      ending,
+      victory: victoryFor(ending),
       overall: scorecard.overall,
       minutes,
       chapters: stats.chapters,
@@ -128,7 +134,7 @@ function summarize(results) {
   const findings = [...kinds.values()]
     .map((entry) => ({ ...entry, seeds: [...entry.seeds].sort((a, b) => a - b) }))
     .sort((left, right) => (order[left.severity] ?? 9) - (order[right.severity] ?? 9) || right.seeds.length - left.seeds.length || left.kind.localeCompare(right.kind))
-  const completed = rows.filter((row) => row.status === 'completed').length
+  const completed = rows.filter((row) => row.status === 'completed' && row.victory === true).length
   // Поражение отряда — тоже конец истории: сюжет дошёл до развязки, просто не
   // в пользу героев. Не дошедший до конца прогон — это `active` или падение.
   const finished = rows.filter((row) => ['completed', 'failed'].includes(row.status)).length
@@ -153,7 +159,7 @@ function writeSummary(results, summary) {
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     ...summary.rows.map((row) => row.overall == null
       ? `| ${row.seed} | ${cell(row.status)} | — | — | — | — | — | — | — | — | — | — | — |`
-      : `| [${row.seed}](seed-${row.seed}/report.md) | ${row.status} | ${row.overall} | ${row.minutes} | ${row.chapters} | ${row.combats} (${row.wins}) | ${row.deaths} | ${row.dead_ends} | ${row.corpus} | ${row.text} | ${row.consistency} | ${row.refused} | ${row.blockers} / ${row.critical} / ${row.major} |`),
+      : `| [${row.seed}](seed-${row.seed}/report.md) | ${cell(`${row.status}${row.ending ? ` (${row.ending})` : ''}`)} | ${row.overall} | ${row.minutes} | ${row.chapters} | ${row.combats} (${row.wins}) | ${row.deaths} | ${row.dead_ends} | ${row.corpus} | ${row.text} | ${row.consistency} | ${row.refused} | ${row.blockers} / ${row.critical} / ${row.major} |`),
     '',
     '## Находки по видам',
     '',
@@ -181,4 +187,6 @@ const summary = summarize(results)
 writeSummary(results, summary)
 console.log(`\nДо конца: ${summary.finished} из ${results.length} (победой ${summary.completed}), оценка средняя ${summary.mean ?? '—'}, худшая ${summary.min ?? '—'}`)
 console.log(`Сводка: ${relative(ROOT, join(OUT, 'summary.md'))}`)
-process.exitCode = summary.finished === results.length && results.every((result) => result.report?.scorecard.blockers === 0) ? 0 : 1
+process.exitCode = summary.finished === results.length
+  && results.every((result) => result.code === 0 && seedPassed(result.report))
+  ? 0 : 1

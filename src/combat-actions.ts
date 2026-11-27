@@ -176,6 +176,7 @@ const common: CombatAction[] = [
   { id: 'dodge', name: 'Уклонение', category: 'common', target: 'self', actionType: 'action', range: 0, description: 'Атаки по вам совершаются с помехой до начала следующего хода.' },
   { id: 'hide', name: 'Спрятаться', category: 'common', target: 'self', actionType: 'action', range: 0, description: 'Совершить проверку Ловкости (Скрытность) и получить преимущество из укрытия.' },
   { id: 'help', name: 'Помощь', category: 'common', target: 'ally', actionType: 'action', range: 5, description: 'Дать союзнику преимущество на следующую атаку.' },
+  { id: 'awaken', name: 'Разбудить', category: 'common', target: 'ally', actionType: 'action', range: 5, description: 'Разбудить союзника рядом и снять с него «Усыпление» или «Гипнотический узор».' },
   { id: 'grapple', name: 'Захват', category: 'common', target: 'enemy', actionType: 'action', range: 5, description: 'Состязание Атлетики; при успехе цель схвачена.' },
   { id: 'shove', name: 'Толчок', category: 'common', target: 'enemy', actionType: 'action', range: 5, description: 'Состязание Силы: при успехе цель сбита с ног.' },
   { id: 'ready', name: 'Подготовка', category: 'common', target: 'self', actionType: 'action', range: 0, description: 'Подготовить действие и условие для реакции.', mechanicsSupport: 'partial', supportNote: 'Сервер фиксирует подготовку до следующего хода; настройка условия и автоматический запуск реакции пока не реализованы.' },

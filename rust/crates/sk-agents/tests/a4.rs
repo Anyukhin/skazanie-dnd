@@ -2,6 +2,7 @@
 //! `NpcSocialController` JS и Rust на одной заглушке модели — сверяются
 //! запросы к модели (брифы байт в байт) и итог; плюс экспорты модуля.
 
+use std::collections::BTreeSet;
 use std::future::Future;
 use std::io::Read;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -189,18 +190,13 @@ fn prompt_is_lf_blob() {
     assert!(NPC_SOCIAL_PROMPT.starts_with("PROMPT_ID: npc_controller/social-v8"));
 }
 
-/// Мусор, на котором JS бросает исключение в соседнем модуле, а его перенос
-/// мусор переживает (решение того переноса, не этого модуля):
-/// `sceneContextForAgent` (`sk-encounters`) — `state.players` не массив или
-/// с `null`, `social.conversations` объектом (бриф в JS падает до вызова
-/// модели, Rust модель зовёт); `safeConversation` (`sk-social`) — `null` среди
-/// разговоров (JS отвергает весь `respond`).
-const UPSTREAM_DIVERGENCES: [&str; 5] = [
+/// Бриф JS отвергает три формы повреждённых данных до вызова модели
+/// (`sceneContextForAgent`), Rust обрабатывает их в `sk-encounters`.
+/// Каждая форма проверяется на двух разных состояниях.
+const UPSTREAM_DIVERGENCES: [&str; 3] = [
     "garbage-players-object-model",
     "garbage-players-null-entry-model",
     "garbage-social-conversations-object-model",
-    "garbage-social-conversations-junk-none",
-    "garbage-social-conversations-junk-model",
 ];
 
 #[test]
@@ -208,13 +204,9 @@ fn respond_matches_js() {
     let cases = section("respond");
     assert!(cases.len() > 1_000, "случаев {}", cases.len());
     let mut failures = Vec::new();
-    let mut upstream = Vec::new();
+    let mut upstream = [(); UPSTREAM_DIVERGENCES.len()].map(|()| BTreeSet::new());
     for case in cases {
         let label = js::s(case.get("label"));
-        if UPSTREAM_DIVERGENCES.contains(&label.as_str()) {
-            upstream.push(label);
-            continue;
-        }
         let client = case["hasClient"].as_bool().unwrap_or(false).then(|| Scripted::new(case));
         let mut controller = NpcSocialController::new(client.as_ref().map(|client| Arc::clone(client) as Arc<dyn LlmClient>));
         if let Some(name) = case["className"].as_str() {
@@ -222,6 +214,16 @@ fn respond_matches_js() {
         }
         let outcome = block_on(controller.respond(&respond_input(case)));
         let calls = client.as_ref().map(|client| client.calls()).unwrap_or_else(|| json!([]));
+        if let Some(index) = UPSTREAM_DIVERGENCES.iter().position(|known| *known == label) {
+            let state_ref = case["stateRef"].as_str().expect("ссылка на повреждённое состояние");
+            assert!(upstream[index].insert(state_ref), "повтор входа {label}: {state_ref}");
+            assert_eq!(case["out"]["provider_error"], "TypeError", "{label}: отказ брифа JS");
+            assert_eq!(case["calls"], json!([]), "{label}: JS отказал до вызова модели");
+            assert_eq!(calls.as_array().map(Vec::len), Some(1), "{label}: Rust вызвал модель один раз");
+            let reply = outcome.expect("Rust принял повреждённое состояние").expect("NPC ответил");
+            assert_eq!(reply["npc_id"], case["out"]["npc_id"], "{label}: ответил тот же NPC");
+            continue;
+        }
         if let Some(diff) = first_diff("calls", &calls, &case["calls"]) {
             failures.push(format!("{label}: запросы к модели — {diff}"));
             continue;
@@ -242,7 +244,9 @@ fn respond_matches_js() {
         }
     }
     assert!(failures.is_empty(), "{} из {} случаев:\n{}", failures.len(), cases.len(), failures.iter().take(25).cloned().collect::<Vec<_>>().join("\n"));
-    assert_eq!(upstream.len(), UPSTREAM_DIVERGENCES.len(), "известные расхождения соседних модулей есть в эталоне");
+    for (label, states) in UPSTREAM_DIVERGENCES.into_iter().zip(upstream) {
+        assert_eq!(states.len(), 2, "{label}: два разных повреждённых состояния");
+    }
 }
 
 #[test]

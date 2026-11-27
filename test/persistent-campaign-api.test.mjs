@@ -3,12 +3,12 @@ import test from 'node:test'
 
 import { startTestServer } from './kit/http.mjs'
 import { appendJournal, readJournal } from './kit/journal.mjs'
-import { PERSISTENT_WORLD_OBJECTIVE } from '../server/campaign-stories.mjs'
-import { DiceService } from '../server/dice-service.mjs'
-import { RulesEngine, shortestTacticalPath } from '../server/rules-engine.mjs'
-import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
-import { publicSceneFor } from '../server/viewer-projection.mjs'
+import { publicSceneFor, resolveCommands, serverBatch, tacticalMap } from './kit/fixtures.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
+
+// Цель мира без сюжета — `PERSISTENT_WORLD_OBJECTIVE` в
+// rust/crates/sk-society/src/campaign_stories.rs.
+const PERSISTENT_WORLD_OBJECTIVE = 'Исследовать мир или выбрать собственную цель'
 
 const CAMPAIGN = 'PERSIST-API'
 
@@ -62,17 +62,21 @@ function characterDocument(character) {
   }
 }
 
-function findWalkableStep(state, actorId) {
+async function findWalkableStep(state, actorId) {
   const actor = state.players.find((player) => player.id === actorId)
   assert.ok(actor && Number.isInteger(actor.x) && Number.isInteger(actor.y), 'у героя должна быть позиция на карте')
   const occupied = new Set(state.players.map((player) => `${player.x},${player.y}`))
-  return state.scene.cells.find((cell) => cell.type === 'floor' && cell.revealed === true
+  const candidates = state.scene.cells.filter((cell) => cell.type === 'floor' && cell.revealed === true
     && cell.movementBlocked !== true && Math.abs(cell.x - actor.x) + Math.abs(cell.y - actor.y) === 1
-    && !occupied.has(`${cell.x},${cell.y}`)
-    && Array.isArray(shortestTacticalPath(state, actorId, { x: cell.x, y: cell.y })))
+    && !occupied.has(`${cell.x},${cell.y}`))
+  // Путь считает сервер (`shortestTacticalPath`), все соседи одним пакетом.
+  const paths = candidates.length
+    ? await serverBatch(candidates.map((cell) => ['shortestTacticalPath', state, actorId, { x: cell.x, y: cell.y }]))
+    : []
+  return candidates.find((_, index) => Array.isArray(paths[index]))
 }
 
-test('findWalkableStep пропускает публично заблокированный соседний шаг', () => {
+test('findWalkableStep пропускает публично заблокированный соседний шаг', async () => {
   const makeState = (cells) => ({
     players: [{ id: 'hero-slot-1', x: 0, y: 0 }],
     scene: { cells: [{ x: 0, y: 0, type: 'floor', revealed: true }, ...cells] },
@@ -80,28 +84,29 @@ test('findWalkableStep пропускает публично заблокиро�
   const blocked = { x: 1, y: 0, type: 'floor', revealed: true, movementBlocked: true }
   const walkable = { x: 0, y: 1, type: 'floor', revealed: true }
 
-  assert.deepEqual(findWalkableStep(makeState([blocked, walkable]), 'hero-slot-1'), walkable)
-  assert.equal(findWalkableStep(makeState([blocked]), 'hero-slot-1'), undefined)
+  assert.deepEqual(await findWalkableStep(makeState([blocked, walkable]), 'hero-slot-1'), walkable)
+  assert.equal(await findWalkableStep(makeState([blocked]), 'hero-slot-1'), undefined)
 })
 
-test('findWalkableStep пропускает полностью видимый предмет, блокирующий движение', () => {
-  const map = createTacticalMap({ width: 3, height: 2, fill: { passable: true, revealed: true } })
-  addProp(map, {
-    id: 'visible-table', assetId: 'table_long', x: 1.5, y: 0.5, blocksMove: true,
-    footprint: [{ x: 1, y: 0 }, { x: 1, y: 1 }],
-  })
-  const scene = publicSceneFor({ cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) })
+test('findWalkableStep пропускает полностью видимый предмет, блокирующий движение', async () => {
+  const { map, cells } = await tacticalMap({ width: 3, height: 2, fill: { passable: true, revealed: true } })
+    .prop({
+      id: 'visible-table', assetId: 'table_long', x: 1.5, y: 0.5, blocksMove: true,
+      footprint: [{ x: 1, y: 0 }, { x: 1, y: 1 }],
+    })
+    .build()
+  const scene = await publicSceneFor({ cells, map })
   const state = { players: [{ id: 'hero-slot-1', x: 0, y: 0 }], scene }
 
-  assert.deepEqual(findWalkableStep(state, 'hero-slot-1'), scene.cells.find((cell) => cell.x === 0 && cell.y === 1))
+  assert.deepEqual(await findWalkableStep(state, 'hero-slot-1'), scene.cells.find((cell) => cell.x === 0 && cell.y === 1))
 })
 
-test('findWalkableStep разрешает декоративный feature на единственном проходимом шаге', () => {
-  const map = createTacticalMap({ width: 2, height: 1, fill: { passable: true, revealed: true } })
-  const scene = publicSceneFor({ cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) })
+test('findWalkableStep разрешает декоративный feature на единственном проходимом шаге', async () => {
+  const { map, cells } = await tacticalMap({ width: 2, height: 1, fill: { passable: true, revealed: true } }).build()
+  const scene = await publicSceneFor({ cells, map })
   scene.cells.find((cell) => cell.x === 1).feature = 'chair'
   const state = { players: [{ id: 'hero-slot-1', x: 0, y: 0 }], scene }
-  assert.deepEqual(findWalkableStep(state, 'hero-slot-1'), scene.cells.find((cell) => cell.x === 1))
+  assert.deepEqual(await findWalkableStep(state, 'hero-slot-1'), scene.cells.find((cell) => cell.x === 1))
 })
 
 test('обычный игрок создаёт persistent кампанию, завершает стартовую историю и сохраняет её после restart', { timeout: runnerTimeout(90_000) }, async (t) => {
@@ -114,8 +119,8 @@ test('обычный игрок создаёт persistent кампанию, за
   async function worldCommand(command, key) {
     await server.stop()
     const journal = await readJournal(server, CAMPAIGN)
-    const resolved = new RulesEngine({ diceService: new DiceService() })
-      .resolvePlan({ proposed_commands: [command] }, journal.state, { isDirector: true, actor_ids: [] })
+    // План Rules Engine считает сервер (`resolveCommands`); команды квеста костей не бросают.
+    const resolved = await resolveCommands([command], journal.state, { context: { isDirector: true, actor_ids: [] } })
     assert.ok(resolved.events.length, `команда ${command.command_type} не создала событий`)
     await appendJournal(server, CAMPAIGN, {
       idempotency_key: key, command_id: key, events: resolved.events, expected_state_version: journal.state_version,
@@ -259,7 +264,7 @@ test('обычный игрок создаёт persistent кампанию, за
   })
   assert.equal(question.status, 200, `${question.text}\n${log()}`)
 
-  const destination = findWalkableStep(persisted.body.state, 'hero-slot-1')
+  const destination = await findWalkableStep(persisted.body.state, 'hero-slot-1')
   assert.ok(destination, 'после завершения истории должен оставаться обычный шаг по карте')
   const move = await request(server.baseUrl, `/api/campaigns/${CAMPAIGN}/commands`, {
     method: 'POST', cookie: ownerCookie,

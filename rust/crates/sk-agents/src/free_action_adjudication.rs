@@ -302,6 +302,19 @@ fn self_hazard_contact_negation() -> &'static Regex {
     re!(r"(?<![\p{L}\p{M}])не\s+(?:сажусь|сяду|сижу|ложусь|лягу|вхожу|наступаю|трогаю|касаюсь|прикасаюсь|лезу|прыгаю)(?![\p{L}\p{M}])", "iu")
 }
 
+fn direct_fire_contact() -> &'static Regex {
+    re!(r"^[\p{S}\p{M}\s]*(?:я\s+)?(?:(?:осознанно|намеренно|нарочно|специально|осторожно|медленно|сразу|со\s+всего\s+разбега)\s+)*(?:(?:сажусь|сяду|сижу|сесть|ложусь|лягу|вхожу|войти|наступаю|лезу|прыгаю|прыгнуть)\s+(?:(?:прямо|жопой|задом|рукой|ногой)\s+)*(?:в|на)\s+|(?:трогаю|касаюсь|прикасаюсь)\s+(?:(?:кистью|рукой|ногой|пальцем|к)\s+)*)(?:(?:горящ\p{L}*|раскал[её]нн\p{L}*|открыт\p{L}*|сам\p{L}*)\s+)*(?:огонь|огня|огню|пламя|пламени|кост[её]р|костр[ау]|жаровн[июе]|лав[уы]|магм[уы]|трещину\s+с\s+лавой)(?![\p{L}\p{M}])", "iu")
+}
+
+fn fire_is_background(value: &str) -> bool {
+    let operative = text::without_quoted_or_negated_actions(&text::lower(value));
+    let description = re!(r"^(?:я\s+)?(?:вижу|наблюдаю|описываю|представляю|вспоминаю|рассказываю|читаю|пишу)(?![\p{L}\p{M}])|(?<![\p{L}\p{M}])(?:на|в)\s+(?:рисунке|картине|иллюзии|описании|рассказе|сне)(?![\p{L}\p{M}])", "iu");
+    let background = re!(r"(?<![\p{L}\p{M}])(?:(?:у|подле|вблизи|недалеко\s+от|неподал[её]ку\s+от)\s+(?:огня|пламени|костра|жаровни|лавы)|(?:смотрю|глядя)\s+(?:в|на)\s+(?:огонь|пламя|кост[её]р|жаровню|лаву))(?![\p{L}\p{M}])", "iu");
+    let not_attempted = re!(r"^(?:я\s+)?не\s+(?:намерен\p{L}*|планирую|собираюсь|буду|хочу)\s+", "iu");
+    text::test(not_attempted, value) || !text::test(hazard_contact_verbs(), &operative) || text::test(description, &operative)
+        || (!text::test(direct_fire_contact(), &operative) && text::test(background, &operative))
+}
+
 /// `canonicalEnvironmentHazardId(value)`: название опасности по закрытому
 /// серверному каталогу; пустая строка — не опасность.
 pub fn canonical_environment_hazard_id(value: Option<&Value>) -> String {
@@ -348,6 +361,10 @@ fn hazard_relation_for(value: &str, reading: &Value) -> Option<(String, &'static
     if text::test(hazard_avoidance(), &value) {
         return Some((hazard, "avoid"));
     }
+    // Огонь должен быть целью контакта, а не деталью места или реплики.
+    if hazard == "fire" && fire_is_background(&value) {
+        return None;
+    }
     if !text::test(hazard_contact_verbs(), &value) {
         return None;
     }
@@ -385,6 +402,9 @@ fn self_hazard_contact_id(state: &Value, value: &str, reading: &Value, actor_id:
         .filter(|target| !target.is_empty())
         .collect();
     let hazard = hazard_id_mentioned_in(&value);
+    if hazard == "fire" && fire_is_background(&value) {
+        return String::new();
+    }
     let source_ids: Vec<String> = if targets.is_empty() {
         Vec::new()
     } else {
@@ -624,6 +644,16 @@ pub fn resolve_hazard_contact(state: &Value, actor_id: &str, value: &str, readin
     }))
 }
 
+/// Для прямой заявки наличие видимого и досягаемого источника проверяем до модели.
+pub fn unavailable_hazard_contact_reason(state: &Value, actor_id: &str, value: &str, reading: &Value) -> Option<String> {
+    let value = clean(value, 1_000);
+    if !(text::test(direct_fire_contact(), &value) && !fire_is_background(&value)) && !wall_collision_intent(&value) {
+        return None;
+    }
+    let contact = resolve_hazard_contact(state, actor_id, &value, reading)?;
+    (is_str(contact.get("status"), "unavailable") && is_str(contact.get("relation"), "contact")).then(|| js::s(contact.get("reason")))
+}
+
 /// `confirmedHazardNear(state, actorId, hazardId)`: есть ли у героя рядом
 /// подтверждённая видимая и достижимая опасность.
 pub fn confirmed_hazard_near(state: &Value, actor_id: &str, hazard_id: Option<&Value>) -> bool {
@@ -679,8 +709,11 @@ static APPROACH_PATTERNS: LazyLock<Vec<ApproachPattern>> = LazyLock::new(|| {
         entry(re!(r"(?:отвле[кч]|переключ\p{L}*\s+внимани|шум\p{L}*\s+приманк)", "iu"), "cha", "performance", "plausible", "minor", "внимание собеседника"),
         entry(re!(r"(подпира|баррикад|завал|подпер|держ\p{L}+\s+двер)", "iu"), "str", "athletics", "plausible", "minor", "дверь"),
         entry(re!(r"(взлам|выбива|выломать|ломаю)", "iu"), "str", "athletics", "strenuous", "serious", "преграда"),
-        entry(re!(r"(опрокид|сбива|толка|рывк|поднож|жаровн|спотык|оступить)", "iu"), "str", "athletics", "strenuous", "serious", "противник"),
+        entry(re!(r"(опрокид|сбива|толка|рывк|поднож|жаровн|спотык|оступить|сталкива|столкн|спихива)", "iu"), "str", "athletics", "strenuous", "serious", "противник"),
         entry(re!(r"(поджиг|зажиг|подпал|факел\p{L}*\s+к)", "iu"), "dex", "sleight-of-hand", "plausible", "serious", "огонь"),
+        // Карманная кража — Ловкость рук против бдительности владельца, а не
+        // Скрытность (аудит 2026-11-26). Стоит до прятания: там тоже «крад».
+        entry(re!(r"(?<![\p{L}\p{M}])(?:вытаскива\p{L}*|вытащ\p{L}*|стаскива\p{L}*|стащ\p{L}*|стяну\p{L}*|стягива\p{L}*|срез\p{L}*|срежу|обчищ\p{L}*|обчист\p{L}*|краду|украду|украсть|ворую|своровать|тащу)(?![\p{L}\p{M}])[^.!?]{0,60}?(?:кошел\p{L}*|кошел[её]к|кошель\p{L}*|карман\p{L}*|ключ\p{L}*|с\s+пояса|из\s+сумк\p{L}*|кисет\p{L}*)", "iu"), "dex", "sleight-of-hand", "plausible", "serious", "бдительность владельца"),
         // «Скрыва» — с начала слова: «раскрывает тетрадь» и «вскрывает замок» не
         // прятки; «тихо» — только с движением: «тихо говорит Борину» — реплика.
         entry(re!(r"(?:крад|незамет|бесшумн|прячусь|затаи|пригиба\p{L}*\s+(?:за|у|в)\s|укрыва\p{L}*\s+(?:за|у|в)\s|залега\p{L}*|(?<![\p{L}\p{M}])скрыва|(?<![\p{L}\p{M}])тих\p{L}*\s+(?:\p{L}+\s+)?(?:пробир|проскаль|проход|прокрад|ступа|двига|обход|ид[уеёт]))", "iu"), "dex", "stealth", "plausible", "minor", "наблюдатели"),
@@ -690,11 +723,13 @@ static APPROACH_PATTERNS: LazyLock<Vec<ApproachPattern>> = LazyLock::new(|| {
         entry(re!(r"(крич|зову|оклика|подзыва)", "iu"), "cha", "persuasion", "plausible", "minor", "окружающие"),
         // Поиск тайника руками: «простукивает бочки — нет ли тайника».
         entry(re!(r"(?<![\p{L}\p{M}])(?:простук\p{L}*|ощупыва\p{L}*|обшари\p{L}*|тайник\p{L}*|тайничок\p{L}*)", "iu"), "int", "investigation", "plausible", "none", "тайник"),
-        entry(re!(r"(осматр|разгляд|изуча|ищу\s+след|обыск)", "iu"), "wis", "perception", "trivial", "none", "обстановка"),
+        // «Натоптал ли кто у порога», «нет ли отпечатков» — поиск следов (аудит 2026-11-26).
+        entry(re!(r"(осматр|разгляд|изуча|ищу\s+след|обыск|натопт|отпечат)", "iu"), "wis", "perception", "trivial", "none", "обстановка"),
         // Наблюдение за чем-то, что может случиться: «смотрим на маяк — загорится ли огонь?».
         entry(re!(r"(?<![\p{L}\p{M}])(?:наблюда\p{L}*|след(?:им|ит|ю|ят)\s+за|слежу\s+за|смотр\p{L}*\s+(?:на|в|за)\s|вгляд\p{L}*|высматр\p{L}*|караул\p{L}*|не\s+свод\p{L}*\s+(?:глаз|взгляд\p{L}*))", "iu"), "wis", "perception", "plausible", "none", "то, что происходит вокруг"),
         entry(re!(r"(вспомина|припомин|знаю\s+ли|что\s+известно)", "iu"), "int", "history", "trivial", "none", "память"),
-        entry(re!(r"(залез|взбира|караб|подтягива)", "iu"), "str", "athletics", "strenuous", "serious", "высота"),
+        // «Лезу по стене на крышу» — то же лазание, что «залезаю» (аудит 2026-11-26).
+        entry(re!(r"(?:залез|взбира|караб|подтягива|(?<![\p{L}\p{M}])(?:лезу|полезу|влезаю|влезу)(?![\p{L}\p{M}]))", "iu"), "str", "athletics", "strenuous", "serious", "высота"),
         entry(re!(r"(?<![\p{L}\p{M}])(?:вс|с|за|пере|под|вы|при|от)?прыг|(?<![\p{L}\p{M}])(?:прыж|соскоч|перескоч)", "iu"), "dex", "acrobatics", "strenuous", "serious", "разрыв"),
     ]
 });
@@ -868,7 +903,79 @@ pub fn has_recognized_free_action_approach(value: &str) -> bool {
 }
 
 fn impossible_feat() -> &'static Regex {
-    re!(r"(?<![\p{L}])(?:(?:весь|всю|целый|целую|целиком)\s+(?:замок|город|гору|дом|крепость|башню|корабль|лес|мост|стену)|(?:поднимаю|поднять|поднимает|переворачиваю|сдвигаю)\s+(?:замок|гору|крепость|башню|город)|взлетаю|улетаю|лечу\s+(?:над|по\s+небу|в\s+небо))(?![\p{L}])", "iu")
+    re!(r"(?<![\p{L}])(?:(?:весь|всю|целый|целую|целиком)\s+(?:замок|город|гору|дом|крепость|башню|корабль|лес|мост|стену)|(?:поднимаю|поднять|поднимает|переворачиваю|сдвигаю)\s+(?:замок|гору|крепость|башню|город)|взлетаю|улетаю|лечу\s+(?:над|по\s+небу|в\s+небо)|лета(?:ю|ем)\s+(?:над|по\s+небу|в\s+небе))(?![\p{L}])", "iu")
+}
+
+/// `HOSTILE_ACT`: удар или убийство вне боя (аудит 2026-11-26). «Бью в
+/// колокол», «режу хлеб», «отдам душу» — не нападение.
+fn hostile_act() -> &'static Regex {
+    re!(r"(?<![\p{L}\p{M}])(?:нападаю|нападу|нападаем|атакую|атакуем|убиваю|убью|убиваем|зарежу|пыряю|заколю|задушу|(?:бью|ударяю|ударю)(?!\s+(?:в\s+(?:колокол|барабан|ладош|набат|гонг|бубен|щит)|тревог|челом|себя|по\s+столу)))(?![\p{L}\p{M}])", "iu")
+}
+
+/// `SPELL_ACT`: заклинание словами.
+fn spell_act() -> &'static Regex {
+    re!(r"(?<![\p{L}\p{M}])(?:призываю|колдую|наколдовываю|творю|сотворяю|кастую|(?:читаю|накладываю|произношу|применяю)\s+заклинани\p{L}*)(?![\p{L}\p{M}])", "iu")
+}
+
+/// `KEYBOARD_ROWS`.
+const KEYBOARD_ROWS: [&str; 6] = ["йцукенгшщзхъ", "фывапролджэ", "ячсмитьбю", "qwertyuiop", "asdfghjkl", "zxcvbnm"];
+
+fn letter_words(value: &str) -> Vec<String> {
+    text::find_all(re!(r"\p{L}+", "gu"), &fold(value))
+}
+
+/// `keyboardMash(value)`: набор букв подряд с клавиатуры («фываолдж»).
+fn keyboard_mash(value: &str) -> bool {
+    let words = letter_words(value);
+    if words.is_empty() || words.len() > 3 {
+        return false;
+    }
+    words.iter().any(|word| {
+        let letters: Vec<char> = word.chars().collect();
+        letters.windows(4).any(|window| {
+            let chunk: String = window.iter().collect();
+            let reversed: String = window.iter().rev().collect();
+            KEYBOARD_ROWS.iter().any(|row| row.contains(&chunk) || row.contains(&reversed))
+        })
+    })
+}
+
+/// `spellWordStem(word)`: основа слова без окончания.
+fn spell_word_stem(word: &str) -> String {
+    let letters: Vec<char> = word.chars().collect();
+    if letters.len() > 5 {
+        letters[..letters.len() - 2].iter().collect()
+    } else {
+        letters[..3.max(letters.len().saturating_sub(1)).min(letters.len())].iter().collect()
+    }
+}
+
+/// `mentionedSpellName(value, spellNames)`.
+fn mentioned_spell_name(value: &str, spell_names: &[String]) -> bool {
+    let words = letter_words(value);
+    spell_names.iter().any(|name| {
+        let parts: Vec<String> = letter_words(&clean(name, 80)).into_iter().filter(|part| part.chars().count() >= 3).collect();
+        !parts.is_empty() && parts.iter().all(|part| {
+            let stem = spell_word_stem(part);
+            words.iter().any(|word| word.starts_with(&stem))
+        })
+    })
+}
+
+/// Прямая заявка на ручное перемещение сооружения или горы.
+pub fn impossible_manual_feat_refusal(value: &str) -> Option<String> {
+    let pattern = re!(r"^(?:я\s+)?(?:(поднимаю|сдвигаю|переворачиваю)|(?:пытаюсь\s+)?(поднять|сдвинуть|перевернуть))\s+((?:весь|целый)\s+(?:замок|город|дом|корабль|мост|лес)|(?:всю|целую)\s+(?:гору|крепость|башню|стену)|(?:замок|город|крепость|башню)\s+целиком|гору|город|крепость|башню)(?:\s+(одной\s+рукой|голыми\s+руками|вручную))?[.!…]*$", "iu");
+    let value = text::lower(&clean(value, 1_000));
+    let feat = pattern.captures(&value).ok()??;
+    let verb = match feat.get(1).map(|form| form.as_str()) {
+        Some("поднимаю") => "поднять",
+        Some("сдвигаю") => "сдвинуть",
+        Some("переворачиваю") => "перевернуть",
+        _ => feat.get(2)?.as_str(),
+    };
+    let target = feat.get(3)?.as_str();
+    let means = feat.get(4).map_or("вручную", |form| form.as_str());
+    Some(format!("Герою не по силам {verb} {target} {means}. Попытка ничего не расходует."))
 }
 
 /// Контекст [`mundane_action_outcome`].
@@ -878,20 +985,64 @@ pub struct MundaneContext {
     pub in_combat: bool,
     pub npc_names: Vec<String>,
     pub onward: String,
+    /// `spellNames`: заклинания, которые герой может сотворить; `None` —
+    /// список неизвестен, и ответ о заклинании не даётся.
+    pub spell_names: Option<Vec<String>>,
 }
 
-/// `mundaneActionOutcome(text, { heroName, inCombat, npcNames, onward })`:
+/// `mundaneActionOutcome(text, { heroName, inCombat, npcNames, onward, spellNames })`:
 /// уточнение с конкретными способами вместо тупика; в бою — `None`.
+/// При явно описанной цели дополнительно возвращается вопрос о недостающем способе.
 pub fn mundane_action_outcome(value: &str, context: &MundaneContext) -> Option<Value> {
     let value = clean(value, 1_000);
-    if value.is_empty() || context.in_combat {
+    if value.is_empty() {
         return None;
     }
     let hero = clean(&context.hero_name, 80);
     let hero = if hero.is_empty() { "Герой".to_string() } else { hero };
     let quote = text::replace_first(re!(r"[.!?…]+$", "u"), &value, "");
+    if keyboard_mash(&value) {
+        return Some(json!({ "kind": "unreadable", "narration": format!("Ведущий не разобрал заявку «{quote}». Скажите словами, что делает {hero}: например, «осматриваю комнату», «спрашиваю хозяйку о слухах» или «иду к воротам». Попытка ничего не расходует.") }));
+    }
     if text::test(impossible_feat(), &value) {
         return Some(json!({ "kind": "impossible", "narration": format!("{hero} примеривается — «{quote}», — но это не по силам ни одному смертному. Какой способ мир позволит: рычаг, заклинание, помощь отряда? Попытка ничего не расходует.") }));
+    }
+    if text::test(hostile_act(), &value) {
+        return Some(json!({ "kind": "hostile", "narration": format!("Здесь пока нет врагов, и мирный человек сам не станет противником: «{quote}» бой не начинает. Надавить можно и без драки — пригрозить (Запугивание), потребовать ответа или обезоружить хитростью. Если отряд решил драться всерьёз, схватку начинает ведущий. Попытка ничего не расходует.") }));
+    }
+    if let Some(spell_names) = &context.spell_names {
+        if text::test(spell_act(), &value) && !mentioned_spell_name(&value, spell_names) {
+            let known: Vec<String> = spell_names.iter().map(|name| clean(name, 60)).filter(|name| !name.is_empty()).collect();
+            let narration = if known.is_empty() {
+                format!("{hero} не владеет магией: заклинаний у героя нет. Опишите, как добиться своего руками, словом или снаряжением. Попытка ничего не расходует.")
+            } else {
+                let more = if known.len() > 8 { " и другие" } else { "" };
+                format!("Такого заклинания {hero} не знает. Сотворить можно: {}{more}. Назовите заклинание из списка или опишите, чего добиться без магии. Попытка ничего не расходует.", known[..known.len().min(8)].join(", "))
+            };
+            return Some(json!({ "kind": "unknown_spell", "narration": narration }));
+        }
+    }
+    if let Some(narration) = impossible_manual_feat_refusal(&value) {
+        return Some(json!({ "kind": "impossible", "narration": narration }));
+    }
+    let purpose = re!(r"^(.+?)[,\s]+(?:для того[,]?\s+)?чтобы\s+(?=\p{L})([^.!?…]+)$", "iu");
+    if let Ok(Some(captures)) = purpose.captures(&quote) {
+        let approach = captures.get(1)?.as_str();
+        let result = captures.get(2)?.as_str();
+        let attachment = re!(r"(?<![\p{L}])(?:подвеш|подвес|навеш|крепл|закреп|привя|обвя|натяг|натян)\p{L}*", "iu");
+        let trigger = re!(r"(?<![\p{L}])(?:если|когда)\s+[^.!?…]+$", "iu");
+        let question = if text::test(attachment, approach) {
+            match trigger.find(result).ok().flatten() {
+                Some(trigger) => format!("Уточните, как движение передастся предмету, {}. Что герой соединяет с подвижной частью?", trigger.as_str()),
+                None => "Уточните, к чему герой крепит предмет и как крепление даст нужный результат.".to_string(),
+            }
+        } else {
+            "Уточните, какая деталь описанного способа должна привести к этому результату и что для неё есть у героя.".to_string()
+        };
+        return Some(json!({ "kind": "method", "narration": format!("Цель понятна. {question} Попытка ничего не расходует.") }));
+    }
+    if context.in_combat {
+        return None;
     }
     let mut options = vec!["осмотреть место внимательнее".to_string()];
     if !context.npc_names.is_empty() {
@@ -1678,6 +1829,23 @@ pub fn free_action_approach_plan(state: &Value, actor_id: &str, value: &str) -> 
         if let (Some(x), Some(y)) = position {
             let label = clean_v(nullish(target.get("character"), target.get("name")), 80);
             return ready("actor", label, &[(x, y)], approach_cells_around(&map, &[(x, y)], &occupied));
+        }
+    }
+    // «Подхожу к ближайшему человеку» — ближайший из здешних по карте, а не
+    // «Чего Шорох хочет добиться» (аудит 2026-11-26).
+    if people.is_empty() && text::test(re!(r"(?:ближайш\p{L}*\s+(?:человек|прохож|местн|посетител|жител|горожан|селянин|селянк)\p{L}*|первому\s+встречн\p{L}*)", "iu"), &request.phrase) {
+        let mut nearest: Vec<(Value, (f64, f64), f64)> = present_scene_npcs(state)
+            .into_iter()
+            .filter_map(|npc| {
+                let placement = npc_placement_for(state, npc.get("id").unwrap_or(&Value::Null), None);
+                let (x, y) = (finite(prop(placement.as_ref(), "x"))?, finite(prop(placement.as_ref(), "y"))?);
+                let distance = chebyshev((x, y), from);
+                Some((npc, (x, y), distance))
+            })
+            .collect();
+        nearest.sort_by(|left, right| left.2.total_cmp(&right.2).then_with(|| text::locale_compare(&clean_v(left.0.get("id"), 300), &clean_v(right.0.get("id"), 300))));
+        if let Some((npc, at, _)) = nearest.first() {
+            return ready("actor", clean_v(npc.get("name"), 80), &[*at], approach_cells_around(&map, &[*at], &occupied));
         }
     }
     // Вещь на карте: ближайшая из подходящих по виду и уже раскрытых.

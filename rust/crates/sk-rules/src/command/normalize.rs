@@ -136,6 +136,19 @@ pub fn normalize_command(input: &Value, state: &Value, uuid: Uuid<'_>) -> Result
             None => serde_json::json!({}),
         };
         let spell = sk_combat_content::combat_spells::canonical_combat_spell_for(Some(&Value::String(spell_id.clone())), Some(&options));
+        if let Some(missile_targets) = first(&command, &["missile_target_ids", "missileTargetIds"]) {
+            if spell_id != "magic-missile" {
+                return Err(rule("Распределение дротиков допустимо только для «Волшебной стрелы»", "INVALID_MISSILE_TARGETS"));
+            }
+            if !missile_targets.as_array().is_some_and(|ids| ids.iter().all(|id| {
+                id.as_str().is_some_and(|id| !sk_core::text::trim(id).is_empty())
+            })) {
+                return Err(rule("Нужно передать список целей дротиков", "INVALID_MISSILE_TARGETS"));
+            }
+            let missile_targets = missile_targets.clone();
+            set(&mut command, "missile_target_ids", missile_targets);
+            delete(&mut command, "missileTargetIds");
+        }
         let rejects = matches!(spell_id.as_str(), "longstrider" | "mass-cure-wounds" | "destructive-wave")
             || spell.as_ref().and_then(|spell| spell.get("rejectDuplicateTargetIds")) == Some(&Value::Bool(true));
         if rejects {

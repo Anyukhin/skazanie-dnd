@@ -1,7 +1,8 @@
 ﻿# Разовый перенос хранилища JS-сервера в Rust-сервер и переключение игры на
 # Rust — шаги «Переключение на 8787» из docs/rust-docker.md одним запуском.
-# ./storage только читается (монтируется :ro); откат — DND_SERVER=js в .env
-# и START_DND.cmd. Игры, сыгранные на Rust, обратно в JS не переносятся.
+# ./storage только читается (монтируется :ro) и остаётся как был. JS-сервер с
+# 2026-11-27 в архиве (archive/js-server/README.md): его контейнер здесь только
+# останавливается на время переноса. Игры, сыгранные на Rust, в JS не переносятся.
 #
 #   powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1
 #     -DryRun        только пробный перенос и сводка; JS-сервер возвращается
@@ -24,7 +25,7 @@ Set-Location -LiteralPath $ProjectRoot
 $Storage = Join-Path $ProjectRoot 'storage'
 $EnvFile = Join-Path $ProjectRoot '.env'
 $Rust = @('compose', '-f', (Join-Path $SourceRoot 'compose.rust.yaml'), '--project-directory', $ProjectRoot)
-$Js = @('compose', '-f', (Join-Path $ProjectRoot 'compose.yaml'), '--project-directory', $ProjectRoot)
+$Js = @('compose', '-f', (Join-Path $SourceRoot 'archive/js-server/compose.yaml'), '--project-directory', $ProjectRoot)
 
 function Write-Step([string]$Message) { Write-Host $Message -ForegroundColor Cyan }
 
@@ -126,7 +127,7 @@ try {
 
   Write-Step 'Аудит перенесённого хранилища (журнал против replay, проекции, комнаты)...'
   $audit = Invoke-Docker ($Rust + @('run', '--rm', '--no-deps', 'skazanie-rust', 'audit-storage')) @(0, 1)
-  if ($audit -ne 0) { throw 'Аудит нашёл блокеры (выше). Игра остаётся на JS: docker compose --profile public up -d.' }
+  if ($audit -ne 0) { throw 'Аудит нашёл блокеры (выше): игра на Rust не переключена, ./storage не изменён.' }
 
   Set-EnvValue 'DND_SERVER' 'rust'
   Set-EnvValue 'SKAZANIE_RUST_PORT' '8787'
@@ -148,7 +149,6 @@ try {
   Write-Host ''
   Write-Host 'Игра переключена на Rust: http://127.0.0.1:8787' -ForegroundColor Green
   Write-Host "В .env: DND_SERVER=rust. Копия прежнего хранилища — $backup" -ForegroundColor DarkGray
-  Write-Host 'Откат: DND_SERVER=js в .env и START_DND.cmd (./storage не изменён).' -ForegroundColor DarkGray
   exit 0
 } catch {
   Write-Host ''

@@ -44,6 +44,7 @@ mod trade;
 pub mod vitals;
 pub mod world_time;
 
+pub use combat_action::awaken_candidates_for;
 pub use dispatch::RESOLVE_LABELS;
 
 use serde_json::{json, Value};

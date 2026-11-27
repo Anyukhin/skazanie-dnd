@@ -291,10 +291,11 @@ pub fn normalize_party_decision(value: &Value, policy: Option<&Value>) -> Decide
     } else {
         json!(0)
     };
-    let counted = if active_voter_ids.is_empty() { eligible_voter_ids.len() } else { active_voter_ids.len() };
+    let treaty = field("scenarioTreaty").filter(|reference| get(Some(reference), "schemaVersion").and_then(Value::as_i64) == Some(1));
+    let counted = if treaty.is_some() || active_voter_ids.is_empty() { eligible_voter_ids.len() } else { active_voter_ids.len() };
     let calculated_required = required_votes_for(Some(&kind_value), counted);
     let raw_required = safe_number(coalesce(field("requiredVotes"), field("required_votes")), calculated_required);
-    let required_votes = raw_required.min(counted as i64).max(0);
+    let required_votes = if treaty.is_some() { calculated_required } else { raw_required.min(counted as i64).max(0) };
     let destination = text(coalesce(field("destinationLocationId"), field("destination_location_id")), 120, "");
     let mut result = Map::new();
     result.insert("id".into(), Value::String(decision_id));
@@ -332,6 +333,9 @@ pub fn normalize_party_decision(value: &Value, policy: Option<&Value>) -> Decide
     if let Some(reference) = quest_reference(field("questAcceptance"))? {
         result.insert("questAcceptance".into(), reference);
     }
+    if let Some(reference) = treaty {
+        result.insert("scenarioTreaty".into(), json!({ "schemaVersion": 1, "actorId": id(reference.get("actorId"), "Переговорщик")? }));
+    }
     result.insert("resolutionPrompt".into(), Value::String(text(field("resolutionPrompt"), 360, "")));
     result.insert("createdAt".into(), json!(created_at));
     result.insert("expiresAt".into(), expires_at);
@@ -339,6 +343,14 @@ pub fn normalize_party_decision(value: &Value, policy: Option<&Value>) -> Decide
         result.insert("resolutionReason".into(), Value::String(text(field("resolutionReason"), 80, "")));
     }
     Ok(Value::Object(result))
+}
+
+/// Договор вступает в силу только после явно поданных голосов за условия.
+pub fn scenario_treaty_decision_approved(interaction: &Value) -> bool {
+    let required = interaction.get("requiredVotes").and_then(Value::as_u64).unwrap_or(0) as usize;
+    is_str(interaction.get("resolvedOptionId"), "accept") && is_str(interaction.get("resolutionReason"), "quorum")
+        && required > 0
+        && interaction.get("votes").and_then(Value::as_object).is_some_and(|votes| votes.values().filter(|option| is_str(Some(option), "accept")).count() >= required)
 }
 
 /// Объект события с полями в порядке JS.
@@ -787,7 +799,10 @@ pub fn resolve_party_vote(state: &Value, input: &Value) -> Decided<Value> {
         }
     }
     votes.insert(voter.clone(), Value::String(selected.clone()));
-    let winner = winner_for(&interaction, &context, &votes, true);
+    let majority = winner_for(&interaction, &context, &votes, true);
+    let winner = majority.clone().or_else(|| {
+        (interaction.get("scenarioTreaty").is_some() && votes.len() == context.active_voters.len()).then(|| "decline".to_string())
+    });
     let mut cast = vec![
         ("interaction_id", interaction["id"].clone()),
         ("hero_id", json!(voter)),
@@ -809,7 +824,7 @@ pub fn resolve_party_vote(state: &Value, input: &Value) -> Decided<Value> {
                 ("resolved_option_id", json!(winner)),
                 ("votes", votes_value(&votes)),
                 ("abstained_voter_ids", strings_value(&context.abstained_voters)),
-                ("resolution_reason", json!("quorum")),
+                ("resolution_reason", json!(if majority.is_some() { "quorum" } else { "no_quorum" })),
             ],
         ));
     }
@@ -836,7 +851,9 @@ pub fn resolve_party_abstain(state: &Value, input: &Value) -> Decided<Value> {
             votes.shift_remove(&actor_id);
         }
     }
-    let next = Participants { active_voters: active.clone(), abstained_voters: abstained.clone(), required: required_votes_for(interaction.get("type"), active.len()), ..context };
+    let treaty = interaction.get("scenarioTreaty").is_some();
+    let required = if treaty { context.required } else { required_votes_for(interaction.get("type"), active.len()) };
+    let next = Participants { active_voters: active.clone(), abstained_voters: abstained.clone(), required, ..context };
     let mut abstentions = spread_object(interaction.get("abstentions"));
     abstentions.insert(voter_id.clone(), json!("explicit"));
     let mut events = vec![party_decision_event(
@@ -853,7 +870,9 @@ pub fn resolve_party_abstain(state: &Value, input: &Value) -> Decided<Value> {
             ("votes", votes_value(&votes)),
         ],
     )];
-    let winner = if active.is_empty() { options_of(&interaction).first().cloned() } else { winner_for(&interaction, &next, &votes, true) };
+    let winner = if treaty {
+        (active.len() < required as usize || votes.len() == active.len()).then(|| "decline".to_string())
+    } else if active.is_empty() { options_of(&interaction).first().cloned() } else { winner_for(&interaction, &next, &votes, true) };
     if let Some(winner) = &winner {
         events.push(party_decision_event(
             "PartyDecisionResolved",
@@ -885,6 +904,10 @@ pub fn party_decision_active_voter_ids(interaction: &Value, connected_hero_ids: 
 /// activeVoterIds, abstainedVoterIds }`.
 pub fn party_decision_presence_events(state: &Value, input: &Value) -> Decided<Value> {
     let interaction = validate_party_vote_state(state, get(get(Some(state), "agentInteraction"), "id"), None)?;
+    // Разрыв соединения не отзывает голос и не меняет кворум договора.
+    if interaction.get("scenarioTreaty").is_some() {
+        return Ok(json!({ "events": [], "activeVoterIds": interaction["activeVoterIds"], "abstainedVoterIds": interaction["abstainedVoterIds"] }));
+    }
     let context = participant_context(&interaction, &[]);
     let empty = json!([]);
     let active_now = ids(Some(coalesce(get(Some(input), "activeVoterIds"), None).unwrap_or(&empty)));
@@ -949,7 +972,8 @@ pub fn party_decision_expiry_events(state: &Value, now: Option<f64>) -> Decided<
     }
     let context = participant_context(&interaction, &[]);
     let votes = clean_votes(&interaction, &context, false);
-    let winner = winner_for(&interaction, &context, &votes, false).unwrap_or_default();
+    let winner = if interaction.get("scenarioTreaty").is_some() { "decline".to_string() }
+        else { winner_for(&interaction, &context, &votes, false).unwrap_or_default() };
     Ok(json!({
         "events": [party_decision_event(
             "PartyDecisionExpired",

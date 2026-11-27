@@ -3,7 +3,7 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { materializeCatalogItem } from '../server/item-catalog.mjs'
+import { materializeCatalogItem } from './kit/fixtures.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
@@ -163,8 +163,8 @@ test('HTTP компоненты: расходуемые и нерасходуе�
     assertStatus(assigned, 200, log)
   }
 
-  const pouch = materializeCatalogItem('srd_5_2_1:component-pouch', { id: 'component-pouch', quantity: 1 })
-  const diamond = materializeCatalogItem('srd_5_2_1:diamond-50gp', { id: 'diamond-50gp', quantity: 1 })
+  const pouch = await materializeCatalogItem('srd_5_2_1:component-pouch', { id: 'component-pouch', quantity: 1 })
+  const diamond = await materializeCatalogItem('srd_5_2_1:diamond-50gp', { id: 'diamond-50gp', quantity: 1 })
   const missingCreated = await request(baseUrl, '/api/campaigns', {
     method: 'POST', cookie: adminCookie,
     body: { code: 'COMPONENTS-MISSING', name: 'Компоненты без алмаза', state: campaignState('COMPONENTS-MISSING', [pouch]) },
@@ -175,9 +175,9 @@ test('HTTP компоненты: расходуемые и нерасходуе�
     body: { code: 'COMPONENTS-DIAMOND', name: 'Компоненты с алмазом', state: campaignState('COMPONENTS-DIAMOND', [pouch, diamond]) },
   })
   assertStatus(diamondCreated, 201, log)
-  const diamondDust = materializeCatalogItem('srd_5_2_1:material-diamond-dust-100gp', { id: 'diamond-dust-100gp', quantity: 2 })
-  const mace = { ...materializeCatalogItem('srd_5_2_1:mace', { id: 'cleric-mace', quantity: 1 }), equipped: true }
-  const shield = { ...materializeCatalogItem('srd_5_2_1:shield', { id: 'cleric-shield', quantity: 1 }), equipped: true }
+  const diamondDust = await materializeCatalogItem('srd_5_2_1:material-diamond-dust-100gp', { id: 'diamond-dust-100gp', quantity: 2 })
+  const mace = { ...(await materializeCatalogItem('srd_5_2_1:mace', { id: 'cleric-mace', quantity: 1 })), equipped: true }
+  const shield = { ...(await materializeCatalogItem('srd_5_2_1:shield', { id: 'cleric-shield', quantity: 1 })), equipped: true }
   const restorationCreated = await request(baseUrl, '/api/campaigns', {
     method: 'POST', cookie: adminCookie,
     body: { code: 'COMPONENTS-RESTORATION', name: 'Расходуемые компоненты', state: restorationCampaignState([diamondDust, mace, shield]) },

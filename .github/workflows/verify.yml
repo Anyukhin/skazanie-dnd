@@ -1,8 +1,8 @@
 name: verify
 
-# Гейт из AGENTS.md §2: `pnpm verify` — это test + typecheck:server + build.
-# До появления этого файла проверок не было вовсе, тесты гонялись руками, и
-# поэтому красное доезжало до main.
+# Гейт из AGENTS.md §2: `pnpm verify` (test + build) и контракт HTTP против
+# Rust-сервера (`pnpm test:contract`). До появления этого файла проверок не было
+# вовсе, тесты гонялись руками, и поэтому красное доезжало до main.
 on:
   # Фильтра по базовой ветке здесь быть не должно. Волна из 24 stacked-PR
   # прошла мимо гейта именно из-за него: пятнадцать веток целились в соседние
@@ -14,10 +14,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    # На shared runner функциональный корпус занимает около 6 минут, затем
-    # `run-test-suite` даёт полному MVP до 20 минут и один повтор при падении.
-    # Прежние 25 минут гарантированно обрывали повтор до typecheck и build.
-    timeout-minutes: 50
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -42,8 +39,45 @@ jobs:
       - name: Тесты
         run: pnpm test
 
-      - name: Типы сервера
-        run: pnpm typecheck:server
-
       - name: Сборка
         run: pnpm build
+
+  # Контрактные HTTP-тесты (test/contract-rust.list) против бинаря сервера игры.
+  # Прежде корпус гонялся против JS-сервера; с 2026-11-27 сервер один — Rust.
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      SKAZANIE_RUST_SERVER_BIN: ${{ github.workspace }}/rust/target/release/skazanie-server
+      ROUTERAI_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Установить зависимости
+        run: pnpm install --frozen-lockfile
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: contract
+
+      - name: Бинарь сервера с тестовыми крючками
+        # test-hooks — подкоманды journal/session/room/audit, кости и сбои
+        # тестов (rust/AGENTS.md §2); выпускной бинарь собирается без них.
+        working-directory: rust
+        run: cargo build --release --locked -p sk-server --features test-hooks --bin skazanie-server
+
+      - name: Контракт HTTP
+        run: pnpm test:contract

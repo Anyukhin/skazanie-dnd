@@ -141,8 +141,14 @@ impl Resolve<'_> {
         if raw.is_nan() || raw <= 0.0 {
             return Ok(events);
         }
+        let limit = effect.get("damage_limit").filter(|value| !value.is_null());
+        let remaining = limit.map(|limit| (js::safe_int(Some(limit), 0) - js::safe_int(effect.get("damage_dealt"), 0)).max(0));
+        if remaining == Some(0) { return Ok(events); }
         let damage_type = Value::String(js::string(Some(&damage_type_value)));
-        let payload = self.resolve_damage_with_reactions(state, target_id, js::num(raw), &damage_type, None, Some(&mut events))?;
+        // Лимит стража расходует нанесённый урон после защит, в том числе во временные хиты.
+        let source = remaining.map(|limit| json!({ "damage_limit": limit }));
+        let payload = self.resolve_damage_payload(state, target_id, js::num(raw), &damage_type, None, source.as_ref())?;
+        let payload = self.prepare_elemental_reaction_damage(state, target_id, payload, None, Some(&mut events))?;
         let mut applied = spread_value(Some(&payload));
         if let Some(spell_id) = effect.get("spell_id") {
             applied.insert("spell_id".into(), spell_id.clone());
@@ -150,7 +156,19 @@ impl Resolve<'_> {
         applied.insert("area_effect".into(), Value::Bool(true));
         applied.insert("trigger".into(), Value::String(trigger.into()));
         applied.insert("saved".into(), Value::Bool(saved));
-        events.push(event_from(&command_with_rules(&self.command, &[rule_ids::DAMAGE]), "DamageApplied", Some(Value::Object(applied)), Some(&json!([target_id]))));
+        if let Some(limit) = limit {
+            applied.insert("area_damage_limit".into(), limit.clone());
+            if let Some(effect_id) = crate::core::coalesce(&[effect.get("effect_id"), effect.get("id")]) {
+                applied.insert("area_damage_effect_id".into(), effect_id.clone());
+            }
+            let dealt = js::safe_int(payload.get("applied_amount"), 0) + js::safe_int(payload.get("temporary_hp_absorbed"), 0);
+            applied.insert("area_damage_dealt".into(), Value::from(dealt));
+        }
+        let mut damage_event = event_from(&command_with_rules(&self.command, &[rule_ids::DAMAGE]), "DamageApplied", Some(Value::Object(applied)), Some(&json!([target_id])));
+        if limit.is_some() {
+            damage_event["event_schema_version"] = Value::from(2);
+        }
+        events.push(damage_event);
         events.extend(crate::death::zero_hit_point_damage_consequences(state, &self.command, target_id, &payload, false));
         Ok(events)
     }

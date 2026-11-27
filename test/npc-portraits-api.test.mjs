@@ -5,10 +5,11 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { startTestServer } from './kit/http.mjs'
 import { startFakeProvider } from './kit/llm.mjs'
-import {
-  NPC_PORTRAIT_GENERATION_LIMIT,
-  NPC_PORTRAIT_ROLE_ASSETS,
-} from '../server/npc-portraits.mjs'
+
+// Пределы портретов фиксирует контракт: rust/crates/sk-chargen/src/npc_portraits.rs
+// (NPC_PORTRAIT_GENERATION_LIMIT, NPC_PORTRAIT_ROLE_ASSETS).
+const NPC_PORTRAIT_GENERATION_LIMIT = 6
+const NPC_PORTRAIT_ROLE_ASSETS = Object.freeze({ guard: '/assets/npcs/roles/guard.png' })
 
 const WEBP = Buffer.from('524946460400000057454250', 'hex')
 

@@ -2,7 +2,7 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { materializeCatalogItem } from '../server/item-catalog.mjs'
+import { materializeCatalogItem } from './kit/fixtures.mjs'
 import { readJournal, startTestServer } from './kit/index.mjs'
 
 const ACID = 'srd_5_2_1:acid'
@@ -30,7 +30,7 @@ function sessionCookie(result) {
   return result.response.headers.get('set-cookie')?.split(';')[0]
 }
 
-function initialState() {
+async function initialState() {
   return {
     state_version: 0,
     sessionCode: 'THROWN-FLASK-HTTP',
@@ -50,7 +50,7 @@ function initialState() {
       x: 0,
       y: 0,
       abilities: { str: 12, dex: 20, con: 14, int: 10, wis: 10, cha: 10 },
-      inventory: [materializeCatalogItem(ACID, { id: 'acid', quantity: 1 })],
+      inventory: [await materializeCatalogItem(ACID, { id: 'acid', quantity: 1 })],
     }],
     enemies: [{
       id: 'foe',
@@ -140,7 +140,7 @@ test('HTTP UseItem флакона кислоты сохраняет SRD-эффе
   const created = await request(baseUrl, '/api/campaigns', {
     method: 'POST',
     cookie: adminCookie,
-    body: { code: 'THROWN-FLASK-HTTP', name: 'Метание кислоты', state: initialState() },
+    body: { code: 'THROWN-FLASK-HTTP', name: 'Метание кислоты', state: await initialState() },
   })
   assert.equal(created.status, 201, `${created.text}\n${server.output()}`)
 

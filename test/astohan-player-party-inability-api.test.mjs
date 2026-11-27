@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createCampaign, registerUser, sendCommand, setupAdmin, startTestServer } from './kit/http.mjs'
-import { normalizeCampaignState } from '../server/rules-engine.mjs'
+import { normalizeCampaignState } from './kit/fixtures.mjs'
 
 const CAMPAIGN = 'ASTOHAN-DEFEAT-PLAYER'
 const DICE = {
@@ -15,7 +15,7 @@ const DICE = {
   ],
 }
 
-function state() {
+async function state() {
   return normalizeCampaignState({
     sessionCode: CAMPAIGN,
     campaign: 'Асстохан · восстановление после заставы',
@@ -52,7 +52,7 @@ test('публичный EndTurn закрывает поражение отря�
   const server = await startTestServer(t, { storagePrefix: 'skazanie-astohan-defeat-player-', setupToken: 'astohan-defeat-player-setup', dice: DICE })
   const admin = await setupAdmin(server, { email: 'astohan-defeat-admin@example.test', password: 'astohan-defeat-admin-password' })
   const player = await registerUser(server, { email: 'astohan-defeat-player@example.test', password: 'astohan-defeat-player-password' })
-  await createCampaign(admin.client, { code: CAMPAIGN, name: 'Пепельная застава · recovery', state: state() })
+  await createCampaign(admin.client, { code: CAMPAIGN, name: 'Пепельная застава · recovery', state: await state() })
   const users = await admin.client.get('/api/admin/users')
   const user = users.body.users.find((entry) => entry.email === player.email)
   assert.ok(user)

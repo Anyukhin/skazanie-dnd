@@ -36,19 +36,10 @@ async function syncOrigin() {
 }
 
 async function run() {
+  // Сервер игры — Rust в Docker (START_DND.cmd). Прежний JS-сервер, который
+  // этот запуск поднимал сам, с 2026-11-27 в архиве (archive/js-server).
   if (!await ready()) {
-    // DND_SERVER=rust (основной сервер с 2026-10-31 — Rust в Docker): JS-сервер
-    // поверх прежнего ./storage открыл бы второй, отставший мир.
-    if (String(process.env.DND_SERVER ?? '').trim().toLowerCase() === 'rust') {
-      throw new Error('DND_SERVER=rust: сначала запустите игру START_DND.cmd (Rust-сервер в Docker) — Sites подключится к нему')
-    }
-    server = spawn(process.execPath, [join(root, 'server/index.mjs')], {
-      cwd: root, windowsHide: true, env: { ...process.env, AGENT_PORT: '8787', AGENT_HOST: '127.0.0.1' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    server.stdout.pipe(output, { end: false }); server.stderr.pipe(output, { end: false })
-    for (let i = 0; i < 60 && !await ready(); i++) await pause(1000)
-    if (!await ready()) throw new Error('Игровой сервер не запустился; подробности в tmp/sites-runtime/server.log')
+    throw new Error('Игровой сервер не отвечает на 8787: сначала запустите игру START_DND.cmd (Rust-сервер в Docker) — Sites подключится к нему')
   }
   const key = join(runtime, 'tunnel-key')
   if (!existsSync(key) && spawnSync('ssh-keygen.exe', ['-q', '-t', 'ed25519', '-f', key, '-N', ''], { stdio: 'ignore', windowsHide: true }).status !== 0) {

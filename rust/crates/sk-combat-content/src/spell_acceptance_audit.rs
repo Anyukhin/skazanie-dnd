@@ -125,8 +125,15 @@ pub struct ReadError {
     pub message: String,
 }
 
+/// Файл по пути прежнего дерева; с 2026-11-27 часть зависимостей приёмки
+/// (JS-сервер, его тесты) лежит в `archive/js-server/<путь>` без изменений —
+/// как `read` в `server/spell-acceptance-audit.mjs`.
 fn read(root: &Path, path: &str) -> Result<String, ReadError> {
-    match std::fs::read(root.join(path)) {
+    let mut result = std::fs::read(root.join(path));
+    if matches!(&result, Err(error) if error.kind() == std::io::ErrorKind::NotFound) {
+        result = std::fs::read(root.join("archive/js-server").join(path));
+    }
+    match result {
         Ok(bytes) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
         Err(error) => Err(ReadError { not_found: error.kind() == std::io::ErrorKind::NotFound, message: format!("{path}: {error}") }),
     }

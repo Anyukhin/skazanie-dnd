@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-import { buildCampaignArcPlan } from '../server/campaign-loop-policy.mjs'
+import { buildCampaignArcPlan } from './kit/fixtures.mjs'
 
 test('два игрока обсуждают и спрашивают вне своего хода без бросков, перехода и изменения механики', { timeout: runnerTimeout(30_000) }, async (t) => {
   const server = await startTestServer(t, { storagePrefix: 'skazanie-dialogue-api-', setupToken: 'dialogue-test-setup' })
@@ -96,7 +96,7 @@ test('два игрока обсуждают и спрашивают вне св
 
   await t.test('повтор ключа перехода после двух голосов потребляет решение ровно один раз', async () => {
     const travelState = { ...state, sessionCode: 'TRANSITION-API', enemies: [], mechanics: { combat: { active: false } },
-      campaignConcept: { preset: 'one_evening', arc: buildCampaignArcPlan('transition-clock') },
+      campaignConcept: { preset: 'one_evening', arc: await buildCampaignArcPlan('transition-clock') },
       worldMemory: { quests: [{ id: 'find-courier', title: 'Найти курьера', status: 'active', clock: { current: 0, max: 3, triggered: false } }] },
     }
     const campaign = await request('/api/campaigns', admin.cookie, { code: travelState.sessionCode, name: 'Согласованный переход', state: travelState })

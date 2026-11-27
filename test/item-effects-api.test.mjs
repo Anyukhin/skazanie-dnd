@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { startTestServer } from './kit/http.mjs'
-import { materializeCatalogItem } from '../server/item-catalog.mjs'
+import { materializeCatalogItem } from './kit/fixtures.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const SETUP_TOKEN = 'item-effects-api-setup'
@@ -42,7 +42,7 @@ function fallenHero(id, x, y) {
   }
 }
 
-function initialState() {
+async function initialState() {
   return {
     state_version: 0,
     sessionCode: 'ITEM-EFFECTS-API',
@@ -78,11 +78,11 @@ function initialState() {
             quantity: 1,
             charges: { current: 1, max: 10 },
           },
-          materializeCatalogItem('srd_5_2_1:ring-of-protection', {
+          await materializeCatalogItem('srd_5_2_1:ring-of-protection', {
             id: 'ring-protection',
             quantity: 1,
           }),
-          materializeCatalogItem('srd_5_2_1:flame-tongue-longsword', {
+          await materializeCatalogItem('srd_5_2_1:flame-tongue-longsword', {
             id: 'flame-tongue',
             quantity: 1,
           }),
@@ -129,7 +129,7 @@ function initialState() {
   }
 }
 
-function specializedItemState(sessionCode, catalogId, itemId) {
+async function specializedItemState(sessionCode, catalogId, itemId) {
   const weapon = {
     id: 'sword', name: 'Длинный меч', type: 'weapon', quantity: 1, equipped: true,
     combat: { kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', normalRange: 5 },
@@ -146,7 +146,7 @@ function specializedItemState(sessionCode, catalogId, itemId) {
       hp: 30, maxHp: 30, armor: 15, speed: 30, proficiency: 2,
       abilities: { str: 16, dex: 16, con: 14, int: 10, wis: 10, cha: 10 },
       x: 0, y: 0,
-      inventory: [weapon, materializeCatalogItem(catalogId, { id: itemId, quantity: 1 })],
+      inventory: [weapon, await materializeCatalogItem(catalogId, { id: itemId, quantity: 1 })],
     }],
     enemies: [{
       id: 'foe', name: 'Противник', hp: 20, maxHp: 20, armor: 12, speed: 30, alive: true,
@@ -250,7 +250,7 @@ test('HTTP item commands enforce ACL, semantic idempotency, stale writes and a s
     body: {
       code: 'ITEM-EFFECTS-API',
       name: 'Предметные эффекты',
-      state: initialState(),
+      state: await initialState(),
     },
   })
   assert.equal(created.status, 201, `${created.text}\n${logs()}`)
@@ -519,7 +519,7 @@ test('HTTP player item path carries point, mode and weapon inputs with semantic 
   for (const [code, catalogId, itemId] of cases) {
     const created = await request(baseUrl, '/api/campaigns', {
       method: 'POST', cookie: adminCookie,
-      body: { code, name: code, state: specializedItemState(code, catalogId, itemId) },
+      body: { code, name: code, state: await specializedItemState(code, catalogId, itemId) },
     })
     assert.equal(created.status, 201, `${created.text}\n${logs()}`)
   }

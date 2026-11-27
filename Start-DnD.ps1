@@ -58,19 +58,17 @@ function Add-EnvValue([string]$Name, [string]$Value) {
   Add-Content -LiteralPath '.env' -Value ([Environment]::NewLine + "$Name=$Value") -Encoding UTF8
 }
 
-# Какой сервер поднимать — DND_SERVER в .env: rust (основной с 2026-10-31) или
-# js (откат). Без значения — js: на машине, где хранилище ещё не перенесено
-# (tools/rust-cutover.ps1), Rust-сервер открылся бы пустым миром.
+# Сервер игры — Rust (основной с 2026-10-31, единственный с 2026-11-27). Прежний
+# JS-сервер в архиве (archive/js-server/README.md): DND_SERVER=js больше не
+# поднимает его, а останавливает запуск с объяснением. Other — проект Compose
+# прежнего JS-контейнера (тот же проект, что до архива): если он ещё жив, он держит 8787.
 function Get-GameServer {
   $choice = if ($env:DND_SERVER) { $env:DND_SERVER } else { Read-EnvValue 'DND_SERVER' }
   $choice = $choice.Trim().ToLowerInvariant()
-  if ($choice -eq 'rust') {
-    return @{ Name = 'rust'; Compose = @('compose', '-f', 'compose.rust.yaml'); Service = 'skazanie-rust'; Other = @('compose') }
+  if ($choice -and $choice -ne 'rust') {
+    throw "DND_SERVER=$choice в .env: сервер игры только Rust (DND_SERVER=rust или без значения). JS-сервер в архиве — archive/js-server/README.md."
   }
-  if ($choice -and $choice -ne 'js') {
-    throw "DND_SERVER=$choice в .env: допустимо rust или js."
-  }
-  return @{ Name = 'js'; Compose = @('compose'); Service = 'skazanie'; Other = @('compose', '-f', 'compose.rust.yaml') }
+  return @{ Name = 'rust'; Compose = @('compose', '-f', 'compose.rust.yaml'); Service = 'skazanie-rust'; Other = @('compose', '-f', 'archive/js-server/compose.yaml', '--project-directory', '.') }
 }
 
 function Test-RustStorageReady {
@@ -211,9 +209,9 @@ try {
 
   if ($Server.Name -eq 'rust') {
     if (-not (Test-RustStorageReady)) {
-      throw 'DND_SERVER=rust, но хранилище Rust-сервера ещё не создано. Перенесите кампании: powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1 (или DND_SERVER=js в .env).'
+      throw 'Хранилище Rust-сервера ещё не создано. Перенесите кампании прежнего JS-сервера: powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1'
     }
-    # compose.rust.yaml по умолчанию — 8788, рядом с JS; основной сервер — на 8787.
+    # compose.rust.yaml по умолчанию — 8788 (проверка рядом с игрой); игра — на 8787.
     $env:SKAZANIE_RUST_PORT = '8787'
   }
 

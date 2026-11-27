@@ -3,11 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { startTestServer } from './kit/http.mjs'
-import {
-  createTacticalMap,
-  serializeTacticalMap,
-  setCell,
-} from '../server/tactical-map.mjs'
+import { tacticalMap } from './kit/fixtures.mjs'
 
 async function request(baseUrl, path, {
   method = 'GET',
@@ -32,22 +28,24 @@ function sessionCookie(result) {
   return result.response.headers.get('set-cookie')?.split(';')[0]
 }
 
-function mapForScene() {
-  const map = createTacticalMap({
-    width: 4,
-    height: 4,
+async function mapForScene() {
+  const width = 4
+  const height = 4
+  const builder = tacticalMap({
+    width,
+    height,
     locationId: 'market',
     seed: 'npc-transfer-api',
   })
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      setCell(map, x, y, { passable: true, revealed: true, material: 'stone' })
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      builder.cell(x, y, { passable: true, revealed: true, material: 'stone' })
     }
   }
-  return serializeTacticalMap(map)
+  return (await builder.build()).map
 }
 
-function initialState() {
+async function initialState() {
   return {
     state_version: 0,
     sessionCode: 'NPC-TRANSFER-API',
@@ -82,7 +80,7 @@ function initialState() {
       title: 'Рынок',
       location: 'Рынок',
       location_id: 'market',
-      map: mapForScene(),
+      map: await mapForScene(),
     },
     social: {
       npcs: [{
@@ -157,7 +155,7 @@ test('HTTP TransferItem передаёт предмет видимому NPC с 
     body: {
       code: 'NPC-TRANSFER-API',
       name: 'Передача NPC',
-      state: initialState(),
+      state: await initialState(),
     },
   })
   assert.equal(created.status, 201, `${created.text}\n${logs()}`)

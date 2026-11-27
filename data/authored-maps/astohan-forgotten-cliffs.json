@@ -398,7 +398,8 @@
   {"asset": "mossy_rock", "at": [55, 17]},
   {"asset": "boulder", "at": [55, 48, 2, 2]},
   {"asset": "boulder_split", "at": [30, 52, 2, 2]},
-  {"asset": "rock_cluster", "at": [20, 49, 2, 2]}
+  {"asset": "rock_cluster", "at": [20, 49, 2, 2]},
+  {"asset": "paper_scatter", "at": [42, 19], "id": "executioner-diary"}
  ],
  "checks": [
   {"name": "перед алтарём", "x": 11, "y": 8},

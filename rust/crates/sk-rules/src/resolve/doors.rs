@@ -265,7 +265,7 @@ pub fn operate_door(r: &mut Resolve<'_>) -> Flow {
         }
         let difficulty = door.lock_dc.max(10);
         let mut options = Map::new();
-        options.insert("modifier".into(), Value::from(lockpick_check_modifier(picker.as_ref())));
+        options.insert("modifier".into(), Value::from(lockpick_check_modifier(picker.as_ref(), Some(&r.state))));
         options.insert("difficulty".into(), Value::from(difficulty));
         options.insert("purpose".into(), json!("door:lockpick"));
         options.insert("actorId".into(), undef(r.command.get("actor_id")));

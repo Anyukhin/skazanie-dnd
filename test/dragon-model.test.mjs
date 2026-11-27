@@ -73,6 +73,22 @@ test('GLB дракона загружается, проходит позы и с
     })
     assert.equal(actor.source, 'glb')
     assert.equal(actor.profile, 'dragon')
+    const skin = actor.getObjectByProperty('isSkinnedMesh', true)
+    assert.ok(skin, 'детализированный дракон использует скелет')
+    const { skinWeight, skinIndex, position, uv } = skin.geometry.attributes
+    assert.equal(uv.count, position.count, 'у каждой вершины есть координаты исходной фактуры')
+    assert.equal(skinWeight.count, position.count)
+    assert.equal(skinIndex.count, position.count)
+    for (let i = 0; i < position.count; i += 1) {
+      let sum = 0
+      for (let j = 0; j < 4; j += 1) {
+        const weight = skinWeight.getComponent(i, j)
+        assert.ok(weight >= 0 && Number.isFinite(weight))
+        if (weight > 0) assert.ok(skinIndex.getComponent(i, j) < skin.skeleton.bones.length)
+        sum += weight
+      }
+      assert.ok(Math.abs(sum - 1) < .0001, 'шейдер должен получить нормализованные веса')
+    }
     for (const pose of ['idle', 'walk', 'attack', 'hit', 'death']) {
       actor[pose](.5)
       actor.update(.001)
@@ -90,5 +106,32 @@ test('GLB дракона загружается, проходит позы и с
     actor.dispose()
   } finally {
     if (previousSelf === undefined) delete globalThis.self; else globalThis.self = previousSelf
+  }
+})
+
+test('процедурный fallback дракона сохраняет силуэт, если GLB недоступен', () => {
+  const actor = models.createProceduralActorModel({ id: 'fallback-sargat', label: 'Саргат', kind: 'enemy', modelKey: 'dragon' }, manifest)
+  try {
+    assert.equal(actor.source, 'procedural')
+    assert.equal(actor.profile, 'dragon')
+    const names = []
+    actor.traverse((object) => names.push(object.name))
+    for (const marker of ['dragon-neck', 'dragon-horn-left', 'dragon-wing-membrane--1', 'dragon-tail-spade']) {
+      assert.ok(names.includes(marker), `нет отличительного элемента ${marker}`)
+    }
+    const bounds = new Box3().setFromObject(actor)
+    assert.ok(bounds.min.y >= -.0001, 'fallback-дракон стоит на полу')
+    assert.ok(bounds.max.y - bounds.min.y > 2, 'fallback-дракон выше человеческой фигурки')
+    const baseTop = new Box3().setFromObject(actor.getObjectByName('miniature-base')).max.y
+    const rim = new Box3().setFromObject(actor.getObjectByName('miniature-base-rim')).getSize(new Vector3())
+    assert.ok(rim.y < rim.x * .12, 'обод лежит в плоскости подставки')
+    const clawBottom = Math.min(...['dragon-claw--1', 'dragon-claw-1'].map((name) => new Box3().setFromObject(actor.getObjectByName(name)).min.y))
+    assert.ok(clawBottom - baseTop < .1, 'лапы fallback-дракона не висят над подставкой')
+    for (const pose of ['idle', 'walk', 'attack', 'hit', 'death']) {
+      actor[pose](.5)
+      actor.update(.001)
+    }
+  } finally {
+    actor.dispose()
   }
 })

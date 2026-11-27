@@ -993,7 +993,7 @@
               "level": 1,
               "experience": 0,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 0.5,
                 "capacity": 240,
@@ -1034,7 +1034,7 @@
               "experience": 0,
               "proficiency": 2,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 0,
                 "capacity": 150,
@@ -2122,7 +2122,7 @@
               "level": 1,
               "experience": 0,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 0.5,
                 "capacity": 240,
@@ -2163,7 +2163,7 @@
               "experience": 0,
               "proficiency": 2,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 0,
                 "capacity": 150,
@@ -3212,7 +3212,7 @@
             }
           ],
           "players": [
-            "<sha256:33b1bff8c66fff68a8a79ae74f57a065b3c71b0071177a5bd4ee933199c94d95:12565>",
+            "<sha256:254a17236c4266b30e547311310fe0a03ddcabecfc7d701f99569badab1fe226:13028>",
             {
               "id": "hero-2",
               "name": "Второй",
@@ -3235,7 +3235,7 @@
               "experience": 0,
               "proficiency": 2,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 0,
                 "capacity": 150,
@@ -4308,7 +4308,7 @@
             }
           ],
           "players": [
-            "<sha256:0adddf53d52473141ec77323b71e352de0a8db7ff21767da1da6ce5434a008fb:12565>",
+            "<sha256:ef8348e7d8f82200eed679ee3f630878ad4d51f8a55d847b43cf0ca9d3b48f62:13028>",
             {
               "id": "hero-2",
               "name": "Второй",
@@ -4331,7 +4331,7 @@
               "experience": 0,
               "proficiency": 2,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 0,
                 "capacity": 150,
@@ -5635,7 +5635,7 @@
             }
           ],
           "players": [
-            "<sha256:0adddf53d52473141ec77323b71e352de0a8db7ff21767da1da6ce5434a008fb:12565>",
+            "<sha256:ef8348e7d8f82200eed679ee3f630878ad4d51f8a55d847b43cf0ca9d3b48f62:13028>",
             {
               "id": "hero-2",
               "name": "Второй",
@@ -5658,7 +5658,7 @@
               "experience": 0,
               "proficiency": 2,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 0,
                 "capacity": 150,
@@ -6803,7 +6803,7 @@
             }
           ],
           "players": [
-            "<sha256:0adddf53d52473141ec77323b71e352de0a8db7ff21767da1da6ce5434a008fb:12565>",
+            "<sha256:ef8348e7d8f82200eed679ee3f630878ad4d51f8a55d847b43cf0ca9d3b48f62:13028>",
             {
               "id": "hero-2",
               "name": "Второй",
@@ -6826,7 +6826,7 @@
               "experience": 0,
               "proficiency": 2,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 0,
                 "capacity": 150,
@@ -8310,7 +8310,7 @@
             }
           ],
           "players": [
-            "<sha256:d918f46812b975b5dc6c3f2c2259d8565372dd7d7de3f066bf5313a5f3b59be9:12565>",
+            "<sha256:6e9a1310ea4ee45ea34688e141345a7366dcdbf5a07f2c15bfd7d199b78c4b62:13028>",
             {
               "id": "hero-2",
               "name": "Второй",
@@ -8333,7 +8333,7 @@
               "experience": 0,
               "proficiency": 2,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 0,
                 "capacity": 150,
@@ -9667,7 +9667,7 @@
             }
           ],
           "players": [
-            "<sha256:d918f46812b975b5dc6c3f2c2259d8565372dd7d7de3f066bf5313a5f3b59be9:12565>",
+            "<sha256:6e9a1310ea4ee45ea34688e141345a7366dcdbf5a07f2c15bfd7d199b78c4b62:13028>",
             {
               "id": "hero-2",
               "name": "Второй",
@@ -9722,7 +9722,7 @@
               "experience": 0,
               "proficiency": 2,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 5,
                 "capacity": 150,
@@ -10997,7 +10997,7 @@
               "level": 1,
               "experience": 0,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 2.5,
                 "capacity": 240,
@@ -11049,7 +11049,7 @@
               "experience": 0,
               "proficiency": 2,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 5,
                 "capacity": 150,
@@ -12305,7 +12305,7 @@
             }
           ],
           "players": [
-            "<sha256:d918f46812b975b5dc6c3f2c2259d8565372dd7d7de3f066bf5313a5f3b59be9:12565>",
+            "<sha256:6e9a1310ea4ee45ea34688e141345a7366dcdbf5a07f2c15bfd7d199b78c4b62:13028>",
             {
               "id": "hero-2",
               "name": "Второй",
@@ -12360,7 +12360,7 @@
               "experience": 0,
               "proficiency": 2,
               "combatSpells": [],
-              "combatActions": "<sha256:2c40b26e6475331e058619bb73f4aa5d21387701136a0196177fb0cd1ca0155d:8261>",
+              "combatActions": "<sha256:0fbc7ae8e8088c6e80effba7663dafd2b678659712c1f6d64653d0661bfe6c26:8724>",
               "inventoryLoad": {
                 "weight": 5,
                 "capacity": 150,

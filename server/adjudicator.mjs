@@ -338,7 +338,8 @@ export class Adjudicator {
       }
       case 'rest':
       {
-        const kind = /долг|продолж|long/iu.test(intent.raw_message) ? 'long' : 'short'
+        // Сон до утра и ночёвка — долгий отдых, а не час передышки (аудит 2026-11-26).
+        const kind = /долг|продолж|long|спать|до\s+утра|заночу|ночуем/iu.test(intent.raw_message) ? 'long' : 'short'
         const minutes = kind === 'long' ? 480 : 60
         return {
           ...base,

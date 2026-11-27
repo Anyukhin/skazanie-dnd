@@ -58,6 +58,7 @@ import {
   campaignArcCarryOver,
   campaignCanAdvanceArc,
   campaignCanAutoComplete,
+  treatyEndsAdventure,
   lifecycleEventForAction,
   normalizeCampaignLifecycle,
 } from './campaign-lifecycle.mjs'
@@ -68,7 +69,7 @@ import {
   campaignArcPlan,
   mainQuestFor,
 } from './campaign-loop-policy.mjs'
-import { normalizePartyDecision, normalizePartyDecisionPolicy, questDecisionEvents } from './party-decision.mjs'
+import { normalizePartyDecision, normalizePartyDecisionPolicy, partyDecisionOpenedEvent, questDecisionEvents, scenarioTreatyDecisionApproved } from './party-decision.mjs'
 import { campaignModeFor, campaignStoryCompletionDraft, persistentStoryQuest, PERSISTENT_WORLD_OBJECTIVE } from './campaign-stories.mjs'
 import { normalizeWorldOfficesState, planOfficeVacancyDrafts, planOfficeSuccessionDrafts, applyWorldOfficeEvent } from './world-offices.mjs'
 import { planQuestConsequenceDrafts } from './quest-consequences.mjs'
@@ -253,7 +254,7 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
-import { applyScenarioMapReveals, campaignScenario, scenarioArmoryRules, scenarioClueFactId, scenarioClueQuestProgress, scenarioFoundClueIds, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { applyScenarioMapReveals, campaignScenario, scenarioArmoryRules, scenarioClueFactId, scenarioClueQuestProgress, scenarioFoundClueIds, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSceneObjectClue, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
 import { wildShapeFormFor } from './wild-shape.mjs'
 import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueActionChecks, dialogueFlags, dialogueFor, dialogueGrantedFactIds, dialogueOptionsFor, dialogueRevealFactId, normalizeDialogueState } from './campaign-dialogues.mjs'
 import {
@@ -334,6 +335,7 @@ import {
   placedSceneNpcTargets,
   presentSceneNpcs,
   normalizeNpcWorldState,
+  hasUnplacedAnchoredNpc,
   planSceneNpcPlacementEvents,
   validateNpcWorldCommand,
 } from './npc-positioning.mjs'
@@ -527,6 +529,7 @@ import {
   THIEVES_TOOLS_REQUIRED_CODE,
   THIEVES_TOOLS_REQUIRED_MESSAGE,
   hasThievesTools,
+  thievesToolsExpertise,
   lockpickNoiseFor,
   lockpickTraceNoticedFor,
 } from './lockpicking.mjs'
@@ -939,7 +942,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   DIALOGUE_COMMAND_TYPE,
   'SetCharacterChoices', 'SetSpellSelections', 'SetSpellBonusPreference', 'SetReactionPreference',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
-  'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision',
+  'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision', 'ResolveScenarioTreatyDecision',
 ])
 
 const MERCHANT_LIFECYCLE_COMMAND_TYPES = new Set([
@@ -2806,18 +2809,23 @@ function doorTraceKey(doorId) {
 }
 
 /**
- * Модификатор проверки замка. Владение инструментом даёт бонус мастерства —
- * ровно один раз: у вора он часто есть и от «Ловкости рук», а два бонуса
- * мастерства в одной проверке редакция не складывает. Берётся больший, поэтому
- * компетентность (двойной бонус за навык) не пропадает.
+ * Модификатор проверки замка. В D&D 2014 проверка использует Ловкость и
+ * бонус мастерства владельца thieves' tools. Expertise, выбранное именно для
+ * thieves' tools, удваивает бонус. В редакции 2024 сохраняется прежняя
+ * политика проекта. Expertise в Ловкости рук само по себе не меняет проверку
+ * инструмента в редакции 2014.
  *
  * Проверять само владение здесь нечем и незачем: до этой функции доходит
  * только тот, кого пустил гейт вызывающей ветки.
  */
-function lockpickCheckModifier(actor) {
+function lockpickCheckModifier(actor, state = null) {
   const proficiency = Math.max(0, safeInteger(actor?.proficiency, 0))
-  return abilityModifier(actor?.abilities?.dex)
-    + Math.max(skillProficiencyBonus(actor, 'sleight_of_hand'), proficiency)
+  if (!usesDnd2014(state)) {
+    return abilityModifier(actor?.abilities?.dex)
+      + Math.max(skillProficiencyBonus(actor, 'sleight_of_hand', state), proficiency)
+  }
+  const multiplier = thievesToolsExpertise(actor) ? 2 : 1
+  return abilityModifier(actor?.abilities?.dex) + proficiency * multiplier
 }
 
 /**
@@ -4389,7 +4397,7 @@ const CONDITION_EFFECTS = Object.freeze({
   // Они живут в одной таблице с состояниями, потому что читаются теми же
   // функциями: класс доспеха, скорость и экономика хода не должны знать, какое
   // заклинание их изменило.
-  hasted: { armorClassBonus: 2, speedMultiplier: 2, extraActions: 1 },
+  hasted: { armorClassBonus: 2, speedMultiplier: 2, extraActions: 1, saveAdvantageAbilities: ['dex'] },
   // Замедление 2014: ещё −2 к спасброскам Ловкости и не больше одной атаки за ход.
   slowed: { armorClassBonus: -2, speedMultiplier: 0.5, forbidsReactions: true, saveBonusAbilities: { dex: -2 }, singleAttackPerTurn: true },
   'beacon-of-hope': { saveAdvantageAbilities: ['wis'] },
@@ -4613,6 +4621,15 @@ function normalizeCommand(input, state) {
   if (command.command_type === 'CastSpell') {
     const spellId = String(command.spell_id ?? command.spellId)
     const spell = canonicalCombatSpellFor(spellId, { rulesetId: state.ruleset_id })
+    if (command.missile_target_ids != null || command.missileTargetIds != null) {
+      if (spellId !== 'magic-missile') throw new RulesValidationError('Распределение дротиков допустимо только для «Волшебной стрелы»', 'INVALID_MISSILE_TARGETS')
+      const missileTargets = command.missile_target_ids ?? command.missileTargetIds
+      if (!Array.isArray(missileTargets) || missileTargets.some((id) => typeof id !== 'string' || !id.trim())) {
+        throw new RulesValidationError('Нужно передать список целей дротиков', 'INVALID_MISSILE_TARGETS')
+      }
+      command.missile_target_ids = missileTargets.map((id) => String(id))
+      delete command.missileTargetIds
+    }
     if (['longstrider', 'mass-cure-wounds', 'destructive-wave'].includes(spellId) || spell?.rejectDuplicateTargetIds === true) {
       const targets = command.target_ids ?? command.targetIds
       if (Array.isArray(targets) && targets.length !== uniqueStrings(targets).length) {
@@ -4652,12 +4669,18 @@ function normalizeCommand(input, state) {
     command.target_ids = []
   }
   if (ENCOUNTER_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
+    if (treatyEndsAdventure(state)) {
+      throw new RulesValidationError('Договор с главным противником уже завершил сценарий', 'SCENARIO_TREATY_CONCLUDED')
+    }
     command.actor_id = null
     command.target_id = null
     command.target_ids = []
     command.difficulty = String(command.difficulty ?? '')
     command.theme = String(command.theme ?? '')
     command.seed = String(command.seed ?? '').slice(0, 120)
+  }
+  if (command.command_type === 'StartCombat' && !state.mechanics.combat.active && treatyEndsAdventure(state)) {
+    throw new RulesValidationError('Договор с главным противником уже завершил сценарий', 'SCENARIO_TREATY_CONCLUDED')
   }
   if (command.command_type === 'AttackNpc') {
     command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
@@ -6156,6 +6179,14 @@ function validatedBeastTarget(state, command) {
   return { beast_actor_id: String(candidate.enemy.id) }
 }
 
+export function scenarioTreatyParley(state) {
+  if (!state.mechanics?.combat?.active) return false
+  const treaty = scenarioTreatyRules(state)
+  return treaty && scenarioLocationId(state) === treaty.boss_location_id
+    && (standingEnemies(state).some((enemy) => String(enemy.id) === treaty.boss_npc_id)
+      || truceFor(state)?.leader_id === treaty.boss_npc_id)
+}
+
 export function validateCommand(input, rawState, context = {}) {
   const state = normalizeCampaignState(rawState)
   const command = normalizeCommand(input, state)
@@ -6286,6 +6317,9 @@ export function validateCommand(input, rawState, context = {}) {
     Object.assign(command, validatedBeastTarget(state, command))
   }
   if (PARLEY_COMMAND_TYPES.has(command.command_type)) {
+    if (scenarioTreatyParley(state) && !(command.command_type === 'SettleParley' && command.outcome === 'resume')) {
+      throw new RulesValidationError('Условия мира с Саргатом выносит на голосование переговорщик', 'SCENARIO_TREATY_REQUIRED')
+    }
     if (!state.mechanics.combat.active) {
       throw new RulesValidationError('Переговоры посреди боя возможны только в бою', 'COMBAT_NOT_ACTIVE')
     }
@@ -6575,6 +6609,9 @@ export function validateCommand(input, rawState, context = {}) {
     command.visibility = 'party'
   }
   if (SCENARIO_TREATY_COMMAND_TYPES.has(command.command_type)) {
+    if (state.agentInteraction && context.scenarioTreatyResolution !== true) {
+      throw new RulesValidationError('Сначала завершите текущее решение отряда', 'PARTY_DECISION_CONFLICT')
+    }
     // Договор с главным противником финала (`docs/astohan-scenario.md`,
     // развязка «Договор»): только когда правда о походе раскрыта, только в
     // логове, одна попытка на героя; посреди боя — когда дракон ранен.
@@ -6840,6 +6877,14 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (['completed', 'failed', 'archived'].includes(lifecycleStatus) && command.command_type !== 'EndCombat') {
     throw new RulesValidationError('Завершённая или архивная кампания доступна только для чтения', 'CAMPAIGN_READ_ONLY')
+  }
+  if (command.command_type === 'ResolveScenarioTreatyDecision') {
+    if (context.isDirector !== true) throw new RulesValidationError('Решение исполняет только сервер', 'PARTY_DECISION_FORBIDDEN')
+    const decision = state.agentInteraction
+    if (!decision?.scenarioTreaty || decision.status !== 'resolved' || decision.id !== command.interaction_id) {
+      throw new RulesValidationError('Нет завершённого решения по договору', 'PARTY_DECISION_REQUIRED')
+    }
+    command.house_rule_id = 'skazanie:scenario-treaty-decision:v1'
   }
   if (command.command_type === 'ResolveQuestDecision') {
     // Проверка сохранённой ссылки повторяется при каждом optimistic retry.
@@ -7428,7 +7473,11 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError('Выберите направление области от заклинателя', 'SPELL_DIRECTION_REQUIRED')
       }
       const cell = tacticalCellMap(state).get(positionKey(to))
-      const needsEmptyCell = ['summon', 'teleport'].includes(spell.kind)
+      const needsEmptyCell = ['summon', 'teleport'].includes(spell.kind) || spell.id === 'guardian-of-faith'
+      if (spell.id === 'guardian-of-faith' && listActors(state).some((candidate) => {
+        const position = actorPosition(state, actorId(candidate))
+        return position && position.x === to.x && position.y === to.y
+      })) throw new RulesValidationError('Стражу нужна свободная клетка', 'INVALID_DESTINATION')
       if (!isWalkableCell(cell) || needsEmptyCell && !actorFootprintFits(state, command.actor_id, to)) throw new RulesValidationError('Выбранная клетка недоступна', 'INVALID_DESTINATION')
       const teleportWithoutSight = spell.kind === 'teleport' && String(spell.id) === 'dimension-door'
       if (!teleportWithoutSight && cell.revealed !== true && !blindTargetAllowed(command, context, state)) {
@@ -8177,6 +8226,7 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
     if (!immune && resistant && !vulnerable) afterDefense = Math.floor(afterDefense / 2)
     if (!immune && vulnerable && !resistant) afterDefense *= 2
   }
+  if (source?.damage_limit != null) afterDefense = Math.min(afterDefense, source.damage_limit)
   const temporaryBefore = Math.max(0, safeInteger(state.mechanics.temporary_hp[targetId], 0))
   const absorbed = Math.min(temporaryBefore, afterDefense)
   const applied = afterDefense - absorbed
@@ -8261,12 +8311,25 @@ function lingeringAreaDamage(state, command, effect, targetIdValue, { saved, dic
     events.push(eventFrom(command, 'DieRolled', { ...damageRoll, spell_id: effect.spell_id, damage_type: effect.damage_type ?? 'force' }, []))
   }
   const total = damageRoll ? damageRoll.total : flat
+  const hasLimit = effect.damage_limit != null
+  const remaining = hasLimit ? Math.max(0, safeInteger(effect.damage_limit, 0) - safeInteger(effect.damage_dealt, 0)) : null
   const raw = saved
     ? (effect.half_on_save === true ? Math.floor(total / 2) : 0)
     : total
-  if (raw <= 0) return events
-  const payload = resolveDamage(state, targetIdValue, raw, String(effect.damage_type ?? 'force'), null, events)
-  events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, spell_id: effect.spell_id, area_effect: true, trigger, saved }, [targetIdValue]))
+  if (raw <= 0 || remaining === 0) return events
+  // Лимит стража расходует нанесённый урон после защит, в том числе во временные хиты.
+  const payload = resolveDamage(state, targetIdValue, raw, String(effect.damage_type ?? 'force'), null, events,
+    hasLimit ? { damage_limit: remaining } : null)
+  const damageEvent = eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', {
+    ...payload, spell_id: effect.spell_id, area_effect: true, trigger, saved,
+    ...(hasLimit ? {
+      area_damage_limit: effect.damage_limit,
+      area_damage_effect_id: effect.effect_id ?? effect.id,
+      area_damage_dealt: payload.applied_amount + payload.temporary_hp_absorbed,
+    } : {}),
+  }, [targetIdValue])
+  if (hasLimit) damageEvent.event_schema_version = 2
+  events.push(damageEvent)
   events.push(...zeroHitPointDamageConsequences(state, command, targetIdValue, payload, { critical: false }))
   return events
 }
@@ -10670,8 +10733,16 @@ function areasOverlap(state, left, right) {
 }
 
 // Планировщики читают ту же геометрию, по которой затем разрешается заклинание.
+function susceptibleToHypnoticPattern(state, actor) {
+  const conditions = conditionIdsFor(state, actorId(actor))
+  if (['blinded', 'cannot-see', 'unconscious', 'charm-immune', 'immune:charmed'].some(id => conditions.has(id))) return false
+  const immunities = uniqueStrings(actor.condition_immunities ?? actor.conditionImmunities)
+  return !immunities.some(id => ['charmed', 'charm', 'очарование', 'очарованный'].includes(id.toLowerCase()))
+}
+
 export function spellTargetsAt(state, command, spell) {
   const canBeAffectedByArea = (actor) => !isUntargetableSummon(actor) && (isLivingActor(actor) || isDyingHero(state, actorId(actor)))
+    && (spell.id !== 'hypnotic-pattern' || susceptibleToHypnoticPattern(state, actor))
   if (spell.target === 'self' && ['area-save', 'area-damage'].includes(spell.kind)) {
     const center = actorPosition(state, command.actor_id)
     const radius = Math.max(0, safeInteger(spell.radius, 5))
@@ -10689,7 +10760,12 @@ export function spellTargetsAt(state, command, spell) {
   if (spell.target !== 'point') {
     const requestedIds = command.target_ids?.length ? command.target_ids : [targetFor(command)]
     const maximum = Math.max(1, safeInteger(spell.maxTargets, 1) + Math.max(0, safeInteger(command.slot_level, spell.level) - Math.max(1, safeInteger(spell.level, 1))) * Math.max(0, safeInteger(spell.upcastTargetsPerLevel, 0)))
-    return uniqueStrings(requestedIds).slice(0, maximum).map((id) => spellCreatureFor(state, id, spell)).filter(Boolean)
+    const source = spell.requiresLineOfSight === true ? actorPosition(state, command.actor_id) : null
+    return uniqueStrings(requestedIds).slice(0, maximum).map((id) => spellCreatureFor(state, id, spell)).filter((target) => {
+      if (!target || !source || spell.requiresLineOfSight !== true) return Boolean(target)
+      const position = actorPosition(state, actorId(target))
+      return Boolean(position && areaTargetHasLineOfEffect(state, command, spell, source, actorId(target), position, target, () => true))
+    })
   }
   const to = { x: Number(command.to?.x), y: Number(command.to?.y) }
   const radius = Math.max(0, Math.min(600, safeInteger(spell.radius, spell.kind?.startsWith('area-') ? 5 : 0)))
@@ -10741,7 +10817,8 @@ export function spellTargetsAt(state, command, spell) {
 
 function npcSpellTargetsAt(state, command, spell) {
   if (!['area-save', 'area-damage'].includes(spell.kind) && spell.selectTargetsInArea !== true) return []
-  const candidates = placedSceneNpcTargets(state).filter(({ npc }) => !findActor(state, String(npc.id)))
+  const candidates = placedSceneNpcTargets(state).filter(({ npc }) => !findActor(state, String(npc.id))
+    && (spell.id !== 'hypnotic-pattern' || susceptibleToHypnoticPattern(state, npc)))
   const selectedIds = spell.selectTargetsInArea === true && command.target_ids?.length
     ? new Set(uniqueStrings(command.target_ids)) : null
   const selected = selectedIds ? candidates.filter(({ npc }) => selectedIds.has(String(npc.id))) : candidates
@@ -10829,6 +10906,33 @@ function livingPartySize(state) {
 
 function conditionIdsFor(state, id) {
   return new Set(actorConditionList(state, id).map((condition) => String(condition?.id ?? condition)))
+}
+
+const AWAKEN_CONDITIONS = Object.freeze({
+  sleep: new Set(['magical-sleep', 'unconscious']),
+  'hypnotic-pattern': new Set(['charmed', 'incapacitated', 'speed-zero']),
+})
+
+/** Состояния, которые действие «Разбудить» имеет право снять. Важен effect_id
+ * гипнотического узора: на одной цели могут одновременно жить независимые
+ * источники `charmed` и `incapacitated`. */
+function awakenConditionsFor(state, targetId, spellId) {
+  const allowed = AWAKEN_CONDITIONS[spellId]
+  if (!allowed) return []
+  const targetConditions = actorConditionList(state, targetId)
+  const concentration = state.mechanics?.concentration ?? {}
+  return targetConditions.filter((condition) => {
+    const id = String(condition?.id ?? condition)
+    if (!allowed.has(id)) return false
+    if (String(condition?.spell_id ?? '') === spellId) return true
+    if (spellId !== 'hypnotic-pattern' || !condition?.effect_id) return false
+    const source = String(condition?.source_actor ?? '')
+    return source && String(concentration[source]?.effect_id ?? '') === String(condition.effect_id)
+  })
+}
+
+function awakenCandidatesFor(state, targetId) {
+  return Object.keys(AWAKEN_CONDITIONS).filter((spellId) => awakenConditionsFor(state, targetId, spellId).length > 0)
 }
 
 function blessBonusEnabled(state, id) {
@@ -12619,7 +12723,7 @@ const COMBAT_ROUND_TIME_COMMANDS = new Set([
   'UseLegendaryAction', 'MoveActor', 'ChangeWeapon', 'UseItem', 'ActivateItem', 'EquipItem',
   'IdentifyEnemy', 'ResolveImprovisedAction', 'CalmBeast', 'FeedBeast', 'ScareWithBeast',
   'ProposeParley', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateDoor', 'OperateSceneObject',
-  'ReturnKnightHead', 'NegotiateScenarioTreaty',
+  'ReturnKnightHead', 'NegotiateScenarioTreaty', 'ResolveScenarioTreatyDecision',
 ])
 
 function withCombatRoundTimeMarker(result, rawState, context) {
@@ -13647,8 +13751,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     return absorbElementsDamagePayload(damagePayload, sourceState, targetIdString)
   }
 
-  const resolveDamageWithReactions = (sourceState, targetIdValue, rawAmount, damageType, existingResistance = null, reactionEvents = events) => {
-    const payload = resolveDamagePayload(sourceState, targetIdValue, rawAmount, damageType, existingResistance)
+  const resolveDamageWithReactions = (sourceState, targetIdValue, rawAmount, damageType, existingResistance = null, reactionEvents = events, source = null) => {
+    const payload = resolveDamagePayload(sourceState, targetIdValue, rawAmount, damageType, existingResistance, source)
     return prepareElementalReactionDamage(sourceState, targetIdValue, payload, null, reactionEvents)
   }
 
@@ -13658,11 +13762,15 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     target,
     slotLevel,
     damageType,
+    projectileCountOverride = null,
+    missileRollOverride = null,
     sourceItem = null,
   }) => {
     const resolvedTargetId = actorId(target)
     const resolvedSlotLevel = Math.max(spell.level, safeInteger(slotLevel, spell.level))
-    const projectileCount = spellProjectileCount(spell, resolvedSlotLevel)
+    const projectileCount = projectileCountOverride == null
+      ? spellProjectileCount(spell, resolvedSlotLevel)
+      : Math.max(1, safeInteger(projectileCountOverride, 1))
     const protectedByShield = conditionIdsFor(state, resolvedTargetId).has('shielded')
     const itemImmunitySources = activeItemMechanicEffects(target)
       .filter((effect) => effect.spell_immunities.includes(String(spell.id).toLowerCase()))
@@ -13672,14 +13780,16 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         item_name: effect.item_name,
         catalog_id: effect.catalog_id,
       }))
-    const missileRoll = diceService.roll(
+    const missileRoll = missileRollOverride ?? diceService.roll(
       String(spell.damage || '1d4+1'),
       `spell_damage:${spell.id}`,
       sourceCommand.actor_id,
       sourceCommand.visibility ?? 'public',
     )
-    rolls.push(missileRoll)
-    events.push(eventFrom(sourceCommand, 'DieRolled', { ...missileRoll, projectile_count: projectileCount }, []))
+    if (!missileRollOverride) {
+      rolls.push(missileRoll)
+      events.push(eventFrom(sourceCommand, 'DieRolled', { ...missileRoll, projectile_count: projectileCount }, []))
+    }
     const sourceMetadata = sourceItem ? {
       source_type: 'magic-item',
       source_item_id: sourceItem.id,
@@ -16305,6 +16415,40 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       } else if (action.id === 'help') {
         events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'helped', duration: 'until-used', source_actor: command.actor_id }, [actionTargetId]))
         events.push(actionEvent())
+      } else if (action.id === 'awaken') {
+        const requestedSpell = String(command.wake_spell_id ?? command.spell_id ?? '')
+        const candidates = awakenCandidatesFor(state, actionTargetId)
+        const spellId = requestedSpell
+          ? requestedSpell
+          : candidates.length === 1 ? candidates[0] : ''
+        if (!AWAKEN_CONDITIONS[spellId] || !candidates.includes(spellId)) {
+          throw new RulesValidationError(candidates.length > 1
+            ? 'Нужно выбрать, какой эффект снять: «Усыпление» или «Гипнотический узор»'
+            : 'На союзнике нет эффекта, который можно снять действием «Разбудить»', 'AWAKEN_TARGET_INVALID')
+        }
+        const removed = awakenConditionsFor(state, actionTargetId, spellId)
+        spendActionResource()
+        for (const condition of removed) {
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', {
+            condition: String(condition?.id ?? condition),
+            ...(condition?.effect_id != null ? { effect_id: String(condition.effect_id) } : {}),
+            spell_id: spellId,
+            trigger: 'awaken',
+          }, [actionTargetId]))
+        }
+        const effectIds = new Set(removed.map((condition) => String(condition?.effect_id ?? '')).filter(Boolean))
+        for (const effectId of effectIds) {
+          const owner = Object.entries(state.mechanics?.concentration ?? {}).find(([, entry]) => String(entry?.effect_id ?? '') === effectId)?.[0]
+          if (!owner) continue
+          const stillReferenced = Object.entries(state.mechanics?.conditions ?? {}).some(([target, conditions]) =>
+            Array.isArray(conditions) && conditions.some((condition) =>
+              String(condition?.effect_id ?? '') === effectId
+              && !(target === actionTargetId && removed.includes(condition))))
+          if (!stillReferenced) events.push(eventFrom(commandWithRules(command, RULE_IDS.concentration), 'ConcentrationEnded', {
+            reason: 'awakened', effect_id: effectId,
+          }, [owner]))
+        }
+        events.push(actionEvent({ awakened_spell_id: spellId, removed_conditions: removed.map((condition) => String(condition?.id ?? condition)) }))
       } else if (action.id === 'stabilize') {
         if (!isUnstableDyingHero(state, actionTargetId)) throw new RulesValidationError('Стабилизация нужна только союзнику с 0 ОЗ, который ещё делает спасброски от смерти', 'STABILIZATION_NOT_REQUIRED')
         const difficulty = 10
@@ -17054,6 +17198,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           concentration: Boolean(spell.concentration),
           source_url: spell.sourceUrl,
           spell_option: command.spell_option ?? null,
+          ...(spell.id === 'magic-missile' && Array.isArray(command.missile_target_ids)
+            ? { missile_target_ids: [...command.missile_target_ids] }
+            : {}),
           // Заклинание без урона («Шквал») не объявляет тип урона: запасной
           // «силовой» раньше попадал в событие и красил его как удар силой.
           damage_type: spell.damage == null && spell.damageType == null && !spell.damageTypes?.length && !spell.bonusDamage
@@ -17150,6 +17297,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               // Урон длящейся области: без него запись описывает только
               // труднопроходимость и спасбросок, и облако кинжалов невыразимо.
               damage: areaEffectDamage,
+              ...(spell.createsAreaEffect.damageAmount != null ? { damage_amount: safeInteger(spell.createsAreaEffect.damageAmount, 0) } : {}),
+              ...(spell.createsAreaEffect.damageLimit != null ? { damage_limit: safeInteger(spell.createsAreaEffect.damageLimit, 0), damage_dealt: 0 } : {}),
               // Обратный знак того же поля: область бывает и лечащей.
               healing: spell.createsAreaEffect.healing
                 ? scaledDiceExpression(
@@ -17282,12 +17431,45 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
 
         if (spell.automaticHit === true && spell.projectileCount) {
-          appendMagicMissileResolution({
-            sourceCommand: command,
-            spell,
-            target: affected[0],
-            slotLevel: command.slot_level,
-            damageType,
+          const missileTargets = affected.length ? affected : []
+          const totalProjectiles = spellProjectileCount(spell, command.slot_level)
+          const explicitMissiles = command.missile_target_ids
+          let projectileCounts = null
+          if (explicitMissiles != null) {
+            if (!Array.isArray(explicitMissiles) || explicitMissiles.length !== totalProjectiles) {
+              throw new RulesValidationError(`Нужно назначить ровно ${totalProjectiles} дротика(а)`, 'INVALID_MISSILE_TARGETS')
+            }
+            const checkedTargets = new Set(command.target_ids)
+            const affectedById = new Map(missileTargets.map((target) => [actorId(target), target]))
+            if (explicitMissiles.some((id) => !checkedTargets.has(String(id)) || !affectedById.has(String(id)))) {
+              throw new RulesValidationError('Дротик назначен на непроверенную цель', 'INVALID_MISSILE_TARGETS')
+            }
+            projectileCounts = new Map()
+            for (const id of explicitMissiles) projectileCounts.set(String(id), (projectileCounts.get(String(id)) ?? 0) + 1)
+          }
+          const targetCount = Math.max(1, missileTargets.length)
+          const baseProjectiles = Math.floor(totalProjectiles / targetCount)
+          const remainder = totalProjectiles % targetCount
+          let sharedMissileRoll = null
+          if (missileTargets.length > 1) {
+            sharedMissileRoll = diceService.roll(String(spell.damage || '1d4+1'), `spell_damage:${spell.id}`, command.actor_id, command.visibility ?? 'public')
+            rolls.push(sharedMissileRoll)
+            events.push(eventFrom(command, 'DieRolled', { ...sharedMissileRoll, projectile_count: totalProjectiles }, []))
+          }
+          missileTargets.forEach((target, index) => {
+            const projectileCount = projectileCounts
+              ? projectileCounts.get(actorId(target)) ?? 0
+              : baseProjectiles + (index < remainder ? 1 : 0)
+            if (projectileCount <= 0) return
+            appendMagicMissileResolution({
+              sourceCommand: command,
+              spell,
+              target,
+              slotLevel: command.slot_level,
+              damageType,
+              projectileCountOverride: projectileCount,
+              missileRollOverride: sharedMissileRoll,
+            })
           })
         } else if (spell.hitPointPoolDice) {
           const poolExpression = spellHpPoolExpression(spell.hitPointPoolDice || '5d8', spell.hitPointPoolUpcastDice || '2d8', spell.level, command.slot_level)
@@ -19079,7 +19261,23 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           .filter((cell) => cellAt(scoutedMap, cell.x, cell.y)?.revealed !== true)
         if (scouted.length) events.push(eventFrom(command, 'AreaRevealed', { cells: scouted }, []))
       }
-      const enteredAreaState = projectEvents(events)
+      // Отложенные authored-посты становятся видимыми вместе с туманом. Это
+      // сохраняет скрытую стартовую зону и ставит NPC у его именованного
+      // реквизита, когда отряд действительно до него дошёл. Обычный шаг без
+      // ожидающего якоря не запускает второй дорогой projection.
+      let enteredAreaState
+      if (!isEnemyActor(state, command.actor_id) && hasUnplacedAnchoredNpc(state)) {
+        const placementState = projectEvents(events)
+        const placementEvents = npcWorldEventsFrom(command, planSceneNpcPlacementEvents(placementState))
+        if (placementEvents.length) {
+          events.push(...placementEvents)
+          enteredAreaState = projectEvents(events)
+        } else {
+          enteredAreaState = placementState
+        }
+      } else {
+        enteredAreaState = projectEvents(events)
+      }
       events.push(...areaEntryConsequences(enteredAreaState, command, command.actor_id, from, to, { diceService, rolls, resolveDamage: resolveDamageWithReactions, rollSavingThrow, saveModifierFor: areaSaveModifierFor }))
       const moverConditions = conditionIdsFor(state, command.actor_id)
       const boomingBlade = (state.mechanics.conditions[command.actor_id] ?? []).find((condition) => String(condition?.id ?? condition).startsWith('booming-blade-move:'))
@@ -19268,7 +19466,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
         const pickDifficulty = Math.max(10, safeInteger(door.lockDc, 0))
         const pickCheck = diceService.rollCheck({
-          modifier: lockpickCheckModifier(picker),
+          modifier: lockpickCheckModifier(picker, state),
           difficulty: pickDifficulty,
           purpose: 'door:lockpick',
           actorId: command.actor_id,
@@ -19324,8 +19522,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       if (!map) throw new RulesValidationError('Для объекта нужна тактическая карта', 'TACTICAL_MAP_REQUIRED')
       const prop = map.props.find((candidate) => String(candidate.id) === command.prop_id)
       if (!prop) throw new RulesValidationError('Такого объекта нет на карте', 'SCENE_OBJECT_NOT_FOUND')
-      if (prop.interactive !== true) throw new RulesValidationError('Этот объект не отмечен как интерактивный', 'SCENE_OBJECT_NOT_INTERACTIVE')
-      const definition = sceneInteractionDefinition({ mapSeed: map.seed, props: map.props, propId: prop.id })
+      const scenarioClue = scenarioSceneObjectClue(state, state.scene?.location_id, prop.id)
+      if (prop.interactive !== true && !scenarioClue) throw new RulesValidationError('Этот объект не отмечен как интерактивный', 'SCENE_OBJECT_NOT_INTERACTIVE')
+      const definition = sceneInteractionDefinition({ mapSeed: map.seed, props: map.props, propId: prop.id, scenarioClue })
       if (!definition) throw new RulesValidationError('Для этого объекта нет серверного правила взаимодействия', 'SCENE_OBJECT_UNSUPPORTED')
       if (!definition.verbs.includes(command.intent)) {
         throw new RulesValidationError('Для этого объекта такое действие недоступно', 'SCENE_OBJECT_INTENT_NOT_ALLOWED')
@@ -19545,10 +19744,21 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       if (command.intent === 'inspect') {
         const attemptedByActor = interaction.inspection_attempted_by.includes(command.actor_id)
           || (interaction.inspection_attempted && !interaction.inspection_attempted_by.length)
-        if (attemptedByActor) {
+        // Старые снимки могли уже записать общий текст предмета. Разрешаем
+        // этому же герою один раз дочитать авторскую улику, пока она не стала
+        // известна отряду. После открытия улики прежняя защита от повтора
+        // остаётся без изменений.
+        const scenarioClueKnown = scenarioClue && scenarioFoundClueIds(state).has(scenarioClue.clue_id)
+        if (attemptedByActor && (!scenarioClue || scenarioClueKnown)) {
           throw new RulesValidationError('Этот герой уже осматривал объект', 'SCENE_OBJECT_ALREADY_INSPECTED')
         }
         operated()
+        const scenarioClueDigest = scenarioClue
+          ? createHash('sha256').update(`${command.command_id}\u0000${scenarioClue.fact_id}`).digest('hex').slice(0, 24)
+          : null
+        const scenarioClueIds = scenarioClueDigest
+          ? { knowledge_event_id: `scene-object-clue:${scenarioClueDigest}`, discovery_id: `fact-secret-found-${scenarioClueDigest}` }
+          : null
         let success = true
         let trapDetected = false
         if (definition.kind === 'container' && definition.trap) {
@@ -19565,12 +19775,32 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           trap_detected: trapDetected,
         }, []))
         if (success && definition.detail) {
-          events.push(eventFrom(command, 'SceneObjectKnowledgeRevealed', {
+          const knowledgeEvent = eventFrom(command, 'SceneObjectKnowledgeRevealed', {
             prop_id: prop.id,
             knowledge_id: `${prop.id}:${definition.detail.id}`,
             detail_key: definition.detailKey,
             text: definition.detail.text,
-          }, []))
+          }, [])
+          events.push(scenarioClueIds ? { ...knowledgeEvent, event_id: scenarioClueIds.knowledge_event_id } : knowledgeEvent)
+        }
+        if (success && scenarioClue && !scenarioClueKnown) {
+          const secret = (state.worldMemory?.facts ?? []).find((fact) => String(fact?.id ?? '') === scenarioClue.fact_id)
+          if (secret?.subject_id) {
+            const discoveryEvent = eventFrom({ ...command, visibility: 'party' }, 'WorldFactRecorded', {
+              fact: {
+                id: scenarioClueIds.discovery_id,
+                subject_id: String(secret.subject_id),
+                predicate: 'discovery',
+                object: 'clue',
+                summary: scenarioClue.clue,
+                visibility: 'party',
+                source_event_ids: [scenarioClueIds.knowledge_event_id],
+                supersedes_fact_id: scenarioClue.fact_id,
+                status: 'active',
+              },
+            }, [])
+            events.push(discoveryEvent)
+          }
         }
         break
       }
@@ -19634,7 +19864,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           throw new RulesValidationError('Замка на этом объекте нет — крышка просто откидывается', 'SCENE_OBJECT_NOT_LOCKED')
         }
         operated()
-        const check = resolveSceneCheck({ ...definition.lock, purpose: 'scene-object:container:lockpick' }, lockpickCheckModifier(actor))
+        const check = resolveSceneCheck({ ...definition.lock, purpose: 'scene-object:container:lockpick' }, lockpickCheckModifier(actor, state))
         events.push(...lockpickNoticeEvents(state, command, {
           targetKind: 'prop',
           targetId: prop.id,
@@ -20832,6 +21062,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }, state, { diceService, context })
         events.push(...acted.events)
         rolls.push(...(acted.rolls ?? []))
+        if (acted.events.some((event) => event.event_type === 'PartyDecisionOpened')) break
         if (checkedAction) {
           const result = acted.events.find((event) => event.event_type === 'AbilityCheckResolved')?.payload ?? {}
           check = { skill: option.check.skill, dc: option.check.dc, success: result.success === true, total: safeInteger(result.total, 0) }
@@ -20900,12 +21131,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         events.push(itemGrantedEventFrom(command, { item }, [command.actor_id]))
       }
       if (revealable) {
-        // Рассказ слышит весь отряд у собеседника — запись в журнале знания
-        // каждого героя отряда.
+        // По target_ids редьюсер создаёт для каждого слушателя свой id знания.
         const party = uniqueStrings([command.actor_id, ...(state.partyMemberIds ?? [])])
         events.push(eventFrom(command, 'KnowledgeRevealed', {
-          knowledge_id: `${chosenEventId}:knowledge`,
-          hero_id: command.actor_id,
           fact_id: revealFactId,
           source_event_ids: [chosenEventId],
           source_kind: 'npc',
@@ -20921,13 +21149,63 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       }, [command.actor_id]))
       break
     }
+    case 'ResolveScenarioTreatyDecision': {
+      const decision = state.agentInteraction
+      let unavailable = null
+      let negotiated = null
+      if (scenarioTreatyDecisionApproved(decision)) {
+        try {
+          negotiated = resolveCommandInternal({
+            command_type: 'NegotiateScenarioTreaty',
+            campaign_id: command.campaign_id,
+            command_id: `${command.command_id}:treaty`,
+            actor_id: decision.scenarioTreaty.actorId,
+          }, state, { diceService, context: { scenarioTreatyResolution: true, __resolve_depth: context.__resolve_depth } })
+        } catch (error) {
+          if (!(error instanceof RulesValidationError)) throw error
+          unavailable = error.message
+        }
+      }
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'PartyDecisionConsumed', {
+        interaction_id: decision.id, resolved_option_id: decision.resolvedOptionId,
+        ...(unavailable ? { unavailable } : {}),
+      }, decision.eligibleActorIds))
+      if (negotiated) {
+        events.push(...negotiated.events.map((event) => [SCENARIO_TREATY_CONCLUDED_EVENT, SCENARIO_TREATY_REFUSED_EVENT].includes(event.event_type)
+          ? { ...event, payload: { ...event.payload, party_decision_id: decision.id } } : event))
+        rolls.push(...negotiated.rolls)
+        nestedConsequencesResolved = true
+      }
+      break
+    }
     case 'NegotiateScenarioTreaty': {
       const rules = scenarioTreatyRules(state)
       const signedConfession = command.treaty_proof === 'ares-confession' && !state.mechanics.combat.active
+      const voters = context.scenarioTreatyVoterSnapshot?.(state, command.actor_id)
+        ?? { eligibleHeroIds: [command.actor_id] }
+      const voterCount = voters.eligibleVoterIds?.length ?? voters.eligibleHeroIds.length
+      if (voterCount > 1 && context.scenarioTreatyResolution !== true) {
+        const decisionId = 'treaty-' + createHash('sha256').update(command.command_id).digest('hex').slice(0, 24)
+        events.push(partyDecisionOpenedEvent({
+          id: decisionId, type: 'vote', createdAt: context.scenarioTreatyNow ?? 0,
+          title: 'Предложить договор Саргату?',
+          description: 'Король Арес публично признает правду о походе на Вулканиса и заплатит виру за погубленную кладку. Саргат уйдёт с равнин. '
+            + (signedConfession ? 'Подписанное признание Ареса позволяет заключить договор без броска.' : 'При согласии отряда переговорщик пройдёт проверку убеждения.')
+            + ' Успех необратимо завершит приключение эпилогом.',
+          options: [{ id: 'decline', label: 'Не заключать договор' }, { id: 'accept', label: 'Согласиться на условия' }],
+          scenarioTreaty: { schemaVersion: 1, actorId: command.actor_id },
+        }, command.actor_id, { ...voters, policy: state.partyDecisionPolicy }))
+        break
+      }
+      if (state.mechanics.combat.active) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
+          action_id: 'scenario-treaty', name: 'Переговоры с Саргатом', action_type: 'action',
+        }, [command.actor_id]))
+      }
       let succeeded = signedConfession
       if (!signedConfession) {
         const check = resolveCommandInternal({
-          ...command,
+          campaign_id: command.campaign_id, actor_id: command.actor_id, visibility: command.visibility,
           command_type: 'MakeAbilityCheck',
           command_id: `${command.command_id}:check`,
           skill: command.skill,
@@ -22545,6 +22823,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         partySummonsForExpiry(state).filter((summon) => expiredAtSceneChange.has(actorId(summon))),
         commandWithRules,
       ))
+      if (state.agentInteraction?.scenarioTreaty) {
+        throw new RulesValidationError('Сначала завершите решение о договоре', 'PARTY_DECISION_CONFLICT')
+      }
       if (command.party_decision) {
         const currentDecision = state.agentInteraction
         if (!currentDecision || currentDecision.status !== 'resolved'
@@ -22816,6 +23097,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     case 'RevealArea': {
       const cells = Array.isArray(command.cells) ? command.cells.slice(0, 100).map((cell) => ({ x: safeInteger(cell.x), y: safeInteger(cell.y) })) : []
       events.push(eventFrom(command, 'AreaRevealed', { cells }, []))
+      if (hasUnplacedAnchoredNpc(state)) {
+        events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(projectEvents(events))))
+      }
       break
     }
     case 'ResolveQuestDecision':
@@ -23903,6 +24187,7 @@ function commandRequiresNormalActionFrame(command, economy) {
       return command?.loot_combat_action !== 'object_interaction'
     case 'IdentifyEnemy':
     case 'ProposeParley':
+    case 'NegotiateScenarioTreaty':
     case 'CalmBeast':
     case 'FeedBeast':
     case 'UseMonsterAction':
@@ -24784,6 +25069,14 @@ function applyGameEventCurrent(rawState, event) {
     }
     case 'DamageApplied':
       {
+      if (payload.area_damage_effect_id && payload.area_damage_limit != null) {
+        state.mechanics.active_effects = (state.mechanics.active_effects ?? []).map((effect) => {
+          const id = String(effect.effect_id ?? effect.id ?? '')
+          if (id !== String(payload.area_damage_effect_id)) return effect
+          const dealt = safeInteger(effect.damage_dealt, 0) + safeInteger(payload.area_damage_dealt ?? payload.applied_amount, 0)
+          return { ...effect, damage_dealt: dealt }
+        }).filter((effect) => safeInteger(effect.damage_limit, 0) <= 0 || safeInteger(effect.damage_dealt, 0) < safeInteger(effect.damage_limit, 0))
+      }
       const blockedMagicMissile = payload.spell_id === 'magic-missile' && payload.blocked_by_shield === true
       replaceActor(state, target, (actor) => {
         const hp = Math.max(0, safeInteger(payload.hp_after, actorHp(actor)))

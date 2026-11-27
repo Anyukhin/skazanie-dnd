@@ -688,6 +688,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .board-hotspots { position: absolute; inset: 0; z-index: 4; display: grid; pointer-events: none; }
 .board-hotspot-cell { position: relative; min-width: 0; pointer-events: none; }
 .board-cell { position: relative; display: grid; place-items: center; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; }
+.revival-targets { position: absolute; z-index: 8; left: 50%; bottom: 0; transform: translateX(-50%); display: flex; gap: 2px; pointer-events: none; }
+.revival-targets button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 1px solid var(--acc); border-radius: 4px; background: var(--well); color: var(--acc2); cursor: pointer; pointer-events: auto; }
+.revival-targets button[aria-pressed="true"] { background: var(--acc); color: var(--well); }
+.revival-targets button:disabled { opacity: .55; cursor: default; }
 .board-cell.interactive, .board-cell.hover-probe { pointer-events: auto; }
 .board-cell .map-token, .board-cell .enemy-token, .board-cell .token-conditions, .board-cell .neutral-token-menu, .board-cell .loot-pin { pointer-events: auto; }
 .map-cell { position: relative; display: grid; place-items: center; min-width: 0; padding: 0; border: 1px solid var(--map-grid-line); background-color: var(--map-floor); background-image: radial-gradient(circle at 35% 27%, rgba(255,255,255,.055) 0 2%, transparent 3%), linear-gradient(135deg, transparent 48%, rgba(0,0,0,.11) 50%); box-shadow: inset 1px 1px rgba(255,255,255,.025), inset -1px -1px rgba(0,0,0,.22); color: inherit; font: inherit; }
@@ -2783,6 +2787,9 @@ button.campaign-title:hover strong { color: color-mix(in srgb, var(--text) 25%, 
 
 /* Persisted hero-death and campaign-ending state. */
 .death-screen-backdrop{position:fixed;z-index:240;inset:0;display:grid;place-items:center;padding:24px;background: rgba(5,4,4,.94);backdrop-filter:blur(12px)}
+dialog.death-screen-backdrop { width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; border: 0; color: inherit; }
+dialog.death-screen-backdrop:not([open]) { display: none; }
+dialog.death-screen-backdrop > .death-screen { position: relative; }
 .death-screen{width:min(720px,100%);max-height:calc(100dvh - 48px);overflow:auto;padding:34px;border:1px solid color-mix(in srgb, var(--well) 7%, var(--enemy) 21%);border-radius:10px;background: color-mix(in srgb, var(--bg) 93.1%, var(--enemy) 4.9%);box-shadow:0 35px 110px #000;text-align:center}
 .death-emblem{width:76px;height:76px;display:grid;place-items:center;margin:0 auto 14px;border:1px solid color-mix(in srgb, var(--spent) 6.8%, var(--enemy) 27.2%);border-radius:50%;background:radial-gradient(circle,rgba(133,48,42,.24),rgba(0,0,0,.18));color:color-mix(in srgb, var(--text2) 40%, var(--hp));box-shadow:0 0 45px rgba(132,39,34,.16)}
 .death-eyebrow{color:#9d5f57;font-size: var(--fs-sm);font-weight:700;letter-spacing:.26em}.death-screen h1{margin:7px 0 8px;color:color-mix(in srgb, var(--frame) 10%, var(--text));font: 700 var(--fs-5xl) var(--f-display)}.death-screen>p{max-width:570px;margin:0 auto 23px;color:color-mix(in srgb, var(--spent) 40%, var(--text2));font:var(--fs-xs)/1.65 var(--f-serif)}

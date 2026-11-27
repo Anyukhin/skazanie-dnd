@@ -192,6 +192,20 @@ fn enemy(id: &str, x: i64, y: i64) -> Value {
 }
 
 #[test]
+fn hypnotic_pattern_needs_sight_and_susceptibility_to_charm() {
+    let map = open_map(14, 8);
+    let mut guard = enemy("guard", 6, 3);
+    guard["condition_immunities"] = json!(["charmed"]);
+    let mut state = loe_field(&map, json!([guard, enemy("blind", 5, 3), enemy("awake", 5, 2)]), (1, 1));
+    state["mechanics"]["conditions"]["blind"] = json!([{ "id": "blinded" }]);
+    let pattern = spell("hypnotic-pattern", "dnd_5e_2014");
+    let command = json!({ "command_type": "CastSpell", "actor_id": "mage", "spell_id": "hypnotic-pattern", "to": { "x": 6, "y": 3 } });
+    let actors = ids(&area::spell_targets_at(&state, &command, &pattern));
+    assert!(actors.iter().any(|id| id == "awake"));
+    assert!(actors.iter().all(|id| id != "blind" && id != "guard"));
+}
+
+#[test]
 fn transparency_rule_is_one_for_cells_and_edges() {
     assert!(geo::is_transparent_cell(Some(&json!({ "type": "floor" }))));
     assert!(geo::is_transparent_cell(Some(&json!({ "type": "door" }))));

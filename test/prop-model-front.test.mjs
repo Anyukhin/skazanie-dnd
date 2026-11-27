@@ -48,4 +48,7 @@ test('поправка доворачивает yaw, а четверть обо�
   assert.equal(catalog.frontFacingEntry(chair), chair, 'модель без поправки не копируется')
   assert.equal(catalog.propModelFrontTurn('ref-quaternius-chair-1'), 0)
   assert.equal(catalog.propModelFrontTurn('kd-stairs'), 180, 'лестница поднимается к стене, а не от неё')
+  const wheel = catalog.frontFacingEntry({ key: 'style-detail-water-wheel', yaw: 0, size: [1.2, 4, 4] })
+  assert.equal(wheel.yaw, 90)
+  assert.deepEqual(wheel.size, [4, 4, 1.2], 'водяное колесо разворачивается плоскостью вдоль длинной стороны двора')
 })

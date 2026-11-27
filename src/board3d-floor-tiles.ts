@@ -5,6 +5,7 @@ import { createTerrainSideGeometry, terrainHeightAt } from './board3d-terrain'
 import { BOARD3D_FLOOR_RELIEF, heightSamplerFromTexture, reliefSubdivisions, type FloorReliefLevel } from './board3d-floor-relief'
 import type { GraphicsStylePack, StyleFloor } from './board3d-style'
 import { cellAt } from './tactical-map-client'
+import { createTurfTexture } from './board3d-turf'
 import type { TacticalCell, TacticalMap } from './types'
 
 /**
@@ -78,7 +79,7 @@ function withParallaxUv(chunk: string) {
 
 export type FloorTextures = { color: THREE.Texture; normal: THREE.Texture; orm: THREE.Texture; height: THREE.Texture }
 
-export function createStyledFloorMaterial(floor: StyleFloor, textures: FloorTextures, { parallax }: { parallax: boolean }) {
+export function createStyledFloorMaterial(floor: StyleFloor, textures: FloorTextures, { parallax, turf }: { parallax: boolean; turf?: THREE.Texture }) {
   const material = new THREE.MeshStandardMaterial({
     map: textures.color,
     normalMap: textures.normal,
@@ -95,19 +96,33 @@ export function createStyledFloorMaterial(floor: StyleFloor, textures: FloorText
     polygonOffsetUnits: -4,
   })
   const scale = parallax ? floor.relief / Math.max(.2, floor.cells) : 0
-  if (scale > 0) {
+  if (scale > 0 || turf) {
     material.onBeforeCompile = (shader) => {
-      shader.uniforms.uFloorHeight = { value: textures.height }
-      shader.uniforms.uFloorParallax = { value: scale }
-      shader.fragmentShader = shader.fragmentShader
+      if (scale > 0) {
+        shader.uniforms.uFloorHeight = { value: textures.height }
+        shader.uniforms.uFloorParallax = { value: scale }
+        shader.fragmentShader = shader.fragmentShader
         .replace('void main() {', `${PARALLAX_CHUNK}\nvoid main() {`)
         .replace('#include <map_fragment>', `vec2 floorUv = floorParallaxUv(vMapUv);\n${withParallaxUv(THREE.ShaderChunk.map_fragment)}`)
         .replace('#include <roughnessmap_fragment>', withParallaxUv(THREE.ShaderChunk.roughnessmap_fragment))
         .replace('#include <metalnessmap_fragment>', withParallaxUv(THREE.ShaderChunk.metalnessmap_fragment))
         .replace('#include <normal_fragment_maps>', withParallaxUv(THREE.ShaderChunk.normal_fragment_maps))
         .replace('#include <aomap_fragment>', withParallaxUv(THREE.ShaderChunk.aomap_fragment))
+      }
+      if (turf) {
+        shader.uniforms.uTurf = { value: turf }
+        shader.uniforms.uTurfTiles = { value: floor.cells / 1.5 }
+        shader.fragmentShader = 'uniform sampler2D uTurf; uniform float uTurfTiles;\n' + shader.fragmentShader
+        shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `
+          vec2 turfUv = ${scale > 0 ? 'floorUv' : 'vMapUv'} * uTurfTiles;
+          vec3 leaves = texture2D(uTurf, turfUv).rgb;
+          float soil = clamp(dot(diffuseColor.rgb, vec3(.2126,.7152,.0722)) / .173, .55, 1.55);
+          diffuseColor.rgb = mix(diffuseColor.rgb, leaves * soil, .86);
+          #include <color_fragment>
+        `)
+      }
     }
-    material.customProgramCacheKey = () => 'board3d-floor-parallax-v1'
+    material.customProgramCacheKey = () => turf ? `board3d-turf-${scale > 0}` : 'board3d-floor-parallax-v1'
   }
   return material
 }
@@ -237,6 +252,8 @@ export function buildStyledFloors(map: TacticalMap, pack: GraphicsStylePack, { p
         include: (_x, _y, cell) => floorKeyForCell(map, cell) === key,
         uvCells: floor.cells,
         seamless: (cell) => NATURAL_FLOORS.has(floorKeyForCell(map, cell) ?? ''),
+        surfaceKey: (cell) => floorKeyForCell(map, cell),
+        indexForGrass: key === 'grass',
         neutralShade: true,
         relief: reliefOptions,
       })
@@ -261,7 +278,9 @@ export function buildStyledFloors(map: TacticalMap, pack: GraphicsStylePack, { p
       onRelief?.(key, next)
     }
     const textures = loadFloorTextures(floor, loadTexture, level ? applyRelief : undefined)
-    const material = createStyledFloorMaterial(floor, textures, { parallax })
+    const turf = key === 'grass' ? createTurfTexture() : undefined
+    if (turf) owned.add(turf)
+    const material = createStyledFloorMaterial(floor, textures, { parallax, turf })
     mesh = new THREE.Mesh(geometry, material)
     mesh.name = `styled-floor:${key}`
     mesh.receiveShadow = true

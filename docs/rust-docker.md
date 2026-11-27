@@ -1,28 +1,28 @@
 # Rust-сервер в Docker
 
-Образ Rust-сервера (`Dockerfile.rust`) и его сервис (`compose.rust.yaml`)
-живут рядом с JS-сервером (`Dockerfile`, `compose.yaml`). **С 2026-10-31 Rust —
-основной сервер владельца:** `START_DND.cmd` поднимает его на 8787 с туннелем,
-когда в `.env` `DND_SERVER=rust`; JS-сервер остаётся откатом
-(`DND_SERVER=js` или пусто). Разовый перенос хранилища — `tools/rust-cutover.ps1`
-(ниже).
+Образ сервера игры (`Dockerfile.rust`) и его сервис (`compose.rust.yaml`).
+**Rust — сервер владельца с 2026-10-31 и единственный сервер с 2026-11-27:**
+`START_DND.cmd` поднимает его на 8787 с туннелем. Прежний JS-сервер
+(`Dockerfile`, `compose.yaml`) — в архиве, `archive/js-server/README.md`;
+`DND_SERVER` в `.env` — только `rust` или пусто, другое значение лаунчер
+отвергает. Разовый перенос кампаний прежнего файлового `./storage` —
+`tools/rust-cutover.ps1` (ниже).
 
-| | JS-сервер | Rust-сервер |
-| --- | --- | --- |
-| Сборка | `Dockerfile` | `Dockerfile.rust` |
-| Compose | `compose.yaml`, проект по каталогу | `compose.rust.yaml`, проект `skazanie-rust` |
-| Лаунчер `START_DND.cmd` | `DND_SERVER=js` или пусто | `DND_SERVER=rust` |
-| Порт на хосте | `127.0.0.1:8787` | `127.0.0.1:8788` (`SKAZANIE_RUST_PORT`; лаунчер — 8787) |
-| Туннель (профиль `public`) | `tunnel` → `skazanie:8787` | `tunnel` → `skazanie-rust:8787` |
-| Хранилище | `./storage` (bind) | том `skazanie-rust_storage` |
-| Сертификат антивируса | `compose.override.yaml`, `NODE_EXTRA_CA_CERTS`, `NODE_USE_SYSTEM_CA=1` | `DND_EXTRA_CA_CERTS` в `.env`, `./local-ca` |
+| | Rust-сервер |
+| --- | --- |
+| Сборка | `Dockerfile.rust` |
+| Compose | `compose.rust.yaml`, проект `skazanie-rust` |
+| Порт на хосте | `127.0.0.1:8788` (`SKAZANIE_RUST_PORT`; лаунчер — 8787) |
+| Туннель (профиль `public`) | `tunnel` → `skazanie-rust:8787` |
+| Хранилище | том `skazanie-rust_storage` |
+| Сертификат антивируса | `DND_EXTRA_CA_CERTS` в `.env`, `./local-ca` |
 
 ## Что в образе
 
 Три этапа:
 
 1. **client** — `node:22-alpine`, `pnpm install --frozen-lockfile` и
-   `pnpm build`, как в JS-образе; результат — `dist/`.
+   `pnpm build`; результат — `dist/`.
 2. **server** — `rust:1.91.1-slim-bookworm` (версия — `ARG RUST_VERSION`;
    файла `rust-toolchain` в репозитории нет, 1.91.1 — тулчейн ветки),
    `cargo build --release --locked -p sk-server --bin skazanie-server`
@@ -31,7 +31,7 @@
    перекомпилирует только изменённые крейты.
 3. **runtime** — `debian:bookworm-slim`: `/app/skazanie-server`, `/app/data`,
    `/app/prompts`, `/app/dist`, `/app/public → dist` (сервер читает атлас
-   реквизита и манифест окружения из `public/`, как JS), корневые сертификаты
+   реквизита и манифест окружения из `public/`), корневые сертификаты
    из образа сборки. Пользователь `skazanie` (uid 10001), не root.
    `DND_DATA_DIR=/app`, `DND_STORAGE_DIR=/app/storage` (том), порт 8787 внутри.
    `HEALTHCHECK` — `HEAD /api/health` средствами bash (curl в slim-образе нет).
@@ -61,7 +61,7 @@ docker build -f Dockerfile.rust --build-arg CARGO_BUILD_JOBS=8 -t skazanie-rust:
 crates.io и компилирует весь движок — десятки минут. Нужен BuildKit
 (в Docker Desktop включён по умолчанию).
 
-## Запуск рядом с JS
+## Запуск рядом с игрой
 
 ```bash
 docker compose -f compose.rust.yaml up -d --build
@@ -69,9 +69,9 @@ docker compose -f compose.rust.yaml ps          # STATUS: healthy
 docker compose -f compose.rust.yaml logs -f skazanie-rust
 ```
 
-Игра — `http://localhost:8788`. JS-сервис на 8787 продолжает работать: у
-Rust-сервиса свой проект compose, своя сеть и свой том, `./storage` он не видит.
-Хранилище нового тома пустое — первый вход через setup, как на новой машине.
+Сервер — `http://localhost:8788`. Если игра уже идёт на 8787 через лаунчер, это
+тот же проект compose и тот же том: для проверки рядом с игрой удобнее
+`pnpm rust:play` (свой порт и своё хранилище в `tmp/`).
 
 Разовый запуск без compose (проверка образа, временный том, без модели):
 
@@ -117,14 +117,9 @@ docker rm -f skazanie-rust-check && docker volume rm skazanie-rust-check
 
 ### Kaspersky и другие антивирусы с подменой HTTPS
 
-Лаунчер передаёт `NODE_USE_SYSTEM_CA=1` в контейнер JS-сервера через
-`compose.yaml`. При ручном запуске Compose использует то же значение по
-умолчанию. Node читает доверенные CA из хранилища операционной системы, в
-которой запущен процесс. Эта настройка поддерживается с Node 22.19 и 24.6.
-
-`compose.override.yaml` подхватывается только с `compose.yaml`, к
-`compose.rust.yaml` он не относится. Rust-сервер (rustls) доверяет системному
-хранилищу корней; дополнительный корень задаётся в `.env`:
+`compose.override.yaml` прежнего JS-сервера к `compose.rust.yaml` не
+относится. Rust-сервер (rustls) доверяет системному хранилищу корней;
+дополнительный корень задаётся в `.env`:
 
 ```
 DND_EXTRA_CA_CERTS=/app/local-ca/kaspersky-root.pem
@@ -135,19 +130,20 @@ DND_EXTRA_CA_CERTS=/app/local-ca/kaspersky-root.pem
 временный пакет и задаёт `SSL_CERT_FILE`. Если файл не читается, контейнер не
 стартует с сообщением в логе — без тихих ошибок TLS при первом ходе.
 
-## Переключение на 8787
+## Перенос кампаний прежнего JS-сервера
 
-Одной командой из папки с `.env` и `storage`:
+Нужен один раз — на машине, где игра ещё шла на JS. Одной командой из папки
+с `.env` и `storage`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1 -DryRun   # только пробный перенос
 powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1
 ```
 
-Скрипт выполняет шаги ниже: останавливает JS-сервис, собирает образ, делает
+Скрипт выполняет шаги ниже: останавливает прежний JS-контейнер (если жив), собирает образ, делает
 пробный перенос (код 3 — остановка), копирует `./storage` в
 `backups/storage-before-rust-<время>`, переносит, запускает `audit-storage`
-(не 0 — остановка, JS-сервис возвращается), пишет в `.env` `DND_SERVER=rust`,
+(не 0 — остановка, прежний контейнер возвращается), пишет в `.env` `DND_SERVER=rust`,
 `SKAZANIE_RUST_PORT=8787` и, если есть `local-ca/kaspersky-root.pem`,
 `DND_EXTRA_CA_CERTS`, поднимает Rust-сервис с туннелем и ждёт `/api/health`.
 Если в основной папке другая ветка, образ и `compose.rust.yaml` берутся из
@@ -156,8 +152,8 @@ powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1
 
 Вручную:
 
-1. Остановить JS-сервис: `docker compose stop skazanie` (с туннелем —
-   `docker compose --profile public stop`).
+1. Остановить прежний JS-контейнер, если жив:
+   `docker compose -f archive/js-server/compose.yaml --project-directory . --profile public stop`.
 2. Снимок старого хранилища: `pnpm backup` или копия `./storage`.
 3. Пробный импорт — ничего не пишет, только сводка (перенос идёт в базу в
    памяти):
@@ -176,9 +172,11 @@ powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1
    ```
 
    `./storage` монтируется только для чтения — импорт его не меняет.
-5. Аудит импортированного хранилища — `audit-storage` (аналог
-   `pnpm cutover:audit`): журнал против replay, подтверждение проекции и
-   комнаты (накладки `room_overlays`) против головы журнала. Только читает;
+5. Аудит импортированного хранилища — `audit-storage`: журнал против replay,
+   подтверждение проекции и комнаты (накладки `room_overlays`) против головы
+   журнала. Аудит читает временную копию базы и её WAL. Для неё требуется
+   свободное место в каталоге временных файлов контейнера. Проверяются
+   существующие таблицы; файл без схемы журнала даёт отказ. Исходное хранилище только читается;
    на хранилище работающего сервера — отказ, поэтому сервис ещё не запущен:
 
    ```bash
@@ -198,28 +196,43 @@ powershell -ExecutionPolicy Bypass -File tools\rust-cutover.ps1
 
 Туннель — свой сервис `tunnel` в `compose.rust.yaml` (профиль `public`,
 `skazanie-rust:8787`); каталог состояния тот же, `storage/generated/.tunnel`,
-поэтому `STATUS_DND.cmd` показывает ссылку любого из двух серверов. Лаунчер
-перед запуском останавливает другой сервер: оба слушают 8787. `START_SITES_DND.cmd`
-при `DND_SERVER=rust` JS-сервер не поднимает — подключается к уже запущенному
-Rust-серверу или отказывает с подсказкой.
+и `STATUS_DND.cmd` показывает ссылку оттуда. Лаунчер перед запуском гасит
+прежний JS-контейнер, если он жив: оба слушают 8787. `START_SITES_DND.cmd`
+подключается к уже запущенному Rust-серверу или отказывает с подсказкой.
 
-## Откат
+## Отката на JS нет
 
-`DND_SERVER=js` в `.env` и `START_DND.cmd` — лаунчер остановит Rust-сервис и
-поднимет JS на прежнем `./storage`. Вручную:
-
-```bash
-docker compose -f compose.rust.yaml down     # том Rust-сервиса остаётся
-docker compose up -d                         # JS-сервер на 8787, ./storage как был
-```
-
-Если после переключения в Rust-сервере шли игры, их события есть только в
-томе `skazanie-rust_storage`; обратного импорта в JS-формат нет.
+JS-сервер в архиве (`archive/js-server/README.md`). Игры, сыгранные на Rust,
+есть только в томе `skazanie-rust_storage`; обратного импорта в JS-формат нет.
+Возврат JS-сервера — решение владельца (`AGENTS.md` §9).
 
 ## Резервная копия тома
 
-`pnpm backup` работает с `./storage`, том Rust-сервиса он не видит. Снять
-архив тома (сервис остановлен, чтобы не копировать файлы на ходу):
+Копию снимает сам бинарь, подкоманда `backup`: тот же зашифрованный формат,
+что у `pnpm backup` (архив одного проверяется и восстанавливается другим),
+ключ — `DND_BACKUP_KEY` из `.env` не короче 32 байт. Без того же ключа
+восстановить копию нельзя. Том с хоста не виден, поэтому подкоманда
+запускается в том же образе. Сервис на это время остановлен. Пока сервер
+пишет, копия отказывает (`BACKUP_WRITER_ACTIVE`):
+
+```bash
+docker compose -f compose.rust.yaml stop skazanie-rust
+docker compose -f compose.rust.yaml run --rm --no-deps -v ./backups:/app/backups skazanie-rust backup
+docker compose -f compose.rust.yaml start skazanie-rust
+```
+
+Файл — `./backups/skazanie-<дата>.skzbackup`. Проверка и восстановление:
+
+```bash
+docker compose -f compose.rust.yaml run --rm --no-deps -v ./backups:/app/backups skazanie-rust backup verify /app/backups/<файл>
+skazanie-server backup restore <файл> <пустой-каталог>      # или pnpm backup -- restore …
+```
+
+`verify` проверяет шифрование и SHA-256 каждого файла, а не целостность
+кампаний; после восстановления — `skazanie-server audit-storage --storage
+<каталог>`. Справка — `skazanie-server backup --help`.
+
+Незашифрованный архив тома без ключа (на случай, когда ключа нет):
 
 ```bash
 docker compose -f compose.rust.yaml stop
@@ -228,4 +241,4 @@ docker run --rm -v skazanie-rust_storage:/data:ro -v ./backups:/backup debian:bo
 docker compose -f compose.rust.yaml start
 ```
 
-Архив не зашифрован — в нём данные игроков, хранить как `./backups`.
+В нём данные игроков открытым текстом, хранить как `./backups`.

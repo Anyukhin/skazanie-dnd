@@ -35,11 +35,30 @@ test('имя замаскированной фигуры не раскрывае
   assert.equal(root.userData.astohanNpcStyle, undefined)
 })
 
-test('пилотный ростер покрывает Ареса, Орена, Гедрика и Саргата', () => {
-  const expected = new Map([['Король Арес', 'ares'], ['Орен Фаль', 'oren'], ['Гедрик Сол', 'gedrik'], ['Саргат', 'sargat']])
+test('роль Трента остаётся профилем древнего дерева', () => {
+  assert.equal(figures.astohanNpcStyle({ label: 'Трент', archetype: 'страж Дикого леса' }), 'trent')
+  const root = actor()
+  figures.applyAstohanNpcFigure(root, { id: 'opaque', label: 'Трент', archetype: 'страж Дикого леса', kind: 'neutral' })
+  assert.ok(root.getObjectByName('astohan-npc-oak-bark-shield-left'))
+  assert.ok(root.getObjectByName('astohan-npc-resin-eye-left'))
+})
+
+test('Каэлан получает всадника, коня и призрачную голову', () => {
+  const root = actor()
+  assert.equal(figures.applyAstohanNpcFigure(root, { id: 'opaque', label: 'Каэлан Вердант', archetype: 'Дуннахан Замка Забытых Скал', kind: 'neutral' }), 'kaelan')
+  assert.ok(root.getObjectByName('kaelan-horse-body'))
+  assert.ok(root.getObjectByName('kaelan-floating-head'))
+  assert.ok(root.getObjectByName('kaelan-moon-judge'))
+  const bounds = new THREE.Box3().setFromObject(root)
+  assert.ok(bounds.max.y > 1.5 && bounds.max.x - bounds.min.x < 1.2)
+})
+
+test('ростер именованных NPC кампании покрывает все публичные варианты', () => {
+  const expected = new Map([
+    ['Король Арес', 'ares'], ['Маршал Ивара Тейн', 'ivara'], ['Орен Фаль', 'oren'], ['Мира Венн', 'mira'],
+    ['Ломар', 'lomar'], ['Каэлан Вердант', 'kaelan'], ['Саргат', 'sargat'], ['Ларс', 'lars'], ['Тобан', 'toban'], ['Гедрик Сол', 'gedrik'],
+  ])
   for (const [label, style] of expected) assert.equal(figures.astohanNpcStyle({ label, archetype: '' }), style)
-  assert.equal(figures.astohanNpcModelKey({ kind: 'enemy', label: 'Саргат', archetype: 'dragon' }), 'dragon')
-  assert.equal(figures.astohanNpcModelKey({ kind: 'neutral', label: 'Саргат', archetype: 'молодой красный дракон' }), 'dragon')
 })
 
 test('частичные совпадения имён и общая роль не раскрывают чужой NPC', () => {
@@ -58,6 +77,8 @@ test('аксессуары NPC прикреплены к костям, а габ
   assert.ok(bounds.max.y < 2 && bounds.max.x - bounds.min.x < 1)
 })
 
-test('непилотный NPC не раскрывается по общему имени', () => {
-  assert.equal(figures.astohanNpcStyle({ label: 'Случайный мельник', archetype: 'мельник' }), null)
+test('Ивара и Мира выбирают женскую базу, ручной ключ остаётся приоритетом', () => {
+  assert.equal(figures.astohanNpcModelKey({ kind: 'neutral', label: 'Маршал Ивара Тейн', archetype: 'командующая гарнизоном' }), 'hero-female')
+  assert.equal(figures.astohanNpcModelKey({ kind: 'neutral', label: 'Мира Венн', archetype: 'посланница' }), 'hero-female')
+  assert.equal(figures.astohanNpcModelKey({ kind: 'neutral', label: 'Мира Венн', archetype: 'посланница' }), 'hero-female')
 })

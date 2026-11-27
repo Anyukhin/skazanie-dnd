@@ -466,6 +466,11 @@ fn lore_request(value: &str) -> bool {
     test(re!(r"(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+(?:уже\s+|вообще\s+)?зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)", "iu"), value)
 }
 
+/// Вопрос об общих воспоминаниях. «Что ты видел?» обращено к собеседнику.
+fn recollection_request(value: &str) -> bool {
+    test(re!(r"^(?:(?:а|и|ну)\s+)?(?:напомни(?:те)?[,\s]+)?(?:кто|кому|что)(?:\s+(?!(?:ты|вы)(?!\p{L}))[\p{L}-]+){0,3}\s+(?:обещал[аи]?|видел[аи]?|слышал[аи]?|сказал[аи]?|рассказал[аи]?)(?!\p{L})", "iu"), value)
+}
+
 fn rules_request(value: &str) -> bool {
     test(re!(r"(?:правил|можно\s+ли|провер|брос|куб|атак|урон|заклин|спасброс|инициатив|класс\s+брони)", "iu"), value)
 }
@@ -490,7 +495,7 @@ pub fn select_agent_role(action: &str) -> &'static str {
     if director_request(&text_value) || fate_request(&text_value) {
         return "director";
     }
-    if lore_request(&text_value) {
+    if lore_request(&text_value) || recollection_request(&text_value) {
         return "worldkeeper";
     }
     if rules_request(&text_value) {
@@ -870,6 +875,15 @@ pub fn answer_known_lore(action: &str, state: &Value, options: &KnownLoreOptions
     if !asks_direction && select_agent_role(action) != "worldkeeper" {
         return None;
     }
+    let asks_for_source = recollection_request(&visible_str(action, 400));
+    if !asks_direction && (asks_for_source || test(re!(r"обещани|показани|свидетельств", "iu"), &normalized)) {
+        if let Some(narration) = crate::narration_recollection::party_recollection(state, action) {
+            return Some(reply(narration, "party-recollection"));
+        }
+        if asks_for_source {
+            return Some(reply("В общих записях отряда пока нет ответа на этот вопрос.".into(), "party-recollection"));
+        }
+    }
     if npc_who_question(&visible_str(action, 400)) {
         if let Some(who) = answer_table_question(action, state, None) {
             if is_str(who.get("model"), "npc-public-profile") {
@@ -961,6 +975,11 @@ pub fn answer_known_lore(action: &str, state: &Value, options: &KnownLoreOptions
         scored.sort_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));
         let best = scored[0].0;
         let sentence = &sentences[best];
+        let previous = best.checked_sub(1).and_then(|index| sentences.get(index));
+        let continuation = test(re!(r"^(?:\d|ноль|один|два|три|четыре|пять|шесть|семь|восемь|девять|десять|сегодня|вчера|завтра|назад|через|последн\p{L}*|раз\s+в)", "iu"), sentence);
+        if let Some(previous) = previous.filter(|previous| continuation && len16(previous) + len16(sentence) <= 220) {
+            return visible_str(&format!("{previous} {sentence}"), 240);
+        }
         match sentences.get(best + 1) {
             Some(next) if len16(sentence) + len16(next) <= 220 => visible_str(&format!("{sentence} {next}"), 240),
             _ => visible_str(sentence, 240),

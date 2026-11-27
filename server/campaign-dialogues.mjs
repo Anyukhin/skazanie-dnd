@@ -49,6 +49,7 @@
 import { readFileSync } from 'node:fs'
 
 import { campaignScenario, scenarioClueFactId, scenarioFoundClueIds, scenarioInformantRules, scenarioLocationId, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { scenarioKnightRiddleSolved, scenarioKnightState, scenarioNightIndex } from './scenario-knight.mjs'
 
 export const DIALOGUES_SCHEMA_VERSION = 1
@@ -222,8 +223,9 @@ export function normalizeDialogues(raw) {
   return dialogues
 }
 
+const dialogueCatalog = JSON.parse(readFileSync(DIALOGUES_URL, 'utf8'))
 /** @type {readonly Dialogue[]} */
-export const DIALOGUES = Object.freeze(normalizeDialogues(JSON.parse(readFileSync(DIALOGUES_URL, 'utf8'))))
+export const DIALOGUES = Object.freeze(normalizeDialogues(dialogueCatalog))
 
 /**
  * Диалог собеседника в этой кампании или `null`: только у кампании со
@@ -389,6 +391,9 @@ function dialogueActionOpen(state, item, hero, progress) {
 export function dialogueOptionsFor(state, npcId, heroId) {
   const dialogue = dialogueFor(state, npcId)
   if (!dialogue) return null
+  const npc = (Array.isArray(state?.social?.npcs) ? state.social.npcs : [])
+    .find((/** @type {{id?: string}} */ entry) => String(entry?.id ?? '') === String(npcId ?? ''))
+  if (npc && npcProfileAtWorldTime(npc, state).available === false) return null
   const hero = clean(heroId, 120)
   const progress = dialogueProgress(state, dialogue.id)
   const options = dialogue.options
@@ -493,6 +498,45 @@ export function sceneDialoguesForViewer(state, { playerId = '' } = {}) {
     if (view) result[String(npc.id)] = view
   }
   return result
+}
+
+/** @param {string} speech */
+function normalizedUtterance(speech) {
+  return speech.normalize('NFKC').trim().replace(/^(?:«([^«»]+)»|"([^"]+)"|“([^“”]+)”)$/u,
+    (_whole, angled, straight, curved) => angled ?? straight ?? curved)
+    .replace(/[.!?…\s]+$/u, '').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+}
+
+/** @param {string} speech */
+const questionWithoutCourtesy = (speech) => speech
+  .replace(/^(?:(?:скажите|подскажите)(?:,? пожалуйста)?|пожалуйста|будьте добры|можно узнать),\s+/u, '')
+  .replace(/,\s+пожалуйста$/u, '')
+
+/** @param {string} speech */
+const endsInQuestion = (speech) => /\?[.!?…»”"\s]*$/u.test(speech)
+
+/**
+ * Сопоставляет всю реплику с авторским вариантом только у выбранного собеседника.
+ * Совпадение с закрытой или неоднозначной репликой оставляет обычный разговор.
+ * @param {any} state @param {string} npcId @param {string} playerId @param {string} message
+ * @returns {{ optionId: string | null } | null}
+ */
+export function dialogueOptionForUtterance(state, npcId, playerId, message) {
+  const dialogue = dialogueFor(state, npcId)
+  if (!dialogue) return null
+  const speech = normalizedUtterance(message)
+  if (!speech) return null
+  const aliases = dialogueCatalog.utterance_aliases?.[dialogue.id]
+  const matches = dialogue.options.filter((option) => {
+    const utterances = [option.label, ...(aliases?.[option.id] ?? [])].map(normalizedUtterance)
+    const safeQuestion = endsInQuestion(option.label) && !option.action && !option.check && !option.ends
+    return utterances.includes(speech) || (safeQuestion && utterances.includes(questionWithoutCourtesy(speech)))
+  })
+  if (!matches.length) return null
+  const offered = sceneDialoguesForViewer(state, { playerId })[npcId]?.options ?? []
+  const [match] = matches
+  const asksInsteadOfChoosing = endsInQuestion(message) && !endsInQuestion(match.label) && (match.action || match.check || match.ends)
+  return { optionId: matches.length === 1 && !asksInsteadOfChoosing && offered.some((option) => option.id === match.id) ? match.id : null }
 }
 
 const CHECK_SKILL_LABELS = Object.freeze({

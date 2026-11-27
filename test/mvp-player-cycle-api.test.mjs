@@ -2,10 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { startTestServer } from './kit/http.mjs'
-import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
-import { actorPosition, findActor, shortestTacticalPath } from '../server/rules-engine.mjs'
-import { footprintCellsFor, footprintDistanceFeet } from '../server/actor-footprint.mjs'
-import { publicSceneFor } from '../server/viewer-projection.mjs'
+import { actorPosition, findActor, footprintCellsFor, publicSceneFor, serverBatch, tacticalMap } from './kit/fixtures.mjs'
 
 const MVP_REQUEST_TIMEOUT_MS = 30_000
 // Кости сценария — данные `skazanie.test-dice/1`, их одинаково исполняют
@@ -275,16 +272,26 @@ function livingEnemies(state) {
  * якорями. Медведь 2×2 стоит в четырёх клетках, и «рядом с якорем» бывает
  * внутри его самого.
  */
-function enemyDistance(state, actorId, enemy) {
-  const from = actorPosition(state, actorId)
-  const to = actorPosition(state, enemy.id)
-  if (!from || !to) return Infinity
-  return footprintDistanceFeet(findActor(state, actorId), enemy, from, to) ?? Infinity
+// Позиции и дистанции считает сервер (`actorPosition`, `findActor`,
+// `footprintDistanceFeet`): все враги — двумя пакетами вместо вызова на врага.
+async function enemyDistances(state, actorId, enemies) {
+  const [from, current, ...targets] = await serverBatch([
+    ['actorPosition', state, actorId],
+    ['findActor', state, actorId],
+    ...enemies.map((enemy) => ['actorPosition', state, enemy.id]),
+  ])
+  const measured = from ? enemies.map((enemy, index) => ({ enemy, to: targets[index] })).filter(({ to }) => to) : []
+  const feet = measured.length
+    ? await serverBatch(measured.map(({ enemy, to }) => ['footprintDistanceFeet', current ?? null, enemy, from, to]))
+    : []
+  const byEnemy = new Map(measured.map(({ enemy }, index) => [enemy, feet[index] ?? Infinity]))
+  return { from, distances: enemies.map((enemy) => ({ enemy, distance: byEnemy.get(enemy) ?? Infinity })) }
 }
 
-function nearestEnemy(state, actorId) {
-  if (!actorPosition(state, actorId)) return null
-  return livingEnemies(state).map((enemy) => ({ enemy, distance: enemyDistance(state, actorId, enemy) }))
+async function nearestEnemy(state, actorId) {
+  const { from, distances } = await enemyDistances(state, actorId, livingEnemies(state))
+  if (!from) return null
+  return distances
     .sort((left, right) => left.distance - right.distance || String(left.enemy.id).localeCompare(String(right.enemy.id)))[0] ?? null
 }
 
@@ -311,20 +318,22 @@ function stateForProjectedMovement(state) {
   }
 }
 
-function approachPath(state, actorId, targetId) {
-  const target = actorPosition(state, targetId)
+async function approachPath(state, actorId, targetId) {
+  const [target, targetActor] = await serverBatch([['actorPosition', state, targetId], ['findActor', state, targetId]])
   if (!target) return null
   const pathState = stateForProjectedMovement(state)
   // Цель — клетка вплотную к площади врага, а не к его якорю: у крупного
   // существа соседняя с якорем клетка занята им самим.
-  const occupied = footprintCellsFor(findActor(state, targetId), target)
+  const occupied = await footprintCellsFor(targetActor, target)
   const taken = new Set(occupied.map((cell) => `${cell.x},${cell.y}`))
   const goals = new Map()
   for (const cell of occupied) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     const goal = { x: cell.x + dx, y: cell.y + dy }
     if (!taken.has(`${goal.x},${goal.y}`)) goals.set(`${goal.x},${goal.y}`, goal)
   }
-  return [...goals.values()].map((goal) => shortestTacticalPath(pathState, actorId, goal))
+  const goalList = [...goals.values()]
+  const paths = goalList.length ? await serverBatch(goalList.map((goal) => ['shortestTacticalPath', pathState, actorId, goal])) : []
+  return paths
     .filter((path) => Array.isArray(path))
     .sort((left, right) => left.length - right.length)[0] ?? null
 }
@@ -336,20 +345,21 @@ async function playerCommand(baseUrl, cookieValue, key, commandValue) {
   })
 }
 
-test('MVP helper follows the public movement marker around a partially hidden prop', () => {
-  const map = createTacticalMap({ width: 5, height: 2, fill: { passable: true, revealed: true } })
-  addProp(map, {
-    id: 'hidden-table', assetId: 'table_long', x: 2.5, y: 0.5, blocksMove: true,
-    footprint: [{ x: 2, y: 0 }, { x: 3, y: 0 }],
-  })
-  setCell(map, 3, 0, { revealed: false })
-  const sourceScene = { cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) }
+test('MVP helper follows the public movement marker around a partially hidden prop', async () => {
+  const { map, cells } = await tacticalMap({ width: 5, height: 2, fill: { passable: true, revealed: true } })
+    .prop({
+      id: 'hidden-table', assetId: 'table_long', x: 2.5, y: 0.5, blocksMove: true,
+      footprint: [{ x: 2, y: 0 }, { x: 3, y: 0 }],
+    })
+    .cell(3, 0, { revealed: false })
+    .build()
+  const sourceScene = { cells, map }
   const state = {
     players: [{ id: 'hero', x: 0, y: 0, hp: 10 }],
     enemies: [{ id: 'enemy', x: 4, y: 0, alive: true }],
-    scene: publicSceneFor(sourceScene),
+    scene: await publicSceneFor(sourceScene),
   }
-  const path = approachPath(state, 'hero', 'enemy')
+  const path = await approachPath(state, 'hero', 'enemy')
   assert.ok(path)
   assert.ok(path.every((cell) => cell.x !== 2 || cell.y !== 0), 'helper must avoid public movementBlocked cells')
   assert.ok(path.some((cell) => cell.y === 1), 'helper must retain the legal route around the prop')
@@ -638,7 +648,7 @@ async function runMvpScenario(t) {
       continue
     }
     const actorId = String(combat.initiative[combat.active_index]?.actor_id ?? '')
-    const current = findActor(battleState, actorId)
+    const current = await findActor(battleState, actorId)
     assert.ok(current, `active actor ${actorId} must exist`)
     assert.ok((battleState.players ?? []).some((heroEntry) => heroEntry.id === actorId), `NPC scheduler left enemy ${actorId} for the browser client`)
     const actorCookie = cookieFor(actorId)
@@ -667,9 +677,9 @@ async function runMvpScenario(t) {
           assert.equal(rage.body?.code, 'INSUFFICIENT_RESOURCE', rage.text)
         }
       }
-      let target = nearestEnemy(battleState, actorId)
+      let target = await nearestEnemy(battleState, actorId)
       if (target && target.distance > 5) {
-        const path = approachPath(battleState, actorId, target.enemy.id)
+        const path = await approachPath(battleState, actorId, target.enemy.id)
         const spent = Number(combat.action_economy?.[actorId]?.movement_spent ?? 0)
         const availableSteps = Math.max(0, Math.floor((Number(current.speed) || 30) / 5) - Math.floor(spent / 5))
         if (path?.length && availableSteps > 0) {
@@ -680,7 +690,7 @@ async function runMvpScenario(t) {
           if (moved.status === 200) {
             combatEvents.push(...(moved.body.mechanics ?? []))
             battleState = moved.body.authoritative_state
-            target = nearestEnemy(battleState, actorId)
+            target = await nearestEnemy(battleState, actorId)
           } else {
             // The step count above is a client-side guess and is not
             // authoritative: the server routes around creatures that moved in
@@ -694,8 +704,8 @@ async function runMvpScenario(t) {
             const afterRefusal = await request(server.baseUrl, '/api/rooms/PLAYER-MVP', { cookie: actorCookie })
             assert.equal(afterRefusal.status, 200, afterRefusal.text)
             assert.deepEqual(
-              actorPosition(afterRefusal.body.state, actorId),
-              actorPosition(battleState, actorId),
+              await actorPosition(afterRefusal.body.state, actorId),
+              await actorPosition(battleState, actorId),
               'отклонённое перемещение не имеет права сдвинуть героя',
             )
           }
@@ -704,8 +714,7 @@ async function runMvpScenario(t) {
       const actionReady = battleState.mechanics.combat.action_economy?.[actorId]?.action !== false
       let attacked = null
       if (battleState.mechanics.combat.active && actionReady) {
-        const candidates = livingEnemies(battleState)
-          .map((enemy) => ({ enemy, distance: enemyDistance(battleState, actorId, enemy) }))
+        const candidates = (await enemyDistances(battleState, actorId, livingEnemies(battleState))).distances
           .filter((candidate) => candidate.distance === 5)
           .sort((left, right) => left.distance - right.distance)
         for (const candidate of candidates) {

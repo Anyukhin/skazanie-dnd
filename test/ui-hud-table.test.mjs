@@ -35,7 +35,9 @@ test('элементы HUD читают серверную проекцию и �
   // Спасброски — из mechanics.death.saving_throws, кнопки броска нет: его делает сервер.
   assert.match(map, /state\.mechanics\?\.death\?\.saving_throws\?\.\[ownHero\.id\]/)
   // Круг ячейки у плитки ложится в тот же slot_level, что и список «Ячейка».
-  assert.match(map, /onPick=\{\(level\) => \{\s*setSpellSlotLevelChoice\(level\)/)
+  assert.match(map, /onPick=\{\(level\) => \{\s*if \(missileSubmitting\) return\s+setSpellSlotLevelChoice\(level\)/)
+  assert.match(map, /aria-label="Круг ячейки"\s+value=\{String\(selectedSpellSlotLevel \?\? ''\)\}\s+disabled=\{missileSubmitting\}/)
+  assert.match(map, /const selectedSpellSlotOption = \{\s*\.\.\.\(selectedSpellSlotLevel \? \{ slotLevel: selectedSpellSlotLevel \} : \{\}\)/)
   // «Не убивать» — тот же флаг knock_out атаки ближнего боя.
   assert.match(map, /knockout-turn-toggle[^\n]*aria-pressed=\{knockOut\}/)
   // Окно реакции: те же команды выбора и отказа, часы — серверный turn_clock.

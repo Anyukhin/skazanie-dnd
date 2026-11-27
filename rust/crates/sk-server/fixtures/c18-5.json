@@ -477,6 +477,26 @@
                   "exploration": "allowed"
                 },
                 {
+                  "id": "awaken",
+                  "name": "Разбудить",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием разбудить союзника рядом. Снимает с него «Усыпление» или «Гипнотический узор», если выбранный эффект принадлежит этому заклинанию.",
+                  "effect": {
+                    "kind": "awaken",
+                    "spellChoices": [
+                      "sleep",
+                      "hypnotic-pattern"
+                    ]
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
                   "id": "stabilize",
                   "name": "Стабилизировать",
                   "category": "common",
@@ -846,6 +866,26 @@
                   },
                   "mechanicsSupport": "partial",
                   "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "awaken",
+                  "name": "Разбудить",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием разбудить союзника рядом. Снимает с него «Усыпление» или «Гипнотический узор», если выбранный эффект принадлежит этому заклинанию.",
+                  "effect": {
+                    "kind": "awaken",
+                    "spellChoices": [
+                      "sleep",
+                      "hypnotic-pattern"
+                    ]
+                  },
+                  "mechanicsSupport": "verified",
                   "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
                   "exploration": "allowed"
                 },
@@ -1842,6 +1882,26 @@
                   },
                   "mechanicsSupport": "partial",
                   "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "awaken",
+                  "name": "Разбудить",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием разбудить союзника рядом. Снимает с него «Усыпление» или «Гипнотический узор», если выбранный эффект принадлежит этому заклинанию.",
+                  "effect": {
+                    "kind": "awaken",
+                    "spellChoices": [
+                      "sleep",
+                      "hypnotic-pattern"
+                    ]
+                  },
+                  "mechanicsSupport": "verified",
                   "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
                   "exploration": "allowed"
                 },

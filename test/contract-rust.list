@@ -57,6 +57,7 @@ test/party-decision-roll-api.test.mjs  #общий бросок: серверн�
 # в /autonomy/advance (С18.4); narrate-retry-recovery и tactical-command-recovery — клиентские, без сервера.
 test/narration-stream-api.test.mjs       # SSE рассказа: изоляция, replay при переподключении, канонический финал
 test/narrate-room-version-race.test.mjs  # room_version ответа перечитывается после хода; PUT комнаты — 410
+test/impossible-free-action-api.test.mjs # недоступное действие закрывает уточнение и не расходует ход
 test/party-interaction-api.test.mjs      # карточка голосования Режиссёра, голос вне своего хода
 test/solo-party-exit-api.test.mjs        # соло-стол уходит без карточки, ID карты до Архитектора, отказ от задания
 test/quest-abandonment-api.test.mjs      # отказ от задания голосованием и переход сцены, replay/restart
@@ -92,6 +93,11 @@ test/protection-from-energy-http.test.mjs  # «Защита от энергии�
 test/restore-rehearsal-api.test.mjs        # бэкап и восстановление storage с командами; аудит восстановленного — auditStorage (С19.4)
 test/room-projection-equivalence.test.mjs  # комната после команд совпадает с журналом
 test/scene-interactions.test.mjs           # предметы сцены через /commands (и модульные проверки)
+test/astohan-scene-clues-api.test.mjs      # авторские улики через /commands и свободный ввод /narrate
+test/lore-testimony-api.test.mjs           # ответ хранителя сохраняет сроки и атрибуцию свидетельства
+test/party-recollection-api.test.mjs       # публичные обещания и показания переживают смену места и перезапуск
+test/gm-fallback-api.test.mjs              # свидетельство NPC и уточнение способа без модели
+test/lockpick-command-api.test.mjs          # кнопки взлома двери и сундука, экспертиза по правилам 2014
 test/spell-components-api.test.mjs         # компоненты заклинаний
 test/spell-reaction-http.test.mjs          # реакция «Искусная острота» с получателем
 test/spell-source-activation-api.test.mjs  # заклинание из предмета
@@ -164,10 +170,11 @@ test/location-illustrations-api.test.mjs # подготовка при выкл�
 
 # С19.2 (2026-10-25): перенос JS-хранилища подкомандой import-legacy — JS-сервер
 # играет на временном storage, Rust на перенесённой базе отвечает так же; в режиме js пропускается.
-test/legacy-import-rust.test.mjs  # rooms/campaigns/settings/heroes/me как у JS, replay журнала = JS, битый хвост и seed — пропуск, отказ старта
+# В архиве с 2026-11-27 (нужен JS-сервер): test/legacy-import-rust.test.mjs — rooms/campaigns/settings/heroes/me как у JS, replay журнала = JS, битый хвост и seed — пропуск, отказ старта
 # С19.4 (2026-10-25): последние HTTP-тесты вне списка — через кит, зелёные в обоих режимах.
 test/test-kit.test.mjs                 # сам набор: кости и сбои данными, журнал читается и портится подкомандой бинаря
 test/campaign-dialogues-api.test.mjs   # диалог с Аресом: ответ в летописи, повтор, чужой герой, подделка ответа
+test/authored-dialogue-narrate-api.test.mjs # авторская реплика через /api/narrate, проверка доступности и повтор после ухода NPC
 test/stream-live-access-api.test.mjs   # живой поток закрывается после logout, истечения сессии и снятия доступа
 test/stream-backpressure-api.test.mjs  # медленный читатель: комнаты схлопнуты до последней
 test/combat-critical-turn-api.test.mjs # крит врага без модели: конец хода на строке боя (кости данными)
@@ -184,7 +191,7 @@ test/legendary-action-http.test.mjs            # UseLegendaryAction не при�
 # Сверка версий (2026-10-25): первая сцена — карта, обстановка, позиции — против эталонного
 # JS-процесса. Стенд горячего пути расходился 310 против 271 события из-за неперенесённого #184;
 # зелёный против Rust после слияния rs/port-main.
-test/first-scene-map-parity-api.test.mjs # 12 мест: поселение, дом с двором, граф храма и склепа, лес, пещера, авторские миры
+# В архиве с 2026-11-27 (паритет с JS-сервером): test/first-scene-map-parity-api.test.mjs — 12 мест: поселение, дом с двором, граф храма и склепа, лес, пещера, авторские миры
 # Исправления HTTP-маршрутов (2026-10-26, docs/rust-port-js-findings.md): чужой ключ /lifecycle — 409,
 # левая рука в EquipItem, версия торговца null, кость комнаты строчными, гонка создания кампании,
 # домашние правила «всё или ничего» с 409 на чужое значение ключа.

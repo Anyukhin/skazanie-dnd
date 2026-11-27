@@ -68,6 +68,41 @@ function fakeTemplate(width = 2, height = 1, depth = 1, material = new THREE.Mes
   return root
 }
 
+test('качественный костёр заменяет только тонкий logs-GLB и гаснет в неактивном состоянии', () => {
+  const logsCatalog = catalogModule.validatePropModelCatalog(validCatalog([entry('k-campfire_logs', ['campfire'])]))
+  const logsTemplate = new Map([['k-campfire_logs', fakeTemplate(.3, .1, .3)]])
+  const logsEnvironment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, { catalog: logsCatalog, models: logsTemplate })
+  const active = logsEnvironment.create(prop({ id: 'quality-campfire', assetId: 'campfire' }))
+  assert.equal(active.userData.modelSource, 'procedural-quality')
+  const flameNames = []
+  active.traverse((object) => { if (object.name.startsWith('campfire-flame')) flameNames.push(object) })
+  assert.ok(flameNames.length >= 2, 'качественный костёр должен иметь два слоя пламени')
+  for (const state of ['burned', 'broken', 'toppled']) {
+    const inactive = logsEnvironment.create(prop({ id: `quality-campfire-${state}`, assetId: 'campfire', state }))
+    const visibleFlames = []
+    inactive.traverse((object) => { if (object.name.startsWith('campfire-flame') && object.visible) visibleFlames.push(object) })
+    assert.equal(visibleFlames.length, 0, `${state}: костёр не должен продолжать гореть`)
+  }
+  logsEnvironment.dispose()
+
+  const stonesCatalog = catalogModule.validatePropModelCatalog(validCatalog([entry('k-campfire_stones', ['campfire'])]))
+  const stonesEnvironment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, {
+    catalog: stonesCatalog,
+    models: new Map([['k-campfire_stones', fakeTemplate(.54, .08, .52)]]),
+  })
+  const stones = stonesEnvironment.create(prop({ id: 'quality-campfire-stones', assetId: 'campfire' }))
+  assert.equal(stones.userData.modelSource, 'glb', 'каменный вариант должен остаться GLB')
+  const stonesFlame = []
+  stones.traverse((object) => { if (object.name.startsWith('campfire-flame')) stonesFlame.push(object) })
+  assert.ok(stonesFlame.length >= 3, 'каменный GLB получает общий слой пламени')
+  assert.equal(stones.userData.lightHeight, .68, 'источник каменного костра совпадает с верхом общего пламени')
+  const stonesBurned = stonesEnvironment.create(prop({ id: 'quality-campfire-stones-burned', assetId: 'campfire', state: 'burned' }))
+  const stonesBurnedFlame = []
+  stonesBurned.traverse((object) => { if (object.name.startsWith('campfire-flame')) stonesBurnedFlame.push(object) })
+  assert.equal(stonesBurnedFlame.length, 0, 'погашенный каменный вариант не получает пламя')
+  stonesEnvironment.dispose()
+})
+
 test('catalog валидирует локальные GLB и детерминированно выбирает вариант', () => {
   const source = validCatalog([entry('counter-a', ['bar_counter', 'bar_counter']), entry('counter-b', ['bar_counter'])])
   const catalog = catalogModule.validatePropModelCatalog(source)
@@ -253,7 +288,7 @@ test('ковёр набора ложится на пол 3D своим штам�
   let stampDisposed = 0
   stamp.addEventListener('dispose', () => { stampDisposed += 1 })
   const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, {
-    catalog, models: new Map(), stamps: new Map([['rug_red_large', stamp], ['anvil', stamp], ['cave_pool', stamp]]),
+    catalog, models: new Map(), stamps: new Map([['rug_red_large', stamp], ['rug_runner', stamp], ['anvil', stamp], ['cave_pool', stamp]]),
   })
   // Озерцо в 2D непрозрачно — и в 3D его штамп не просвечивает.
   const pool = environment.create(prop({ id: 'grotto-pool', assetId: 'cave_pool', footprint: [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 3 }] }))
@@ -280,6 +315,14 @@ test('ковёр набора ложится на пол 3D своим штам�
   assert.ok(bounds.max.y - bounds.min.y < 1e-9 && bounds.min.y > 0 && bounds.max.y < 0.05, 'наклейка плоская и лежит на полу')
   const box = bounds.getSize(new THREE.Vector3())
   assert.ok(Math.abs(box.x - fit.height * layout.scale) < 1e-6 && Math.abs(box.z - fit.width * layout.scale) < 1e-6, 'после поворота длинная сторона идёт вдоль длинной стороны габарита')
+
+  const runner = environment.create(prop({ id: 'throne-runner', assetId: 'rug_runner', x: 6, y: 4, footprint: [] }))
+  const runnerMeshes = []
+  runner.traverse((object) => { if (object.isMesh) runnerMeshes.push(object) })
+  assert.deepEqual(runnerMeshes.map((mesh) => mesh.name), ['floor-stamp'], 'дорожка остаётся одной плоской наклейкой')
+  assert.equal(runnerMeshes[0].material.roughness, 1, 'ткань матовая')
+  assert.equal(typeof runnerMeshes[0].material.onBeforeCompile, 'function', 'дорожка получает тканую фактуру в шейдере')
+  assert.equal(runnerMeshes[0].material.customProgramCacheKey(), 'board3d-rug-runner-weave-v1')
 
   // Без штампа — прежняя процедурная плашка; объёмному предмету штамп не нужен.
   const fallback = environment.create(prop({ id: 'cell-mat', assetId: 'straw_mat', footprint: [] }))

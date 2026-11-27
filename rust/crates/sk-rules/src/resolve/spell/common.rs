@@ -561,6 +561,11 @@ fn authoritative_cast(r: &mut Resolve<'_>) -> Flow {
     payload.insert("concentration".into(), Value::Bool(js::truthy(field(&spell, "concentration"))));
     put(&mut payload, "source_url", field(&spell, "sourceUrl"));
     payload.insert("spell_option".into(), nn(command.get("spell_option")).cloned().unwrap_or(Value::Null));
+    if js::s(field(&spell, "id")) == "magic-missile" {
+        if let Some(ids) = command.get("missile_target_ids").filter(|value| value.is_array()) {
+            payload.insert("missile_target_ids".into(), ids.clone());
+        }
+    }
     let cae = field(&spell, "createsAreaEffect");
     let no_damage_type = nn(field(&spell, "damage")).is_none()
         && nn(field(&spell, "damageType")).is_none()
@@ -861,6 +866,15 @@ fn spell_area_created(r: &mut Resolve<'_>, state: &Value, cast: &Cast, center: &
         }
     }
     effect.insert("damage".into(), area_damage.unwrap_or(Value::Null));
+    let damage_amount = js::safe_int(cae_field("damageAmount"), 0).max(0);
+    if damage_amount > 0 {
+        effect.insert("damage_amount".into(), Value::from(damage_amount));
+    }
+    let damage_limit = js::safe_int(cae_field("damageLimit"), 0).max(0);
+    if damage_limit > 0 {
+        effect.insert("damage_limit".into(), Value::from(damage_limit));
+        effect.insert("damage_dealt".into(), Value::from(0));
+    }
     effect.insert("healing".into(), healing);
     effect.insert("damage_type".into(), nn(cae_field("damageType")).or_else(|| nn(field(spell, "damageType"))).cloned().unwrap_or(Value::Null));
     effect.insert("half_on_save".into(), Value::Bool(is_true(cae_field("halfOnSave"))));

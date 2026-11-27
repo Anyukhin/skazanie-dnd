@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
-import { openRouterFreeModels, RouterAIClient } from '../server/llm-client.mjs'
 import { createCampaign, expectStatus, registerUser, setupAdmin, startTestServer } from './kit/http.mjs'
 import { chatCompletion, startFakeProvider } from './kit/llm.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
+// Разбор списка бесплатных моделей в процессе — openrouter-free-api-library.test.mjs.
 const freeModels = ['test/primary:free', 'openrouter/free']
 const actualModel = 'test/reserve:free'
 const localModel = 'qwen-test:14b'
@@ -15,14 +15,6 @@ const opening = {
   scene: { title: 'Архив у реки', location: 'Речной архив', objective: 'Встретить смотрителя' },
 }
 const prologue = 'Луч фонаря дрожит на арке речного архива. Смотритель ждёт под навесом и держит связку ключей. Вода у лестницы поднялась за ночь. Из окна тянет сырой бумагой.'
-
-test('OpenRouter отклоняет платную конфигурацию и сохраняет порядок бесплатных моделей', () => {
-  assert.deepEqual(openRouterFreeModels(), ['openrouter/free'])
-  assert.deepEqual(openRouterFreeModels(' test/primary:free , test/primary:free,openrouter/free'), freeModels)
-  assert.deepEqual(openRouterFreeModels('openrouter/free,test/paid'), ['openrouter/free'])
-  assert.deepEqual(openRouterFreeModels('test/paid,invalid:free'), ['openrouter/free'])
-  assert.throws(() => new RouterAIClient({ openRouterFree: true, model: 'test/paid' }), /бесплатной/u)
-})
 
 for (const rateLimited of [false, true]) {
   const route = rateLimited ? 'Ollama после лимита OpenRouter' : 'вторая бесплатная модель OpenRouter'

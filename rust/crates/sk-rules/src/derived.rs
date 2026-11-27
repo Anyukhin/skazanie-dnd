@@ -268,10 +268,14 @@ fn input_copy(actor: &Value) -> Value {
 }
 
 fn entry_for(state: Option<&Value>, actor: &Value) -> Arc<Entry> {
+    entry_for_in(memory(), state, actor)
+}
+
+fn entry_for_in(memory: &Mutex<VecDeque<Arc<Entry>>>, state: Option<&Value>, actor: &Value) -> Arc<Entry> {
     let inputs = Inputs::of(state, actor);
     let fingerprint = fingerprint(actor, &inputs);
     {
-        let mut known = memory().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut known = memory.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(position) = known.iter().position(|entry| entry.fingerprint == fingerprint && entry.inputs == inputs && same_input(&entry.actor, actor)) {
             let entry = known.remove(position).expect("позиция найдена");
             known.push_front(entry.clone());
@@ -287,7 +291,7 @@ fn entry_for(state: Option<&Value>, actor: &Value) -> Arc<Entry> {
         sheet: OnceLock::new(),
         load: OnceLock::new(),
     });
-    let mut known = memory().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut known = memory.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     known.push_front(entry.clone());
     known.truncate(LIMIT);
     entry
@@ -528,19 +532,21 @@ mod tests {
 
     #[test]
     fn memory_follows_inputs_not_identity() {
+        let memory = Mutex::new(VecDeque::new());
         let state = json!({ "ruleset_id": "dnd_5e_2014", "players": [wizard()] });
-        let first = combat_spells(Some(&state), &state["players"][0]);
-        let again = combat_spells(Some(&state), &wizard());
+        let spells = |state: &Value, actor: &Value| entry_for_in(&memory, Some(state), actor).spells();
+        let first = spells(&state, &state["players"][0]);
+        let again = spells(&state, &wizard());
         assert!(Arc::ptr_eq(&first, &again), "тот же вход — тот же итог из памяти");
         let mut leveled = wizard();
         leveled["level"] = json!(5);
-        let other = combat_spells(Some(&state), &leveled);
+        let other = spells(&state, &leveled);
         assert!(!Arc::ptr_eq(&first, &other), "другой вход — другой итог");
         let mut filled = wizard();
         filled["combatSpells"] = json!([{ "id": "stale" }]);
-        assert!(Arc::ptr_eq(&first, &combat_spells(Some(&state), &filled)), "значение слота во вход не входит");
+        assert!(Arc::ptr_eq(&first, &spells(&state, &filled)), "значение слота во вход не входит");
         let srd = json!({ "ruleset_id": "srd_5_2_1", "players": [wizard()] });
-        assert!(!Arc::ptr_eq(&first, &combat_spells(Some(&srd), &wizard())), "редакция — вход");
+        assert!(!Arc::ptr_eq(&first, &spells(&srd, &wizard())), "редакция — вход");
     }
 
     #[test]

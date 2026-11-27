@@ -571,8 +571,7 @@ pub fn build_deterministic_epilogue(state: &Value, outcome_or_options: Option<&V
 /// Договор закрывает авторское приключение; постоянный мир продолжает игру.
 pub fn treaty_ends_adventure(state: &Value) -> bool {
     state["scenario_attention"]["treaty"]["concluded"].as_bool() == Some(true)
-        && campaign_mode_for(state) != "persistent"
-        && campaign_scenario(state).is_some()
+        && campaign_mode_for(state) != "persistent" && campaign_scenario(state).is_some()
 }
 
 /// Авторский эпилог уже сохранённого исхода, выводимый в игровой комнате.

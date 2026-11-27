@@ -2,10 +2,10 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { materializeCatalogItem } from '../server/item-catalog.mjs'
+import { materializeCatalogItem } from './kit/fixtures.mjs'
 import { readJournal, registerUser, setupAdmin, startTestServer } from './kit/index.mjs'
 
-function initialState(code) {
+async function initialState(code) {
   return {
     state_version: 0,
     sessionCode: code,
@@ -26,7 +26,7 @@ function initialState(code) {
         x: 1,
         y: 1,
         abilities: { str: 10, dex: 16, con: 12, int: 12, wis: 12, cha: 10 },
-        inventory: [materializeCatalogItem('srd_5_2_1:rapier', { id: 'rapier', quantity: 1, equipped: true })],
+        inventory: [await materializeCatalogItem('srd_5_2_1:rapier', { id: 'rapier', quantity: 1, equipped: true })],
       },
       {
         id: 'ally',
@@ -114,7 +114,7 @@ test('HTTP MakeAttack игрока применяет Скрытую атаку 
   let selected = null
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     const campaignId = `SNEAK-HTTP-${attempt}`
-    const created = await admin.post('/api/campaigns', { code: campaignId, name: 'Проверка Скрытой атаки', state: initialState(campaignId) })
+    const created = await admin.post('/api/campaigns', { code: campaignId, name: 'Проверка Скрытой атаки', state: await initialState(campaignId) })
     assert.equal(created.status, 201, `${created.text}\n${server.output()}`)
 
     const forbidden = await foreign.post(`/api/campaigns/${campaignId}/commands`, attackCommand(`sneak-forbidden-${attempt}`), { idempotencyKey: `sneak-forbidden-${attempt}` })

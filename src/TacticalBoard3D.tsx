@@ -9,7 +9,7 @@ import { moveDifficultPath, moveReachFill, moveReachOutline, moveRoutePath } fro
 import { COMBAT_ANIMATION_QUEUE_LIMIT, combatAnimationCuesFromBattleLog, combatAnimationCuesFromEvents, combatAnimationUsesReducedMotion, shouldDeferDefeat, attackOutcome, strikeImpactProgress, strikeMotionProgress, strikeUsesProjectile, type CombatAnimationCue } from './combat-animation'
 import { createSpellEffectRenderer, isSpellAnimationCue, systemPrefersReducedMotion } from './spell-effects'
 import { createCombatEffect3D } from './board3d-effects'
-import { createSpellEffect3D } from './board3d-spell-effects'
+import { createPersistentSpellEffect3D, createSpellEffect3D } from './board3d-spell-effects'
 import { BOARD3D_WALL_HEIGHT, createBoard3DScene, nearestPropPickTarget } from './board3d-scene'
 import { combatAudioSpatialFromScreen } from './combat-audio'
 import type { Board3DRoofMode } from './board3d-roofs'
@@ -19,9 +19,11 @@ import { createActorModel, createProceduralActorModel, figureHeightFor, getModel
 import { LEGACY_CATALOG_REVISION } from './prop-model-catalog'
 import { mapSignaturesFor } from './board3d-scene-signature'
 import { BOARD3D_QUALITY, board3DQuality, cueForQuality, type Board3DQuality } from './board3d-quality'
+import type { BoardBackdropStyle } from './board3d-distant-terrain'
 import { BOARD3D_LIGHTING, boardDarkness, lightingForDarkness, boardEffectLights, createBoardBackdropTexture, createBoardEnvironment, createBoardRenderPipeline, dungeonBackdrop, fitSunShadow } from './board3d-graphics'
 import { surroundingsBackdrop } from './board3d-surroundings'
 import type { TacticalMap } from './types'
+import type { PersistentSpellEffect } from './spell-effects'
 
 type Props = TacticalBoardProps & { onUnavailable: (message: string) => void }
 type CameraState = { position: THREE.Vector3; target: THREE.Vector3; zoom: number }
@@ -31,11 +33,16 @@ const QUALITY_STORAGE_KEY = 'skazanie-3d-quality'
 /** Медиана кадра дольше этого (меньше ~24 кадров) — повод снизить качество. */
 const AUTO_QUALITY_FRAME_MS = 42
 const ROOF_STORAGE_KEY = 'skazanie-3d-roofs'
+const BACKDROP_STORAGE_KEY = 'skazanie-3d-backdrop'
 
 function roofModeValue(value: unknown): Board3DRoofMode {
   // По умолчанию — без крыши, как в наборных диорамах: каркас среза
   // перечёркивал зал балками. Выбранный игроком режим сохраняется.
   return value === 'full' || value === 'cutaway' ? value : 'hidden'
+}
+
+function backdropStyleValue(value: unknown): BoardBackdropStyle {
+  return value === 'atlas' || value === 'classic' ? value : 'landscape'
 }
 
 function hasBoardContent(children: ReactNode): boolean {
@@ -52,6 +59,25 @@ export function targetPreviewCells(cells: readonly TargetPreviewCell[]) {
     const classes = cell.className.split(/\s+/u)
     return classes.includes('blast-area') && classes.includes('spell-preview-cell')
   })
+}
+
+type NameplateRect = { left: number; right: number; top: number; bottom: number; priority: number }
+
+/** Сохраняет место важных подписей и разводит соседние по вертикали. */
+export function nameplateShifts(rects: readonly NameplateRect[], height: number) {
+  const gap = 3
+  const placed: NameplateRect[] = []
+  const shifts = rects.map(() => 0)
+  for (const { rect, index } of rects.map((rect, index) => ({ rect, index })).sort((a, b) => b.rect.priority - a.rect.priority)) {
+    const neighbours = placed.filter((other) => other.left < rect.right + gap && rect.left < other.right + gap)
+    const shift = [0, ...neighbours.flatMap((other) => [other.top - gap - rect.bottom, other.bottom + gap - rect.top])]
+      .sort((a, b) => Math.abs(a) - Math.abs(b))
+      .find((dy) => (dy === 0 || (rect.top + dy >= 0 && rect.bottom + dy <= height))
+        && neighbours.every((other) => rect.bottom + dy + gap <= other.top || other.bottom + gap <= rect.top + dy)) ?? 0
+    shifts[index] = shift
+    placed.push({ ...rect, top: rect.top + shift, bottom: rect.bottom + shift })
+  }
+  return shifts
 }
 
 type Runtime = {
@@ -80,6 +106,11 @@ function readModels(key: string): Record<string, string> {
  * заклинанием, лечение и объявленное состояние («Ярость», «Уклонение») не
  * должны выглядеть как вздрагивание от удара.
  */
+// На основной доске статическую фигуру ставит подтверждённая область.
+function usesProjectedFigure(cue: CombatAnimationCue) {
+  return 'spellId' in cue && cue.spellId === 'guardian-of-faith' && cue.kind === 'burst'
+}
+
 function poseForCue(cue: CombatAnimationCue): ActorPose | null {
   if (cue.kind === 'move') return 'walk'
   if (cue.kind === 'strike') return strikeUsesProjectile(cue) ? 'ranged-attack' : 'attack'
@@ -129,7 +160,10 @@ function shortestAngle(from: number, to: number): number {
 /** Для атаки берётся экипировка на момент события, затем возвращается текущая. */
 function applyStrikeAppearance(model: ActorModel, cue: Extract<CombatAnimationCue, { kind: 'strike' }>): void {
   if (cue.loadout !== undefined) model.setAppearance({
-    version: 2, profile: model.profile, equipment: cue.equipment ?? 'unknown', loadout: cue.loadout,
+    version: 2,
+    profile: model.profile === 'elder-tree' || model.profile === 'ghost-maid' ? 'beast' : model.profile,
+    equipment: cue.equipment ?? 'unknown',
+    loadout: cue.loadout,
   })
   else if (cue.equipment !== undefined) model.setEquipment(cue.equipment)
 }
@@ -176,6 +210,9 @@ export default function TacticalBoard3D(props: Props) {
   const [roofMode, setRoofMode] = useState<Board3DRoofMode>(() => {
     try { return roofModeValue(localStorage.getItem(ROOF_STORAGE_KEY)) } catch { return 'hidden' }
   })
+  const [backdropStyle, setBackdropStyle] = useState<BoardBackdropStyle>(() => {
+    try { return backdropStyleValue(localStorage.getItem(BACKDROP_STORAGE_KEY)) } catch { return 'landscape' }
+  })
   // Автоснижение качества: только пока игрок сам его не выбирал. Большая
   // нарисованная карта на «Обычном» тяжела для встроенной видеокарты
   // (Митглайд 84×70: ~12 кадров на Iris Xe против ~56 на «Экономном»).
@@ -186,8 +223,8 @@ export default function TacticalBoard3D(props: Props) {
     setQuality(next)
     setQualityNote(`Качество снижено до «${BOARD3D_QUALITY[next].label}»: кадров мало. Можно вернуть в меню качества.`)
   }
-  const settings = useRef({ models, catalog, quality, roofMode })
-  settings.current = { models, catalog, quality, roofMode }
+  const settings = useRef({ models, catalog, quality, roofMode, backdropStyle })
+  settings.current = { models, catalog, quality, roofMode, backdropStyle }
   const [playing, setPlaying] = useState(false)
   const [modelActor, setModelActor] = useState('')
   const [modelWarning, setModelWarning] = useState('')
@@ -250,6 +287,8 @@ export default function TacticalBoard3D(props: Props) {
     renderer.domElement.setAttribute('aria-label', 'Поле боя 3D. Стрелки выбирают клетку, Enter подтверждает. Перетаскивание двигает камеру, правая кнопка поворачивает.')
     element.prepend(renderer.domElement)
     const scene = new THREE.Scene()
+    const persistentSpellVisuals = new Map<string, { signature: string; effect: ReturnType<typeof createPersistentSpellEffect3D> }>()
+    let persistentVisualMap: TacticalMap | null = null
     let backdrop = createBoardBackdropTexture()
     let backdropKey = ''
     scene.background = backdrop ?? new THREE.Color('#191914')
@@ -289,6 +328,39 @@ export default function TacticalBoard3D(props: Props) {
     sun.shadow.radius = BOARD3D_LIGHTING.sun.shadowRadius
     scene.add(hemisphere, sun, sun.target)
     const pipeline = createBoardRenderPipeline(renderer, scene, uiScene, camera)
+
+    const syncPersistentSpellVisuals = (map: TacticalMap) => {
+      const projected = latest.current.persistentSpellEffects ?? []
+      if (persistentVisualMap !== map) {
+        for (const entry of persistentSpellVisuals.values()) entry.effect?.dispose()
+        persistentSpellVisuals.clear()
+        persistentVisualMap = map
+      }
+      const desired = new Map(projected
+        .filter((effect) => {
+          if (effect.kind !== 'area' || effect.spellId !== 'guardian-of-faith') return false
+          const anchor = effect.center ?? effect.cells?.[0]
+          return anchor && revealedAt(map, anchor.x, anchor.y)
+        })
+        .map((effect) => [effect.id, effect]))
+      for (const [id, entry] of persistentSpellVisuals) {
+        if (desired.has(id)) continue
+        entry.effect?.dispose()
+        persistentSpellVisuals.delete(id)
+      }
+      for (const [id, effect] of desired) {
+        const signature = JSON.stringify(effect)
+        const existing = persistentSpellVisuals.get(id)
+        if (existing?.signature === signature && existing.effect) continue
+        existing?.effect?.dispose()
+        const visual = createPersistentSpellEffect3D(effect as PersistentSpellEffect, latest.current.animationActors ?? [], map)
+        if (visual) {
+          visual.update(.5)
+          scene.add(visual.group)
+        }
+        persistentSpellVisuals.set(id, { signature, effect: visual })
+      }
+    }
     // Пул огней для вспышек эффектов живёт в сцене всегда: число источников
     // постоянно, и первая вспышка не пересобирает шейдеры всех материалов.
     const effectLights = [0, 1].map((index) => {
@@ -546,6 +618,26 @@ export default function TacticalBoard3D(props: Props) {
         }
       }
       const buttonsByActor = new Map([...element.querySelectorAll<HTMLElement>('[data-actor-id]')].map((node) => [node.dataset.actorId, node]))
+      const nameplates = [...buttonsByActor.values()].flatMap((button) => {
+        if (!button.matches('.active-turn, .selected, .initiative-focus, .journal-linked, .label-open, .command-selected, :hover, :focus-visible')
+          || button.closest<HTMLElement>('[data-board3d-cell]')?.style.visibility === 'hidden') return []
+        const label = button.querySelector<HTMLElement>(':scope > :is(.token-label, .enemy-nameplate, .neutral-nameplate)')
+        if (!label) return []
+        const priority = button.matches('.command-selected, :focus-visible') ? 2 : Number(button.matches('.active-turn, .selected'))
+        return [{ label, priority }]
+      })
+      if (nameplates.length === 1) nameplates[0].label.style.removeProperty('--nameplate-shift')
+      if (nameplates.length > 1) {
+        const boardTop = element.getBoundingClientRect().top
+        const rects = nameplates.map(({ label, priority }) => {
+          const { left, right, top, bottom } = label.getBoundingClientRect()
+          const offset = boardTop + (Number.parseFloat(label.style.getPropertyValue('--nameplate-shift')) || 0)
+          return { left, right, top: top - offset, bottom: bottom - offset, priority }
+        })
+        nameplateShifts(rects, height).forEach((shift, index) => {
+          nameplates[index].label.style.setProperty('--nameplate-shift', `${shift}px`)
+        })
+      }
       for (const [id, view] of actorViews) {
         const button = buttonsByActor.get(id)
         const cell = button?.closest<HTMLElement>('[data-board3d-cell]')
@@ -830,7 +922,7 @@ export default function TacticalBoard3D(props: Props) {
         active = {
           cue,
           started: now,
-          effect: current.animationsEnabled === false || cueReducedMotion ? null : createSpellEffect3D(cue, current.animationActors ?? [], current.map)
+          effect: current.animationsEnabled === false || cueReducedMotion || usesProjectedFigure(cue) ? null : createSpellEffect3D(cue, current.animationActors ?? [], current.map)
             ?? createCombatEffect3D(cue, current.animationActors ?? [], current.map),
         }
         if (active.effect) scene.add(active.effect.group)
@@ -1103,6 +1195,7 @@ export default function TacticalBoard3D(props: Props) {
     }
     let lastCatalog = settings.current.catalog
     let lastQuality = ''
+    let lastBackdropStyle: BoardBackdropStyle | '' = ''
     function sync() {
       const current = latest.current, map = current.map
       if (!map || disposed) return
@@ -1133,61 +1226,70 @@ export default function TacticalBoard3D(props: Props) {
       lastMap = map
       const mapChanged = terrainSignature !== signatures.staticKey
       const styleChanged = terrainStyle !== style
+      const backdropChanged = lastBackdropStyle !== settings.current.backdropStyle
       // Смена качества эффекта не требует пересборки неподвижного окружения.
       // Свежая проекция также обновляет маску уже начатого действия.
       if (active && (mapChanged || styleChanged || qualityChanged)) {
         active.effect?.dispose()
         active.cue = cueForQuality(active.cue, qualityKey)
-        active.effect = current.animationsEnabled === false || combatAnimationUsesReducedMotion(active.cue) ? null : createSpellEffect3D(active.cue, current.animationActors ?? [], map)
+        active.effect = current.animationsEnabled === false || combatAnimationUsesReducedMotion(active.cue) || usesProjectedFigure(active.cue) ? null : createSpellEffect3D(active.cue, current.animationActors ?? [], map)
           ?? createCombatEffect3D(active.cue, current.animationActors ?? [], map)
         if (active.effect) scene.add(active.effect.group)
       }
-      if (mapChanged || styleChanged) {
+      if (mapChanged || styleChanged || backdropChanged) {
         const preparedAt = performance.now()
-        const css = getComputedStyle(element)
-        palette = boardPaletteFrom((name) => css.getPropertyValue(name))
-        if (terrain) { terrain.dispose(); diagnostics.disposed += 1 }
         // Сумрак карты: в подземелье солнце гаснет, огни берут своё.
         const darkness = current.lighting === false ? 0 : boardDarkness(map, (x, y) => cellAt(map, x, y))
         const ambience = lightingForDarkness(darkness)
-        sun.intensity = ambience.sun
-        // В подземелье остаток солнца — холодный лунный ключ, заливка
-        // сине-бирюзовая, а огни тёплые: пятна огня читаются на холодной тени.
-        sun.color.set(ambience.sunColor)
-        hemisphere.intensity = ambience.hemisphere
-        hemisphere.color.set(ambience.hemisphereSky)
-        hemisphere.groundColor.set(ambience.hemisphereGround)
-        scene.environmentIntensity = ambience.environment
-        renderer.toneMappingExposure = ambience.exposure
-        pipeline.setWarmth(ambience.warmth)
-        renderer.domElement.dataset.coolness = ambience.cool.toFixed(2)
-        renderer.domElement.dataset.darkness = darkness.toFixed(2)
-        renderer.domElement.dataset.sunIntensity = sun.intensity.toFixed(2)
+        if (mapChanged || styleChanged) {
+          const css = getComputedStyle(element)
+          palette = boardPaletteFrom((name) => css.getPropertyValue(name))
+          if (terrain) { terrain.dispose(); diagnostics.disposed += 1 }
+          sun.intensity = ambience.sun
+          // В подземелье остаток солнца — холодный лунный ключ, заливка
+          // сине-бирюзовая, а огни тёплые: пятна огня читаются на холодной тени.
+          sun.color.set(ambience.sunColor)
+          hemisphere.intensity = ambience.hemisphere
+          hemisphere.color.set(ambience.hemisphereSky)
+          hemisphere.groundColor.set(ambience.hemisphereGround)
+          scene.environmentIntensity = ambience.environment
+          renderer.toneMappingExposure = ambience.exposure
+          pipeline.setWarmth(ambience.warmth)
+          renderer.domElement.dataset.coolness = ambience.cool.toFixed(2)
+          renderer.domElement.dataset.darkness = darkness.toFixed(2)
+          renderer.domElement.dataset.sunIntensity = sun.intensity.toFixed(2)
+        } else {
+          terrain?.setBackdropStyle(settings.current.backdropStyle)
+        }
         // Фон — в тон окрестностям места: лес, луг, горы или толща камня.
-        const [backdropCenter, backdropEdge] = dungeonBackdrop(surroundingsBackdrop(map), ambience.cool)
-        if (backdropKey !== `${backdropCenter}${backdropEdge}`) {
-          const next = createBoardBackdropTexture(backdropCenter, backdropEdge)
+        const [backdropCenter, backdropEdge] = dungeonBackdrop(surroundingsBackdrop(map, settings.current.backdropStyle), ambience.cool)
+        const nextBackdropKey = `${settings.current.backdropStyle}:${backdropCenter}:${backdropEdge}`
+        if (backdropKey !== nextBackdropKey) {
+          const next = createBoardBackdropTexture(backdropCenter, backdropEdge, settings.current.backdropStyle)
           if (next) {
             backdrop?.dispose()
             backdrop = next
             scene.background = next
-            backdropKey = `${backdropCenter}${backdropEdge}`
+            backdropKey = nextBackdropKey
           }
         }
-        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, floorParallax: profile.detail !== 'minimal', floorRelief: profile.floorRelief, grassStyle: profile.grassStyle, onReady: invalidate })
-        diagnostics.created += 1
-        diagnostics.rebuilds += 1
-        diagnostics.rebuildReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'
-        diagnostics.syncReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'
-        diagnostics.prepMs = performance.now() - preparedAt
-        scene.add(terrain.group)
-        if (mapChanged) {
-          const heights = visibleTerrainHeightRange(map)
-          const bounds = { minX: 0, minZ: 0, maxX: map.width, maxZ: map.height, minY: heights.min, maxY: heights.max + 2 }
-          fitSunShadow(sun, bounds)
-          pipeline.setSceneBounds(bounds)
+        if (mapChanged || styleChanged) {
+          terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, backdropStyle: settings.current.backdropStyle, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, floorParallax: profile.detail !== 'minimal', floorRelief: profile.floorRelief, grassStyle: profile.grassStyle, onReady: invalidate })
+          diagnostics.created += 1
+          diagnostics.rebuilds += 1
+          diagnostics.rebuildReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'
+          diagnostics.syncReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'
+          diagnostics.prepMs = performance.now() - preparedAt
+          scene.add(terrain.group)
+          if (mapChanged) {
+            const heights = visibleTerrainHeightRange(map)
+            const bounds = { minX: 0, minZ: 0, maxX: map.width, maxZ: map.height, minY: heights.min, maxY: heights.max + 2 }
+            fitSunShadow(sun, bounds)
+            pipeline.setSceneBounds(bounds)
+          }
+          terrainSignature = signatures.staticKey; terrainStyle = style
         }
-        terrainSignature = signatures.staticKey; terrainStyle = style
+        lastBackdropStyle = settings.current.backdropStyle
       } else diagnostics.syncReason = referenceSame ? 'reference-same' : 'content-same'
       terrain?.setRoofMode(settings.current.roofMode)
       sun.castShadow = current.lighting !== false && profile.shadows
@@ -1197,8 +1299,9 @@ export default function TacticalBoard3D(props: Props) {
       for (const [id, view] of actorViews) if (!visibleActors.some((actor) => actor.id === id) || catalogChanged) {
         disposeActorView(id, view)
       }
+      syncPersistentSpellVisuals(map)
       for (const actor of visibleActors) {
-        const modelKey = settings.current.models[actor.id] ?? actor.modelKey
+        const modelKey = actor.shapeModelKey ?? settings.current.models[actor.id] ?? actor.modelKey
         const side = actorPresentationSize(map, actor)
         const stature = actor.appearance?.version === 2 ? actor.appearance.stature ?? '' : ''
         const key = `${modelKey}:${actor.appearance?.version ?? ''}:${actor.appearance?.profile ?? ''}:${stature}:${actor.archetype}:${actor.kind}:${actor.label}:${actor.color}:${side}`
@@ -1495,6 +1598,8 @@ export default function TacticalBoard3D(props: Props) {
       document.removeEventListener('visibilitychange', visibility)
       renderer.domElement.removeEventListener('webglcontextlost', contextLost)
       active?.effect?.dispose()
+      for (const entry of persistentSpellVisuals.values()) entry.effect?.dispose()
+      persistentSpellVisuals.clear()
       if (terrain) { terrain.dispose(); diagnostics.disposed += 1 }
       for (const [id, view] of actorViews) disposeActorView(id, view)
       clearTargetPreview()
@@ -1505,7 +1610,7 @@ export default function TacticalBoard3D(props: Props) {
     }
   }, [cameraKey, props.onUnavailable])
 
-  useEffect(() => { runtime.current?.sync() }, [props, models, catalog, quality, roofMode])
+  useEffect(() => { runtime.current?.sync() }, [props, models, catalog, quality, roofMode, backdropStyle])
   useEffect(() => { if (props.viewResetKey !== undefined) runtime.current?.reset() }, [props.viewResetKey])
   useEffect(() => { if (props.focusRequest) runtime.current?.focus(props.focusRequest.x, props.focusRequest.y, props.focusRequest.onlyIfHidden) }, [props.focusRequest])
   const chooseModel = (value: string) => {
@@ -1547,6 +1652,15 @@ export default function TacticalBoard3D(props: Props) {
         <option value="cutaway">Срез крыши</option>
         <option value="full">Полная крыша</option>
         <option value="hidden">Без крыши</option>
+      </select>
+      <select className="board3d-backdrop" aria-label="Фон 3D" title="Вид заднего плана 3D" value={backdropStyle} onChange={(event) => {
+        const next = backdropStyleValue(event.target.value)
+        setBackdropStyle(next)
+        try { localStorage.setItem(BACKDROP_STORAGE_KEY, next) } catch { /* Режим работает без сохранения. */ }
+      }}>
+        <option value="landscape">Пейзаж</option>
+        <option value="atlas">Атлас</option>
+        <option value="classic">Классический</option>
       </select>
       <details className="board3d-models">
         <summary>Фигурки</summary>

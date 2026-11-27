@@ -5,6 +5,7 @@
 //! JS: `server/rules-engine.mjs`, 17242–17739.
 
 use serde_json::{json, Map, Value};
+use std::collections::HashMap;
 use sk_core::js;
 
 use super::common::{actor_id_of, at, field, fold, fold_but_last, hp, hp_after_zero, is_true, items, living, nn, payload_with, positive, put, template, Cast};
@@ -19,11 +20,44 @@ use crate::tactical_geometry::{point_json, points_json};
 
 /// «Волшебная стрела» и прочие автоматические снаряды (17242–17249).
 pub(super) fn magic_missile(r: &mut Resolve<'_>, cast: &mut Cast) -> Flow {
-    let target = cast.affected.first().cloned().unwrap_or(Value::Null);
     let command = cast.command.clone();
     let spell = cast.spell.clone();
     let damage_type = cast.damage_type.clone();
-    r.append_magic_missile_resolution(MagicMissile { source_command: &command, spell: &spell, target: &target, slot_level: command.get("slot_level"), damage_type: &damage_type, source_item: None })
+    let targets = &cast.affected;
+    let total = crate::spells::slots::spell_projectile_count(&spell, command.get("slot_level"));
+    let count = targets.len().max(1) as f64;
+    let base = (total / count).floor();
+    let remainder = total % count;
+    let explicit_counts = command.get("missile_target_ids")
+        .and_then(Value::as_array)
+        .map(|ids| ids.iter().fold(HashMap::<String, f64>::new(), |mut counts, id| {
+            let key = js::s(Some(id));
+            *counts.entry(key).or_insert(0.0) += 1.0;
+            counts
+        }));
+    let shared_roll = if targets.len() > 1 {
+        let expression = spell.get("damage").filter(|value| js::truthy(Some(value)))
+            .map_or_else(|| "1d4+1".into(), |value| js::string(Some(value)));
+        let roll = r.spell_roll(Value::String(expression), &format!("spell_damage:{}", cast.spell_id()))?;
+        r.rolls.push(roll.clone());
+        r.push_die(payload_with(&roll, json!({ "projectile_count": js::num(total) })));
+        Some(roll)
+    } else {
+        None
+    };
+    for (index, target) in targets.iter().enumerate() {
+        let projectiles = match &explicit_counts {
+            Some(counts) => counts.get(&actor_id_of(target)).copied().unwrap_or(0.0),
+            None => base + if (index as f64) < remainder { 1.0 } else { 0.0 },
+        };
+        if projectiles <= 0.0 { continue; }
+        r.append_magic_missile_resolution(MagicMissile {
+            source_command: &command, spell: &spell, target,
+            slot_level: command.get("slot_level"), damage_type: &damage_type,
+            projectile_count_override: Some(projectiles), missile_roll_override: shared_roll.as_ref(), source_item: None,
+        })?;
+    }
+    Ok(())
 }
 
 /// Пул хитов: «Усыпление» и «Цветной брызг» (17250–17277).

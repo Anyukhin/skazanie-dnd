@@ -16,10 +16,10 @@ import { isFoliageMaterial } from './board3d-cutout'
 /** Свет сцены. Полусфера слабее солнца, иначе тени тонут в заливке. */
 export const BOARD3D_LIGHTING = {
   exposure: 1,
-  hemisphere: { sky: '#dfe3dc', ground: '#4b3a26', intensity: .85 },
-  sun: { color: '#ffe2b0', intensity: 3.1, shadowRadius: 3, normalBias: .02, bias: -.0004 },
+  hemisphere: { sky: '#c4d6e5', ground: '#69554b', intensity: 1.12 },
+  sun: { color: '#ffe4c5', intensity: 2.85, shadowRadius: 3, normalBias: .02, bias: -.0004 },
   /** Отражения окружения дают металлу и коже GLB-моделей объём. */
-  environmentIntensity: .22,
+  environmentIntensity: .28,
   /** Доля рисунка-подложки при линейном смешивании; на экране равна прежним 34 %. */
   linearArtOverlayOpacity: .14,
   /** Множитель яркости вспышек эффектов: эффект задаёт 0..6, доска переводит в канделы. */
@@ -48,18 +48,17 @@ export function boardEffectLights(value: unknown): BoardEffectLight[] {
   return lights
 }
 
-/**
- * Сумрак карты: средний уровень темноты раскрытых проходимых клеток. В
- * помещении темнота — 1, сумрак — 0.85, светло — 0.6; снаружи 0.7, 0.35 и 0. Подземелье и склеп освещены факелами и
- * жаровнями, а не солнцем; открытая местность остаётся дневной.
- */
-export function boardDarkness(map: { width: number; height: number; zones: ReadonlyArray<{ id: string; kind: string; lightLevel: string }> }, cellAt: (x: number, y: number) => { revealed: boolean; passable: boolean; zone: string } | null): number {
+export function zoneDarkness(zone: { kind: string; lightLevel: string }): number {
   // Под крышей солнца нет: помещение темнее открытого места того же уровня.
-  const levels = new Map(map.zones.map((zone) => {
-    const indoor = zone.kind === 'interior'
-    const value = zone.lightLevel === 'dark' ? (indoor ? 1 : .7) : zone.lightLevel === 'dim' ? (indoor ? .85 : .35) : (indoor ? .6 : 0)
-    return [zone.id, value]
-  }))
+  const indoor = zone.kind === 'interior'
+  if (zone.lightLevel === 'dark') return indoor ? 1 : .7
+  if (zone.lightLevel === 'dim') return indoor ? .85 : .35
+  return indoor ? .6 : 0
+}
+
+/** Сумрак карты для общего освещения, усреднённый по раскрытым проходимым клеткам. */
+export function boardDarkness(map: { width: number; height: number; zones: ReadonlyArray<{ id: string; kind: string; lightLevel: string }> }, cellAt: (x: number, y: number) => { revealed: boolean; passable: boolean; zone: string } | null): number {
+  const levels = new Map(map.zones.map(zone => [zone.id, zoneDarkness(zone)]))
   let total = 0, cells = 0
   for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
     const cell = cellAt(x, y)
@@ -132,7 +131,8 @@ export function fireLightFor(profile: { radius: number; strength: number }, dark
   const share = Math.max(BOARD3D_FIRE_LIGHT.minShare, Math.min(BOARD3D_FIRE_LIGHT.maxShare, profile.strength / BOARD3D_FIRE_LIGHT.referenceStrength))
   return {
     // В сумраке огни сильнее и шире: они — главный свет подземелья.
-    intensity: (1.35 + 16 * d) * BOARD3D_FIRE_LIGHT.scale * share,
+    // Малый источник стоит в нескольких сантиметрах от столешницы и бумаги.
+    intensity: (1.35 + 16 * d) * BOARD3D_FIRE_LIGHT.scale * share * (profile.radius <= 2 ? .55 : 1),
     distance: Math.min(8, profile.radius) * (1 + .7 * d),
     decay: BOARD3D_FIRE_LIGHT.decay,
   }
@@ -226,7 +226,7 @@ void main() {
 }
 
 /** Палитра фона: тёплый центр под доской и тёмные края, как виньетка стола. */
-export function createBoardBackdropTexture(center = '#2a2620', edge = '#0d0c0a'): THREE.Texture | null {
+export function createBoardBackdropTexture(center = '#2a2620', edge = '#0d0c0a', style: import('./board3d-distant-terrain').BoardBackdropStyle = 'classic'): THREE.Texture | null {
   if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null
   try {
     const canvas = document.createElement('canvas')
@@ -240,6 +240,35 @@ export function createBoardBackdropTexture(center = '#2a2620', edge = '#0d0c0a')
     gradient.addColorStop(1, edge)
     context.fillStyle = gradient
     context.fillRect(0, 0, 256, 256)
+    if (style !== 'classic') {
+      // Мелкая фактура остаётся видна и вокруг закрытого помещения. На холсте
+      // нет обозначений проходов, ориентиров или других игровых сведений.
+      const image = context.getImageData(0, 0, 256, 256)
+      let seed = 781
+      for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+        seed = (Math.imul(seed,1664525) + 1013904223) >>> 0
+        const grain = (seed / 4294967296 - .5) * 5
+        const patina = 1.5 * Math.sin(x * .052 + y * .027 + 2 * Math.sin(y * .038))
+        const i = 4 * (y * 256 + x)
+        for (let channel = 0; channel < 3; channel++) image.data[i + channel] += grain + patina
+      }
+      context.putImageData(image, 0, 0)
+      if (style === 'atlas') {
+        context.lineWidth = .65
+        for (const [cx,cy,phase] of [[-8,30,.7],[250,207,2.5]]) for (let ring = 0; ring < 12; ring++) {
+          const radius = 8 + ring * 7
+          context.strokeStyle = ring % 4 ? 'rgba(219,209,169,.07)' : 'rgba(219,209,169,.13)'
+          context.beginPath()
+          for (let i = 0; i <= 96; i++) {
+            const a = i * Math.PI / 48
+            const r = radius * (1 + .13*Math.sin(3*a + phase) + .07*Math.sin(5*a + radius*.012))
+            const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a) * .76
+            if (i) context.lineTo(x,y); else context.moveTo(x,y)
+          }
+          context.closePath(); context.stroke()
+        }
+      }
+    }
     const texture = new THREE.CanvasTexture(canvas)
     texture.colorSpace = THREE.SRGBColorSpace
     return texture

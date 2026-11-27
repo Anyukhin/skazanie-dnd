@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
-import { campaignScenario, scenarioClueFactId } from '../server/campaign-scenario.mjs'
-import { normalizeCampaignState, resolveCommands } from '../server/rules-engine.mjs'
-import { SceneArchitectAgent } from '../server/scene-architect.mjs'
-import { fixedDice } from './kit/dice.mjs'
+import {
+  campaignScenario, createCampaignState, normalizeCampaignState, planScene, resolveCommands, scenarioClueFactId,
+} from './kit/fixtures.mjs'
 import { addPlayer, createCampaign, expectStatus, setupAdmin, startTestServer } from './kit/http.mjs'
 import { readJournal } from './kit/journal.mjs'
 import { chatCompletion, startFakeProvider } from './kit/llm.mjs'
@@ -20,15 +18,15 @@ test('осмотр ворот 15 против СЛ 15 засчитывает а�
     { id: 'lada', character: 'Лада', characterClass: 'barbarian', level: 7, hp: 68, maxHp: 68, abilities: { str: 16, dex: 14, con: 15, int: 9, wis: 12, cha: 11 }, classSkillProficiencies: ['athletics', 'perception'], inventory: [] },
     { id: 'gleb', character: 'Глеб', characterClass: 'fighter', level: 7, hp: 60, maxHp: 60, inventory: [] },
   ]
-  const opening = await new CampaignBootstrapper().create({
+  const opening = await createCampaignState({
     code: CODE, worldTemplateId: 'astohan-plains', campaignMode: 'adventure', rulesetId: 'dnd_5e_2014', players,
   })
-  const { sceneArgs } = await new SceneArchitectAgent().plan({ state: opening, decision: 'Идём к заставе', destinationLocationId: LOCATION })
-  const state = normalizeCampaignState(resolveCommands([{
+  const { sceneArgs } = await planScene({ state: opening, decision: 'Идём к заставе', destinationLocationId: LOCATION })
+  const state = await normalizeCampaignState((await resolveCommands([{
     command_type: 'AdvanceScene', command_id: 'arrive-ash-watch', scene_args: sceneArgs,
-  }], opening, { diceService: fixedDice(10), context: { isAdmin: true } }).state)
+  }], opening, { fixed: 10, context: { isAdmin: true } })).state)
   assert.equal(state.scene.location_id, LOCATION)
-  const gateFact = scenarioClueFactId(campaignScenario(state), 'ash-gate')
+  const gateFact = await scenarioClueFactId(await campaignScenario(state), 'ash-gate')
   const report = state.worldMemory.facts.find((fact) => /В донесении о Пепельной заставе сказано/u.test(fact.summary))
   assert.equal(report?.status, 'active', 'донесение Ивары ещё спрятано в Штормберге')
   assert.equal(report.visibility, 'gm_only')

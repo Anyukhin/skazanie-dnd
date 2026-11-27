@@ -12,6 +12,8 @@
 //!   ([`crate::storage_audit::run`], С19);
 //! - `check-content …` — проверка каталогов контента, та же, что при старте
 //!   ([`crate::content_check::run`], урок 7);
+//! - `backup …` — зашифрованная копия хранилища
+//!   ([`crate::storage_backup::run`]);
 //! - иное — справка в stderr, код 2 ([`USAGE_EXIT`]).
 //!
 //! Прежний позиционный «корень проекта» (`skazanie-server <каталог>`) убран:
@@ -32,9 +34,12 @@ skazanie-server — HTTP-сервер «Сказания».
                                        комнаты): 0 — чисто, 1 — блокеры, 3 — отказ
   skazanie-server check-content …      проверить каталоги контента data/, как при старте:
                                        0 — чисто, 1 — ошибки
+  skazanie-server backup …             зашифрованная копия storage (create | verify | compare |
+                                       restore), сервер остановлен; нужен DND_BACKUP_KEY
   skazanie-server journal …            журнал кампании (только сборка с test-hooks)
   skazanie-server session …            сессии входа (только сборка с test-hooks)
   skazanie-server room | audit …       комната и сверка хранилища (только сборка с test-hooks)
+  skazanie-server fixture              входы контрактных тестов кодом сервера (только сборка с test-hooks)
 
 Окружение (также из .env в текущем каталоге):
   AGENT_HOST, AGENT_PORT     адрес и порт (по умолчанию 0.0.0.0:8787)
@@ -56,6 +61,8 @@ pub enum Invocation {
     Journal(Vec<String>),
     /// `session` с остатком аргументов.
     Session(Vec<String>),
+    /// `fixture` с остатком аргументов.
+    Fixture(Vec<String>),
     /// `room` или `audit` набора тестов (`test/kit/rooms.mjs`): имя и остаток аргументов.
     Room(String, Vec<String>),
     /// `import-legacy` с остатком аргументов.
@@ -64,6 +71,8 @@ pub enum Invocation {
     AuditStorage(Vec<String>),
     /// `check-content` с остатком аргументов.
     CheckContent(Vec<String>),
+    /// `backup` с остатком аргументов.
+    Backup(Vec<String>),
     /// Неизвестный аргумент.
     Unknown(String),
 }
@@ -76,10 +85,12 @@ pub fn parse(args: &[String]) -> Invocation {
         "--help" | "-h" => Invocation::Help,
         "journal" => Invocation::Journal(rest),
         "session" => Invocation::Session(rest),
+        "fixture" => Invocation::Fixture(rest),
         "room" | "audit" => Invocation::Room(first.clone(), rest),
         "import-legacy" => Invocation::ImportLegacy(rest),
         "audit-storage" => Invocation::AuditStorage(rest),
         "check-content" => Invocation::CheckContent(rest),
+        "backup" => Invocation::Backup(rest),
         other => Invocation::Unknown(other.to_string()),
     }
 }
@@ -95,10 +106,12 @@ pub fn run_tool(invocation: &Invocation) -> Option<i32> {
         }
         Invocation::Journal(rest) => Some(crate::test_hooks::journal_cli::main(rest)),
         Invocation::Session(rest) => Some(crate::test_hooks::session_cli::main(rest)),
+        Invocation::Fixture(rest) => Some(crate::test_hooks::fixture_cli::main(rest)),
         Invocation::Room(name, rest) => Some(crate::test_hooks::room_cli::main(name, rest)),
         Invocation::ImportLegacy(rest) => Some(crate::legacy_import::run(rest)),
         Invocation::AuditStorage(rest) => Some(crate::storage_audit::run(rest)),
         Invocation::CheckContent(rest) => Some(crate::content_check::run(rest)),
+        Invocation::Backup(rest) => Some(crate::storage_backup::run(rest)),
         Invocation::Unknown(argument) => {
             eprintln!("skazanie-server: неизвестный аргумент «{argument}»\n\n{HELP}");
             Some(USAGE_EXIT)
@@ -122,9 +135,11 @@ mod tests {
         }
         assert_eq!(parse(&args(&["journal", "--storage", "x"])), Invocation::Journal(args(&["--storage", "x"])));
         assert_eq!(parse(&args(&["session", "--expire"])), Invocation::Session(args(&["--expire"])));
+        assert_eq!(parse(&args(&["fixture"])), Invocation::Fixture(Vec::new()));
         assert_eq!(parse(&args(&["import-legacy"])), Invocation::ImportLegacy(Vec::new()));
         assert_eq!(parse(&args(&["audit-storage", "--json"])), Invocation::AuditStorage(args(&["--json"])));
         assert_eq!(parse(&args(&["check-content"])), Invocation::CheckContent(Vec::new()));
+        assert_eq!(parse(&args(&["backup", "verify", "x"])), Invocation::Backup(args(&["verify", "x"])));
         for unknown in ["help", "--port", "serve", ".", "C:/repo", "--HELP", ""] {
             assert_eq!(parse(&args(&[unknown])), Invocation::Unknown(unknown.to_string()), "{unknown}");
         }

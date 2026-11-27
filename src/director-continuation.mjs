@@ -45,5 +45,5 @@ export function isDirectorPartyDecision(interaction) {
  */
 export function awaitsDecisionContinuation(interaction) {
   return interaction?.status === 'resolved' && Boolean(interaction?.resolvedOptionId)
-    && !interaction?.questAbandonment && !interaction?.questAcceptance
+    && !interaction?.questAbandonment && !interaction?.questAcceptance && !interaction?.scenarioTreaty
 }

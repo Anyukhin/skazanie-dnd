@@ -461,6 +461,28 @@ fn rcv02_seed_with_lost_map_is_unusable() {
     recovery(fixture.reopen().load("seed-without-map", &LoadOptions::default()).expect_err("карта потеряна"), "SEED_SNAPSHOT_UNUSABLE");
 }
 
+/// AGENTS.md §5: карта читается только той, на которую указывает её хеш.
+/// Подменённое под тем же адресом тело не отдаётся ни прямым чтением, ни
+/// загрузкой кампании — снимок с такой картой непригоден, как с потерянной.
+#[test]
+fn map_blob_is_read_only_by_its_own_hash() {
+    let fixture = Fixture::new(0);
+    let map = json!({ "width": 1, "height": 1, "cells": [{ "x": 0, "y": 0, "terrain": "floor" }] });
+    let forged = json!({ "width": 1, "height": 1, "cells": [{ "x": 0, "y": 0, "terrain": "lava" }] });
+    let reference = fixture.store.with_connection_mut(|conn| sk_store::maps::put(conn, &map)).expect("карта");
+    let hash = reference["hash"].as_str().expect("хеш").to_string();
+    let read = |hash: &str| fixture.store.with_connection_mut(|conn| sk_store::maps::get(conn, hash)).expect("чтение");
+    assert!(matches!(read(&hash), sk_store::maps::BlobRead::Found(found) if found == map));
+    assert!(matches!(read(&"0".repeat(64)), sk_store::maps::BlobRead::Missing));
+    assert!(matches!(read("not-a-hash"), sk_store::maps::BlobRead::Corrupt));
+
+    init(&fixture.store, "forged-map", json!({ "hp": 3, "scene": { "map": map.clone() } }));
+    let forged_body = serde_json::to_string(&forged).expect("JSON");
+    fixture.store.with_connection_mut(|conn| Ok(conn.execute("UPDATE map_blobs SET body = ?1 WHERE hash = ?2", rusqlite::params![forged_body, hash])?)).expect("подмена");
+    assert!(matches!(read(&hash), sk_store::maps::BlobRead::Corrupt), "подменённое тело не читается");
+    recovery(fixture.reopen().load("forged-map", &LoadOptions::default()).expect_err("подменённая карта"), "SEED_SNAPSHOT_UNUSABLE");
+}
+
 #[test]
 fn maps_round_trip_through_snapshots() {
     let fixture = Fixture::new(1);
@@ -471,6 +493,52 @@ fn maps_round_trip_through_snapshots() {
     assert_eq!(loaded.state["scene"]["map"], map);
     assert_eq!(loaded.state["scene"]["cells"], json!([]), "без тактической карты клетки — пустые, как при ошибке разбора в JS");
     assert_eq!(loaded.state["locationMaps"]["inn:0"]["cells"], json!([{ "x": 3, "y": 4 }]));
+}
+
+#[test]
+fn read_only_open_replays_a_snapshot_without_touching_source_or_sidecars() {
+    let fixture = Fixture::new(1);
+    init(&fixture.store, "read-only", json!({ "hp": 10 }));
+    fixture.store.commit(heal("read-only", 0, "heal")).expect("коммит");
+    let database = fixture.path.clone();
+    drop(fixture.store);
+
+    let files = [database.clone(), database.with_file_name("engine.sqlite-wal"), database.with_file_name("engine.sqlite-shm")];
+    let fingerprint = |path: &std::path::Path| {
+        let metadata = std::fs::metadata(path).ok();
+        let bytes = std::fs::read(path).ok();
+        (metadata.and_then(|value| value.modified().ok()), bytes)
+    };
+    let before: Vec<_> = files.iter().map(|path| fingerprint(path)).collect();
+    let readonly = EventStore::open_read_only(&database, fixture.reducer.clone(), options(1)).expect("read-only журнал");
+    let loaded = readonly.load("read-only", &LoadOptions::default()).expect("чтение");
+    assert_eq!(loaded.state["hp"], 11);
+    drop(readonly);
+    let after: Vec<_> = files.iter().map(|path| fingerprint(path)).collect();
+    assert_eq!(before, after, "аудит не меняет исходный SQLite/WAL/SHM");
+}
+
+#[test]
+fn live_audit_keeps_the_same_snapshot_while_the_writer_commits() {
+    let fixture = Fixture::new(1);
+    init(&fixture.store, "live", json!({ "hp": 10 }));
+    fixture.store.commit(heal("live", 0, "first")).expect("первый ход");
+    let audit = EventStore::open_read_only_live(&fixture.path, fixture.reducer.clone(), options(1)).expect("читатель живой базы");
+    fixture.store.commit(heal("live", 1, "second")).expect("второй ход");
+    assert_eq!(audit.list_campaigns().expect("кампании"), vec![("live".to_string(), 1)]);
+    assert_eq!(audit.load("live", &LoadOptions::default()).expect("снимок").state["hp"], 11);
+    assert_eq!(fixture.store.load("live", &LoadOptions::default()).expect("голова").state["hp"], 12);
+}
+
+#[test]
+fn empty_journal_with_a_damaged_snapshots_table_is_not_ready() {
+    let fixture = Fixture::new(1);
+    drop(fixture.store);
+    let conn = rusqlite::Connection::open(&fixture.path).expect("база теста");
+    conn.execute_batch("ALTER TABLE snapshots RENAME COLUMN body TO damaged").expect("повреждённая схема");
+    drop(conn);
+    let result = EventStore::open_read_only(&fixture.path, fixture.reducer, options(1));
+    assert_eq!(result.err().expect("повреждённая таблица должна дать отказ").code, "EVENT_STORE_SCHEMA_INVALID");
 }
 
 /// Урок 11: выборки по типу, хвост и префикс журнала дают то же, что

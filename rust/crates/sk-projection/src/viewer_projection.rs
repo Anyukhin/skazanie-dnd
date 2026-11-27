@@ -498,7 +498,8 @@ fn capitalize_first_unit(label: &str) -> String {
 }
 
 /// `materializePropMetadataForTransport(projectedMap, props)`.
-fn materialize_prop_metadata(projected: &mut Value, props: &[TacticalProp]) {
+fn materialize_prop_metadata(projected: &mut Value, props: &[TacticalProp], scenario_id: &str) {
+    let location_id = js::s(projected.get("locationId"));
     let Some(list) = projected.get_mut("props").and_then(Value::as_array_mut) else { return };
     let mut by_id: HashMap<String, usize> = HashMap::new();
     for (index, prop) in list.iter().enumerate() {
@@ -507,9 +508,17 @@ fn materialize_prop_metadata(projected: &mut Value, props: &[TacticalProp]) {
     for prop in props {
         let Some(&index) = by_id.get(&prop.id) else { continue };
         let Some(target) = list.get_mut(index).and_then(Value::as_object_mut) else { continue };
-        let label = sk_tactical::scene_interactions::scene_object_label_for(Some(&Value::String(prop.asset_id.clone())));
+        let label = if scenario_id.is_empty() {
+            sk_tactical::scene_interactions::scene_object_label_for(Some(&Value::String(prop.asset_id.clone())))
+        } else {
+            sk_tactical::scene_interactions::scene_object_label_for_prop(Some(&Value::String(prop.asset_id.clone())), &location_id, &prop.id)
+        };
         if !label.is_empty() {
             target.insert("label".into(), Value::String(capitalize_first_unit(&label)));
+        }
+        if !scenario_id.is_empty() && sk_scenario::campaign_scenario::scenario_inspection_for_scenario_location_prop(scenario_id, &location_id, &prop.id).is_some() {
+            target.insert("interactive".into(), Value::Bool(true));
+            target.insert("interaction".into(), json!({ "kind": "lore", "verbs": ["inspect"], "pointOfInterest": true }));
         }
         if prop.interactive {
             target.insert("interactive".into(), Value::Bool(true));
@@ -524,7 +533,7 @@ fn materialize_prop_metadata(projected: &mut Value, props: &[TacticalProp]) {
 }
 
 /// `computePublicTacticalMap(value)`.
-fn compute_public_tactical_map(value: &Value) -> R<Option<ProjectedMap>> {
+fn compute_public_tactical_map(value: &Value, scenario_id: &str) -> R<Option<ProjectedMap>> {
     let Ok(mut map) = tmap::deserialize_tactical_map(value) else { return Ok(None) };
     let width = map.width;
     let height = map.height;
@@ -627,7 +636,7 @@ fn compute_public_tactical_map(value: &Value) -> R<Option<ProjectedMap>> {
     if let Some(object) = projected.as_object_mut() {
         object.insert("doors".into(), Value::Array(doors));
     }
-    materialize_prop_metadata(&mut projected, &map.props);
+    materialize_prop_metadata(&mut projected, &map.props, scenario_id);
     let hash = tmap::serialized_tactical_map_hash(&projected);
     Ok(Some(ProjectedMap { map: projected, hash, movement_blocked }))
 }
@@ -651,9 +660,9 @@ fn partially_blocked_cells(map: &TacticalMap, revealed_at: &impl Fn(i64, i64) ->
 }
 
 /// `projectPublicTacticalMap(value)`.
-fn project_public_tactical_map(value: Option<&Value>) -> R<Option<ProjectedMap>> {
+fn project_public_tactical_map(value: Option<&Value>, scenario_id: &str) -> R<Option<ProjectedMap>> {
     match value {
-        Some(value @ (Value::Object(_) | Value::Array(_))) => public_map_memo::project(value),
+        Some(value @ (Value::Object(_) | Value::Array(_))) => public_map_memo::project(value, scenario_id),
         _ => Ok(None),
     }
 }
@@ -674,7 +683,7 @@ mod public_map_memo {
 
     const LIMIT: usize = 4;
 
-    static KNOWN: LazyLock<Mutex<VecDeque<(Value, Option<ProjectedMap>)>>> = LazyLock::new(|| Mutex::new(VecDeque::new()));
+    static KNOWN: LazyLock<Mutex<VecDeque<(Value, String, Option<ProjectedMap>)>>> = LazyLock::new(|| Mutex::new(VecDeque::new()));
 
     /// Равенство с порядком ключей объектов (`Map::eq` порядок не учитывает).
     fn same(left: &Value, right: &Value) -> bool {
@@ -690,16 +699,16 @@ mod public_map_memo {
         }
     }
 
-    pub(super) fn project(value: &Value) -> R<Option<ProjectedMap>> {
+    pub(super) fn project(value: &Value, scenario_id: &str) -> R<Option<ProjectedMap>> {
         {
             let known = KNOWN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some((_, projected)) = known.iter().find(|(input, _)| same(input, value)) {
+            if let Some((_, _, projected)) = known.iter().find(|(input, known_scenario, _)| known_scenario == scenario_id && same(input, value)) {
                 return Ok(projected.clone());
             }
         }
-        let projected = compute_public_tactical_map(value)?;
+        let projected = compute_public_tactical_map(value, scenario_id)?;
         let mut known = KNOWN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        known.push_front((value.clone(), projected.clone()));
+        known.push_front((value.clone(), scenario_id.to_string(), projected.clone()));
         known.truncate(LIMIT);
         Ok(projected)
     }
@@ -708,28 +717,32 @@ mod public_map_memo {
 /// `publicTacticalMapWithHashFor(value)`: `{ map, hash }` карты, обезличенной
 /// по туману, или `None` (`null`), если карта не читается. Хеш — от проекции.
 pub fn public_tactical_map_with_hash_for(value: Option<&Value>) -> ProjectionResult<Option<Value>> {
-    Ok(project_public_tactical_map(value)?.map(|projected| json!({ "map": projected.map, "hash": projected.hash })))
+    public_tactical_map_with_hash_for_scenario(value, "")
+}
+
+fn public_tactical_map_with_hash_for_scenario(value: Option<&Value>, scenario_id: &str) -> ProjectionResult<Option<Value>> {
+    Ok(project_public_tactical_map(value, scenario_id)?.map(|projected| json!({ "map": projected.map, "hash": projected.hash })))
 }
 
 /// `publicTacticalMapFor(value)`: только карта из [`public_tactical_map_with_hash_for`].
 pub fn public_tactical_map_for(value: Option<&Value>) -> ProjectionResult<Option<Value>> {
-    Ok(project_public_tactical_map(value)?.map(|projected| projected.map))
+    Ok(project_public_tactical_map(value, "")?.map(|projected| projected.map))
 }
 
 /// `adminTacticalMapFor(value)`: `None` — та же карта (JS вернул бы `value`).
-fn admin_tactical_map_for(value: Option<&Value>) -> Option<Value> {
+fn admin_tactical_map_for(value: Option<&Value>, scenario_id: &str) -> Option<Value> {
     let value @ Value::Object(_) = value? else { return None };
     let map = tmap::deserialize_tactical_map(value).ok()?;
     let mut projected = tmap::serialize_tactical_map(&map).ok()?;
-    materialize_prop_metadata(&mut projected, &map.props);
+    materialize_prop_metadata(&mut projected, &map.props, scenario_id);
     Some(projected)
 }
 
 /// `adminSceneFor(scene)`.
-fn admin_scene_for(scene: Option<&Value>) -> Value {
+fn admin_scene_for(scene: Option<&Value>, scenario_id: &str) -> Value {
     match scene {
         None => Value::Object(Map::new()),
-        Some(Value::Object(object)) => match admin_tactical_map_for(object.get("map")) {
+        Some(Value::Object(object)) => match admin_tactical_map_for(object.get("map"), scenario_id) {
             Some(map) => {
                 let mut out = object.clone();
                 out.insert("map".into(), map);
@@ -739,6 +752,11 @@ fn admin_scene_for(scene: Option<&Value>) -> Value {
         },
         Some(other) => other.clone(),
     }
+}
+
+/// Сценарная affordance карты допустима только для активной сюжетной арки.
+fn scenario_id_for(state: Option<&Value>) -> String {
+    js::s(get(get(get(state, "campaignConcept"), "arc"), "scenario_id"))
 }
 
 /// `publicKnownLevelsFor(value)`.
@@ -777,10 +795,14 @@ fn public_map_source_for(value: Option<&Value>) -> Option<Value> {
 /// список, клетки и карта по туману, известные этажи. `None` — `undefined`;
 /// `null` — `TypeError` JS.
 pub fn public_scene_for(scene: Option<&Value>, known_levels: Option<&Value>) -> ProjectionResult<Value> {
+    public_scene_for_with_scenario(scene, known_levels, "")
+}
+
+fn public_scene_for_with_scenario(scene: Option<&Value>, known_levels: Option<&Value>, scenario_id: &str) -> ProjectionResult<Value> {
     if matches!(scene, Some(Value::Null)) {
         return Err(ProjectionError::null_read("map"));
     }
-    let projected = project_public_tactical_map(get(scene, "map"))?;
+    let projected = project_public_tactical_map(get(scene, "map"), scenario_id)?;
     let levels = public_known_levels_for(known_levels);
     let level_index = get(get(scene, "level"), "index");
     let location_id = text_of(coalesce(coalesce(get(scene, "location_id"), get(scene, "locationId")), get(get(scene, "map"), "locationId")), 180);
@@ -2003,6 +2025,7 @@ fn actor_key(actor: &Value) -> R<String> {
 fn admin_room(state: &Value, actor: &Value) -> R<Value> {
     let actor_s = js::s(Some(actor));
     let source = Some(state);
+    let scenario_id = scenario_id_for(source);
     // Эти поля ниже заменяются всегда: на их месте — `null` до замены (ключ
     // сохраняет позицию), сцена и герои не копируются впустую (Ск2).
     const REPLACED: [&str; 4] = ["scene", "players", "mechanics", "merchants"];
@@ -2032,7 +2055,7 @@ fn admin_room(state: &Value, actor: &Value) -> R<Value> {
         })
         .collect();
     room.insert("merchants".into(), Value::Array(merchants));
-    room.insert("scene".into(), admin_scene_for(get(source, "scene")));
+    room.insert("scene".into(), admin_scene_for(get(source, "scene"), &scenario_id));
     room.insert("scene_npcs".into(), Value::Array(scene_npcs));
     // Герои — с производными полями (урок 2: в состоянии — пустые слоты).
     let players = sk_rules::derived::materialized_players(state);
@@ -2336,7 +2359,8 @@ fn player_room(raw_state: &Value, user: Option<&Value>, actor: &Value) -> R<Valu
     public_state.retain(|key, _| PROJECTED_STATE_KEYS.contains(&key.as_str()));
     let raw_scene = get(source, "scene");
     let current_location = js::s(coalesce(coalesce(get(raw_scene, "location_id"), get(raw_scene, "locationId")), get(get(source, "worldMap"), "currentLocationId")));
-    let scene = public_scene_for(raw_scene, get(get(source, "locationLevels"), &current_location))?;
+    let scenario_id = scenario_id_for(source);
+    let scene = public_scene_for_with_scenario(raw_scene, get(get(source, "locationLevels"), &current_location), &scenario_id)?;
     let merchants: Vec<Value> = arr(get(visible_ref, "merchants"))
         .iter()
         .filter(|merchant| sk_economy::merchant_economy::merchant_trade_availability_for(state, Some(merchant), false).can_trade)
@@ -2583,6 +2607,7 @@ fn remove_keys(map: &mut Map<String, Value>, keys: &[&str]) {
 
 /// `eventForViewer(event, user, actorId, state)`: `None` — событие зрителю не видно.
 fn event_for_viewer(event: &Value, user: Option<&Value>, actor: &Value, state: &Value) -> R<Option<Value>> {
+    let scenario_id = scenario_id_for(Some(state));
     if event.is_null() {
         return Err(ProjectionError::null_read("payload"));
     }
@@ -2787,7 +2812,7 @@ fn event_for_viewer(event: &Value, user: Option<&Value>, actor: &Value, state: &
     }
     if is_type("SceneAdvanced") {
         payload.shift_remove("library_levels");
-        let scene = public_scene_for(payload.get("scene"), None)?;
+        let scene = public_scene_for_with_scenario(payload.get("scene"), None, &scenario_id)?;
         payload.insert("scene".into(), scene);
         let adventure = public_adventure_for(payload.get("adventure"))?;
         payload.insert("adventure".into(), adventure);
@@ -2795,7 +2820,7 @@ fn event_for_viewer(event: &Value, user: Option<&Value>, actor: &Value, state: &
         payload.insert("worldMap".into(), world_map);
     }
     if is_type("MapLevelChanged") && js::truthy(payload.get("map")) {
-        match project_public_tactical_map(payload.get("map"))? {
+        match project_public_tactical_map(payload.get("map"), &scenario_id)? {
             Some(projected) => {
                 payload.insert("map".into(), projected.map);
                 payload.insert("map_hash".into(), Value::String(projected.hash));
@@ -3150,11 +3175,15 @@ pub fn turn_explanation_for_viewer(explanation: Option<&Value>, user: Option<&Va
 
 /// `sceneTransitionForViewer(transition)`: переход сцены глазами игрока.
 pub fn scene_transition_for_viewer(transition: Option<&Value>) -> ProjectionResult<Option<Value>> {
+    scene_transition_for_viewer_with_scenario(transition, "")
+}
+
+fn scene_transition_for_viewer_with_scenario(transition: Option<&Value>, scenario_id: &str) -> ProjectionResult<Option<Value>> {
     let Some(source @ Value::Object(_)) = transition else { return Ok(transition.cloned()) };
     let source = Some(source);
     let entrance = get(source, "entrance");
     Ok(Some(json!({
-        "scene": public_scene_for(get(source, "scene"), None)?,
+        "scene": public_scene_for_with_scenario(get(source, "scene"), None, scenario_id)?,
         "adventure": public_adventure_for(get(source, "adventure"))?,
         "worldMap": public_world_map_for(get(source, "worldMap"))?,
         "transition": text_of(get(source, "transition"), 2_000),
@@ -3214,7 +3243,8 @@ pub fn turn_result_for_viewer(result: Option<&Value>, user: Option<&Value>, acto
     };
     if let Some(Value::Object(map)) = effects.as_mut() {
         if js::truthy(map.get("scene")) {
-            let scene = scene_transition_for_viewer(map.get("scene"))?.unwrap_or(Value::Null);
+            let scenario_id = scenario_id_for(authoritative);
+            let scene = scene_transition_for_viewer_with_scenario(map.get("scene"), &scenario_id)?.unwrap_or(Value::Null);
             map.insert("scene".into(), scene);
         }
     }

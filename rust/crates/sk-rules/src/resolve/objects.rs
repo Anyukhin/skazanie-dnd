@@ -8,7 +8,7 @@ use sk_core::indexmap::IndexSet;
 use sk_core::{game, js};
 use sk_npc_world::blessings::{blessing_omen_for, BLESSINGS_POLICY_ID, BLESSING_ATTACK_BONUS, BLESSING_CONDITION, BLESSING_DURATION, PRAYER_ABILITY, PRAYER_DC, PRAYER_MINUTES, PRAYER_SKILL};
 use sk_ruleset::lockpicking::{has_thieves_tools, THIEVES_TOOLS_REQUIRED_CODE, THIEVES_TOOLS_REQUIRED_MESSAGE};
-use sk_tactical::scene_interactions::{scene_interaction_definition, scene_object_label_for, scene_object_loot, SCENE_INTERACTION_POLICY_ID};
+use sk_tactical::scene_interactions::{scene_interaction_definition_with_clue, scene_object_label_for, scene_object_loot, SCENE_INTERACTION_POLICY_ID};
 use sk_tactical::tactical_map::TacticalMap;
 
 use super::doors::{action_spent, actor_targets, ensure_map, roll_check};
@@ -185,11 +185,12 @@ pub fn operate_scene_object(r: &mut Resolve<'_>) -> Flow {
     };
     let tactical_prop = map.props[index].clone();
     let prop = props[index].clone();
-    if !tactical_prop.interactive {
+    let prop_id = Value::String(tactical_prop.id.clone());
+    let scenario_clue = sk_scenario::campaign_scenario::scenario_inspection_for_prop(&r.state, &map.location_id, &tactical_prop.id);
+    if !tactical_prop.interactive && scenario_clue.is_none() {
         return Err(rule("Этот объект не отмечен как интерактивный", "SCENE_OBJECT_NOT_INTERACTIVE"));
     }
-    let prop_id = Value::String(tactical_prop.id.clone());
-    let Some(definition) = scene_interaction_definition(&map.seed, &props, Some(&prop_id)) else {
+    let Some(definition) = scene_interaction_definition_with_clue(&map.seed, &props, Some(&prop_id), scenario_clue.as_ref()) else {
         return Err(rule("Для этого объекта нет серверного правила взаимодействия", "SCENE_OBJECT_UNSUPPORTED"));
     };
     if !js_includes(definition.get("verbs"), r.command.get("intent"), "definition.verbs")? {
@@ -281,10 +282,21 @@ pub fn operate_scene_object(r: &mut Resolve<'_>) -> Flow {
         let attempted_by = object.interaction.get("inspection_attempted_by");
         let attempted_by_len = attempted_by.and_then(Value::as_array).map_or(0, Vec::len);
         let attempted = js_includes(attempted_by, r.command.get("actor_id"), "interaction.inspection_attempted_by")? || (object.interaction_flag("inspection_attempted") && attempted_by_len == 0);
-        if attempted {
+        // Старый снимок мог уже записать общую деталь предмета. Разрешаем тому
+        // же герою дочитать авторскую улику, пока она не известна отряду.
+        let scenario_clue_known = scenario_clue.as_ref().is_some_and(|clue| {
+            clue.get("clue_id").and_then(Value::as_str).is_some_and(|clue_id| sk_scenario::campaign_scenario::scenario_found_clue_ids(&state).contains(clue_id))
+        });
+        if attempted && (scenario_clue.is_none() || scenario_clue_known) {
             return Err(rule("Этот герой уже осматривал объект", "SCENE_OBJECT_ALREADY_INSPECTED"));
         }
         operated(r, &object);
+        let scenario_clue_digest = scenario_clue.as_ref().and_then(|clue| {
+            let fact_id = clue.get("fact_id").and_then(Value::as_str)?;
+            let command_id = js::s(r.command.get("command_id"));
+            let digest = sk_core::hash::sha256_hex(format!("{}\u{0}{}", command_id, fact_id));
+            Some(digest[..24].to_string())
+        });
         // `success` и `trap_detected` берут `check.success` как есть.
         let mut success = Some(Value::Bool(true));
         let mut trap_detected = Some(Value::Bool(false));
@@ -312,7 +324,37 @@ pub fn operate_scene_object(r: &mut Resolve<'_>) -> Flow {
             payload.insert("knowledge_id".into(), Value::String(format!("{}:{}", js::string(Some(&prop_id)), js::string(detail.get("id")))));
             insert_present(&mut payload, "detail_key", object.definition("detailKey"));
             insert_present(&mut payload, "text", detail.get("text"));
-            r.events.push(event_from(&r.command, "SceneObjectKnowledgeRevealed", Some(Value::Object(payload)), Some(&json!([]))));
+            let mut event = event_from(&r.command, "SceneObjectKnowledgeRevealed", Some(Value::Object(payload)), Some(&json!([])));
+            if let Some(digest) = scenario_clue_digest.as_ref() {
+                event["event_id"] = Value::String(format!("scene-object-clue:{digest}"));
+            }
+            r.events.push(event);
+        }
+        if js::truthy(success.as_ref()) {
+            if let Some(secret) = scenario_clue.as_ref() {
+                let fact_id = secret.get("fact_id").and_then(Value::as_str).unwrap_or_default();
+                let facts = state.get("worldMemory").and_then(|memory| memory.get("facts")).and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
+                if !scenario_clue_known {
+                    if let Some(source) = facts.iter().find(|fact| js::s(fact.get("id")) == fact_id).filter(|fact| !js::s(fact.get("subject_id")).is_empty()) {
+                        if let Some(digest) = scenario_clue_digest.as_ref() {
+                            let event_id = format!("scene-object-clue:{digest}");
+                            let discovery = json!({
+                                "id": format!("fact-secret-found-{digest}"),
+                                "subject_id": js::s(source.get("subject_id")),
+                                "predicate": "discovery",
+                                "object": "clue",
+                                "summary": secret.get("clue").cloned().unwrap_or(Value::Null),
+                                "visibility": "party",
+                                "source_event_ids": [event_id],
+                                "supersedes_fact_id": fact_id,
+                                "status": "active",
+                            });
+                            let source_command = command_with(&r.command, "visibility", json!("party"));
+                            r.events.push(event_from(&source_command, "WorldFactRecorded", Some(json!({ "fact": discovery })), Some(&json!([]))));
+                        }
+                    }
+                }
+            }
         }
         return Ok(());
     }
@@ -334,7 +376,7 @@ pub fn operate_scene_object(r: &mut Resolve<'_>) -> Flow {
         operated(r, &object);
         let mut check_definition = spread_value(Some(&lock));
         check_definition.insert("purpose".into(), json!("scene-object:container:lockpick"));
-        let check = resolve_scene_check(r, &object, &Value::Object(check_definition), Some(lockpick_check_modifier(object.actor.as_ref())))?;
+        let check = resolve_scene_check(r, &object, &Value::Object(check_definition), Some(lockpick_check_modifier(object.actor.as_ref(), Some(&state))))?;
         let label = scene_object_label_for(object.prop.get("assetId"));
         let label = Value::String(if label.is_empty() { "чужой замок".into() } else { label });
         let kind_value = json!("prop");

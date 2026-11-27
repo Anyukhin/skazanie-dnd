@@ -308,13 +308,35 @@ fn expiry_pending(state: &Value, now_ms: i64) -> Result<bool, Failure> {
     Ok(expiry.get("events").and_then(Value::as_array).is_some_and(|events| !events.is_empty()))
 }
 
+fn scenario_treaty_decision_pending(state: &Value) -> bool {
+    state["agentInteraction"].get("scenarioTreaty").is_some() && state["agentInteraction"]["status"] == "resolved"
+        && state["mechanics"]["campaign_lifecycle"]["status"] == "active"
+}
+
+fn finish_scenario_treaty_decision(core: &GameCore, campaign_id: &str, state: &Value) -> Result<bool, Failure> {
+    if !scenario_treaty_decision_pending(state) {
+        return Ok(false);
+    }
+    let interaction_id = &state["agentInteraction"]["id"];
+    let key = format!("scenario-treaty-decision:{}", js::s(Some(interaction_id)));
+    let commands = [json!({ "command_type": "ResolveScenarioTreatyDecision", "interaction_id": interaction_id })];
+    let journal = HookedJournal(&core.events);
+    let resolved = with_rules_plan(core, |resolve| AuthoritativeExecutor::new(&journal)
+        .execute_commands(campaign_id, &key, &commands, &json!({ "isDirector": true }), resolve))
+        .map_err(executor_failure)?;
+    if !resolved.commit.events.iter().any(|event| event["event_type"] == "PartyDecisionConsumed" && &event["payload"]["interaction_id"] == interaction_id) {
+        return Err(Failure::new("Ключ исполнения уже занят", Some("IDEMPOTENCY_CONFLICT")));
+    }
+    Ok(true)
+}
+
 fn reconcile_inner(core: &Rc<GameCore>, campaign_id: &str, now_ms: i64) -> Result<Option<Room>, Failure> {
     let _span = sk_store::perf::span("reconcile");
     // Обычный случай (Ск4): голосование не истекает, решённого задания нет,
     // комната совпадает с головой — голова читается по ссылке, без копии
     // состояния. Любое действие — прежний путь целиком.
     let quiet = core.events.inspect(campaign_id, &LoadOptions::default(), |state, _| -> Result<bool, Failure> {
-        Ok(!expiry_pending(state, now_ms)? && !sk_character::quest_decisions::quest_decision_pending(Some(state)))
+        Ok(!expiry_pending(state, now_ms)? && !sk_character::quest_decisions::quest_decision_pending(Some(state)) && !scenario_treaty_decision_pending(state))
     })??;
     if quiet {
         let pending = core.events.pending_projection(campaign_id, false)?;
@@ -345,7 +367,8 @@ fn reconcile_inner(core: &Rc<GameCore>, campaign_id: &str, now_ms: i64) -> Resul
     }
     let journal = HookedJournal(&core.events);
     let quest = with_rules_plan(core, |resolve| sk_character::quest_decisions::finish_quest_decision(&AuthoritativeExecutor::new(&journal), campaign_id, Some(&authoritative.state), resolve));
-    if quest.map_err(|error| Failure::new(error.message().to_string(), Some(error.code())))?.is_some() {
+    if quest.map_err(|error| Failure::new(error.message().to_string(), Some(error.code())))?.is_some()
+        || finish_scenario_treaty_decision(core, campaign_id, &authoritative.state)? {
         authoritative = load()?;
     }
     let pending = core.events.pending_projection(campaign_id, false)?;

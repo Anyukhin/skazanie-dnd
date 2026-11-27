@@ -33,6 +33,7 @@ pub mod free_action_adjudication;
 pub mod hero_hooks;
 pub mod lore_author;
 pub mod lore_voice;
+mod narration_recollection;
 pub mod narrator;
 pub mod npc_controller;
 pub mod npc_social_controller;

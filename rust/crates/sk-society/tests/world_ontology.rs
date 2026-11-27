@@ -16,16 +16,21 @@ use common::{Args, Fixture, Outcome};
 use serde_json::{json, Map, Value};
 use sk_society::world_ontology::*;
 
+/// Модули `server/*.mjs` прежнего дерева: замороженная библиотека `server/` и
+/// архив прежнего сервера `archive/js-server/server/` (2026-11-27).
 fn server_files() -> Vec<(String, String)> {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../server");
-    let mut names: Vec<String> = fs::read_dir(&dir)
-        .expect("каталог server/")
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let mut names: Vec<(String, PathBuf)> = ["server", "archive/js-server/server"]
+        .iter()
+        .filter_map(|dir| fs::read_dir(root.join(dir)).ok())
+        .flatten()
         .filter_map(Result::ok)
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| name.ends_with(".mjs"))
+        .map(|entry| (entry.file_name().to_string_lossy().into_owned(), entry.path()))
+        .filter(|(name, _)| name.ends_with(".mjs"))
         .collect();
+    assert!(!names.is_empty(), "нет исходников server/");
     names.sort();
-    names.into_iter().map(|name| (name.trim_end_matches(".mjs").to_string(), fs::read_to_string(dir.join(&name)).expect("модуль server/"))).collect()
+    names.into_iter().map(|(name, path)| (name.trim_end_matches(".mjs").to_string(), fs::read_to_string(path).expect("модуль server/"))).collect()
 }
 
 fn as_pairs(files: &[(String, String)]) -> Vec<(&str, &str)> {
@@ -74,6 +79,10 @@ fn registry_constants_match_js() {
     let generic: Map<String, Value> = GENERIC_PREDICATE_CONSUMERS.iter().map(|(module, why)| (module.to_string(), json!(why))).collect();
     assert_eq!(serde_json::to_string(&generic).ok(), serde_json::to_string(&constants["GENERIC_PREDICATE_CONSUMERS"]).ok());
     assert_eq!(constants["EXTERNAL_ONLY_PREDICATES"], json!(EXTERNAL_ONLY_PREDICATES));
+    let legacy: Map<String, Value> = LEGACY_PREDICATE_READERS.iter()
+        .map(|(predicate, readers)| ((*predicate).to_string(), json!(readers)))
+        .collect();
+    assert_eq!(serde_json::to_string(&legacy).ok(), serde_json::to_string(&constants["LEGACY_PREDICATE_READERS"]).ok());
 }
 
 #[test]
@@ -141,9 +150,15 @@ fn every_consumed_predicate_has_a_producer() {
     let audit = audit_ontology(&as_pairs(&files));
     let predicates = audit["predicates"].as_object().cloned().unwrap_or_default();
     assert!(predicates.get("died").is_some_and(|entry| !strings(&entry["consumers"]).is_empty()), "сканер обязан видеть чтение died");
+    let legacy = |name: &str, entry: &Value| LEGACY_PREDICATE_READERS.iter()
+        .find(|(known, _)| *known == name)
+        .is_some_and(|(_, readers)| {
+            let consumers = strings(&entry["consumers"]);
+            readers.len() == consumers.len() && readers.iter().all(|reader| consumers.iter().any(|consumer| consumer == reader))
+        });
     let orphan: Vec<&String> = predicates
         .iter()
-        .filter(|(name, entry)| !strings(&entry["consumers"]).is_empty() && strings(&entry["producers"]).is_empty() && !EXTERNAL_ONLY_PREDICATES.contains(&name.as_str()))
+        .filter(|(name, entry)| !strings(&entry["consumers"]).is_empty() && strings(&entry["producers"]).is_empty() && !EXTERNAL_ONLY_PREDICATES.contains(&name.as_str()) && !legacy(name, entry))
         .map(|(name, _)| name)
         .collect();
     assert!(orphan.is_empty(), "предикат читается, но его никто не пишет: {orphan:?}");

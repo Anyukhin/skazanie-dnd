@@ -11,7 +11,7 @@
 //! [`undef`], чтобы порядок ключей стенограммы совпал с JS.
 
 use serde_json::{json, Map, Value};
-use sk_core::js;
+use sk_core::{indexmap::IndexSet, js};
 
 use super::kernel::undef;
 use super::resume::{self, at, reduce_events, resolve_pending, ruleset_options, PendingDice, Resume};
@@ -481,6 +481,7 @@ fn run(r: &mut Resolve<'_>, a: &Act) -> Flow {
             r.events.push(a.action_event(Vec::new()));
             return Ok(());
         }
+        "awaken" => return awaken(r, a),
         "stabilize" => return stabilize(r, a),
         "first-aid" => return first_aid(r, a),
         _ => {}
@@ -1446,6 +1447,101 @@ fn first_aid(r: &mut Resolve<'_>, a: &Act) -> Flow {
         r.events.push(event_from(&a.rules(&[rule_ids::CONDITIONS, rule_ids::RESOURCE]), "KnockoutEnded", Some(payload), Some(&a.target_targets())));
     }
     r.events.push(a.action_event(vec![("success", check.get("success").cloned().unwrap_or(Value::String(js::UNDEFINED.into()))), ("difficulty", Value::from(10))]).strip_marker());
+    Ok(())
+}
+
+fn awaken_condition_allowed(spell_id: &str, condition: &str) -> bool {
+    match spell_id {
+        "sleep" => matches!(condition, "magical-sleep" | "unconscious"),
+        "hypnotic-pattern" => matches!(condition, "charmed" | "incapacitated" | "speed-zero"),
+        _ => false,
+    }
+}
+
+fn awaken_condition_matches(state: &Value, condition: &Value, spell_id: &str) -> bool {
+    let name = condition_name(condition);
+    if !awaken_condition_allowed(spell_id, &name) {
+        return false;
+    }
+    if at(Some(condition), "spell_id").and_then(Value::as_str) == Some(spell_id) {
+        return true;
+    }
+    if spell_id != "hypnotic-pattern" {
+        return false;
+    }
+    let source = js::s(condition.get("source_actor"));
+    let effect = js::s(condition.get("effect_id"));
+    !source.is_empty() && !effect.is_empty()
+        && js::s(sk_core::game::mechanics(state).get("concentration").and_then(|all| all.get(&source)).and_then(|entry| entry.get("effect_id"))) == effect
+}
+
+/// Заклинания, эффект которых действие «Разбудить» может снять с цели.
+pub fn awaken_candidates_for(state: &Value, target_id: &str) -> Vec<&'static str> {
+    let conditions = conditions_of(state, target_id);
+    ["sleep", "hypnotic-pattern"]
+        .into_iter()
+        .filter(|spell_id| conditions.iter().any(|condition| awaken_condition_matches(state, condition, spell_id)))
+        .collect()
+}
+
+fn awaken(r: &mut Resolve<'_>, a: &Act) -> Flow {
+    let requested = coalesce(&[
+        a.command.get("wake_spell_id"),
+        a.command.get("spell_id"),
+    ]).and_then(Value::as_str).unwrap_or("");
+    let candidates = awaken_candidates_for(&a.state, &a.target_key);
+    let spell_id = if !requested.is_empty() {
+        requested
+    } else if candidates.len() == 1 {
+        candidates[0]
+    } else {
+        ""
+    };
+    if !candidates.iter().any(|candidate| *candidate == spell_id) {
+        let message = if candidates.len() > 1 {
+            "Нужно выбрать, какой эффект снять: «Усыпление» или «Гипнотический узор»"
+        } else {
+            "На союзнике нет эффекта, который можно снять действием «Разбудить»"
+        };
+        return Err(rule(message, "AWAKEN_TARGET_INVALID"));
+    }
+    let removed: Vec<Value> = conditions_of(&a.state, &a.target_key)
+        .iter()
+        .filter(|condition| awaken_condition_matches(&a.state, condition, spell_id))
+        .cloned()
+        .collect();
+    a.spend(r)?;
+    let mut effects = IndexSet::new();
+    for condition in &removed {
+        let mut payload = Map::new();
+        payload.insert("condition".into(), Value::String(condition_name(condition)));
+        if let Some(effect_id) = condition.get("effect_id").filter(|value| js::truthy(Some(value))) {
+            effects.insert(js::s(Some(effect_id)));
+            payload.insert("effect_id".into(), effect_id.clone());
+        }
+        payload.insert("spell_id".into(), Value::String(spell_id.into()));
+        payload.insert("trigger".into(), Value::String("awaken".into()));
+        r.events.push(event_from(&a.rules(&[rule_ids::CONDITIONS]), "ConditionRemoved", Some(Value::Object(payload)), Some(&a.target_targets())));
+    }
+    for effect_id in effects {
+        let Some(concentration) = sk_core::game::mechanics(&a.state).get("concentration").and_then(Value::as_object) else { continue };
+        let Some(owner) = concentration.iter().find_map(|(owner, entry)|
+            (js::s(entry.get("effect_id")) == effect_id).then_some(owner.clone())) else { continue };
+        let still_referenced = sk_core::game::mechanics(&a.state).get("conditions").and_then(Value::as_object).is_some_and(|all| {
+            all.iter().any(|(target, conditions)| {
+                conditions.as_array().is_some_and(|conditions| conditions.iter().any(|condition| {
+                    js::s(condition.get("effect_id")) == effect_id && !(target == &a.target_key && removed.contains(condition))
+                }))
+            })
+        });
+        if !still_referenced {
+            r.events.push(event_from(&a.rules(&[rule_ids::CONCENTRATION]), "ConcentrationEnded", Some(json!({ "reason": "awakened", "effect_id": effect_id })), Some(&json!([owner]))));
+        }
+    }
+    r.events.push(a.action_event(vec![
+        ("awakened_spell_id", Value::String(spell_id.into())),
+        ("removed_conditions", Value::Array(removed.iter().map(|condition| Value::String(condition_name(condition))).collect())),
+    ]));
     Ok(())
 }
 

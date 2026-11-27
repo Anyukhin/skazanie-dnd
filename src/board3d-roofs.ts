@@ -16,6 +16,8 @@ export type Board3DRoofOptions = {
   /** Высота существующей срезанной стены, от которой начинается карниз. */
   wallHeight?: number
   mode?: Board3DRoofMode
+  /** В режиме среза кровля может затенять видимый интерьер. */
+  cutawayShade?: boolean
   /**
    * Пакет рисованного стиля: скаты из черепицы или досок, фронтоны и верх стен
    * — фактурой кладки дома, стропила и конёк — брусом. Без пакета крыши
@@ -326,10 +328,14 @@ function addRafters(
   for (const side of [-1, 1] as const) {
     const group = roofObject(new THREE.Group())
     group.name = side < 0 ? 'roof-rafters:far' : 'roof-rafters:near'
+    // В cutaway сохраняется только карниз у открытой стены. Поперечные
+    // стропила иначе висят над комнатой и закрывают интерьер сверху.
+    group.userData.board3dCutawayHidden = true
     for (let index = 0; index < positions; index += 1) {
       const along = positions === 1 ? 0 : (index / (positions - 1) - .5) * (length - .18)
       const beam = roofObject(new THREE.Mesh(geometry, material))
       beam.name = `roof-rafter:${side < 0 ? 'far' : 'near'}:${index}`
+      beam.userData.board3dCutawayHidden = true
       // Стропило под кровлей, а не поверх: иначе брус проступал полосами сквозь скат.
       beam.position.set(along, rise / 2 - RAFTER_DROP, side * halfSpan / 2)
       beam.rotation.x = side < 0 ? -slopeAngle : slopeAngle
@@ -701,7 +707,8 @@ function addPitchedRoof(
   if (rect.sides.has(nearSide)) addMesh(resources, structural, 'roof-eave:near', eaveGeometry.clone(), trimMaterial, [0, -.025, span / 2])
   addRafters(resources, structural, length, span, rise, roofStructureMaterial)
   const ridgeGeometry = ownGeometry(resources, new THREE.BoxGeometry(length + .14, ROOF_RIDGE_SIZE, ROOF_RIDGE_SIZE))
-  addMesh(resources, structural, 'roof-ridge', ridgeGeometry, roofStructureMaterial, [0, rise + .035, 0])
+  const ridge = addMesh(resources, structural, 'roof-ridge', ridgeGeometry, roofStructureMaterial, [0, rise + .035, 0])
+  ridge.userData.board3dCutawayHidden = true
   const endGeometry = ownGeometry(resources, createGableEndGeometry(span, rise, .045))
   const endWest = addMesh(resources, structural, 'roof-gable:end-west', endGeometry, gableMaterial, [-length / 2, 0, 0])
   const endEast = addMesh(resources, structural, 'roof-gable:end-east', endGeometry.clone(), gableMaterial, [length / 2, 0, 0])
@@ -760,7 +767,9 @@ function addVaultRoof(
   for (let index = 0; index < ribs; index += 1) {
     const progress = ribs === 1 ? .5 : index / (ribs - 1)
     const rib = addMesh(resources, structural, `vault-rib:${index}`, ribGeometry, trimMaterial, [(progress - .5) * length, 0, 0])
-    rib.userData.board3dRoofInterior = index > 0 && index < ribs - 1
+    // Все поперечные рёбра свода проходят над игровым полем. В срезе
+    // остаются только каменная оболочка и короткие опоры у стен.
+    rib.userData.board3dCutawayHidden = true
   }
   const edgeGeometry = ownGeometry(resources, new THREE.BoxGeometry(length, ROOF_EAVE_HEIGHT, ROOF_EAVE_WIDTH))
   const farSide: RoofSide = axisX ? 'north' : 'west'
@@ -1188,6 +1197,7 @@ function addHipRoof(
   const rafterGeometry = ownGeometry(resources, new THREE.BoxGeometry(WOOD_ROOF_STRUCTURE_SIZE, WOOD_ROOF_STRUCTURE_SIZE, 1))
   hipRoofRafters(building.footprint, slope).forEach((rafter, index) => {
     const beam = addMesh(resources, structural, `roof-rafter:hip:${index}`, rafterGeometry, trimMaterial)
+    beam.userData.board3dCutawayHidden = true
     const length = rafter.from.distanceTo(rafter.to)
     beam.position.copy(rafter.from).add(rafter.to).multiplyScalar(.5)
     beam.position.y -= RAFTER_DROP
@@ -1274,6 +1284,18 @@ export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, opti
     }
   }
   const seenUpperWallEdges = new Set<string>()
+  const ceiling: number[] = []
+  const addCeiling = (cells: TacticalCell[]) => {
+    if (!options.cutawayShade) return
+    // Для тени хватит горизонтального сечения у карниза. Геометрия следует
+    // открытым клеткам: пустой двор и неразведанные комнаты остаются свободны.
+    for (const cell of cells) {
+      if (!cell.revealed || !cell.passable || !cell.zone) continue
+      const { x, y: z } = cell
+      const y = terrainHeightAt(map, x, z) + fullWallHeight
+      addQuad(ceiling, [x, y, z], [x, y, z + 1], [x + 1, y, z + 1], [x + 1, y, z])
+    }
+  }
   const painted = packHasRoofLooks(options.stylePack) ? createRoofStyle(options.stylePack, resources, options) : null
   group.userData.roofStyle = painted ? 'painted' : 'plain'
   // Своды остаются по комнатам. Скатные дома получают верх стен ниже вместе
@@ -1284,6 +1306,7 @@ export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, opti
     if (style === 'vault') {
       addUpperWallPanels(resources, upperWalls, map, rect, palette, cutWallHeight, fullWallHeight, seenUpperWallEdges, painted)
       addVaultRoof(resources, shells, structures, rect, palette, fullWallHeight, painted)
+      addCeiling(rect.cells)
     }
   }
   for (const building of buildRoofBuildings(map)) {
@@ -1291,6 +1314,7 @@ export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, opti
       ? addPitchedRoof(resources, shells, structures, building.rect, palette, fullWallHeight, map, painted, building.inferred)
       : addHipRoof(resources, shells, structures, building, palette, fullWallHeight, map, painted)
     if (built) {
+      addCeiling(building.cells)
       const rect = building.rect ?? roofRectForBuilding(building)
       addUpperWallPanels(resources, upperWalls, map, rect, palette, cutWallHeight, fullWallHeight,
         seenUpperWallEdges, painted, buildingUpperWallEdges(map, building), built, building.baseY)
@@ -1298,13 +1322,31 @@ export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, opti
     if (built && painted) addRoofDecorations(structures, building, options.structuralAssets, fullWallHeight, built)
   }
 
+  // Карта глубины солнца рисует сечение; основной кадр и проход GTAO
+  // пропускают его. В полном виде тень уже отбрасывает настоящая кровля.
+  let ceilingShadow: THREE.Mesh | null = null
+  if (ceiling.length) {
+    const shape = new THREE.BufferGeometry()
+    shape.setAttribute('position', new THREE.Float32BufferAttribute(ceiling, 3))
+    const material = ownMaterial(resources, new THREE.MeshBasicMaterial({
+      colorWrite: false, depthWrite: false, transparent: true, shadowSide: THREE.FrontSide,
+    }))
+    ceilingShadow = roofObject(new THREE.Mesh(ownGeometry(resources, shape), material))
+    ceilingShadow.name = 'cutaway-ceiling-shadow'
+    ceilingShadow.castShadow = true
+    ceilingShadow.raycast = () => {}
+    group.add(ceilingShadow)
+  }
   let mode: Board3DRoofMode = options.mode ?? 'cutaway'
   let disposed = false
   const applyMode = () => {
     group.userData.roofMode = mode
     group.visible = mode !== 'hidden'
+    if (ceilingShadow) ceilingShadow.visible = mode === 'cutaway'
     shells.visible = mode === 'full'
     structures.visible = mode !== 'hidden'
+    // Карниз опирается на верх видимой стены в обоих режимах.
+    structures.position.y = mode === 'cutaway' ? cutWallHeight - fullWallHeight : 0
     upperWalls.visible = mode === 'full'
     shells.traverse((object) => {
       if (object === shells) return
@@ -1314,7 +1356,8 @@ export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, opti
     structures.traverse((object) => {
       if (object.userData.board3dInferredRoof === true
         || object.userData.board3dOpaqueRoof === true
-        || object.userData.board3dRoofInterior === true) object.visible = mode === 'full'
+        || object.userData.board3dRoofInterior === true
+        || object.userData.board3dCutawayHidden === true) object.visible = mode === 'full'
     })
   }
   applyMode()

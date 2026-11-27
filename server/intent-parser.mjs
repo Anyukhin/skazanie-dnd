@@ -164,7 +164,7 @@ const INTENT_PATTERNS = [
   ['start_combat', /(начать\s+бой|инициатив|start\s+combat)/iu],
   ['end_combat', /((законч|заверш|прекрат)\p{L}*\s+бой|бой\s+(окончен|заверш[её]н)|end\s+combat)/iu],
   ['end_turn', /^\s*(заканчиваю\s+ход|конец\s+хода|end\s+turn)\s*[.!]?\s*$/iu],
-  ['rest', new RegExp(`${W}(коротк\\p{L}*\\s+отдых|долг\\p{L}*\\s+отдых|привал|отдых|отдыха|отдохн(?:ём|ем|у)(?![\\p{L}\\p{M}])|передохн|передышк|rest)`, 'iu')],
+  ['rest', new RegExp(`${W}(коротк\\p{L}*\\s+отдых|долг\\p{L}*\\s+отдых|привал|отдых|отдыха|отдохн(?:ём|ем|у)(?![\\p{L}\\p{M}])|передохн|передышк|(?:ложусь|ложимся|лягу|ляжем)\\s+спать|(?:сплю|спим)\\s+до\\s+утра|заночу\\p{L}*|ночуем(?![\\p{L}\\p{M}])|rest)`, 'iu')],
   ['social', new RegExp(`${W}(говор|убежд|обман|запуг|спраш|расспраш|переговор|разговарива|беседу|заговарива|здорова|приветству|благодар|рассказыва|узна\\p{L}*\\s+у|интересу\\p{L}*\\s+у|торгу(?:юсь|емся|ться)|флирт|кокетнича|очаровыва|подкуп|предлага\\p{L}*\\s+[^.!?]{0,60}(?:монет|деньг|серебр|золот|взятк)|купить\\s+у|куплю\\s+у|покупа\\p{L}*\\s+у|прода(?:ю|ём|ем|ть))`, 'iu')],
   ['explore', new RegExp(`${W}(осматр|исслед|иду|двига|открыва|ищу|слуша)`, 'iu')],
   // Инфинитивы «спросить/расспросить» — тот же социальный маршрут, что и «спрашиваю/расспрашиваю».
@@ -416,11 +416,13 @@ function honorificAddressedActors(address, visibleState) {
     .some((value) => role.test(String(value ?? ''))))
 }
 
+const DIRECT_ADDRESS_PATTERN = /^([\p{L}\p{M} «»"“”-]{2,80})[:,]\s*(\S[\s\S]*)/iu
+
 function directlyAddressedActors(message, visibleState) {
   // Прозвище в кавычках — часть обращения: «Силас «Кривой», вы сказали…»
   // прежде не узнавалось вовсе, и реплика уходила в «Чего Мирель хочет
   // добиться?» (плейтест 2026-10-10).
-  const address = /^([\p{L}\p{M} «»"“”-]{2,80})[:,]\s*\S/iu.exec(message)?.[1]?.replace(/[«»"“”]/gu, ' ').replace(/\s+/gu, ' ').trim()
+  const address = DIRECT_ADDRESS_PATTERN.exec(message)?.[1]?.replace(/[«»"“”]/gu, ' ').replace(/\s+/gu, ' ').trim()
   if (!address) return []
   const honorific = honorificAddressedActors(address, visibleState)
   if (honorific.length) return honorific
@@ -432,6 +434,22 @@ function directlyAddressedActors(message, visibleState) {
       return tokens.length === words.length && tokens.every((token, index) => sameNameToken(token, words[index]))
     })
   })
+}
+
+export function directDialogueSpeech(message, visibleState, selectedNpcId = '') {
+  // Старое досье добавляло имя и роль перед самой репликой. Снимаем эту
+  // обёртку только у выбранного видимого собеседника с таким именем.
+  const selected = selectedNpcId && message.startsWith('Обращаюсь к ')
+    && presentSocialActors(visibleState).find((actor) => String(actor.id) === selectedNpcId)
+  const legacyPrefix = selected?.name ? `Обращаюсь к ${selected.name}` : ''
+  const legacySpeech = legacyPrefix && message.startsWith(legacyPrefix)
+    ? /^(?: \([^\r\n]{1,240}?\))?:\s*(\S[\s\S]*)/u.exec(message.slice(legacyPrefix.length))?.[1]
+    : null
+  const text = legacySpeech || message
+  const speech = DIRECT_ADDRESS_PATTERN.exec(text)?.[2]
+  const targets = speech ? directlyAddressedActors(text, visibleState) : []
+  if (targets.length === 1) return { npcId: String(targets[0].id), speech }
+  return legacySpeech ? { npcId: selectedNpcId, speech: legacySpeech } : null
 }
 
 /**

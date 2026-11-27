@@ -98,14 +98,17 @@ export const LIGHT_SOURCE_ASSETS: Record<string, { radius: number; strength: num
 }
 
 /**
- * Старые значения `cell.feature`, которые доходят до клиента как `assetId`
- * (таблица `LEGACY_PROP_ASSETS` в `src/board-render.ts`). Здесь нужны только
- * огненные: сохранённая кампания не должна терять свет у своего очага.
+ * Старые обозначения и авторские предметы со своим огнём. Письменный стол
+ * со свечой освещает только небольшой участок, как отдельная свеча.
  */
-const LEGACY_LIGHT_ASSETS: Record<string, string> = {
+const LIGHT_ASSET_ALIASES: Record<string, string> = {
   torch: 'torch_wall',
   campfire: 'campfire',
   fireplace: 'fireplace',
+  guard_brazier: 'brazier',
+  candle_rack: 'candelabra',
+  desk_candlestick: 'candle',
+  candle_desk: 'candle',
 }
 
 export type LightSource = {
@@ -118,10 +121,11 @@ export type LightSource = {
 }
 
 /** Светится ли предмет с таким идентификатором ассета. */
-export function lightSourceAssetId(assetId: string): string | null {
+export function lightSourceAssetId(assetId: string, state?: string): string | null {
+  if (state === 'toppled' || state === 'broken' || state === 'burned') return null
   const id = String(assetId ?? '')
-  const resolved = LEGACY_LIGHT_ASSETS[id] ?? id
-  return LIGHT_SOURCE_ASSETS[resolved] ? resolved : null
+  const resolved = LIGHT_ASSET_ALIASES[id] ?? id
+  return Object.hasOwn(LIGHT_SOURCE_ASSETS, resolved) ? resolved : null
 }
 
 /**
@@ -135,7 +139,7 @@ export function lightSourceAssetId(assetId: string): string | null {
 export function lightSourcesOf(map: TacticalMap): LightSource[] {
   const sources: LightSource[] = []
   for (const prop of map.props) {
-    const assetId = lightSourceAssetId(prop.assetId)
+    const assetId = lightSourceAssetId(prop.assetId, prop.state)
     if (!assetId) continue
     const x = Math.floor(prop.x)
     const y = Math.floor(prop.y)

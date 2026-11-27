@@ -7,7 +7,7 @@ import {
   LIGHT_FULL, LIGHT_LINK_EAST, LIGHT_LINK_SOUTH, lightAt, lightGridFor, lightLinksFor, lightSourceVisibilityFor, lightSourcesOf,
   type LightSource,
 } from './board-lighting'
-import { LEGACY_CATALOG_REVISION, propModelFit, propModelFor, propModelFrontTurn, type PropModelCatalog } from './prop-model-catalog'
+import { LEGACY_CATALOG_REVISION, propModelFit, propModelFloorFit, propModelFor, propModelFrontTurn, type PropModelCatalog } from './prop-model-catalog'
 import type { GraphicsStylePack } from './board3d-style'
 import { detailPropAlias } from './detail-props'
 import { cellAt, cellIndex, doorStates, edgeBetween, edgeList, edgeNeighbor, passableAt, revealedAt } from './tactical-map-client'
@@ -3418,10 +3418,11 @@ export function withStyleProps(catalog: PropModelCatalog, pack: GraphicsStylePac
 export function withStyleAssets(catalog: PropModelCatalog, pack: GraphicsStylePack | null | undefined, assetIds: Iterable<string>): PropModelCatalog {
   if (!pack) return catalog
   const styled: PropModelCatalog['models'] = []
-  const seen = new Set<string>()
-  for (const assetId of assetIds) {
-    if (seen.has(assetId)) continue
-    seen.add(assetId)
+  const requested = new Set(assetIds)
+  // Оба вида высоких дверных шкафов могут использовать один и тот же корпус.
+  // Пакет нужен и тогда, когда на раскрытой части карты есть только cupboard.
+  if (requested.has('cupboard') && !pack.props.cupboard) requested.add('wardrobe')
+  for (const assetId of requested) {
     for (const entry of pack.props[assetId] ?? []) {
       styled.push({
         key: entry.key, label: entry.key, category: `style-${pack.style}`, url: entry.url, assetIds: [assetId], yaw: entry.yaw,
@@ -3543,8 +3544,10 @@ function propModelPlacementBox(prop: TacticalProp, drawing: PropDrawing, entry: 
   const fallback = propPlacement(prop, drawing, cellSize).box
   if (!entry?.size) return fallback
   const layout = propVisualLayout(prop, drawing)
-  const fit = propModelFit(resolvePropAssetId(prop.assetId), entry, layout.width, layout.depth, PROP_FOOTPRINT_FILL)
-  if (fit === null) return fallback
+  const assetId = resolvePropAssetId(prop.assetId)
+  const footprintFit = propModelFit(assetId, entry, layout.width, layout.depth, PROP_FOOTPRINT_FILL)
+  if (footprintFit === null) return fallback
+  const fit = propModelFloorFit(assetId, footprintFit, entry.size, layout.scale, layout.width, layout.depth)
   return {
     hw: Math.max(1, entry.size[0] * fit * layout.scale * cellSize / 2),
     hh: Math.max(1, entry.size[2] * fit * layout.scale * cellSize / 2),

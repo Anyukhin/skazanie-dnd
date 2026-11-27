@@ -2,26 +2,25 @@
 // свободном порту и временном хранилище, клиент с cookie и типовые шаги
 // «администратор → кампания → игрок по приглашению».
 //
-// Сервер — эталонный `server/index.mjs` (режим `js`, по умолчанию) или бинарь
-// Rust-переноса (режим `rust`: `SKAZANIE_SERVER_IMPL=rust`, путь в
-// `SKAZANIE_RUST_SERVER_BIN`). Тест, написанный только через этот набор,
-// одинаково гоняется против обоих — это «контрактный» тест (список
-// `test/contract-rust.list`, `pnpm test:contract:rust`).
+// Сервер — бинарь Rust (`skazanie-server`, путь в `SKAZANIE_RUST_SERVER_BIN`,
+// сборка с `--features test-hooks`). Прежний JS-сервер с 2026-11-27 в архиве
+// (`archive/js-server/`), режима `js` больше нет. Тест, написанный только
+// через этот набор, — «контрактный» (список `test/contract-rust.list`,
+// `pnpm test:contract`).
 //
-// Сервер нельзя собрать в процессе теста: модуль при импорте поднимает
-// слушатель и фоновые часы. Поэтому здесь по-прежнему `spawn`, но один на
-// весь корпус, а не копия в каждом файле.
+// Сервер запускается дочерним процессом — один `spawn` на весь корпус, а не
+// копия в каждом файле.
 //
 // Сеть закрыта по построению (`test/test-network-isolation.test.mjs`): ключ
 // провайдера всегда пуст, а непустой ключ принимается только вместе с
 // локальным `ROUTERAI_BASE_URL`. Ключ и адрес из окружения разработчика и
-// из `.env` не наследуются никогда — ни JS-сервером, ни бинарём Rust.
+// из `.env` бинарём Rust не наследуются никогда.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
 import { freePort } from '../free-port.mjs'
 import { runnerTimeout } from '../shared-runner-timeout.mjs'
@@ -30,22 +29,19 @@ import { DICE_ENV, DICE_FORMAT, FAULTS_ENV, FAULTS_FORMAT, parseDiceSpec, parseF
 /** Корень репозитория: сервер запускается отсюда независимо от cwd теста. */
 export const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
 
-/** Предзагрузка JS-сервера, исполняющая кости и сбои из данных. */
-const SERVER_HOOKS = new URL('./server-hooks.mjs', import.meta.url).href
-
-/** Реализации сервера, против которых гоняется HTTP-тест. */
-export const SERVER_IMPLS = Object.freeze(['js', 'rust'])
+/** Реализации сервера, против которых гоняется HTTP-тест: с 2026-11-27 только Rust. */
+export const SERVER_IMPLS = Object.freeze(['rust'])
 
 /**
- * Реализация сервера по умолчанию: `SKAZANIE_SERVER_IMPL` (`js` | `rust`),
- * без переменной — эталонный JS.
+ * Реализация сервера: `SKAZANIE_SERVER_IMPL` — только `rust`; прежнее `js`
+ * — понятный отказ, а не молчаливый запуск архивного сервера.
  *
- * @returns {'js' | 'rust'}
+ * @returns {'rust'}
  */
 export function serverImpl() {
-  const impl = process.env.SKAZANIE_SERVER_IMPL || 'js'
-  if (!SERVER_IMPLS.includes(impl)) throw new Error(`SKAZANIE_SERVER_IMPL=${impl}: допустимы ${SERVER_IMPLS.join(', ')}`)
-  return /** @type {'js' | 'rust'} */ (impl)
+  const impl = process.env.SKAZANIE_SERVER_IMPL || 'rust'
+  if (!SERVER_IMPLS.includes(impl)) throw new Error(`SKAZANIE_SERVER_IMPL=${impl}: допустим только rust — JS-сервер в архиве (archive/js-server)`)
+  return /** @type {'rust'} */ (impl)
 }
 
 /**
@@ -224,16 +220,6 @@ export function isolatedServerEnv({ port, storageDir, setupToken, env = {} }) {
 }
 
 /**
- * @param {string | URL} preload путь от корня репозитория, абсолютный путь или file: URL
- * @returns {string}
- */
-function preloadUrl(preload) {
-  if (preload instanceof URL) return preload.href
-  if (preload.startsWith('file:')) return preload
-  return pathToFileURL(isAbsolute(preload) ? preload : resolve(REPO_ROOT, preload)).href
-}
-
-/**
  * @typedef {object} LaunchOverrides
  * @property {unknown} [dice] заменить кости для следующих запусков; `null` — снять
  * @property {unknown} [faults] заменить сбои для следующих запусков; `null` — снять
@@ -242,7 +228,7 @@ function preloadUrl(preload) {
 
 /**
  * @typedef {object} TestServer
- * @property {'js' | 'rust'} impl реализация сервера этого запуска
+ * @property {'rust'} impl реализация сервера этого запуска
  * @property {string} baseUrl текущий адрес; меняется после restart()
  * @property {number} port
  * @property {string} storageDir
@@ -262,7 +248,7 @@ function preloadUrl(preload) {
  *
  * @param {{ after: (fn: () => unknown) => void }} t контекст node:test
  * @param {{
- *   impl?: 'js' | 'rust',
+ *   impl?: 'rust',
  *   env?: Record<string, string | undefined>,
  *   dice?: unknown,
  *   faults?: unknown,
@@ -273,15 +259,15 @@ function preloadUrl(preload) {
  *   args?: string[],
  *   healthTimeoutMs?: number,
  * }} [options]
- *   `impl` — реализация сервера; по умолчанию `SKAZANIE_SERVER_IMPL` или `js`;
+ *   `impl` — реализация сервера; только `rust` (`SKAZANIE_SERVER_IMPL`);
  *   `dice` — правила костей `skazanie.test-dice/1`: объект или путь к
  *     `test/fixtures/<имя>.dice.json` (формат — `test/kit/hooks-format.mjs`);
  *   `faults` — сбои вокруг журнала `skazanie.test-faults/1`: объект или путь;
- *   `preload` — только режим `js`: свои модули для `--import`. Контрактный тест
- *     их не использует — кости и сбои передаются данными через `dice`/`faults`;
+ *   `preload` — прежний режим `js` (в архиве): теперь отказ — кости и сбои
+ *     передаются данными через `dice`/`faults`;
  *   `storageDir` — готовое хранилище: набор его не создаёт и не удаляет;
  *   `storagePrefix` — префикс временного каталога (с костями и сбоями — `skazanie-*`);
- *   `args` — только режим `js`: аргументы node перед `server/index.mjs`.
+ *   `args` — прежний режим `js` (в архиве): теперь отказ.
  * @returns {Promise<TestServer>}
  */
 export async function startTestServer(t, {
@@ -298,16 +284,15 @@ export async function startTestServer(t, {
 } = {}) {
   if (!SERVER_IMPLS.includes(impl)) throw new Error(`Неизвестная реализация сервера: ${impl}`)
   const preloadList = Array.isArray(preload) ? preload : [preload]
-  if (impl === 'rust' && (preloadList.length || args.length)) {
-    throw new Error('preload и args — только для JS-сервера; в контрактном тесте кости и сбои передаются данными (dice, faults)')
+  if (preloadList.length || args.length) {
+    throw new Error('preload и args — только для JS-сервера, а он в архиве (archive/js-server); кости и сбои передаются данными (dice, faults)')
   }
-  if (impl === 'rust') rustServerBinary()
+  rustServerBinary()
   for (const name of [DICE_ENV, FAULTS_ENV]) {
     if (name in env) throw new Error(`${name} задаётся опциями dice/faults набора, а не env`)
   }
   const ownsStorage = !storageDir
   const storage = storageDir ?? mkdtempSync(join(tmpdir(), storagePrefix))
-  const preloads = preloadList.flatMap((entry) => ['--import', preloadUrl(entry)])
   let current = { dice, faults, env }
   let log = ''
   /** @type {import('node:child_process').ChildProcess | null} */
@@ -369,14 +354,7 @@ export async function startTestServer(t, {
     const launchEnv = { ...current.env, ...hooks }
     const port = await freePort()
     const baseUrl = `http://127.0.0.1:${port}`
-    const hookPreload = impl === 'js' && Object.keys(hooks).length ? ['--import', SERVER_HOOKS] : []
-    const spawned = impl === 'rust'
-      ? spawnRust([], { port, storageDir: storage, setupToken, env: launchEnv })
-      : spawn(process.execPath, [...args, ...hookPreload, ...preloads, 'server/index.mjs'], {
-        cwd: REPO_ROOT,
-        env: isolatedServerEnv({ port, storageDir: storage, setupToken, env: launchEnv }),
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
+    const spawned = spawnRust([], { port, storageDir: storage, setupToken, env: launchEnv })
     spawned.stdout?.on('data', append)
     spawned.stderr?.on('data', append)
     child = spawned

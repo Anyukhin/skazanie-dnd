@@ -522,3 +522,26 @@ async fn sse_socket_slow_reader_does_not_pile_frames() {
     reader.close();
     assert_eq!(send(501), None, "закрытый сокет записи не принимает");
 }
+
+#[tokio::test]
+async fn sse_socket_counts_frames_while_another_thread_writes() {
+    const FRAMES: usize = 20_000;
+    let (socket, mut reader) = sse_socket(FRAMES + 1);
+    let writer_socket = socket.clone();
+    let writer = std::thread::spawn(move || {
+        for _ in 0..FRAMES {
+            assert_eq!(writer_socket.write("кадр"), Some(true));
+            std::thread::yield_now();
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(10), async {
+        for _ in 0..FRAMES {
+            assert_eq!(reader.recv().await.as_deref(), Some("кадр"));
+            assert!(socket.buffered() <= FRAMES);
+        }
+    })
+    .await
+    .expect("все кадры получены");
+    writer.join().expect("писатель закончил без переполнения");
+    assert_eq!(socket.buffered(), 0);
+}

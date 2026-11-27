@@ -30,8 +30,8 @@ use serde_json::{json, Map, Value};
 use sk_agents::action_adjudicator::{revealed_prop_predicate, ActionAdjudicator, ACTION_ADJUDICATOR_PROMPT_VERSION};
 use sk_agents::free_action_adjudication::{
     assert_free_action_confirmation, attempt_fingerprint, bind_free_action_reading_to_state, confirmed_hazard_near, contextual_resolution_for, d20_check_label, damage_type_label_ru, free_action_approach_plan, free_action_is_corpse_search, free_action_passage_plan,
-    free_action_resolution_policy, free_action_success_promise, harmless_free_action_reading, has_recognized_free_action_approach, interpret_free_action, loot_approach_destination, mundane_action_outcome, passage_destination_place, previous_failed_attempt, resolve_corpse_search,
-    resolve_exploration_command, resolve_hazard_contact, resolve_inventory_transfer, resolve_pickpocket, roleplay_speech_reading, situation_fingerprint, stakes_for, verify_means, FreeActionError, MundaneContext, FREE_ACTION_RESOLUTION_POLICY_VERSION, SKILL_LABELS_RU,
+    free_action_resolution_policy, free_action_success_promise, harmless_free_action_reading, has_recognized_free_action_approach, impossible_manual_feat_refusal, interpret_free_action, loot_approach_destination, mundane_action_outcome, passage_destination_place, previous_failed_attempt, resolve_corpse_search,
+    resolve_exploration_command, resolve_hazard_contact, resolve_inventory_transfer, resolve_pickpocket, roleplay_speech_reading, situation_fingerprint, stakes_for, unavailable_hazard_contact_reason, verify_means, FreeActionError, MundaneContext, FREE_ACTION_RESOLUTION_POLICY_VERSION, SKILL_LABELS_RU,
 };
 use sk_agents::lore_author::LoreAuthor;
 use sk_agents::narrator::{Narrator, RenderOptions};
@@ -60,7 +60,7 @@ use sk_rules::normalize::normalize_campaign_state;
 use sk_rules::pause::Halt;
 use sk_rules::preview_checks::preview_d20_check;
 use sk_rules::resolve::api::RulesEngine;
-use sk_scenario::campaign_scenario::{scenario_encounter_end_reason, scenario_ending};
+use sk_scenario::campaign_scenario::{scenario_encounter_end_reason, scenario_ending, scenario_inspection_for_prop};
 use sk_scene_base::scene_requirements::SCENE_REQUIREMENT_KINDS;
 use sk_social::npc_social::npc_profile_at_world_time;
 use sk_society::campaign_stories::{campaign_mode_for, PERSISTENT_WORLD_OBJECTIVE};
@@ -68,7 +68,7 @@ use sk_store::executor::Journal;
 use sk_store::{CommitRequest, CommitResult, EventStore, LoadOptions, Loaded, StoreError, StoreResult};
 use sk_story::campaign_loop_policy::{assemble_social_npc, authorize_director_intent, completed_downtime, director_progress_fingerprint, next_world_map_destination, pacing_for_director_intent, plan_server_travel};
 use sk_story::intent_parser::classify_free_action_kind;
-use sk_tactical::scene_interactions::{nearest_scene_object_command, scene_interaction_narration};
+use sk_tactical::scene_interactions::{nearest_scene_object_command_with_scenario, scene_interaction_narration};
 use sk_tactics::party_tactics::{plan_hero_reaction, plan_hero_turn};
 use sk_turns::npc_turn_scheduler::plan_npc_turn;
 use sk_world_story::autonomous_campaign::{normalize_director_intent, server_reputation_delta, DirectorIntentError, SCENE_RESOLUTION_EVENT_SCHEMA_VERSION};
@@ -565,6 +565,16 @@ fn hero_name_for_text(state: &Value, actor_id: &str) -> String {
     } else {
         name
     }
+}
+
+/// `castableSpellNames(state, actorId)`: заклинания, которые герой может
+/// сотворить; `None` — у героя нет списка карточек (аудит 2026-11-26).
+/// Карточки не хранятся (урок 2): записанные или выведенные из каталога.
+fn castable_spell_names(state: &Value, actor_id: &str) -> Option<Vec<String>> {
+    let hero = list(get(Some(state), "players")).iter().find(|entry| js::string(get(Some(entry), "id")) == actor_id)?;
+    let spells = sk_rules::derived::read(Some(state), hero, sk_rules::derived::COMBAT_SPELLS)?;
+    let spells = spells.as_array()?;
+    Some(spells.iter().filter(|spell| !js::is_false(get(Some(spell), "prepared")) && !clean(get(Some(spell), "name"), 80).is_empty()).map(|spell| clean(get(Some(spell), "name"), 80)).collect())
 }
 
 fn quests(state: &Value) -> &[Value] {
@@ -2120,6 +2130,13 @@ impl AutonomousCampaignOrchestrator {
             map.insert("duplicate".into(), Value::Bool(js::truthy(commit.get("duplicate"))));
             object(map)
         };
+        let reject_unavailable = |narration: String| -> OrchestratorResult<Value> {
+            let commit = run(vec![declaration.clone()])?;
+            verify_duplicate(Some(&commit), false)?;
+            let mut reply = committed_reply(meta, "rejected", str_value(narration), &commit);
+            reply["rejected"] = Value::Bool(true);
+            Ok(reply)
+        };
 
         let actor = game::find_actor(state, &actor_id);
         let incapacitating = if actor.is_some() { incapacitating_condition_for(state, &actor_id) } else { None };
@@ -2268,6 +2285,9 @@ impl AutonomousCampaignOrchestrator {
             verify_duplicate(Some(&commit), false)?;
             return Ok(committed_reply(None, "clarification", str_value("Опишите действие подробнее: что делает герой, с чем или с кем и какого результата хочет добиться."), &commit));
         }
+        if let Some(narration) = impossible_manual_feat_refusal(&action) {
+            return reject_unavailable(narration);
+        }
         if kind_is("physically_impossible") {
             let commit = run(vec![declaration.clone()])?;
             verify_duplicate(Some(&commit), false)?;
@@ -2283,10 +2303,38 @@ impl AutonomousCampaignOrchestrator {
         let position = game::actor_position(state, &actor_id).map(|point| json!({ "x": point.x, "y": point.y })).unwrap_or(Value::Null);
         let revealed = revealed_prop_predicate(state);
         let action_value = str_value(action.clone());
-        let named_scene_object = nearest_scene_object_command(Some(&Value::Array(scene_props.clone())), Some(&position), Some(&action_value));
+        let mut scenario_clues = Map::new();
+        let location_id = js::s(at(Some(state), &["scene", "location_id"]));
+        if !location_id.is_empty() {
+            for prop in &scene_props {
+                let prop_id = js::s(get(Some(prop), "id"));
+                if !prop_id.is_empty() {
+                    let location = if location_id.is_empty() { prop_id.split(':').next().unwrap_or("") } else { &location_id };
+                    if let Some(clue) = scenario_inspection_for_prop(state, location, &prop_id) {
+                        scenario_clues.insert(prop_id, clue);
+                    }
+                }
+            }
+        }
+        let scenario_clues = Value::Object(scenario_clues);
+        let authored_scene_object = get(request.intent.as_ref(), "authored_scene_object")
+            .filter(|value| value.is_object()).cloned();
+        let authored_ids: std::collections::HashSet<String> = scenario_clues.as_object()
+            .map(|clues| clues.keys().cloned().collect()).unwrap_or_default();
+        let named_scene_object = authored_scene_object.clone().or_else(|| {
+            let ordinary: Vec<Value> = scene_props.iter()
+                .filter(|prop| !authored_ids.contains(&js::s(get(Some(prop), "id"))))
+                .cloned().collect();
+            nearest_scene_object_command_with_scenario(Some(&Value::Array(ordinary)), Some(&position), Some(&action_value), Some(&scenario_clues))
+        });
         let scene_object_command = if named_scene_object.is_some() {
             let visible: Vec<Value> = scene_props.iter().filter(|prop| revealed.test(prop)).cloned().collect();
-            nearest_scene_object_command(Some(&Value::Array(visible)), Some(&position), Some(&action_value))
+            if authored_scene_object.is_some() {
+                let prop_id = js::s(named_scene_object.as_ref().and_then(|value| value.get("prop_id")));
+                visible.into_iter().find(|prop| js::s(get(Some(prop), "id")) == prop_id).map(|_| named_scene_object.clone().unwrap())
+            } else {
+                nearest_scene_object_command_with_scenario(Some(&Value::Array(visible)), Some(&position), Some(&action_value), Some(&scenario_clues))
+            }
         } else {
             None
         };
@@ -2323,6 +2371,8 @@ impl AutonomousCampaignOrchestrator {
         };
         if verified_roll.is_some() {
             assert_free_action_confirmation(roll_context, &action, Some(&Value::from(loaded.state_version)))?;
+        } else if let Some(reason) = unavailable_hazard_contact_reason(state, &actor_id, &action, &deterministic_reading) {
+            return reject_unavailable(format!("{reason} Действие не выполнено. Попытка ничего не расходует."));
         }
         let harmless_reading = match harmless_free_action_reading(state, &actor_id, &action) {
             Some(reading) => Some(reading),
@@ -2440,9 +2490,13 @@ impl AutonomousCampaignOrchestrator {
             return Ok(committed_reply(meta, "counter_offer", str_value(missing_text(&hazard_means)), &commit));
         }
         if contact_status == "unavailable" {
+            let reason = js::s(get(hazard_contact.as_ref(), "reason"));
+            if is_str(get(hazard_contact.as_ref(), "relation"), "contact") && !is_str(get(hazard_contact.as_ref(), "hazard_id"), "unknown") {
+                return reject_unavailable(format!("{reason} Действие не выполнено. Попытка ничего не расходует."));
+            }
             let commit = run(vec![declaration.clone()])?;
             verify_duplicate(Some(&commit), false)?;
-            let narration = format!("{} Уточните место или сначала подойдите ближе; действие пока не выполнено.", js::string(get(hazard_contact.as_ref(), "reason")));
+            let narration = format!("{reason} Уточните место или сначала подойдите ближе; действие пока не выполнено.");
             return Ok(committed_reply(meta, "clarification", str_value(narration), &commit));
         }
         if let Some(hazard) = hazard_contact.as_ref().filter(|_| contact) {
@@ -2645,6 +2699,7 @@ impl AutonomousCampaignOrchestrator {
                         in_combat: js::is_true(at(Some(state), &["mechanics", "combat", "active"])),
                         npc_names,
                         onward: next_world_map_destination(state).unwrap_or_default(),
+                        spell_names: castable_spell_names(state, &actor_id),
                     },
                 )
             } else {

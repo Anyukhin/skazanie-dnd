@@ -171,12 +171,11 @@ test('тесты, поднимающие сервер, не стучатся в 
   assert.deepEqual(offenders, [])
 })
 
-test('набор test/kit — признанная точка запуска: его spawn строит env через isolatedServerEnv', () => {
+test('набор test/kit не запускает архивный JS-сервер, а его запуски бинаря чисты', () => {
+  // С 2026-11-27 JS-сервер в архиве (archive/js-server): набор поднимает только бинарь Rust.
   const kit = readFileSync(join(testDir, 'kit', 'http.mjs'), 'utf8')
-  const launches = [...kit.matchAll(SERVER_LAUNCH)]
-  assert.equal(launches.length, 1, 'набор запускает сервер ровно в одном месте')
+  assert.equal([...kit.matchAll(SERVER_LAUNCH)].length, 0, 'набор больше не запускает server/index.mjs')
   assert.deepEqual(networkOffences('kit/http.mjs', kit), [])
-  assert.match(kit.slice(launches[0].index), /^[^]*?env:\s*isolatedServerEnv\(/u)
 })
 
 test('бинарь Rust набор запускает в одном месте и тоже через isolatedServerEnv', () => {

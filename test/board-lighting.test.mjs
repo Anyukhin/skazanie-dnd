@@ -208,7 +208,9 @@ test('источниками света считаются только огне
     const map = roomMap()
     addProp(map, { id: 'barrel', assetId: 'barrel', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
     addProp(map, { id: 'torch', assetId: 'torch', x: 3.5, y: 1.5, footprint: [{ x: 3, y: 1 }] })
+    addProp(map, { id: 'fallen', assetId: 'guard_brazier', x: 4.5, y: 1.5, state: 'toppled' })
+    addProp(map, { id: 'wick', assetId: 'desk_candlestick', x: 5.5, y: 1.5 })
     return map
   })()))
-  assert.deepEqual(sources.map((source) => [source.x, source.y]), [[3, 1]], 'бочка светиться не обязана')
+  assert.deepEqual(sources.map((source) => [source.x, source.y]), [[3, 1], [5, 1]], 'горят факел и свеча')
 })

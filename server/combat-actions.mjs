@@ -48,7 +48,7 @@ const CLASS_URL = Object.freeze({
   sorcerer: 'https://www.dnd.su/class/101-sorcerer/', warlock: 'https://www.dnd.su/class/104-warlock/', wizard: 'https://www.dnd.su/class/105-wizard/',
 })
 
-const VERIFIED_ACTION_EFFECTS = new Set(['stand_up', 'break_free', 'steady_nerves', 'extinguish_flames', 'dash', 'check', 'contest', 'heal', 'weapon_attack', 'cleanse', 'restore_action', 'stabilize', 'first_aid'])
+const VERIFIED_ACTION_EFFECTS = new Set(['stand_up', 'break_free', 'steady_nerves', 'extinguish_flames', 'dash', 'check', 'contest', 'heal', 'weapon_attack', 'cleanse', 'restore_action', 'stabilize', 'first_aid', 'awaken'])
 const DEFAULT_PARTIAL_ACTION_NOTE = 'Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.'
 const action = (id, name, options = {}) => {
   const effectKind = options.effect?.kind
@@ -77,6 +77,9 @@ const COMMON_ACTIONS = Object.freeze([
   action('dodge', 'Уклонение', { category: 'common', description: 'Атаки по вам совершаются с помехой до начала следующего хода.', effect: { kind: 'condition', condition: 'dodging', duration: 'until-next-turn' } }),
   action('hide', 'Засада', { category: 'common', description: 'Проверка Ловкости (Скрытность), чтобы получить преимущество из укрытия.', effect: { kind: 'check', ability: 'dex', skill: 'stealth' } }),
     action('help', 'Помощь', { category: 'common', target: 'ally', range: 5, description: 'Союзник получает преимущество на следующую атаку.', effect: { kind: 'condition', condition: 'helped', duration: 'until-used' } }),
+  action('awaken', 'Разбудить', { category: 'common', target: 'ally', range: 5,
+    description: 'Действием разбудить союзника рядом. Снимает с него «Усыпление» или «Гипнотический узор», если выбранный эффект принадлежит этому заклинанию.',
+    effect: { kind: 'awaken', spellChoices: ['sleep', 'hypnotic-pattern'] } }),
     action('stabilize', 'Стабилизировать', { category: 'common', target: 'ally', range: 5, description: 'Проверка Мудрости (Медицина) СЛ 10, чтобы стабилизировать союзника с 0 ОЗ.', effect: { kind: 'stabilize', ability: 'wis', skill: 'medicine', difficulty: 10 } }),
     action('first-aid', 'Первая помощь', { category: 'common', target: 'creature', range: 5, description: 'Проверка Мудрости (Медицина) СЛ 10, чтобы привести нокаутированное существо в сознание.', effect: { kind: 'first_aid', ability: 'wis', skill: 'medicine', difficulty: 10 } }),
   action('grapple', 'Захват', { category: 'common', target: 'enemy', range: 5, description: 'Состязание Атлетики против Атлетики или Акробатики; при успехе цель схвачена.', effect: { kind: 'contest', condition: 'grappled' } }),

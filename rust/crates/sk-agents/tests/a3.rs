@@ -211,9 +211,14 @@ fn pure_bundle(text: &str) -> Value {
         in_combat: false,
         npc_names: vec!["Старый Финн".into(), "Лида".into(), "Ждан".into(), "Четвёртый".into()],
         onward: "Скальный маяк".into(),
+        spell_names: None,
     };
     out.insert("mundaneCtx".into(), or_null(fa::mundane_action_outcome(text, &context)));
     out.insert("mundaneCombat".into(), or_null(fa::mundane_action_outcome(text, &MundaneContext { in_combat: true, ..MundaneContext::default() })));
+    let spells = ["Волшебная стрела", "Огненный снаряд", "Щит", "Свет", "Малая иллюзия", "Сон", "Огонь фей", "Маг рука", "Ледяной луч"];
+    let with_spells = MundaneContext { hero_name: "Мира".into(), spell_names: Some(spells.iter().map(|name| name.to_string()).collect()), ..MundaneContext::default() };
+    out.insert("mundaneSpells".into(), or_null(fa::mundane_action_outcome(text, &with_spells)));
+    out.insert("mundaneNoMagic".into(), or_null(fa::mundane_action_outcome(text, &MundaneContext { spell_names: Some(Vec::new()), ..MundaneContext::default() })));
     out.insert("fingerprint".into(), json!(fa::attempt_fingerprint("hero", text, &utf16_head(text, 20))));
     out.insert("travel".into(), json!(clean_travel_destination(Some(&value))));
     out.insert("detail".into(), json!(clean_success_detail(Some(&value))));

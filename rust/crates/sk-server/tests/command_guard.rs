@@ -131,6 +131,33 @@ fn whitelists_reject_client_mechanics() {
 }
 
 #[test]
+fn spell_guard_preserves_ordered_magic_missile_targets_and_rejects_other_spells() {
+    let user = owner();
+    let campaign = state();
+    let caller = Caller::new(&user, &false);
+    let command = json!({
+        "command_type": "CastSpell", "actor_id": "hero", "spell_id": "magic-missile",
+        "target_ids": ["weak", "strong"], "missile_target_ids": ["weak", "weak", "weak", "strong"]
+    });
+    let sanitized = guard::sanitize_player_combat_command(&caller, &campaign, &command, false).unwrap();
+    assert_eq!(sanitized["missile_target_ids"], json!(["weak", "weak", "weak", "strong"]));
+    let forbidden = json!({ "command_type": "CastSpell", "actor_id": "hero", "spell_id": "fireball", "missile_target_ids": ["weak"] });
+    assert_eq!(code(&guard::sanitize_player_combat_command(&caller, &campaign, &forbidden, false)), Some("INVALID_MISSILE_TARGETS"));
+}
+
+#[test]
+fn awaken_guard_preserves_selected_spell_only_for_awaken() {
+    let user = owner();
+    let campaign = state();
+    let caller = Caller::new(&user, &false);
+    let command = json!({ "command_type": "UseCombatAction", "actor_id": "hero", "action_id": "awaken", "target_id": "mage", "wake_spell_id": "hypnotic-pattern" });
+    let sanitized = guard::sanitize_player_combat_command(&caller, &campaign, &command, false).unwrap();
+    assert_eq!(sanitized["wake_spell_id"], "hypnotic-pattern");
+    let invalid = json!({ "command_type": "UseCombatAction", "actor_id": "hero", "action_id": "dash", "wake_spell_id": "sleep" });
+    assert_eq!(code(&guard::sanitize_player_combat_command(&caller, &campaign, &invalid, false)), Some("INVALID_WAKE_SPELL"));
+}
+
+#[test]
 fn merchant_route_id_wins_and_price_is_dropped() {
     let user = owner();
     let caller = Caller::new(&user, &false);

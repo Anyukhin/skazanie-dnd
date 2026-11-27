@@ -2730,6 +2730,11 @@ fn stem(token: &str) -> String {
     }
 }
 
+/// Слова для поиска по памяти без повторов, с учётом склонения.
+pub fn memory_search_terms(value: &str) -> HashSet<String> {
+    tokenize(value).iter().map(|word| stem(word)).collect()
+}
+
 const SYNONYM_GROUPS: [&[&str]; 6] = [
     &["город", "поселение", "столица", "деревня", "town", "city", "settlement"],
     &["дорога", "путь", "маршрут", "тракт", "trail", "route"],
@@ -2956,8 +2961,9 @@ fn finish(record: Record, score: f64) -> Value {
 /// (`retrieveWorldMemory`). Видимость и время фильтруются в
 /// [`world_memory_for_viewer`] до ранжирования, поэтому ни порядок, ни шаг
 /// по графу не открывают скрытого. `options` — `{ query, limit, asOfMinutes,
-/// neighbours, whenUnmatched }`: без совпадений `whenUnmatched: 'all'` (по
-/// умолчанию) даёт первые записи по id, `'none'` — пустой ответ.
+/// neighbours, whenUnmatched, kind }`: `kind` ограничивает выдачу после
+/// расчёта графового усиления и до лимита. Без совпадений `whenUnmatched:
+/// 'all'` (по умолчанию) даёт первые записи по id, `'none'` — пустой ответ.
 pub fn retrieve_world_memory(input: &Value, viewer: &Value, options: &Value) -> Vec<Value> {
     let option = |key: &str| get(Some(options), key);
     let mut scoped = spread_object(Some(viewer));
@@ -2975,8 +2981,11 @@ pub fn retrieve_world_memory(input: &Value, viewer: &Value, options: &Value) -> 
         value => js::truthy(value),
     };
     let when_unmatched_none = is_str(option("whenUnmatched"), "none");
+    let kind = option("kind").filter(|kind| js::truthy(Some(*kind)));
+    let matches_kind = |record: &Record| kind.is_none() || record.value.get("kind") == kind;
     let mut records = retrieval_records(&memory);
     let unordered = |mut records: Vec<Record>| -> Vec<Value> {
+        records.retain(&matches_kind);
         records.sort_by(|left, right| jstext::locale_compare(&left.id, &right.id));
         records.into_iter().take(maximum).map(|record| finish(record, 0.0)).collect()
     };
@@ -3000,7 +3009,7 @@ pub fn retrieve_world_memory(input: &Value, viewer: &Value, options: &Value) -> 
             let boost = record.anchors.iter().map(|entity_id| activation.get(entity_id).copied().unwrap_or(0.0)).fold(0.0, f64::max);
             (record, lexical + boost)
         })
-        .filter(|(_, score)| *score > 0.0)
+        .filter(|(record, score)| *score > 0.0 && matches_kind(record))
         .collect();
     ranked.sort_by(|(left, left_score), (right, right_score)| {
         right_score.partial_cmp(left_score).unwrap_or(std::cmp::Ordering::Equal).then_with(|| jstext::locale_compare(&left.id, &right.id))

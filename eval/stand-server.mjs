@@ -1,8 +1,8 @@
 /**
- * Выбор реализации сервера для стендов `eval/` (`--impl js|rust`).
+ * Сервер для стендов `eval/`: бинарь Rust (`--impl rust`, по умолчанию).
  *
- * `js` — прежний путь каждого стенда (`server/index.mjs` дочерним процессом),
- * его стенд запускает сам, без изменений. `rust` — бинарь переноса тем же
+ * Прежний режим `js` (`server/index.mjs`) с 2026-11-27 в архиве
+ * (`archive/js-server/`) и отвергается. `rust` — бинарь тем же
  * путём, что у HTTP-набора тестов (`test/kit/http.mjs`): путь из
  * `SKAZANIE_RUST_SERVER_BIN`, окружение `isolatedServerEnv` (пустой
  * `ROUTERAI_API_KEY`, `NODE_ENV=test`, 127.0.0.1), свой временный каталог и
@@ -16,20 +16,20 @@ import { REPO_ROOT, isolatedServerEnv, rustServerBinary } from '../test/kit/http
 import { readJournal } from '../test/kit/journal.mjs'
 import { freePort } from '../test/free-port.mjs'
 
-export const STAND_IMPLS = Object.freeze(['js', 'rust'])
+export const STAND_IMPLS = Object.freeze(['rust'])
 
 /**
- * `--impl js|rust` из аргументов; без флага — `js`.
+ * `--impl rust` из аргументов; без флага — тоже `rust`.
  *
  * @param {string[]} argv
- * @returns {'js' | 'rust'}
+ * @returns {'rust'}
  */
 export function standImpl(argv) {
   const index = argv.indexOf('--impl')
-  const impl = index >= 0 ? argv[index + 1] : 'js'
-  if (!STAND_IMPLS.includes(impl)) throw new Error(`--impl ${impl ?? ''}: допустимы ${STAND_IMPLS.join(', ')}`)
-  if (impl === 'rust') rustServerBinary()
-  return /** @type {'js' | 'rust'} */ (impl)
+  const impl = index >= 0 ? argv[index + 1] : 'rust'
+  if (!STAND_IMPLS.includes(impl)) throw new Error(`--impl ${impl ?? ''}: допустим только rust — JS-сервер в архиве (archive/js-server)`)
+  rustServerBinary()
+  return /** @type {'rust'} */ (impl)
 }
 
 export { freePort }

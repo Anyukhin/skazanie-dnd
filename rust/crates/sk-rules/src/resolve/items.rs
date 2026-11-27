@@ -209,6 +209,8 @@ pub fn use_item(r: &mut Resolve<'_>) -> Flow {
             target: &target,
             slot_level: command.get("charges_to_spend"),
             damage_type: &damage_type,
+            projectile_count_override: None,
+            missile_roll_override: None,
             source_item: Some(&item),
         })?;
     }

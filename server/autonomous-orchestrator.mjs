@@ -30,7 +30,7 @@ import {
   pacingForDirectorIntent,
   planServerTravel,
 } from './campaign-loop-policy.mjs'
-import { scenarioEncounterEndReason, scenarioEnding } from './campaign-scenario.mjs'
+import { scenarioEncounterEndReason, scenarioEnding, scenarioSceneObjectClue } from './campaign-scenario.mjs'
 import { scenarioStrangerNpcId, scenarioStrangerStage } from './scenario-attention.mjs'
 import { partyDecisionOpenedEvent } from './party-decision.mjs'
 import { unknownDestinationReply } from './player-request-router.mjs'
@@ -71,6 +71,7 @@ import {
   freeActionApproachPlan,
   freeActionSuccessPromise,
   hasRecognizedFreeActionApproach,
+  impossibleManualFeatRefusal,
   interpretFreeAction,
   harmlessFreeActionReading,
   mundaneActionOutcome,
@@ -87,6 +88,7 @@ import {
   situationFingerprint,
   SKILL_LABELS_RU,
   stakesFor,
+  unavailableHazardContactReason,
   verifyMeans,
 } from './free-action-adjudication.mjs'
 import { DISCOVERY_SKILLS, corpseClueCommand, freeActionDiscoveryCommands, freeActionSurfaceCommands, hasUnambiguousAuthoredClue, narratorFailureDetailFor, thoroughSearchOutcome } from './world-memory.mjs'
@@ -143,6 +145,19 @@ function event(commandId, type, payload = {}, targets = [], visibility = 'party'
 function heroNameForText(state, actorId) {
   const hero = (state?.players ?? []).find((entry) => String(entry?.id) === String(actorId))
   return clean(hero?.character || hero?.name, 80) || 'герой'
+}
+
+/**
+ * Имена заклинаний, которые герой может сотворить (подготовленные и
+ * заговоры), для честного ответа на заклинание, которого у него нет.
+ * `undefined` — список неизвестен: ответа о заклинании тогда нет.
+ */
+function castableSpellNames(state, actorId) {
+  const hero = (state?.players ?? []).find((entry) => String(entry?.id) === String(actorId))
+  if (!Array.isArray(hero?.combatSpells)) return undefined
+  return hero.combatSpells
+    .filter((spell) => spell?.prepared !== false && clean(spell?.name, 80))
+    .map((spell) => clean(spell.name, 80))
 }
 
 function openQuest(state, requestedId = '') {
@@ -1141,6 +1156,17 @@ export class AutonomousCampaignOrchestrator {
         throw error
       }
     }
+    const rejectUnavailable = async (narration) => {
+      const commit = await run([declaration])
+      verifyDuplicate(commit)
+      return {
+        context_metadata: actionContextMetadata,
+        kind: 'rejected', narration, rejected: true, turn_consumed: false, admin_commands: 0,
+        state: commit.state ?? loaded.state, state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [], commands: commit.commands ?? [], rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
     const actor = findActor(loaded.state, actorId)
     const incapacitating = actor ? incapacitatingConditionFor(loaded.state, actorId) : null
     if (!isLivingActor(actor) || incapacitating) {
@@ -1289,6 +1315,8 @@ export class AutonomousCampaignOrchestrator {
         duplicate: Boolean(commit.duplicate),
       }
     }
+    const impossibleFeat = impossibleManualFeatRefusal(text)
+    if (impossibleFeat) return rejectUnavailable(impossibleFeat)
     if (freeActionKind === 'physically_impossible') {
       const commit = await run([declaration])
       verifyDuplicate(commit)
@@ -1320,13 +1348,31 @@ export class AutonomousCampaignOrchestrator {
     // сундук» работала бы оракулом по неразведанной части подземелья: игрок
     // называл бы предметы, которых на его карте ещё нет, и узнавал, есть ли они.
     const revealedProp = revealedPropPredicate(loaded.state)
-    const namedSceneObject = nearestSceneObjectCommand({ props: sceneProps, actorPosition: sceneActorPosition, text })
-    const sceneObjectCommand = namedSceneObject
-      ? nearestSceneObjectCommand({
-          props: sceneProps.filter((prop) => revealedProp(prop)),
+    const sceneLocationId = loaded.state.scene?.location_id ?? loaded.state.scene?.locationId ?? ''
+    const scenarioClueForProp = (prop) => {
+      const propId = String(prop?.id ?? '')
+      const location = sceneLocationId || propId.split(':', 1)[0]
+      return scenarioSceneObjectClue(loaded.state, location, propId)
+    }
+    const authoredIds = new Set(sceneProps.filter((prop) => scenarioClueForProp(prop)).map((prop) => String(prop?.id ?? '')))
+    const namedSceneObject = intent?.authored_scene_object && typeof intent.authored_scene_object === 'object'
+      ? intent.authored_scene_object
+      : nearestSceneObjectCommand({
+          props: sceneProps.filter((prop) => !authoredIds.has(String(prop?.id ?? ''))),
           actorPosition: sceneActorPosition,
           text,
         })
+    const sceneObjectCommand = namedSceneObject
+      ? intent?.authored_scene_object && typeof intent.authored_scene_object === 'object'
+        ? sceneProps.some((prop) => String(prop?.id ?? '') === String(namedSceneObject.prop_id ?? '') && revealedProp(prop))
+          ? namedSceneObject
+          : null
+        : nearestSceneObjectCommand({
+            props: sceneProps.filter((prop) => revealedProp(prop)),
+            actorPosition: sceneActorPosition,
+            text,
+            scenarioClueForProp,
+          })
       : null
     // Предмет на карте есть, но отряд его ещё не видел. Это не выдумка игрока и
     // не путь в импровизацию: честный ответ — «отсюда такого не видно», ход при
@@ -1334,7 +1380,9 @@ export class AutonomousCampaignOrchestrator {
     if (namedSceneObject && !sceneObjectCommand) {
       return {
         kind: 'clarification',
-        narration: 'Отсюда такого не видно. Подойдите ближе или осмотритесь: на вашей карте этого места ещё нет.',
+        narration: intent?.authored_scene_object
+          ? 'С этого места вы не видите, что можно осмотреть. Исследуйте окрестности.'
+          : 'Отсюда такого не видно. Подойдите ближе или осмотритесь: на вашей карте этого места ещё нет.',
         turn_consumed: false,
         admin_commands: 0,
         state: loaded.state,
@@ -1406,6 +1454,10 @@ export class AutonomousCampaignOrchestrator {
       ? verifiedRoll.context.reading ?? null
       : null
     if (verifiedRoll) assertFreeActionConfirmation(verifiedRoll.context, text, loaded.state_version)
+    if (!verifiedRoll) {
+      const reason = unavailableHazardContactReason(loaded.state, actorId, text, deterministicReading)
+      if (reason) return rejectUnavailable(`${reason} Действие не выполнено. Попытка ничего не расходует.`)
+    }
     const harmlessReading = harmlessFreeActionReading(loaded.state, actorId, text)
       ?? (intent?.roleplay_speech === true ? roleplaySpeechReading(loaded.state, text) : null)
     const authoredReading = deterministicReading.source === 'deterministic-pattern'
@@ -1450,7 +1502,7 @@ export class AutonomousCampaignOrchestrator {
     // группы (`server/index.mjs`, по `takeRouteHint`).
     // Повтор уже исполненной заявки маршрут не пересчитывает: исход записан, и
     // другой ответ модели не должен подменить его уточнением.
-    const routed = localReading || previousCommit?.events?.length ? null : this.routedFreeAction({
+    const routed = intent?.authored_scene_object || localReading || storedReading || harmlessReading || previousCommit?.events?.length ? null : this.routedFreeAction({
       loaded, actorId, text, reading: proposedReading, idempotencyKey, campaignId,
     })
     if (routed) return { context_metadata: actionContextMetadata, ...routed }
@@ -1566,6 +1618,9 @@ export class AutonomousCampaignOrchestrator {
       }
     }
     if (hazardContact?.status === 'unavailable') {
+      if (hazardContact.relation === 'contact' && hazardContact.hazard_id !== 'unknown') {
+        return rejectUnavailable(`${hazardContact.reason} Действие не выполнено. Попытка ничего не расходует.`)
+      }
       const commit = await run([declaration])
       verifyDuplicate(commit)
       return {
@@ -1798,10 +1853,8 @@ export class AutonomousCampaignOrchestrator {
       // вместо общего «не понял» (плейтест 2026-10-04, QP-06). Раскрытие
       // предметов — по авторитетной карте, как у разбора пропсов выше.
       const unknownPlace = unknownDestinationReply(text, loaded.state, { isRevealed: revealedPropPredicate(loaded.state) })
-      // Вне боя уточнение называет конкретные способы добиться результата, а
-      // невозможное — честно; общее «не понял» осталось только для боя
-      // (см. mundaneActionOutcome). Механика уточнения прежняя: ничего не
-      // коммитится, короткий ответ игрока продолжает заявку.
+      // Вне боя уточнение называет конкретные способы добиться результата.
+      // Короткий ответ игрока продолжает заявку.
       const sceneLocation = clean(loaded.state.scene?.location, 180).toLocaleLowerCase('ru')
       const mundane = unknownPlace ? null : mundaneActionOutcome(text, {
         heroName: heroNameForText(loaded.state, actorId),
@@ -1810,6 +1863,7 @@ export class AutonomousCampaignOrchestrator {
           .filter((npc) => npc?.available !== false && npc?.visibility !== 'gm_only' && clean(npc?.location, 180).toLocaleLowerCase('ru') === sceneLocation)
           .map((npc) => npc.name),
         onward: nextWorldMapDestination(loaded.state) ?? '',
+        spellNames: castableSpellNames(loaded.state, actorId),
       })
       return {
         context_metadata: actionContextMetadata,

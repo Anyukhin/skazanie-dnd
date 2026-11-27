@@ -41,3 +41,5 @@ sk-narration = { path = "../sk-narration" }
 
 [dev-dependencies]
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
+# Сторож перестройки карты (`tests/map_import_rules.rs`): сцена-здание.
+sk-buildings = { path = "../sk-buildings" }

@@ -23,7 +23,6 @@ import { worldClockFor } from '../server/weather.mjs'
 
 const views = readFileSync(new URL('../src/AppViews.tsx', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
-const server = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
 
 function campaign() {
   return normalizeCampaignState({
@@ -113,15 +112,3 @@ test('лента ходов мира живёт в админке рядом с 
 
 // Карточка переживает перезапуск сервера — поведение в обоих режимах:
 // test/hit-dice-api.test.mjs (долгий отдых → «Пока вас не было…» → restart).
-// JS-only: проверка читает текст server/index.mjs. После переключения на Rust она
-// проверяла бы мёртвый код — удалить вместе с server/index.mjs (С19). Сборка в одной точке коммита в Rust —
-// candidates_for в rust/crates/sk-server/src/journal.rs.
-test('JS-only (server/index.mjs): карточка летописи хранится с репликой и собирается в одной точке коммита', () => {
-  // Врезка хранится вместе с репликой, как бросок и ставки: иначе после
-  // перезагрузки от ночи остался бы серый текст без карточки.
-  assert.match(server, /function journalOffscreen\(offscreen\)/u)
-  assert.match(server, /\.\.\.\(storedOffscreen \? \{ offscreen: storedOffscreen \} : \{\}\)/u)
-  // Собирается она в одной точке коммита, а не на каждом маршруте: минуты
-  // двигают и привал, и сутки под замком, и Режиссёр.
-  assert.match(server, /events.*\.map\(offscreenChronicleEntry\)/u)
-})

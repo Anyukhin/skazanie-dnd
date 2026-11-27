@@ -732,18 +732,28 @@ function ReactionPrompt({ actorName, sourceName, window, clock, busy, beneficiar
   </section></div>
 }
 
-function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve, onContinueToEpilogue }: {
+function DeathScreen({ heroes, partyDefeated, busy, error, onResolve, onClose, onContinueToEpilogue }: {
   heroes: Player[]
   partyDefeated: boolean
   busy: boolean
   error: string | null
-  canResolve: (heroId: string) => boolean
   onResolve: (heroId: string, resolution: 'resurrect' | 'replace', replacementName?: string) => void
+  onClose: () => void
   onContinueToEpilogue: () => void
 }) {
   const [replacementNames, setReplacementNames] = useState<Record<string, string>>({})
   const [replacementOpen, setReplacementOpen] = useState<Record<string, boolean>>({})
   const [localError, setLocalError] = useState<string | null>(null)
+  const dialog = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    const element = dialog.current!
+    element.showModal()
+    return () => element.close()
+  }, [])
+  const close = () => {
+    dialog.current?.close()
+    onClose()
+  }
 
   const replace = (hero: Player) => {
     const name = String(replacementNames[hero.id] ?? '').trim()
@@ -755,35 +765,35 @@ function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve
     onResolve(hero.id, 'replace', name)
   }
 
-  return <div className={`death-screen-backdrop ${partyDefeated ? 'party-defeated' : ''}`}>
-    <section className="death-screen" role="dialog" aria-modal="true" aria-label={partyDefeated ? 'История завершена' : 'Судьба погибшего героя'}>
+  return <dialog ref={dialog} className={`death-screen-backdrop ${partyDefeated ? 'party-defeated' : ''}`} aria-label={partyDefeated ? 'История завершена' : 'Судьба погибшего героя'} onKeyDown={(event) => event.stopPropagation()} onCancel={(event) => { event.preventDefault(); if (!partyDefeated) close() }}>
+    <section className="death-screen">
+      {!partyDefeated && <button type="button" className="modal-close" aria-label="Закрыть окно судьбы героя" onClick={close}><X size={19} /></button>}
       <div className="death-emblem"><Skull size={39} /></div>
       <span className="death-eyebrow">{partyDefeated ? 'КОНЕЦ ИСТОРИИ' : 'СУДЬБА ГЕРОЯ'}</span>
       <h1>{partyDefeated ? 'Отряд погиб' : heroes.length > 1 ? 'Герои пали' : `${heroes[0]?.character ?? 'Герой'}: путь окончен`}</h1>
       <p>{partyDefeated
         ? 'В живых не осталось ни одного героя. Эта история завершена: действия, новые сцены и бои в этом мире больше недоступны.'
-        : 'Погибший герой больше не может действовать. Чтобы продолжить историю, воскресите его или приведите в отряд нового героя.'}</p>
+        : 'Погибший герой больше не может действовать. Вы можете воскресить его, создать нового героя или вернуться к сцене.'}</p>
 
       {!partyDefeated && <div className="fallen-heroes">{heroes.map((hero) => {
-        const controllable = canResolve(hero.id)
         const replacing = replacementOpen[hero.id] === true
         return <article key={hero.id} className="fallen-hero-card">
           <div className="fallen-hero-portrait" data-face={heroFaceMode(hero)} style={heroFaceStyle(hero)}>{!hasHeroPortrait(hero) && <HeroFaceInitials hero={hero} />}<Skull size={22} /></div>
           <div className="fallen-hero-name"><small>ПОГИБШИЙ ГЕРОЙ</small><strong>{hero.character}</strong><span>{playerRoleLabel(hero)}</span></div>
-          {controllable ? <div className="death-resolution-actions">
+          <div className="death-resolution-actions">
             <button className="resurrect-hero" disabled={busy} onClick={() => { setLocalError(null); onResolve(hero.id, 'resurrect') }}><Sparkles size={17} /><span><strong>Воскресить</strong><small>Вернётся с 1 ОЗ</small></span></button>
             {!replacing ? <button disabled={busy} onClick={() => setReplacementOpen((current) => ({ ...current, [hero.id]: true }))}><Users size={17} /><span><strong>Новый герой</strong><small>Заменит погибшего и откроет лист</small></span></button> : <div className="replacement-name-field">
               <input value={replacementNames[hero.id] ?? ''} maxLength={120} autoFocus placeholder="Имя нового героя" onChange={(event) => setReplacementNames((current) => ({ ...current, [hero.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') replace(hero) }} />
               <button disabled={busy} onClick={() => replace(hero)}><Check size={16} />Принять</button>
             </div>}
-          </div> : <em className="death-waiting"><LockKeyhole size={15} /> Решение принимает владелец героя или администратор.</em>}
+          </div>
         </article>
       })}</div>}
 
       {(localError || error) && <div className="death-error">{localError || error}</div>}
       {partyDefeated && <footer><div><button onClick={onContinueToEpilogue}><BookOpen size={16} />К эпилогу</button></div><small>Сначала зафиксирована судьба героев; дальше — итог всей истории.</small></footer>}
     </section>
-  </div>
+  </dialog>
 }
 
 function CampaignConclusionScreen({ status, epilogue, busy, canManage, onArchive, onChooseCampaign }: {
@@ -976,6 +986,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
   const [campaignControlBusy, setCampaignControlBusy] = useState(false)
   const [lifecycleError, setLifecycleError] = useState<string | null>(null)
+  const [openDeathCampaign, setOpenDeathCampaign] = useState<string | null>(null)
   const [reviewedPartyDefeat, setReviewedPartyDefeat] = useState<string | null>(null)
   const [levelUpCelebration, setLevelUpCelebration] = useState<ConfirmedLevelUp | null>(null)
   // Смена сцены объявляется плашкой: сервер менял карту молча, и игрок, нажав
@@ -1058,9 +1069,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const lifecycle = state.mechanics?.campaign_lifecycle
   const lifecycleStatus = lifecycle?.status ?? (partyDefeated ? 'failed' : 'active')
   const partyDefeatReviewed = reviewedPartyDefeat === state.sessionCode
-  const showDeathScreen = fallenHeroes.length > 0 && (!partyDefeated || !partyDefeatReviewed)
   const showConclusion = ['completed', 'failed', 'archived'].includes(lifecycleStatus)
-    && (fallenHeroes.length === 0 || (partyDefeated && partyDefeatReviewed))
+    && (!partyDefeated || partyDefeatReviewed || fallenHeroes.length === 0)
   const pacing = state.autonomy?.pacing
   const pacingLabels = { breather: 'Передышка', development: 'Развитие', escalation: 'Нарастание', climax: 'Кульминация' } as const
   const lastTravel = state.autonomy?.travel_history?.at(-1)
@@ -1075,6 +1085,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const accessibleHeroIds = isAdmin
     ? partyPlayers.map((player) => player.id)
     : (currentMembership?.heroIds ?? account.heroIds).filter((id) => partyIdSet.has(id))
+  const resolvableFallenHeroes = fallenHeroes.filter((hero) => accessibleHeroIds.includes(hero.id))
+  const canOpenDeathScreen = !partyDefeated && !showConclusion && resolvableFallenHeroes.length > 0
+  const showDeathScreen = partyDefeated
+    ? fallenHeroes.length > 0 && !partyDefeatReviewed
+    : canOpenDeathScreen && openDeathCampaign === state.sessionCode
+  useEffect(() => {
+    if (openDeathCampaign !== null && (!canOpenDeathScreen || openDeathCampaign !== state.sessionCode)) setOpenDeathCampaign(null)
+  }, [canOpenDeathScreen, openDeathCampaign, state.sessionCode])
   // Управлять админ может любым героем, но «своим» считается только
   // закреплённый за аккаунтом: на этом различии держится мастер создания.
   const ownedHeroIds = (currentMembership?.heroIds ?? account.heroIds ?? []).filter((id) => partyIdSet.has(id))
@@ -1486,6 +1504,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [state.sessionCode, state.partyMemberIds?.join(',')])
   useEffect(() => {
     if (!replacementEditorId || deadHeroIds.has(replacementEditorId)) return
+    setOpenDeathCampaign(null)
     setEditingPlayerId(replacementEditorId)
     setReplacementEditorId(null)
   }, [replacementEditorId, state.state_version])
@@ -1767,6 +1786,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         {pendingTacticalCommand && <section className="command-recovery-notice" role="status" aria-label="Результат действия неизвестен">
           <p>Ответ на действие «{pendingTacticalCommand.message}» не получен. Повтор запроса вернёт результат без повторного применения сохранённого действия.</p>
           <button type="button" disabled={tacticalBusy || directorBusy} onClick={() => { void retryPendingTacticalCommand() }}>{tacticalBusy ? 'Проверяем результат…' : 'Повторить запрос'}</button>
+        </section>}
+        {canOpenDeathScreen && <section className="command-recovery-notice" aria-label="Судьба павших">
+          <p>{resolvableFallenHeroes.map((hero) => hero.character).join(', ')} · {resolvableFallenHeroes.length === 1 ? 'герой погиб' : 'герои погибли'}</p>
+          <button type="button" aria-haspopup="dialog" onClick={() => setOpenDeathCampaign(state.sessionCode)}>Судьба героя</button>
         </section>}
         {view === 'room' && <div className={`game-area ${combatActive ? 'combat-active' : 'exploration-active'} ${state.isNarrating ? 'is-narrating' : ''} ${needsHeroSetup ? 'needs-hero-setup' : ''}`}>
           {needsHeroSetup && <section className="hero-setup-notice" aria-label="Подготовка героя">
@@ -2055,7 +2078,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         }}
       />}
       {reactionWindow && promptReactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={promptReactionWindow} clock={state.turn_clock} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} slotLevels={reactionSlotLevels} onChoose={(actionId, beneficiaryId, slotLevel) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId, undefined, slotLevel)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
-      {!campaignsOpen && showDeathScreen && <DeathScreen heroes={fallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} canResolve={(heroId) => isAdmin || accessibleHeroIds.includes(heroId)} onResolve={(heroId, resolution, replacementName) => { if (resolution === 'replace') setReplacementEditorId(heroId); resolveHeroDeath(heroId, resolution, replacementName) }} onContinueToEpilogue={() => setReviewedPartyDefeat(state.sessionCode)} />}
+      {!campaignsOpen && showDeathScreen && <DeathScreen heroes={resolvableFallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} onResolve={(heroId, resolution, replacementName) => {
+        if (resolution === 'replace') setReplacementEditorId(heroId)
+        void resolveHeroDeath(heroId, resolution, replacementName)
+      }} onClose={() => setOpenDeathCampaign(null)} onContinueToEpilogue={() => setReviewedPartyDefeat(state.sessionCode)} />}
       {!campaignsOpen && showConclusion && <CampaignConclusionScreen status={lifecycleStatus as 'completed' | 'failed' | 'archived'} epilogue={lifecycle?.epilogue} busy={lifecycleBusy} canManage={canManageLifecycle} onArchive={() => { void changeLifecycle('archive') }} onChooseCampaign={() => setCampaignsOpen(true)} />}
       {!campaignsOpen && !showDeathScreen && !showConclusion && levelUpCelebration && !(editingPlayerId === levelUpCelebration.playerId) && <LevelUpScreen
         levelUp={levelUpCelebration}

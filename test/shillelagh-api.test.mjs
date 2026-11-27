@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { shortestTacticalPath } from '../server/rules-engine.mjs'
+import { serverBatch } from './kit/fixtures.mjs'
 import { expectStatus, registerUser, setupAdmin, startTestServer } from './kit/http.mjs'
 
 const CAMPAIGN = 'SHILLELAGH-API'
@@ -23,13 +23,15 @@ function assertHeroCanContinue(state) {
     `Герой ${HERO} выбыл или недееспособен; положительная проверка заклинания невозможна`)
 }
 
-function nextMoveToward(state, targetId) {
+async function nextMoveToward(state, targetId) {
   const target = state.mechanics?.positions?.[targetId] ?? state.enemies?.find((enemy) => enemy.id === targetId)
   assert.ok(target, `Цель ${targetId} должна иметь авторитетную позицию`)
   const candidates = [[-1, 0], [1, 0], [0, -1], [0, 1]]
     .map(([dx, dy]) => ({ x: Number(target.x) + dx, y: Number(target.y) + dy }))
+  // Путь считает сервер (`shortestTacticalPath`), все кандидаты одним пакетом.
+  const routes = await serverBatch(candidates.map((destination) => ['shortestTacticalPath', state, HERO, destination]))
   const paths = candidates
-    .map((destination) => ({ destination, path: shortestTacticalPath(state, HERO, destination) }))
+    .map((destination, index) => ({ destination, path: routes[index] }))
     .filter((entry) => Array.isArray(entry.path) && entry.path.length > 0)
     .sort((left, right) => left.path.length - right.path.length)
   const best = paths[0]
@@ -163,7 +165,7 @@ test('обычный друид через API получает Shillelagh, де
     const enemyPosition = combatState.mechanics.positions?.[enemy.id] ?? enemy
     const distance = Math.max(Math.abs(Number(heroPosition.x) - Number(enemyPosition.x)), Math.abs(Number(heroPosition.y) - Number(enemyPosition.y))) * 5
     if (distance <= 5) break
-    const to = nextMoveToward(combatState, enemy.id)
+    const to = await nextMoveToward(combatState, enemy.id)
     const beforeMoveVersion = Number(combatState.state_version)
     combatState = expectStatus(await command(owner,
       `shillelagh-approach-${beforeMoveVersion}-${round}`,

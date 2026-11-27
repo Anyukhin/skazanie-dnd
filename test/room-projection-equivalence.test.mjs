@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { startTestServer } from './kit/http.mjs'
-import { canonicalProjection, compareProjection, projectionHash } from '../server/projection-integrity.mjs'
+import { compareProjection, serverBatch } from './kit/fixtures.mjs'
 
 /**
  * Шаг 1 плана `docs/agent-architecture-plan.md`: доказать инвариант
@@ -50,11 +50,13 @@ const cookie = (result) => result.response.headers.get('set-cookie')?.split(';')
  *
  * @param {Record<string, unknown>} authoritative
  * @param {Record<string, unknown>} projected
- * @returns {string[]}
+ * @returns {Promise<string[]>}
  */
-function divergedFields(authoritative, projected) {
-  const left = canonicalProjection(authoritative ?? {})
-  const right = canonicalProjection(projected ?? {})
+async function divergedFields(authoritative, projected) {
+  const [left, right] = await serverBatch([
+    ['canonicalProjection', authoritative ?? {}],
+    ['canonicalProjection', projected ?? {}],
+  ])
   return [...new Set([...Object.keys(left), ...Object.keys(right)])]
     .filter((field) => JSON.stringify(left[field]) !== JSON.stringify(right[field]))
     .sort()
@@ -151,13 +153,14 @@ test('комната после каждого события совпадает
     // инкрементальная проекция против полной, а не admin против игрока.
     const room = await request(baseUrl, `/api/rooms/${CODE}`, { cookie: ownerCookie })
     assert.equal(room.status, 200, `${label}: ${room.text}`)
-    const comparison = compareProjection(authoritative, room.body.state)
+    const comparison = await compareProjection(authoritative, room.body.state)
+    const diverged = comparison.matched ? [] : await divergedFields(authoritative, room.body.state)
     assert.ok(comparison.matched, [
       `${label}: комната разошлась с полной проекцией авторитетного состояния.`,
       inRefreshList
         ? 'Тип события есть в списке обновления — значит сломался сам инкрементальный слив.'
         : 'Типа события нет в списке обновления — это и есть молчаливое устаревание, о котором предупреждает шаг 1 плана.',
-      `Разошлись поля: ${divergedFields(authoritative, room.body.state).join(', ') || 'нет — расходится только порядок ключей'}.`,
+      `Разошлись поля: ${diverged.join(', ') || 'нет — расходится только порядок ключей'}.`,
     ].join(' '))
     return result
   }
@@ -193,15 +196,15 @@ test('комната после каждого события совпадает
   // Шаг 1 плана требует решения по данным: если полный пересчёт укладывается в
   // бюджет хода, инкрементальные списки можно удалить вместе с классом багов.
   // Замер печатается всегда и живёт рядом с инвариантом, а не в чьей-то памяти.
+  // Пересчёт делает Rust (`projection_integrity::projection_hash`): девять
+  // хэшей одним процессом, время на хэш — верхняя оценка, в неё входит и
+  // запуск процесса.
   const room = await request(baseUrl, `/api/rooms/${CODE}`, { cookie: ownerCookie })
-  const samples = []
-  for (let index = 0; index < 9; index += 1) {
-    const started = process.hrtime.bigint()
-    projectionHash(room.body.state)
-    samples.push(Number(process.hrtime.bigint() - started) / 1e6)
-  }
-  samples.sort((left, right) => left - right)
-  const median = samples[Math.floor(samples.length / 2)]
-  console.log(`  полный пересчёт проекции комнаты: медиана ${median.toFixed(2)} мс`)
-  assert.ok(median <= 250, `полный пересчёт ${median.toFixed(2)} мс — это уже сравнимо с ходом, списки удалять нельзя`)
+  const runs = 9
+  const started = process.hrtime.bigint()
+  const hashes = await serverBatch(Array.from({ length: runs }, () => ['projectionHash', room.body.state]))
+  const perHash = Number(process.hrtime.bigint() - started) / 1e6 / runs
+  assert.equal(new Set(hashes).size, 1, 'хэш одного состояния устойчив')
+  console.log(`  полный пересчёт проекции комнаты: в среднем ${perHash.toFixed(2)} мс`)
+  assert.ok(perHash <= 250, `полный пересчёт ${perHash.toFixed(2)} мс — это уже сравнимо с ходом, списки удалять нельзя`)
 })

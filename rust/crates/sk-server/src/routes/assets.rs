@@ -52,15 +52,15 @@ const ASSET_METHODS: &[Method] = &[Method::GET, Method::POST];
 pub fn routes() -> Vec<Route> {
     vec![
         // `parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/npcs\/([^/]+)\/portrait$/)` и `GET` (4029–4030).
-        Route::get(4090, Matcher::path_template("/api/campaigns/{id}/npcs/{seg}/portrait"), npc_portrait),
+        Route::get(4147, Matcher::path_template("/api/campaigns/{id}/npcs/{seg}/portrait"), npc_portrait),
         // `.../locations/([^/]+)/illustration$/` и `GET` (4068–4069).
-        Route::get(4129, Matcher::path_template("/api/campaigns/{id}/locations/{seg}/illustration"), location_illustration),
+        Route::get(4186, Matcher::path_template("/api/campaigns/{id}/locations/{seg}/illustration"), location_illustration),
         // `.../asset-preparation$/` и `GET || POST` (4103–4104).
-        Route::new(4164, Methods::Set(ASSET_METHODS), Matcher::path_template("/api/campaigns/{id}/asset-preparation"), asset_preparation),
+        Route::new(4221, Methods::Set(ASSET_METHODS), Matcher::path_template("/api/campaigns/{id}/asset-preparation"), asset_preparation),
         // `req.url?.startsWith('/generated/items/') && req.method === 'GET'` (6115).
-        Route::get(6239, Matcher::raw_prefix("/generated/items/"), generated_item_file),
+        Route::get(6311, Matcher::raw_prefix("/generated/items/"), generated_item_file),
         // `req.url === '/api/items/generate-image' && req.method === 'POST'` (6119).
-        Route::post(6243, Matcher::raw("/api/items/generate-image"), generate_item_image_route),
+        Route::post(6315, Matcher::raw("/api/items/generate-image"), generate_item_image_route),
     ]
 }
 
@@ -328,7 +328,7 @@ async fn prepare_assets(ctx: &mut RouteCtx, state: &AppState, user: &Value, camp
     let npcs = npc_portrait_inventory(&images.portraits, campaign_id, &projected, |state, profile| npc_portrait_significance(state, profile).significant, &profiles).await.map_err(image_failure)?;
     let known_locations = visible_campaign_locations(&projected);
     let locations = location_illustration_inventory(&images.illustrations, campaign_id, &known_locations).await.map_err(image_failure)?;
-    let configured = state.config.cloud_model_configured() && !state.config.image_model.is_empty();
+    let configured = state.config.model_configured() && !state.config.image_model.is_empty();
     if ctx.method == Method::GET {
         return Ok(Ok(json(
             StatusCode::OK,

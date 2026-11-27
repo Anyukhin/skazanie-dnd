@@ -2,7 +2,7 @@
  "schema": "graphics-style/v1",
  "style": "stylized",
  "label": "Рисованный",
- "revision": "c711b8f4d5df80a7",
+ "revision": "5120129a43b3c4af",
  "license": "CC0 (Quaternius: Fantasy Props, Medieval Village и Stylized Nature MegaKit; Kenney: Fantasy Town Kit 2.0, Castle Kit 2.0, Modular Cave Kit, Graveyard Kit 5.0) и собственные текстуры и модели проекта (data/asset-rights.json)",
  "sources": [
   "https://quaternius.com/packs/fantasypropsmegakit.html",
@@ -6498,7 +6498,7 @@
     "key": "style-extra-coin-pouch",
     "url": "props/extra_coin_pouch.glb",
     "yaw": 0,
-    "maxHeight": 0.28,
+    "maxHeight": 0.115,
     "preview": {
      "x": 1224,
      "y": 3251,

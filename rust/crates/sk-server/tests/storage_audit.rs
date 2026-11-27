@@ -3,9 +3,11 @@
 //! код 1; хранилище живого сервера — отказ (код 3), база не открывается.
 
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sk_server::storage_audit::{audit_for_cutover, exit_code, run as audit_storage_cli, Outcome, BLOCKERS_EXIT, REFUSED_EXIT};
 use sk_server::test_hooks::room_cli::{run as room_cli, Command};
 use sk_store::{CommitRequest, InitializeRequest, RoomOverlaySave, RoomOverlayWrite};
@@ -44,6 +46,12 @@ fn blocker_codes(report: &Value) -> Vec<String> {
 
 fn cli(storage: &Path) -> i32 {
     audit_storage_cli(&["--storage".to_string(), storage.to_string_lossy().into_owned(), "--json".to_string()])
+}
+
+fn file_fingerprint(path: &Path) -> Option<(u64, Option<SystemTime>, String)> {
+    let metadata = std::fs::metadata(path).ok()?;
+    let digest = Sha256::digest(std::fs::read(path).ok()?);
+    Some((metadata.len(), metadata.modified().ok(), format!("{digest:x}")))
 }
 
 #[test]
@@ -93,4 +101,36 @@ fn clean_storage_passes_drifted_overlay_blocks_live_server_refuses() {
     std::fs::create_dir_all(&empty).unwrap();
     assert_eq!(cli(&empty), REFUSED_EXIT);
     assert!(!empty.join("skazanie.sqlite").exists());
+}
+
+#[test]
+fn audit_storage_does_not_modify_sqlite_or_wal_sidecars() {
+    let temp = tempfile::tempdir().expect("временный каталог");
+    let storage = storage(temp.path());
+    let database = storage.join("skazanie.sqlite");
+    let wal = storage.join("skazanie.sqlite-wal");
+    let shm = storage.join("skazanie.sqlite-shm");
+    let before = [database.clone(), wal.clone(), shm.clone()].map(|path| file_fingerprint(&path));
+
+    assert_eq!(exit_code(&report(&storage)), 0, "аудит готового хранилища");
+
+    let paths = [database, wal, shm];
+    let after = paths.clone().map(|path| file_fingerprint(&path));
+    let changed: Vec<_> = paths.iter().zip(before.iter().zip(after.iter())).filter_map(|(path, (before, after))| {
+        (before != after).then(|| (path.display().to_string(), before.clone(), after.clone()))
+    }).collect();
+    assert!(changed.is_empty(), "read-only аудит не должен менять SQLite или его WAL/SHM: {changed:?}");
+}
+
+#[test]
+fn audit_storage_rejects_existing_empty_sqlite_without_creating_schema() {
+    let temp = tempfile::tempdir().expect("временный каталог");
+    let storage = temp.path().join("empty-sqlite");
+    std::fs::create_dir_all(&storage).expect("каталог");
+    let database = storage.join("skazanie.sqlite");
+    std::fs::write(&database, []).expect("пустая база");
+    let before = file_fingerprint(&database).expect("пустой файл");
+
+    assert_eq!(cli(&storage), REFUSED_EXIT, "пустой SQLite не должен стать готовым хранилищем");
+    assert_eq!(file_fingerprint(&database), Some(before), "отказ не должен создавать схему в исходном файле");
 }

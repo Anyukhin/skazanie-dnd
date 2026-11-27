@@ -11,7 +11,17 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { palaceFixture, palaceMeleePoint } from './shared-npc-consequence-fixture.mjs'
+import { palaceFixture } from './shared-npc-consequence-fixture.mjs'
+import { hasClearTrajectory } from './kit/fixtures.mjs'
+
+/** Клетка рядом с королём: открытый пол и прямая траектория до него (проверяет Rust). */
+async function palaceMeleePoint({ state, kingPoint }) {
+  for (const point of [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: kingPoint.x + dx, y: kingPoint.y + dy }))) {
+    const floor = state.scene.cells.some((cell) => cell.x === point.x && cell.y === point.y && cell.type === 'floor' && cell.revealed)
+    if (floor && await hasClearTrajectory(state, point, kingPoint)) return point
+  }
+  return undefined
+}
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
@@ -192,7 +202,7 @@ test('удар из исследования открывает бой по HTTP
   // Нейтральный NPC: та же команда атаки игрока, цель — король из авторской
   // сцены. HTTP пропускает NPC сцены как цель, остальное решает движок.
   const palace = await palaceFixture({ kingHp: 20, witnesses: false })
-  const near = palaceMeleePoint(palace)
+  const near = await palaceMeleePoint(palace)
   assert.ok(near, 'у короля есть открытая клетка рядом')
   const palaceState = {
     ...palace.state,

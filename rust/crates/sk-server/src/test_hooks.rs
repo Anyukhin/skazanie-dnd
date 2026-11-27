@@ -53,6 +53,7 @@ use sk_store::{CommitRequest, CommitResult, EventStore, StoreResult};
 
 use crate::core::{CoreError, CoreHandle};
 
+pub mod fixture_cli;
 pub mod journal_cli;
 pub mod room_cli;
 pub mod session_cli;

@@ -57,9 +57,9 @@ use crate::state::AppState;
 pub fn routes() -> Vec<Route> {
     vec![
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/intents$/` и `POST` (5040–5041).
-        Route::post(5121, Matcher::path_template("/api/campaigns/{id}/autonomy/intents"), intents),
+        Route::post(5188, Matcher::path_template("/api/campaigns/{id}/autonomy/intents"), intents),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/autonomy\/advance$/` и `POST` (5070–5071).
-        Route::post(5151, Matcher::path_template("/api/campaigns/{id}/autonomy/advance"), advance),
+        Route::post(5218, Matcher::path_template("/api/campaigns/{id}/autonomy/advance"), advance),
     ]
 }
 
@@ -407,6 +407,11 @@ async fn run_advance(core: Rc<GameCore>, step: Advance) -> Result<Value, Caught>
                 "state": viewer(&completion_state, &user, &hero_ids)?,
             }));
         }
+    }
+    let recovered = core.events.get_by_idempotency_key(&campaign_id, &format!("{key}:campaign-completion")).map_err(Failure::from)?;
+    if recovered.is_some_and(|commit| commit.events.iter().any(|event| is_type(event, "CampaignCompleted") && event["payload"]["ending"]["id"] == "treaty")) {
+        return Ok(json!({ "duplicate": true, "state_version": loaded.state_version, "admin_commands": 0,
+            "state": viewer(&loaded.state, &user, &hero_ids)? }));
     }
     playable(&loaded.state)?;
     assert_director_advance_ready(&app, &campaign_id, &loaded.state).await?;

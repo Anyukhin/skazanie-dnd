@@ -2,9 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { auditStorage, readJournal, startTestServer } from './kit/index.mjs'
-// Аудит перехода читает файловое хранилище JS напрямую: помощника кита для
-// него нет (решение ведущего), поэтому файл пока не контрактный.
-import { projectionHash } from '../server/projection-integrity.mjs'
+import { projectionHash } from './kit/fixtures.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
@@ -135,7 +133,7 @@ test('сервер переживает убийства посреди конк
     const loaded = await readJournal(server, 'SOAK')
     const replayed = await readJournal(server, 'SOAK', { useSnapshots: false })
     assert.equal(
-      projectionHash(loaded.state), projectionHash(replayed.state),
+      await projectionHash(loaded.state), await projectionHash(replayed.state),
       `раунд ${round}: состояние из снимка разошлось с чистым replay`,
     )
 

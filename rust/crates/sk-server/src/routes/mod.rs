@@ -56,7 +56,7 @@ pub fn table(extra: Vec<Route>) -> Vec<Route> {
         autonomy::routes(),
         merchants_admin::routes(),
         encounters::routes(),
-        vec![Route::pass(5544, Methods::Any, Matcher::path_template(MERCHANT_PATH), merchant_id_guard)],
+        vec![Route::pass(5616, Methods::Any, Matcher::path_template(MERCHANT_PATH), merchant_id_guard)],
         merchant_trade::routes(),
         commands::routes(),
         system_tick::routes(),
@@ -105,7 +105,8 @@ mod tests {
     #[test]
     fn route_lines_point_at_js_checks() {
         use crate::dispatch::Pattern;
-        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../server/index.mjs");
+        // JS-сервер в архиве с 2026-11-27: номера строк — по его последней версии.
+        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../archive/js-server/server/index.mjs");
         let text = std::fs::read_to_string(&source).unwrap_or_else(|error| panic!("{}: {error}", source.display()));
         let lines: Vec<&str> = text.lines().collect();
         let routes = table(Vec::new());
@@ -113,13 +114,15 @@ mod tests {
         for route in &routes {
             let at = |line: u32| lines.get(line as usize - 1).copied().unwrap_or("");
             let mut window = vec![at(route.line - 1), at(route.line), at(route.line + 1)];
-            // GET и POST торговца используют общую регулярку `merchantMatch`.
-            if matches!(route.line, 5550 | 5567) {
-                window.push(at(5544));
+            // Обработчики торговца (С14 — 5456, С18.2 — 5473) проверяют общую
+            // регулярку `merchantMatch` строки 5450 (правка С14).
+            if matches!(route.line, 5622 | 5639) {
+                window.push(at(5616));
             }
             let here = window[1];
-            // Combat lab и импорт карт сверяют регулярки в своих модулях.
-            if matches!(route.line, 4019 | 4020) {
+            // Модули, вынесенные из `index.mjs` (combat-lab 3959, map-import
+            // 3960): на строке — подключение, регулярка — в своём файле (С13).
+            if matches!(route.line, 4076 | 4077) {
                 assert!(here.contains("Route(req, res, requestPath)"), "строка {}: нет подключения модуля\n{here}", route.line);
                 continue;
             }

@@ -58,7 +58,17 @@ export const SPELL_ACCEPTANCE_DIMENSIONS = Object.freeze(['rules', 'playerPath',
 const SUPPORT_STATUSES = new Set(['verified', 'partial', 'heuristic', 'ruling-only'])
 const BLOCKED_STATUSES = new Set(['heuristic', 'ruling-only'])
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
-const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+// С 2026-11-27 часть зависимостей приёмки (JS-сервер, его тесты) лежит в
+// archive/js-server/<путь> без изменений содержимого: доказательства записаны
+// прежними путями, поэтому файл ищется сначала на месте, затем в архиве.
+const read = (path) => {
+  try {
+    return readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+    return readFileSync(new URL(`../archive/js-server/${path}`, import.meta.url), 'utf8')
+  }
+}
 const CATALOG_IDS = new Set(JSON.parse(read(CATALOG_PATH)).spells.map((spell) => spell.id))
 const countBy = (entries, select) => entries.reduce((counts, entry) => {
   const key = select(entry)

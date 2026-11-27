@@ -4,7 +4,7 @@
     {
       "name": "dnd",
       "runtimeExecutable": "C:\\Users\\anton\\AppData\\Local\\OpenAI\\Codex\\bin\\5b9024f90663758b\\node.exe",
-      "runtimeArgs": ["server/dev.mjs"],
+      "runtimeArgs": ["tools/dev.mjs"],
       "port": 4173
     },
     {
