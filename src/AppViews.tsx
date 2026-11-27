@@ -376,6 +376,15 @@ export function stakesTitle(stakes: NonNullable<Message['stakes']>) {
   return `${both} · СЛ ${stakes.difficulty}${category ? ` · ${category}` : ''}`
 }
 
+function ChronicleMessageMeta({ message }: { message: Message }) {
+  return <div className="message-meta">
+    <strong>{message.author}</strong><time>{message.timestamp}</time>
+    {(message.narrationOrigin === 'template' || message.narrationOrigin === 'interrupted') && (
+      <span className="message-origin">Ответ без модели</span>
+    )}
+  </div>
+}
+
 /**
  * Врезка «Пока вас не было…» в летописи. Системная карточка, а не реплика: у
  * неё нет автора, которому можно ответить, и нет броска, который можно
@@ -587,7 +596,7 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
         ) : (
           <article key={message.id} className={`message ${message.speaker}`}>
             <div className="message-body">
-              <div className="message-meta"><strong>{message.author}</strong><time>{message.timestamp}</time></div>
+              <ChronicleMessageMeta message={message} />
               <p>{chronicleMessageText(message.text)}</p>
               {/* Ставки: что проверялось, против какой СЛ и чем грозил провал.
                   Сервер считал их и раньше, но игрок их не видел. */}
@@ -779,7 +788,7 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
           {state.messages.map((message, index) => (
             <article className={`journal-entry ${message.speaker}`} key={message.id}>
               <div className="journal-marker">{message.speaker === 'narrator' ? <Sparkles size={15} /> : index + 1}</div>
-              <div><div className="message-meta"><strong>{message.author}</strong><time>{message.timestamp}</time></div><p>{message.text}</p>
+              <div><ChronicleMessageMeta message={message} /><p>{message.text}</p>
               {message.roll && <span className={`compact-roll ${message.roll.success ? 'success' : ''}`}><Dices size={14} />{message.roll.label}: <b>{message.roll.total}</b></span>}</div>
             </article>
           ))}

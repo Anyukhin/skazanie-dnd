@@ -1470,6 +1470,31 @@ async fn cost01_successful_answer_is_counted_once_by_provider_usage() {
 }
 
 #[tokio::test]
+async fn cancelled_attempt_keeps_a_provider_receipt_already_received() {
+    use sk_infra::usage_ledger::{record_provider_generation_id, record_provider_usage, MeteredLLMClient};
+
+    let fixture = ledger(10_000.0);
+    let provider = FakeLlm::new(FakeLlmConfig { handler: Some(Arc::new(|_, _| -> HookFuture<Value> {
+        Box::pin(async {
+            record_provider_generation_id("rai-partial-receipt");
+            record_provider_usage(&json!({ "total_tokens": 40, "cost": 0.1 }));
+            std::future::pending().await
+        })
+    })), ..FakeLlmConfig::default() });
+    let client = MeteredLLMClient::new(provider, Arc::clone(&fixture.ledger));
+    let timed = tokio::time::timeout(Duration::from_millis(60), client.complete(&input(), &json!({}))).await;
+    assert!(timed.is_err());
+    let report = fixture.ledger.report().expect("отчёт");
+    assert_eq!(report["interrupted_requests"], 1);
+    assert_eq!(report["confirmed_cost_requests"], 1);
+    assert_eq!(report["provider_cost"], 0.1);
+    assert_eq!(report["committed_tokens"], 40);
+    assert_eq!(report["reserved_tokens"], 0);
+    let log = std::fs::read_to_string(&fixture.file).expect("учёт");
+    assert!(log.contains("rai-partial-receipt"));
+}
+
+#[tokio::test]
 async fn cost01_paid_invalid_json_records_usage_and_keeps_error() {
     let fixture = ledger(10_000.0);
     let server = scripted_provider(vec![completion("{\"ok\":", json!({ "total_tokens": 100, "cost": 0.25 }))]).await;
@@ -1575,7 +1600,11 @@ async fn cascade_sees_model_limit_through_usage_wrapper() {
     assert_eq!(result["content"], "резерв");
     assert_eq!(result["fallback_attempts"][0]["code"], "LLM_TIMEOUT");
     let report = fixture.ledger.report().expect("отчёт");
-    assert_eq!((report["completed_requests"].clone(), report["failed_requests"].clone(), report["reserved_tokens"].clone()), (json!(1), json!(1), json!(0)));
+    assert_eq!(report["completed_requests"], 1);
+    assert_eq!(report["failed_requests"], 0);
+    assert_eq!(report["interrupted_requests"], 1);
+    assert_eq!(report["unknown_cost_requests"], 2);
+    assert!(report["reserved_tokens"].as_u64().is_some_and(|tokens| tokens > 0));
 }
 
 #[tokio::test]

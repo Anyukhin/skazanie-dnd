@@ -36,7 +36,7 @@ export function standImpl(argv) {
 export { freePort }
 
 /**
- * Поднять бинарь Rust на хранилище стенда. Ключ модели всегда пуст.
+ * Поднять бинарь Rust на хранилище стенда. Ключ модели допускается для loopback.
  *
  * @param {{ port: number, storage: string, setupToken: string, env?: Record<string, string | undefined> }} options
  * @returns {import('node:child_process').ChildProcess}

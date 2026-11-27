@@ -118,11 +118,61 @@ fn safe_cost(value: Option<&Value>) -> f64 {
     }
 }
 
-/// Запись, расход которой уже потрачен у поставщика: завершённая и неудачная.
-/// Неудачная без известного usage несёт нули (так было и до COST-01), поэтому
-/// старые записи ledger считаются так же, как раньше.
+fn reported_cost(usage: Option<&Value>) -> Option<f64> {
+    let value = nullish(field(usage, "cost"), field(usage, "total_cost"))?;
+    if !value.is_number() && !value.as_str().is_some_and(|value| !value.trim().is_empty()) {
+        return None;
+    }
+    let amount = number(Some(value));
+    (amount.is_finite() && amount >= 0.0).then_some(amount)
+}
+
+/// Закрытые попытки могут содержать подтверждённый расход поставщика.
 fn spent_entry(entry: &Value) -> bool {
-    strict_str(field(Some(entry), "status"), "completed") || strict_str(field(Some(entry), "status"), "failed")
+    matches!(entry["status"].as_str(), Some("completed" | "failed" | "interrupted"))
+}
+
+fn cost_tracked(entry: &Value) -> bool {
+    entry["cost_tracked"] == true
+}
+
+fn reserved_tokens(entry: &Value) -> i64 {
+    if cost_tracked(entry) || strict_str(entry.get("status"), "reserved") {
+        safe_token_count(entry.get("reserved_tokens"))
+    } else {
+        0
+    }
+}
+
+tokio::task_local! {
+    static PROVIDER_RECEIPT: Arc<Mutex<ProviderReceipt>>;
+}
+
+#[derive(Clone, Default)]
+struct ProviderReceipt {
+    generation_id: Option<String>,
+    usage: Option<Value>,
+}
+
+/// Сохраняет ID, как только поставщик его прислал. Он доступен и после
+/// отмены future запроса, когда конечного `usage` могло ещё не быть.
+pub fn record_provider_generation_id(value: &str) -> bool {
+    if value.is_empty() || value.len() > 160 || !value.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte)) {
+        return false;
+    }
+    let _ = PROVIDER_RECEIPT.try_with(|receipt| {
+        receipt.lock().unwrap_or_else(PoisonError::into_inner).generation_id.get_or_insert_with(|| value.to_string());
+    });
+    true
+}
+
+/// У SSE-ответа итоговый usage может прийти раньше окончания соединения.
+pub fn record_provider_usage(usage: &Value) {
+    if usage.is_object() {
+        let _ = PROVIDER_RECEIPT.try_with(|receipt| {
+            receipt.lock().unwrap_or_else(PoisonError::into_inner).usage = Some(usage.clone());
+        });
+    }
 }
 
 /// `normalizeProviderUsage(usage, fallbackTokens)`: токены и цена из ответа
@@ -247,9 +297,15 @@ impl DurableUsageLedger {
             if !created.is_finite() || created < oldest {
                 requests.shift_remove(&id);
             } else if strict_str(field(Some(entry), "status"), "reserved") && number(field(Some(entry), "expires_at_ms")) <= now as f64 {
+                let tracked = cost_tracked(entry);
                 if let Some(entry) = entry.as_object_mut() {
-                    entry.insert("status".into(), Value::String("expired".into()));
-                    entry.insert("reserved_tokens".into(), Value::from(0));
+                    let status = if tracked { "interrupted" } else { "expired" };
+                    entry.insert("status".into(), Value::String(status.into()));
+                    if tracked {
+                        entry.insert("error_code".into(), json!("LLM_ATTEMPT_INTERRUPTED"));
+                    } else {
+                        entry.insert("reserved_tokens".into(), Value::from(0));
+                    }
                     entry.insert("finished_at_ms".into(), Value::from(now));
                 }
             }
@@ -269,13 +325,8 @@ impl DurableUsageLedger {
         Self::today(ledger, now)
             .into_iter()
             .map(|entry| {
-                if strict_str(field(Some(entry), "status"), "reserved") {
-                    safe_token_count(field(Some(entry), "reserved_tokens"))
-                } else if spent_entry(entry) {
-                    safe_token_count(field(Some(entry), "total_tokens"))
-                } else {
-                    0
-                }
+                reserved_tokens(entry)
+                    + if spent_entry(entry) { safe_token_count(field(Some(entry), "total_tokens")) } else { 0 }
             })
             .sum()
     }
@@ -288,6 +339,10 @@ impl DurableUsageLedger {
     /// вызова поставщика; повтор того же `requestId` с теми же параметрами
     /// возвращает прежнюю запись.
     pub fn reserve(&self, request: &ReserveRequest) -> Result<Value, UsageLedgerError> {
+        self.reserve_request(request, false)
+    }
+
+    fn reserve_request(&self, request: &ReserveRequest, track_cost: bool) -> Result<Value, UsageLedgerError> {
         let _guard = self.guard();
         let id = clean_str(&request.request_id.clone().unwrap_or_else(sk_core::hash::uuid_v4), 160);
         if id.is_empty() {
@@ -342,6 +397,10 @@ impl DurableUsageLedger {
                 map.insert("role".into(), Value::String(role));
             }
         }
+        if track_cost {
+            entry["cost_tracked"] = Value::Bool(true);
+            entry["provider_cost"] = Value::Null;
+        }
         if let Some(requests) = ledger["requests"].as_object_mut() {
             requests.insert(id, entry.clone());
         }
@@ -359,10 +418,10 @@ impl DurableUsageLedger {
     /// `settle(requestId, usage)`: закрыть резерв фактическим расходом.
     /// `usage = None` — аргумент не передан (`{}`).
     pub fn settle(&self, request_id: &str, usage: Option<&Value>) -> Result<Value, UsageLedgerError> {
-        self.settle_reported_model(request_id, usage, None)
+        self.settle_reported_model(request_id, usage, None, None)
     }
 
-    fn settle_reported_model(&self, request_id: &str, usage: Option<&Value>, reported_model: Option<&str>) -> Result<Value, UsageLedgerError> {
+    fn settle_reported_model(&self, request_id: &str, usage: Option<&Value>, reported_model: Option<&str>, generation_id: Option<&str>) -> Result<Value, UsageLedgerError> {
         let _guard = self.guard();
         let id = clean_str(request_id, 160);
         let now = self.now();
@@ -378,11 +437,21 @@ impl DurableUsageLedger {
         if matches!(usage, Some(Value::Null)) {
             return Err(UsageLedgerError::Type("Cannot read properties of null (reading 'input_tokens')".into()));
         }
-        let normalized = normalize_provider_usage(usage, field(Some(&*entry), "estimated_tokens"));
+        let track_cost = cost_tracked(entry);
+        let fallback = (!track_cost).then(|| field(Some(&*entry), "estimated_tokens")).flatten();
+        let mut normalized = normalize_provider_usage(usage, fallback);
+        if track_cost {
+            normalized["provider_cost"] = reported_cost(usage).map_or(Value::Null, js::num);
+        }
         let actual_model = reported_model.map(|model| clean_str(model, 160)).filter(|model| !model.is_empty() && model != "openrouter/free");
         if let Some(map) = entry.as_object_mut() {
             map.insert("status".into(), Value::String("completed".into()));
-            map.insert("reserved_tokens".into(), Value::from(0));
+            if let Some(id) = generation_id {
+                map.insert("provider_generation_id".into(), json!(id));
+            }
+            if !track_cost || safe_token_count(normalized.get("total_tokens")) > 0 {
+                map.insert("reserved_tokens".into(), Value::from(0));
+            }
             if let Value::Object(normalized) = normalized {
                 for (key, value) in normalized {
                     map.insert(key, value);
@@ -409,6 +478,10 @@ impl DurableUsageLedger {
     /// неизвестен: резерв освобождается, как раньше, и ничего не списывается.
     /// `error_code = None` — `'LLM_ERROR'`.
     pub fn fail(&self, request_id: &str, error_code: Option<&str>, provider_usage: Option<&Value>) -> Result<Value, UsageLedgerError> {
+        self.close_failure(request_id, error_code, provider_usage, false, None)
+    }
+
+    fn close_failure(&self, request_id: &str, error_code: Option<&str>, provider_usage: Option<&Value>, interrupted: bool, generation_id: Option<&str>) -> Result<Value, UsageLedgerError> {
         let _guard = self.guard();
         let id = clean_str(request_id, 160);
         let now = self.now();
@@ -418,11 +491,21 @@ impl DurableUsageLedger {
         if !strict_str(field(Some(entry), "status"), "reserved") {
             return Ok(entry.clone());
         }
-        let known = provider_usage.filter(|usage| usage.is_object()).map(|usage| normalize_provider_usage(Some(usage), Some(&Value::from(0))));
+        let mut known = provider_usage.filter(|usage| usage.is_object()).map(|usage| normalize_provider_usage(Some(usage), None));
+        if cost_tracked(entry) {
+            if let Some(known) = &mut known {
+                known["provider_cost"] = reported_cost(provider_usage).map_or(Value::Null, js::num);
+            }
+        }
         let code = clean_str(error_code.unwrap_or("LLM_ERROR"), 80);
         if let Some(map) = entry.as_object_mut() {
-            map.insert("status".into(), Value::String("failed".into()));
-            map.insert("reserved_tokens".into(), Value::from(0));
+            map.insert("status".into(), Value::String(if interrupted { "interrupted" } else { "failed" }.into()));
+            if let Some(id) = generation_id {
+                map.insert("provider_generation_id".into(), json!(id));
+            }
+            if !interrupted || known.as_ref().is_some_and(|usage| safe_token_count(usage.get("total_tokens")) > 0) {
+                map.insert("reserved_tokens".into(), Value::from(0));
+            }
             if let Some(Value::Object(known)) = known {
                 for (key, value) in known {
                     map.insert(key, value);
@@ -450,20 +533,32 @@ impl DurableUsageLedger {
         // непригодные (COST-01). У прочих неудач токены нулевые.
         let spent: Vec<&Value> = entries.iter().copied().filter(|entry| spent_entry(entry)).collect();
         let sum = |list: &[&Value], key: &str| list.iter().map(|entry| safe_token_count(field(Some(entry), key))).sum::<i64>();
-        let reserved: Vec<&Value> = entries.iter().copied().filter(|entry| status(entry, "reserved")).collect();
         let cost = spent.iter().fold(0.0, |total, entry| total + safe_cost(field(Some(entry), "provider_cost")));
-        Ok(json!({
+        let mut report = json!({
             "day": day_key(now),
             "daily_token_limit": self.daily_token_limit,
             "committed_tokens": sum(&spent, "total_tokens"),
-            "reserved_tokens": sum(&reserved, "reserved_tokens"),
+            "reserved_tokens": entries.iter().map(|entry| reserved_tokens(entry)).sum::<i64>(),
             "input_tokens": sum(&spent, "input_tokens"),
             "output_tokens": sum(&spent, "output_tokens"),
             "provider_cost": js::num(cost),
             "requests": entries.len(),
             "completed_requests": entries.iter().filter(|entry| status(entry, "completed")).count(),
             "failed_requests": entries.iter().filter(|entry| status(entry, "failed")).count(),
-        }))
+        });
+        let interrupted = entries.iter().filter(|entry| status(entry, "interrupted")).count();
+        let unknown = entries.iter().filter(|entry| cost_tracked(entry) && entry["provider_cost"].is_null()).count();
+        let confirmed = spent.iter().filter(|entry| cost_tracked(entry) && entry["provider_cost"].is_number()).count();
+        if interrupted > 0 {
+            report["interrupted_requests"] = json!(interrupted);
+        }
+        if unknown > 0 {
+            report["unknown_cost_requests"] = json!(unknown);
+        }
+        if confirmed > 0 {
+            report["confirmed_cost_requests"] = json!(confirmed);
+        }
+        Ok(report)
     }
 }
 
@@ -631,6 +726,24 @@ pub struct MeteredLLMClient<C: LlmClient> {
     ledger: Arc<DurableUsageLedger>,
 }
 
+struct ActiveModelReservation<'a> {
+    ledger: &'a DurableUsageLedger,
+    id: String,
+    open: bool,
+    receipt: Arc<Mutex<ProviderReceipt>>,
+}
+
+impl Drop for ActiveModelReservation<'_> {
+    fn drop(&mut self) {
+        if self.open {
+            let receipt = self.receipt.lock().unwrap_or_else(PoisonError::into_inner);
+            if self.ledger.close_failure(&self.id, Some("LLM_ATTEMPT_INTERRUPTED"), receipt.usage.as_ref(), true, receipt.generation_id.as_deref()).is_err() {
+                eprintln!("[Сказание] Не удалось закрыть резерв оборванного запроса модели");
+            }
+        }
+    }
+}
+
 impl<C: LlmClient> MeteredLLMClient<C> {
     pub fn new(client: C, ledger: Arc<DurableUsageLedger>) -> Self {
         Self { client, ledger }
@@ -672,22 +785,28 @@ impl<C: LlmClient> MeteredLLMClient<C> {
             Some(value) => Some(js::s(Some(value))),
             None => self.client.model(),
         };
-        let reservation = self.ledger.reserve(&ReserveRequest {
+        let reservation = self.ledger.reserve_request(&ReserveRequest {
             request_id: Some(request_id),
             estimated_tokens: (estimated_input_tokens(input) + maximum_output) as f64,
             scope: Some(scope),
             model,
             role,
-        })?;
-        let reservation_id = js::s(reservation.get("request_id"));
-        let outcome = match self.client.complete(input, options).await {
+        }, true)?;
+        let receipt = Arc::new(Mutex::new(ProviderReceipt::default()));
+        let mut reservation = ActiveModelReservation { ledger: &self.ledger, id: js::s(reservation.get("request_id")), open: true, receipt: Arc::clone(&receipt) };
+        let call = PROVIDER_RECEIPT.scope(Arc::clone(&receipt), self.client.complete(input, options)).await;
+        let receipt = receipt.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let outcome = match call {
             Ok(result) => {
                 let usage = match field(Some(&result), "usage") {
                     Some(usage) if !usage.is_null() => usage.clone(),
-                    _ => json!({}),
+                    _ => receipt.usage.clone().unwrap_or_else(|| json!({})),
                 };
-                match self.ledger.settle_reported_model(&reservation_id, Some(&usage), result.get("model").and_then(Value::as_str)) {
-                    Ok(_) => return Ok(result),
+                match self.ledger.settle_reported_model(&reservation.id, Some(&usage), result.get("model").and_then(Value::as_str), receipt.generation_id.as_deref()) {
+                    Ok(_) => {
+                        reservation.open = false;
+                        return Ok(result);
+                    }
                     Err(error) => LlmError::from(error),
                 }
             }
@@ -696,7 +815,9 @@ impl<C: LlmClient> MeteredLLMClient<C> {
         // Аудит PR #131, COST-01: RouterAIClient прикладывает к ошибке
         // непригодного ответа известный usage — он оплачен и уходит в ledger.
         let code = outcome.code.clone().unwrap_or_else(|| outcome.name.clone());
-        self.ledger.fail(&reservation_id, Some(&code), outcome.provider_usage.as_ref())?;
+        let interrupted = matches!(code.as_str(), "LLM_ABORTED" | "LLM_TIMEOUT" | "LLM_TURN_DEADLINE" | "LLM_ATTEMPT_BUDGET" | "LLM_ATTEMPT_INTERRUPTED");
+        self.ledger.close_failure(&reservation.id, Some(&code), outcome.provider_usage.as_ref().or(receipt.usage.as_ref()), interrupted, receipt.generation_id.as_deref())?;
+        reservation.open = false;
         Err(outcome)
     }
 }

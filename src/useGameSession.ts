@@ -790,6 +790,7 @@ export function useGameSession(options: {
       author: metaCommand ? 'Разбор правил' : 'Рассказчик',
       timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
       text: aiResult.narration, roll: aiResult.effects.roll ?? roll, turnConsumed: metaCommand ? undefined : consumesTurn,
+      ...(aiResult.narration_origin ? { narrationOrigin: aiResult.narration_origin } : {}),
       // Ставки приходили в ответе, но нигде не показывались: игрок узнавал СЛ
       // и цену провала только из объяснения `/why`, если додумывался спросить.
       ...(aiResult.stakes ? { stakes: aiResult.stakes } : {}),

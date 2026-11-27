@@ -11,7 +11,7 @@ use sk_core::indexmap::IndexMap;
 use sk_core::js;
 
 use super::abort::{race, AbortController, AbortScope, SignalLink};
-use super::attempt_trace::{current_model_call_budget, finish_model_attempt, model_call_role, start_model_attempt};
+use super::attempt_trace::{current_model_call_budget, finish_model_attempt, model_call_role, start_model_attempt, with_model_attempt};
 use super::{
     coalesce, llm_timer_delay, option_fields, positive_integer_number, prop, spread_object, utf16_head, CallHooks, CallScope, CampaignSnapshot, DeltaHandler, LlmClient, LlmError, LlmErrorExt, LlmFuture, RouterAiClient,
 };
@@ -393,7 +393,7 @@ impl FallbackLlmClient {
                 else if !attempts.is_empty() { Some("previous_attempt_failed") }
                 else { None };
             let trace_attempt = start_model_attempt(input, options, member.client.trace_provider(), &member.key(), fallback_reason);
-            let outcome = self.attempt(member, index, candidates.len(), input, options, &scope, deadline, cloud_remaining, shared_signal.as_ref(), on_delta).await;
+            let outcome = with_model_attempt(trace_attempt, self.attempt(member, index, candidates.len(), input, options, &scope, deadline, cloud_remaining, shared_signal.as_ref(), on_delta)).await;
             finish_model_attempt(trace_attempt, &outcome);
             open.store(false, Ordering::SeqCst);
             match outcome {

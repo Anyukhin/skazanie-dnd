@@ -1194,6 +1194,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .message-meta strong { color: color-mix(in srgb, var(--text) 15%, var(--acc)); font-family: var(--f-serif); font-size: var(--fs-lg); }
 .message.player .message-meta strong { color: #9ca08b; }
 .message-meta time { color: color-mix(in srgb, var(--panel) 55%, var(--text2)); font-size: var(--fs-sm); }
+.message-origin { color: var(--text2); font-size: var(--fs-sm); }
 .message-body p { margin: 2px 0 0; color: color-mix(in srgb, var(--panel) 25%, var(--text)); font-family: var(--f-serif); font-size: var(--fs-xs); line-height: 1.5; }
 /* «К последним» — тоже на любой ширине: кнопка плавает над лентой и ничего не
    двигает, а без неё прочитанная назад хроника не возвращается к свежим

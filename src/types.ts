@@ -11,6 +11,7 @@ export type Message = {
   author: string
   text: string
   timestamp: string
+  narrationOrigin?: 'model' | 'template' | 'interrupted'
   roll?: { roll_id?: string; value: number; modifier: number; total: number; difficulty?: number; label: string; success: boolean; ability?: string | null; actor_id?: string }
   /** Ставки хода: что проверялось, против какой СЛ и чем грозил провал. */
   stakes?: { skill?: string; ability?: string; difficulty?: number; difficulty_category?: string; on_failure?: string }
@@ -2988,6 +2989,7 @@ export type AiTurnResult = {
   explanation_url?: string
   idempotent_replay?: boolean
   narration_message_id?: string | null
+  narration_origin?: Message['narrationOrigin']
   turn_consumed?: boolean
   room_version?: number
   agent_trace?: Array<{ agent: string; mode?: string; output?: Record<string, unknown> }>

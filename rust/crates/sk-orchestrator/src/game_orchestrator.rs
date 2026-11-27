@@ -3335,6 +3335,9 @@ impl GameOrchestrator {
         if js::truthy(free_action.get("context_metadata")) {
             set(&mut trace_plan, "agent_contexts", json!([free_action["context_metadata"].clone()]));
         }
+        if let Some(reading) = reading.filter(|reading| !committed_events.is_empty() && reading.is_object()) {
+            set(&mut trace_plan, "free_action_reading", reading.clone());
+        }
         let trace = TraceInput {
             turn_id: turn_id.into(),
             campaign_id: campaign_id.into(),
@@ -4461,6 +4464,7 @@ impl GameOrchestrator {
                 intent: Some(intent.clone()),
                 verified_roll: verified_roll.clone(),
                 confirmed_action,
+                replay_reading: at(request_trace.as_ref(), &["adjudication_plan", "free_action_reading"]).cloned(),
             };
             let _ = manual_roll;
             let free_action = self.unknown_action_handler.handle_unknown_action(&request).await?;
