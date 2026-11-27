@@ -9760,7 +9760,7 @@
 {"fn":"placedSceneNpcTargets","args":[{"$state":1444}],"retention":"legacy","result":[]},
 {"fn":"sceneNpcOccupiedCells","args":[{"$state":1444}],"retention":"legacy","result":[]},
 {"fn":"sceneNpcTransitCells","args":[{"$state":1444}],"retention":"legacy","result":[]},
-{"fn":"planSceneNpcPlacementEvents","args":[{"$state":1444}],"retention":"legacy","sha256":"339cff93628c596fa15022bf965d3805350ff181e70e185dfba32a0690590cc6"},
+{"fn":"planSceneNpcPlacementEvents","args":[{"$state":1444}],"retention":"legacy","sha256":"503099ee640bfad0d7324456b7abe9c875bd3254b28a32563439d42c8120a3d4"},
 {"fn":"sceneNpcsForViewer","args":[{"$state":1444}],"retention":"legacy","result":[]},
 {"fn":"npcCombatStanceEventDrafts","args":[{"$state":1444},{"sourceEventId":"combat-started:x","participantIds":["hero","constructor","ghost"]}],"retention":"legacy","result":[]},
 {"fn":"sceneLocationId","args":[{"$state":1445}],"result":""},
