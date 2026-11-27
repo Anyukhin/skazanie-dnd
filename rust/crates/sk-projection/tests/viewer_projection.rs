@@ -286,6 +286,9 @@ fn enemy_mask_hides_figure_identity_and_reveal_restores_stature() {
             { "id": "tiny", "name": "Паук", "creature_type": "beast", "size": "tiny", "hp": 4, "maxHp": 4, "x": 5, "y": 0 },
             { "id": "named-mask", "name": "Неопознанная тень", "creature_type": "dragon", "size": "tiny",
               "image": "/assets/enemies/dnd-2014/young-red-dragon.png", "hp": 4, "maxHp": 4, "x": 6, "y": 0 },
+            { "id": "generic-small", "name": "Враг", "size": "small", "hp": 4, "maxHp": 4, "x": 1, "y": 2 },
+            { "id": "generic-large", "name": "Существо", "size": "large", "hp": 4, "maxHp": 4, "x": 4, "y": 1,
+              "footprint": { "version": 1, "size": 2 } },
         ],
         "scene": { "title": "Поле", "location": "Поле", "cells": cells },
     });
@@ -301,6 +304,11 @@ fn enemy_mask_hides_figure_identity_and_reveal_restores_stature() {
     for stature in ["small", "tiny"] {
         assert_eq!(projected["actor_appearances"][stature]["stature"], stature);
         assert_eq!(projected["actor_appearances"][stature]["profile"], "beast");
+    }
+    for id in ["generic-small", "generic-large"] {
+        let enemy = projected["enemies"].as_array().unwrap().iter().find(|enemy| enemy["id"] == id).expect("публичная клетка врага");
+        assert!(enemy.get("footprint").is_none());
+        assert!(projected["actor_appearances"][id].get("stature").is_none());
     }
     source["enemies"][0]["masked"] = json!(false);
     let revealed = room(&source, &user(), "hero");

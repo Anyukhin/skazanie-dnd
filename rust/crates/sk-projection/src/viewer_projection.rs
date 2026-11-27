@@ -2463,7 +2463,7 @@ fn player_room(raw_state: &Value, user: Option<&Value>, actor: &Value) -> R<Valu
     // по-прежнему берётся из площади, которую зритель вправе целиком видеть.
     for enemy in arr(get(visible_ref, "enemies")) {
         let Some(stature @ ("tiny" | "small")) = enemy.get("size").and_then(Value::as_str) else { continue };
-        if concealed_actor_identity(Some(enemy)) {
+        if masked_actor_identity(Some(enemy)) {
             continue;
         }
         let source = Some(enemy);
