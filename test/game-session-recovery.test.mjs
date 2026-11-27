@@ -10,6 +10,7 @@ import * as recovery from '../src/tactical-command-recovery.mjs'
 import * as roomStream from '../src/room-stream.mjs'
 import * as gameSessionState from '../src/game-session-state.mjs'
 import { canIssueUiTacticalCommand } from '../src/tactical-command-guard.mjs'
+import { isAutomaticWorldTravel } from '../src/director-decision.mjs'
 import { withLootTakenRecord } from '../src/loot-panel-rules.mjs'
 
 /**
@@ -211,6 +212,7 @@ function mountSession({ campaign = 'A', accountId = 'account-a', initialCampaign
     latestSceneMapHash: () => '',
     resolveSceneMap: (scene) => scene,
     canIssueUiTacticalCommand,
+    isAutomaticWorldTravel,
     ...recovery,
     ...roomStream,
     ...gameSessionState,
@@ -240,6 +242,18 @@ function mountSession({ campaign = 'A', accountId = 'account-a', initialCampaign
 }
 
 const streamFor = (campaign) => FakeEventSource.instances.filter((source) => source.url.includes(`/campaigns/${campaign}/stream`)).at(-1)
+
+test('разрешённый путь ожидает перехода сервера без второго запроса рассказчику', async () => {
+  const harness = mountSession()
+  harness.render()
+  streamFor('A').emit('room', { version: 2, state: roomState('A', { agentInteraction: {
+    id: 'travel', type: 'vote', status: 'resolved', resolvedOptionId: 'leave', destinationLocationId: 'astohan-ash-watch',
+    options: [{ id: 'leave', label: 'Идём на заставу' }],
+  } }) })
+  await harness.render().continueAgentInteraction('hero')
+  assert.equal(harness.requests.some(request => request.url === '/api/narrate'), false)
+  harness.unmount()
+})
 
 test('до вступления по приглашению не открываются ни комната, ни живой поток', async () => {
   const harness = mountSession({

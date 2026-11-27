@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { awaitsDecisionContinuation, continuesOnwardRoute, isAdventureContinuation, isDirectorPartyDecision } from '../src/director-continuation.mjs'
+import { isAutomaticWorldTravel } from '../src/director-decision.mjs'
+
+test('известный путь автоматически исполняется сервером, обычное решение ждёт продолжения', () => {
+  const travel = { id: 'party-vote', type: 'vote', destinationLocationId: 'astohan-ash-watch' }
+  assert.equal(isAutomaticWorldTravel(travel), true)
+  assert.equal(isAutomaticWorldTravel({ ...travel, destinationLocationId: undefined }), false)
+  assert.equal(isAutomaticWorldTravel({ ...travel, id: 'autonomy-vote' }), false)
+  assert.equal(isAutomaticWorldTravel({ ...travel, type: 'roll' }), false)
+})
 
 test('явная просьба продолжить историю доступна через свободный ввод', () => {
   for (const text of ['продолжим', 'Продолжим!', ' Продолжить  приключение. ', 'продолжаем историю', 'продолжить историю']) {

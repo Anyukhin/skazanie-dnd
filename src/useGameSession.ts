@@ -28,6 +28,7 @@ import {
 import { withLootTakenRecord } from './loot-panel-rules.mjs'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
+import { isAutomaticWorldTravel } from './director-decision.mjs'
 import { stagedCommandsForPilotBuild, type AstohanPilotBuild } from './astohan-pilot-builds'
 import {
   clearPendingNarrate,
@@ -1368,7 +1369,7 @@ export function useGameSession(options: {
     const idle: CommandOutcome = { ok: false, error: 'Нет принятого решения, которое можно продолжить.' }
     if (!interaction || interaction.status !== 'resolved') return idle
     // Типизированное решение исполняет сервер и восстанавливает при reconnect.
-    if (interaction.questAbandonment || interaction.questAcceptance || interaction.scenarioTreaty) return idle
+    if (interaction.questAbandonment || interaction.questAcceptance || interaction.scenarioTreaty || isAutomaticWorldTravel(interaction)) return idle
     const winner = interaction.options.find((option) => option.id === interaction.resolvedOptionId)
     if (!winner) return idle
     return submitAction(`[РЕШЕНИЕ ГРУППЫ] ${winner.label}`, playerId)

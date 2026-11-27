@@ -17,6 +17,7 @@ import { chronicleFollowAfterScroll, chronicleMatchesFilter, chronicleMessageTex
 import type { NarrationVoiceMode } from './narration-tts.mjs'
 import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
 import { journalQuestFocus } from './journal-quests.mjs'
+import { isAutomaticWorldTravel } from './director-decision.mjs'
 import { journalChapterNumber } from './scene-chapter'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
@@ -362,7 +363,7 @@ export function AgentInteractionCard({ interaction, players, playerId, canContin
         })}
       </div>}
       {canVote && interaction.type !== 'roll' && <button className="agent-abstain" onClick={onAbstain}>Воздержаться</button>}
-      {resolved && !treaty && <button className="agent-continue" onClick={onContinue} disabled={!canContinue} title={canContinue ? 'Передать подтверждённое решение Рассказчику' : 'Продолжить может владелец выбранного героя'}><Sparkles size={14} />Продолжить историю: {winner?.label}</button>}
+      {resolved && !treaty && !isAutomaticWorldTravel(interaction) && <button className="agent-continue" onClick={onContinue} disabled={!canContinue} title={canContinue ? 'Передать подтверждённое решение Рассказчику' : 'Продолжить может владелец выбранного героя'}><Sparkles size={14} />Продолжить историю: {winner?.label}</button>}
     </section>
   )
 }
