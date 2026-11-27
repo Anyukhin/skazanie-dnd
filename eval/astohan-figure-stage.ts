@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { createActorModel, figureHeightFor, loadActorModelManifest, resolveModelProfile, type ActorModelInput } from '../src/actor-models'
+import { createActorModel, actorModelHeight, loadActorModelManifest, resolveModelProfile, type ActorModelInput } from '../src/actor-models'
 
 type Figure = { actor: ActorModelInput; side: number }
 type AtlasMode = 'color' | 'scale' | 'silhouette'
@@ -37,8 +37,7 @@ export async function drawAstohanFigureAtlas(figures: Figure[], mode: AtlasMode)
   try {
     for (const [index, { actor, side }] of figures.entries()) {
       const entry = resolveModelProfile(actor, manifest)
-      const stature = actor.appearance?.version === 2 ? actor.appearance.stature : undefined
-      const heightInCells = figureHeightFor(entry.height ?? 1.25, entry.profile, side, stature)
+      const heightInCells = actorModelHeight(actor, side, manifest)
       const model = await createActorModel(actor, { manifest, height: heightInCells })
       try {
         await model.equipmentReady

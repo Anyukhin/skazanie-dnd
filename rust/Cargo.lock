@@ -2151,6 +2151,7 @@ dependencies = [
  "sk-tactical",
  "sk-tactics",
  "sk-talespire",
+ "sk-themes",
  "sk-turns",
  "sk-world-life",
  "sk-world-story",

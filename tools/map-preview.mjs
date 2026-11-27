@@ -16,13 +16,12 @@
  * «:» — перила/уступ. Пол: «.» помещение, «,» улица, «~» вода, «#» глухая
  * клетка. Предметы — буквой из легенды под картой. «@» — точка входа отряда.
  *
- * Сводка внизу — та же проверка качества, что гоняют тесты
- * (`server/map-quality.mjs`): двери, окна, комнаты, досягаемость, предметы
+ * Сводку качества и карту строит Rust-сервер: двери, окна, комнаты,
+ * досягаемость, предметы
  * за краем и в дверях.
  */
-import { generateSceneGeometry } from '../server/adventure-director.mjs'
-import { cellAt, edgeBetween } from '../server/tactical-map.mjs'
-import { MAP_PREVIEW_PRESETS, auditTacticalMap } from '../server/map-quality.mjs'
+import { cellAt, deserializeTacticalMap, edgeBetween } from '../server/tactical-map.mjs'
+import { rustToolCall } from './rust-tool-data.mjs'
 import { pathToFileURL } from 'node:url'
 import { writeFileSync } from 'node:fs'
 
@@ -121,10 +120,10 @@ const SIZES = Object.freeze({
   large: { width: 40, height: 32 },
 })
 
-function printOne(input, { audit = true, ascii = true } = {}) {
-  const geometry = generateSceneGeometry(input)
-  const map = geometry.map
-  const report = auditTacticalMap(map)
+async function printOne(input, { audit = true, ascii = true } = {}) {
+  const geometry = await rustToolCall('previewSceneGeometry', input)
+  const map = deserializeTacticalMap(geometry.map)
+  const report = geometry.report
   const header = `== ${input.location} | тема ${map.theme} | ${map.width}×${map.height} | генератор ${map.generator?.id ?? '?'} | сид ${input.seed}`
   console.log(header)
   if (ascii) {
@@ -148,7 +147,8 @@ if (!direct) {
 } else if (preset) {
   const seeds = (flag('seeds') ?? 's1,s2,s3').split(',')
   const sizeNames = (flag('sizes') ?? 'medium').split(',').flatMap((name) => name === 'all' ? Object.keys(SIZES) : [name])
-  const scenes = preset === 'all' ? MAP_PREVIEW_PRESETS : MAP_PREVIEW_PRESETS.filter((scene) => preset.split(',').includes(scene.id))
+  const presets = await rustToolCall('mapPreviewPresets')
+  const scenes = preset === 'all' ? presets : presets.filter((scene) => preset.split(',').includes(scene.id))
   /** @type {Record<string, number>} */
   const totals = {}
   /** @type {Record<string, number>} */
@@ -158,7 +158,7 @@ if (!direct) {
   for (const scene of scenes) {
     for (const size of sizeNames) {
       for (const seed of seeds) {
-        const { map, report } = printOne({ ...scene.input, map: { ...(scene.input.map ?? {}), ...SIZES[/** @type {keyof typeof SIZES} */ (size)] }, seed: `${scene.id}:${seed}`, useLibrary: false }, { audit: true, ascii: !has('audit') })
+        const { map, report } = await printOne({ ...scene.input, map: { ...(scene.input.map ?? {}), ...SIZES[/** @type {keyof typeof SIZES} */ (size)] }, seed: `${scene.id}:${seed}`, useLibrary: false }, { audit: true, ascii: !has('audit') })
         for (const problem of report.problems) totals[problem.code] = (totals[problem.code] ?? 0) + 1
         for (const warning of report.warnings) warningTotals[warning.code] = (warningTotals[warning.code] ?? 0) + 1
         gallery.push({ id: scene.id, label: scene.input.location, size, seed, map, report })
@@ -180,7 +180,7 @@ if (!direct) {
 } else if (flag('text')) {
   await printProgramScene()
 } else {
-  printOne({
+  await printOne({
     location: flag('location') ?? 'Таверна «Рог»',
     theme: flag('theme') ?? '',
     settlementType: flag('settlement') ?? '',
@@ -277,9 +277,6 @@ function galleryHtml(gallery, title) {
  * где встали якоря и посты жителей, итог проверки по программе.
  */
 async function printProgramScene() {
-  const { sceneMapRequirementsFor, requirementAssets, requirementLabel, requirementTerrain, requiredProgramKinds } = await import('../server/scene-requirements.mjs')
-  const { programReport, platformCells, SETTLEMENT_MIN_SIZE } = await import('../server/map-quality.mjs')
-  const { resolveSceneTheme } = await import('../server/scene-themes.mjs')
   const location = flag('location') ?? 'Место'
   const theme = flag('theme') ?? ''
   const settlementType = flag('settlement') ?? ''
@@ -291,24 +288,18 @@ async function printProgramScene() {
     if (name) npcs.push({ name: name.trim(), role: role.trim() })
   })
   const library = flag('library')
-  if (library) {
-    const { MapLibrary, setActiveMapLibrary } = await import('../server/map-library.mjs')
-    setActiveMapLibrary(new MapLibrary(library))
-  }
-  const program = sceneMapRequirementsFor([location, flag('text')], { npcs })
+  const geometry = await rustToolCall('previewSceneGeometry', {
+    location, theme, settlementType, seed: flag('seed') ?? 'preview', useLibrary: Boolean(library),
+    map: { width: Number(flag('width')) || undefined, height: Number(flag('height')) || undefined },
+  }, { text: flag('text'), npcs, library })
+  const program = geometry.program
   console.log(`== программа: ${program ? program.version : 'пусто — текст ничего не обещает'}`)
   if (program) {
-    const required = new Set(requiredProgramKinds(program))
-    console.log(`   обещано: ${program.items.map((item) => `${requirementLabel(item.id)}${item.count > 1 ? ` ×${item.count}` : ''}${required.has(item.id) ? '*' : ''}`).join(', ')}  (* — обязательное)`)
-    if (program.focus) console.log(`   центр: ${requirementLabel(program.focus)}`)
-    for (const post of program.posts ?? []) console.log(`   пост: ${post.npc} — ${requirementLabel(post.id)}`)
+    console.log(`   обещано: ${program.items.map((item) => `${item.label}${item.count > 1 ? ` ×${item.count}` : ''}${item.required ? '*' : ''}`).join(', ')}  (* — обязательное)`)
+    if (program.focus) console.log(`   центр: ${program.focus}`)
+    for (const post of program.posts) console.log(`   пост: ${post.npc} — ${post.label}`)
   }
-  const geometry = generateSceneGeometry({
-    location, theme, settlementType, seed: flag('seed') ?? 'preview', useLibrary: Boolean(library),
-    requirements: program?.items ?? [], program,
-    map: { width: Number(flag('width')) || undefined, height: Number(flag('height')) || undefined },
-  })
-  const map = geometry.map
+  const map = deserializeTacticalMap(geometry.map)
   const seed = String(map.seed ?? '')
   const path = seed.startsWith('library:') ? `библиотека — ${seed.split(':')[1]}`
     : `генератор ${map.generator?.id ?? '?'}, ${seed.includes(':attempt-') ? `попытка ${Number(seed.split(':attempt-')[1]) + 1} — прежние не прошли проверку` : 'с первой попытки'}`
@@ -316,16 +307,13 @@ async function printProgramScene() {
   console.log(renderAscii(map))
   if (program) {
     for (const item of program.items) {
-      const spots = requirementTerrain(item.id)
-        ? platformCells(map).map((cell) => `${cell.x},${cell.y}`)
-        : map.props.filter((prop) => requirementAssets(item.id).includes(prop.assetId)).map((prop) => `${Math.floor(prop.x)},${Math.floor(prop.y)}`)
-      console.log(`   ${requirementLabel(item.id)}: ${spots.length ? spots.slice(0, 8).join(' ') : 'нет на карте'}`)
+      const spots = item.spots.map(([x, y]) => `${x},${y}`)
+      console.log(`   ${item.label}: ${spots.length ? spots.slice(0, 8).join(' ') : 'нет на карте'}`)
     }
-    const settlement = resolveSceneTheme({ location, theme, settlementType }).kind === 'settlement'
-    const report = programReport(map, program, { minSize: settlement ? SETTLEMENT_MIN_SIZE : null, openScene: settlement })
+    const report = program.report
     console.log(`== проверка по программе: ${summarizeProblems(report.problems)}`)
     if (report.warnings.length) console.log(`   замечания: ${summarizeProblems(report.warnings)}`)
-    if (geometry.missing) console.log(`   невоплощённое обязательное: ${geometry.missing.map(requirementLabel).join(', ')}`)
+    if (program.missing.length) console.log(`   невоплощённое обязательное: ${program.missing.join(', ')}`)
   }
-  console.log(`== общая проверка: ${summarizeProblems(auditTacticalMap(map).problems)}`)
+  console.log(`== общая проверка: ${summarizeProblems(geometry.report.problems)}`)
 }

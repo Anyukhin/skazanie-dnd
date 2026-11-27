@@ -7,60 +7,10 @@ import { join } from 'node:path'
 import { createServer } from 'vite'
 import { withBrowser } from '../.agent-tasks/browser.mjs'
 import { freePort } from '../test/free-port.mjs'
-import { buildCombatLabState, createCampaignState, normalizeCampaignState, serverBatch, serverCall } from '../test/kit/fixtures.mjs'
+import { buildCombatLabState, createCampaignState, normalizeCampaignState, serverCall } from '../test/kit/fixtures.mjs'
+import { astohanEncounterFigures, figureAuditParty, projectedFigure, projectFigureState } from './astohan-figure-roster.mjs'
 
 const output = 'tmp/astohan-figure-audit'
-const projection = state => serverCall('campaignStateForViewer', state, { role: 'player' }, state.players[0].id)
-const party = [{ source: 'class', classId: 'fighter', level: 7, x: 1, y: 1 }]
-const colors = { enemy: '#c86c5d', neutral: '#9d8f72' }
-
-function figure(state, record, kind) {
-  const appearance = state.actor_appearances[record.id]
-  assert.ok(appearance, `${record.name}: отсутствует публичная внешность`)
-  return {
-    actor: {
-      id: record.id, kind, label: record.name, color: colors[kind], appearance,
-      archetype: kind === 'enemy' ? record.creature_type : record.role,
-    },
-    side: record.footprint?.size ?? 1,
-  }
-}
-
-async function encounterFigures(scenario) {
-  const themes = scenario.locations.map(location => location.encounter?.theme).filter(Boolean)
-  themes.push(scenario.attention.finale.ready_ambush.theme)
-  const uniqueThemes = [...new Set(themes)]
-  assert.equal(uniqueThemes.length, 4, 'аудит включает все четыре темы Асстохана')
-  const pools = await serverBatch(uniqueThemes.map(theme => ['classicEncounterMonsterIds', theme]))
-  const counts = Object.fromEntries(uniqueThemes.map((theme, index) => [theme, pools[index].length]))
-  const records = [...new Set(pools.flat())]
-  assert.ok(records.every(id => typeof id === 'string' && id))
-  assert.equal(records.length, 53, 'размер объединения изменился, проверьте состав тем')
-  const rows = []
-  const checks = []
-  for (let index = 0; index < records.length; index += 3) {
-    const batch = records.slice(index, index + 3)
-    const state = await buildCombatLabState({
-      mapId: 'forest-clearing', party,
-      enemies: batch.map((monsterId, place) => ({ monsterId, x: place * 3, y: 6 })),
-    })
-    const visible = await projection(state)
-    assert.equal(visible.enemies.length, batch.length)
-    for (const enemy of visible.enemies) {
-      const original = state.enemies.find(record => record.id === enemy.id)
-      const row = figure(visible, enemy, 'enemy')
-      row.statBlockId = original.stat_block_id
-      const expectedSide = { large: 2, huge: 3, gargantuan: 4 }[original.size] ?? 1
-      if (row.side !== expectedSide) checks.push(`${enemy.name}: площадь ${row.side}, ожидалась ${expectedSide}`)
-      if (['tiny', 'small'].includes(original.size) && row.actor.appearance.stature !== original.size) {
-        checks.push(`${enemy.name}: в публичной внешности нет роста ${original.size}`)
-      }
-      rows.push(row)
-    }
-  }
-  assert.deepEqual(new Set(rows.map(row => row.statBlockId)), new Set(records))
-  return { rows, checks, counts }
-}
 
 async function storyFigures(scenario) {
   const id = 'astohan-stormberg'
@@ -87,19 +37,19 @@ async function storyFigures(scenario) {
     mechanics: { ...initial.mechanics, positions: { [hero.id]: { x: 0, y: 0 } } },
     npc_world: { ...initial.npc_world, placements },
   })
-  const visible = await projection(state)
+  const visible = await projectFigureState(state)
   assert.deepEqual(new Set(visible.scene_npcs.map(entry => entry.id)), new Set(named.map(entry => entry.id)))
-  return visible.scene_npcs.map(record => figure(visible, record, 'neutral'))
+  return visible.scene_npcs.map(record => projectedFigure(visible, record, 'neutral'))
 }
 
 async function maskedFigures(checks) {
   const dragon = await buildCombatLabState({
-    mapId: 'forest-clearing', party,
+    mapId: 'forest-clearing', party: figureAuditParty,
     enemies: [{ monsterId: 'dnd_5e_2014:monster:young-red-dragon', x: 3, y: 6 }],
   })
   const masked = structuredClone(dragon)
   masked.enemies[0].masked = true
-  const [hidden, revealed] = await Promise.all([projection(masked), projection(dragon)])
+  const [hidden, revealed] = await Promise.all([projectFigureState(masked), projectFigureState(dragon)])
   const hiddenEnemy = hidden.enemies[0]
   const revealedEnemy = revealed.enemies[0]
   if (hiddenEnemy.creature_type || hiddenEnemy.image || hiddenEnemy.footprint
@@ -107,7 +57,7 @@ async function maskedFigures(checks) {
   if (revealedEnemy.creature_type !== 'dragon' || !revealedEnemy.image || revealedEnemy.footprint?.size !== 2) {
     checks.push('Проекция открытого дракона потеряла его портрет или площадь')
   }
-  return [figure(hidden, hiddenEnemy, 'enemy'), figure(revealed, revealedEnemy, 'enemy')]
+  return [projectedFigure(hidden, hiddenEnemy, 'enemy'), projectedFigure(revealed, revealedEnemy, 'enemy')]
 }
 
 function silhouetteFailures(captures) {
@@ -127,7 +77,7 @@ function silhouetteFailures(captures) {
 }
 
 const scenario = await serverCall('scenarioForWorldTemplate', 'astohan-plains')
-const { rows: enemies, checks, counts } = await encounterFigures(scenario)
+const { rows: enemies, checks, counts } = await astohanEncounterFigures(scenario)
 const named = await storyFigures(scenario)
 const masked = await maskedFigures(checks)
 await mkdir(output, { recursive: true })

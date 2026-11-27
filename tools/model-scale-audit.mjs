@@ -3,7 +3,7 @@
  * Замер масштаба 3D-моделей: соразмерны ли предметы и фигурки друг другу.
  *
  * Предметы берутся с настоящих карт — пресеты `pnpm maps:preview` по
- * нескольким сидам и авторские карты (`data/authored-location-maps-v1.json`),
+ * нескольким сидам и авторские карты, подготовленные Rust-сервером,
  * — и собираются штатной фабрикой доски с каталогом выпуска каждой карты.
  * Измеряется габарит готовой геометрии после посадки, поворота и масштаба.
  * Крепления на стене или столе и отдельные эффекты огня в высоту предмета не входят.
@@ -23,9 +23,8 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 import { compileClientModules, repositoryRoot as root } from '../test/kit/client-ts.mjs'
-import { generateSceneGeometry } from '../server/adventure-director.mjs'
-import { MAP_PREVIEW_PRESETS } from '../server/map-quality.mjs'
-import { deserializeTacticalMap } from '../server/tactical-map.mjs'
+import { astohanEncounterFigures } from '../eval/astohan-figure-roster.mjs'
+import { rustToolBatch, rustToolCall } from './rust-tool-data.mjs'
 
 const args = new Set(process.argv.slice(2))
 const SEEDS = ['scale-a', 'scale-b', 'scale-c']
@@ -81,24 +80,33 @@ const PROFILE_FEET = Object.freeze({ warrior: 5.75, mage: 5.75, rogue: 5.75, ske
 /** Доска сжимает верх шкалы размеров: огромное и громадное — не ниже этой доли книги. */
 const LARGE_SIZE_FLOOR = .35
 
-const { modules: [render, catalogModule, style, props3d, actorModels, assetsModule] } = await compileClientModules(
-  ['src/board-render.ts', 'src/prop-model-catalog.ts', 'src/board3d-style.ts', 'src/board3d-props.ts', 'src/actor-models.ts', 'src/prop-model-assets.ts'],
+const { modules: [render, catalogModule, style, props3d, actorModels, assetsModule, tacticalMap] } = await compileClientModules(
+  ['src/board-render.ts', 'src/prop-model-catalog.ts', 'src/board3d-style.ts', 'src/board3d-props.ts', 'src/actor-models.ts', 'src/prop-model-assets.ts', 'src/tactical-map-client.ts'],
 )
 const readJson = (path) => JSON.parse(readFileSync(join(root, path), 'utf8'))
 const stylePack = style.validateGraphicsStylePack(readJson('public/assets/styles/stylized/manifest.json'))
 const actorManifest = readJson('public/assets/models/manifest.json')
 
 /** Карты корпуса: пресеты по сидам и все авторские. */
-function corpusMaps() {
+async function corpusMaps() {
   const maps = []
-  for (const preset of MAP_PREVIEW_PRESETS) {
-    for (const seed of SEEDS) {
-      const geometry = generateSceneGeometry({ ...preset.input, seed: `${preset.id}:${seed}` })
-      const map = geometry.map?.layers ? geometry.map : geometry.map ? deserializeTacticalMap(geometry.map) : null
-      if (map) maps.push({ source: preset.id, map })
+  const [presets, authoredIds] = await rustToolBatch([['mapPreviewPresets'], ['authoredLocationMapIds']])
+  const inputs = [
+    ...presets.flatMap(preset => SEEDS.map(seed => ({
+      source: preset.id,
+      call: ['previewSceneGeometry', { ...preset.input, seed: `${preset.id}:${seed}`, useLibrary: false }],
+    }))),
+    ...authoredIds.map(id => ({ source: id, call: ['authoredLocationMapFor', id] })),
+  ]
+  for (let offset = 0; offset < inputs.length; offset += 6) {
+    const batch = inputs.slice(offset, offset + 6)
+    const wire = await rustToolBatch(batch.map(input => input.call))
+    for (const [index, { source }] of batch.entries()) {
+      const map = tacticalMap.decodeTacticalMap(wire[index]?.map)
+      if (!map) throw new Error(`Rust не вернул читаемую карту ${source}`)
+      maps.push({ source, map })
     }
   }
-  for (const raw of readJson('data/authored-location-maps-v1.json').maps) maps.push({ source: raw.locationId, map: deserializeTacticalMap(raw) })
   return maps
 }
 
@@ -122,7 +130,7 @@ const toFeet = (cells) => cells / feetToCells
 
 /** @type {Map<string, {heights: number[], scales: number[], keys: Map<string, number[]>, sources: Set<string>, missing: number}>} */
 const byAsset = new Map()
-const maps = corpusMaps()
+const maps = await corpusMaps()
 const releases = new Map()
 const templates = new Map()
 globalThis.self ??= globalThis
@@ -209,15 +217,16 @@ for (const [assetId, record] of [...byAsset].sort(([a], [b]) => a.localeCompare(
 
 // Фигурка своего профиля на одной клетке: тот же расчёт, что у доски.
 const actors = actorManifest.models.map((entry) => {
-  const cells = actorModels.figureHeightFor(Number(entry.height) || 1.25, entry.profile, 1)
+  const cells = actorModels.actorModelHeight({ id: entry.key, label: entry.name_ru ?? entry.key, modelKey: entry.key, kind: 'neutral' }, 1, actorManifest)
   const feet = toFeet(cells)
-  const ratio = feet / PROFILE_FEET[entry.profile]
+  const referenceFeet = ['spider', 'frog'].includes(entry.key) ? CREATURE_FEET.tiny : PROFILE_FEET[entry.profile]
+  const ratio = feet / referenceFeet
   const problems = []
   // Запись без GLB — запасная: процедурная фигурка получает рост той записи,
   // чья модель не загрузилась, а не свой.
   if (entry.url && ratio > TOLERANCE) problems.push(`выше своего профиля в ${round(ratio, 1)} раза`)
   if (entry.url && ratio < 1 / TOLERANCE) problems.push(`ниже своего профиля в ${round(1 / ratio, 1)} раза`)
-  return { key: entry.key, profile: entry.profile, auto: entry.auto !== false, fallback: !entry.url, cells: round(cells), feet: round(feet, 1), ratio: round(ratio), problems }
+  return { key: entry.key, profile: entry.profile, auto: entry.auto !== false, fallback: !entry.url, cells: round(cells), feet: round(feet, 1), referenceFeet, ratio: round(ratio), problems }
 })
 // Гуманоид каждой категории размера: площадь и `appearance.stature`, как на доске.
 const sizeScale = Object.entries(SIZE_CELLS).map(([size, cells]) => {
@@ -229,7 +238,33 @@ const sizeScale = Object.entries(SIZE_CELLS).map(([size, cells]) => {
   return { size, cells, figureFeet: round(toFeet(figure), 1), bookFeet: CREATURE_FEET[size], ratio: round(ratio), problems }
 })
 
-const report = { humanCells: round(human), feetPerCellOfFigure: round(1 / feetToCells, 2), maps: maps.length, props: rows, actors, sizeScale }
+const scenario = await rustToolCall('scenarioForWorldTemplate', 'astohan-plains')
+const { rows: enemies, checks, counts } = await astohanEncounterFigures(scenario)
+const assetFetch = async url => new Response(readFileSync(join(root, 'public', url)))
+const campaignCreatures = []
+for (const { actor, side, size, statBlockId } of enemies) {
+  const expected = actorModels.resolveModelProfile(actor, actorManifest)
+  const height = actorModels.actorModelHeight(actor, side, actorManifest)
+  const model = await actorModels.createActorModel(actor, { manifest: actorManifest, height, loader, fetcher: assetFetch })
+  try {
+    model.setPose('idle', 0)
+    const bounds = new THREE.Box3().setFromObject(model, true)
+    const actual = bounds.max.y - bounds.min.y
+    const problems = []
+    if (!Number.isFinite(actual) || actual <= 0) problems.push('фигура отсутствует')
+    if (expected.url && model.source !== 'glb') problems.push('GLB заменён запасной фигуркой')
+    if (Number.isFinite(actual) && actual > 0 && (actual / height > TOLERANCE || height / actual > TOLERANCE)) {
+      problems.push('габарит фигуры расходится с ростом клиента')
+    }
+    campaignCreatures.push({ id: statBlockId, name: actor.label, size, side, key: model.modelKey, source: model.source,
+      cells: round(actual), feet: round(toFeet(actual), 1), problems })
+  } finally {
+    model.dispose()
+  }
+}
+
+const report = { engine: 'rust', humanCells: round(human), feetPerCellOfFigure: round(1 / feetToCells, 2),
+  maps: maps.length, props: rows, actors, sizeScale, encounterThemes: counts, campaignCreatures, projectionProblems: checks }
 if (args.has('--json')) {
   console.log(JSON.stringify(report, null, 2))
 } else {
@@ -248,5 +283,11 @@ if (args.has('--json')) {
   for (const entry of sizeScale) console.log(`  ${entry.size.padEnd(11)} ${entry.cells}×${entry.cells}: ${entry.figureFeet} фт против ${entry.bookFeet} фт по книге (×${entry.ratio})${entry.problems.length ? ` · ${entry.problems.join('; ')}` : ''}`)
   const total = rows.filter((row) => row.problems?.length).length + actors.filter((entry) => entry.problems.length).length
     + sizeScale.filter((entry) => entry.problems.length).length
+    + campaignCreatures.filter((entry) => entry.problems.length).length + checks.length
+  console.log(`\nСущества Асстохана из Rust: ${campaignCreatures.length}`)
+  for (const entry of campaignCreatures.filter(entry => args.has('--all') || entry.problems.length)) {
+    console.log(`  ${entry.name}: ${entry.side}×${entry.side}, ${entry.feet} фт · ${entry.key} · ${entry.problems.join('; ') || 'ок'}`)
+  }
+  for (const problem of checks) console.log(problem)
   console.log(`\nЗамечаний: ${total}`)
 }

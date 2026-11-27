@@ -131,6 +131,46 @@ fn map_output(map: &TacticalMap) -> Result<Value, Failure> {
     Ok(json!({ "map": tm::serialize_tactical_map(map).map_err(fault)?, "cells": tm::legacy_cells_from_tactical_map(map) }))
 }
 
+/// Снимок карты, полученной тем же генератором, что строит игровые сцены.
+fn preview_scene_geometry(input: &Value, options: &Value) -> Result<Value, Failure> {
+    use sk_map_core::map_quality::{audit_tactical_map, platform_cells, program_report, ProgramOptions, SETTLEMENT_MIN_SIZE};
+    use sk_scene_base::scene_requirements::{requirement_assets, requirement_label, requirement_terrain, required_program_kinds, scene_map_requirements_for};
+
+    let mut request = input.clone();
+    let program = options.get("text").and_then(Value::as_str)
+        .and_then(|text| scene_map_requirements_for(&json!([input["location"], text]), options.get("npcs"), None));
+    if let Some(program) = &program {
+        request["program"] = program.to_value();
+        request["requirements"] = json!(program.items);
+    }
+    let library = options.get("library").and_then(Value::as_str).map(sk_story::map_library::MapLibrary::new);
+    let geometry = sk_director::adventure_director::generate_scene_geometry_with(&request, library.as_ref()).map_err(fault)?;
+    let mut result = geometry.to_json().map_err(fault)?;
+    result["report"] = audit_tactical_map(&geometry.map).to_json();
+    if let Some(program) = program {
+        let value = program.to_value();
+        let required = required_program_kinds(&value);
+        let details: Vec<Value> = program.items.iter().map(|item| {
+            let spots: Vec<Value> = if requirement_terrain(&item.id).is_some() {
+                platform_cells(&geometry.map).into_iter().map(|(x, y)| json!([x, y])).collect()
+            } else {
+                let assets = requirement_assets(&item.id);
+                geometry.map.props.iter().filter(|prop| assets.contains(&prop.asset_id.as_str()))
+                    .map(|prop| json!([prop.x.floor() as i64, prop.y.floor() as i64])).collect()
+            };
+            json!({ "label": requirement_label(&item.id), "count": item.count, "required": required.contains(&item.id), "spots": spots })
+        }).collect();
+        let settlement = sk_themes::scene_themes::resolve_scene_theme(input).kind == "settlement";
+        result["program"] = json!({
+            "version": program.version, "items": details, "focus": program.focus.as_deref().map(requirement_label),
+            "posts": program.posts.iter().map(|post| json!({ "npc": post.npc, "label": requirement_label(&post.id) })).collect::<Vec<_>>(),
+            "report": program_report(&geometry.map, &value, &ProgramOptions { min_size: settlement.then_some(SETTLEMENT_MIN_SIZE), open_scene: settlement }).to_json(),
+            "missing": geometry.missing.as_deref().unwrap_or(&[]).iter().map(|kind| requirement_label(kind)).collect::<Vec<_>>(),
+        });
+    }
+    Ok(result)
+}
+
 /// `readMap(map)`: карта в форме `serializeTacticalMap`, все её существующие
 /// клетки, как их отдаёт `cellAt`, и предметы целиком, как в
 /// `deserializeTacticalMap(map).props` (с `blocksMove` и прочим из каталога).
@@ -350,6 +390,9 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, Failure> {
             Some(map) => map_output(&map),
             None => Ok(Value::Null),
         },
+        "authoredLocationMapIds" => Ok(json!(sk_map_core::authored_location_maps::authored_location_map_ids())),
+        "mapPreviewPresets" => Ok(sk_map_core::map_quality::MAP_PREVIEW_PRESETS.clone()),
+        "previewSceneGeometry" => preview_scene_geometry(a(0), a(1)),
         "materializeCatalogItem" => Ok(sk_items::item_catalog::materialize_catalog_item(a(0).as_str().unwrap_or(""), args.get(1).filter(|value| !value.is_null()))),
         "classicEncounterMonsterIds" => {
             let records = sk_encounters::encounter_assembler::classic_theme_roster(a(0).as_str().unwrap_or("")).map_err(fault)?;

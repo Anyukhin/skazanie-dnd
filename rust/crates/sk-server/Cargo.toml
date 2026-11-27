@@ -89,6 +89,7 @@ sk-store = { path = "../sk-store" }
 sk-story = { path = "../sk-story" }
 sk-tactical = { path = "../sk-tactical" }
 sk-tactics = { path = "../sk-tactics" }
+sk-themes = { path = "../sk-themes" }
 sk-turns = { path = "../sk-turns" }
 # С4: каталог шаблонов мира (`/api/world-templates`).
 sk-world-time = { path = "../sk-world-time" }
