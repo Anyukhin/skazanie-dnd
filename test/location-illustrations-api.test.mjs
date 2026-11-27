@@ -170,6 +170,10 @@ test('иллюстрации локаций готовятся заранее, �
   // Пока картинки нет — честный 404 и ни одного обращения к модели.
   const anonymous = await request(baseUrl, roadPath)
   assert.equal(anonymous.status, 401)
+  assert.equal((await request(baseUrl, `${roadPath}?availability=1`)).status, 401)
+  const availability = await request(baseUrl, `${roadPath}?availability=1`, { cookie: playerCookie })
+  assert.equal(availability.status, 200)
+  assert.deepEqual(await json(availability), { available: false })
   const absent = await request(baseUrl, roadPath, { cookie: playerCookie })
   assert.equal(absent.status, 404)
   assert.equal((await json(absent)).code, 'LOCATION_ILLUSTRATION_ABSENT')
@@ -180,6 +184,9 @@ test('иллюстрации локаций готовятся заранее, �
   const hiddenForPlayer = await request(baseUrl, lairPath, { cookie: playerCookie })
   assert.equal(hiddenForPlayer.status, 404)
   assert.equal((await json(hiddenForPlayer)).code, 'LOCATION_NOT_VISIBLE')
+  const hiddenAvailability = await request(baseUrl, `${lairPath}?availability=1`, { cookie: playerCookie })
+  assert.equal(hiddenAvailability.status, 404)
+  assert.equal((await json(hiddenAvailability)).code, 'LOCATION_NOT_VISIBLE')
   const traversal = await request(
     baseUrl,
     `/api/campaigns/LOCATION-ART/locations/${encodeURIComponent('../../auth.json')}/illustration`,
@@ -223,6 +230,9 @@ test('иллюстрации локаций готовятся заранее, �
   assert.equal(playerState.worldMap.currentLocationId, 'loc-norvin-road', 'запасной источник id для клиента')
 
   // Теперь игрок получает картинку — из кеша, без обращения к модели.
+  const ready = await request(baseUrl, `${roadPath}?availability=1`, { cookie: playerCookie })
+  assert.equal(ready.status, 200)
+  assert.deepEqual(await json(ready), { available: true })
   const served = await request(baseUrl, roadPath, { cookie: playerCookie })
   assert.equal(served.status, 200, logs())
   assert.equal(served.headers.get('content-type'), 'image/webp')

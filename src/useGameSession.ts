@@ -291,9 +291,10 @@ function transportFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   return fetch(input, memoryTransportRequestInit(init))
 }
 
-function loadState(): GameState {
+function loadState(initialCampaignIds?: ReadonlySet<string>): GameState {
   const requested = new URLSearchParams(window.location.search).get('room')?.toUpperCase()
-  const selected = requested || localStorage.getItem(ACTIVE_CAMPAIGN_KEY)?.toUpperCase()
+  const previous = localStorage.getItem(ACTIVE_CAMPAIGN_KEY)?.toUpperCase()
+  const selected = [requested, previous].find(code => code && (!initialCampaignIds || initialCampaignIds.has(code)))
   // Пока комната не выбрана, показываем пустую оболочку, а не демо-мир.
   if (!selected) return structuredClone(emptyState)
   // Never restore a viewer-specific campaign projection from a cross-account
@@ -303,6 +304,8 @@ function loadState(): GameState {
 
 export function useGameSession(options: {
   accountId?: string
+  /** Комнаты, которые аккаунт может открыть до принятия приглашения. */
+  initialCampaignIds?: ReadonlySet<string>
   /**
    * Сервер отозвал живой поток (аудит PR #131, LIVE-01/02). Обычно это
    * обновление аккаунта через `/api/auth/me`: завершённый вход вернёт экран
@@ -313,7 +316,7 @@ export function useGameSession(options: {
   const accountId = String(options.accountId ?? '').trim()
   const onAccessRevokedRef = useRef(options.onAccessRevoked)
   onAccessRevokedRef.current = options.onAccessRevoked
-  const [state, setState] = useState<GameState>(loadState)
+  const [state, setState] = useState<GameState>(() => loadState(options.initialCampaignIds))
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
   const [lastDialogueAnswer, setLastDialogueAnswer] = useState('')
   const [pendingClarification, setPendingClarification] = useState<ActionClarification | null>(null)
