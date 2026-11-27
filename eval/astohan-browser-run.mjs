@@ -1,22 +1,36 @@
-// Сквозная проверка игры через два браузерных сеанса. После pnpm build:
-// SKAZANIE_RUST_SERVER_BIN=<бинарь с test-hooks> node eval/astohan-browser-run.mjs
+// Сквозная проверка игры через два браузерных сеанса. Укажите собранный
+// с test-hooks SKAZANIE_RUST_SERVER_BIN, затем выполните pnpm build и
+// node eval/astohan-browser-run.mjs --through 5 для первых пяти шагов.
 import assert from 'node:assert/strict'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { withBrowser } from '../.agent-tasks/browser.mjs'
 import { textOverlaps } from '../.agent-tasks/overlap.mjs'
 import { REPO_ROOT, setupAdmin, startTestServer } from '../test/kit/http.mjs'
+import { readJournal } from '../test/kit/journal.mjs'
+import { finishBrowserReport } from './browser-report.mjs'
 
 const code = 'ASTOHAN-BROWSER'
 const viewport = { width: 1920, height: 1080 }
 const timeoutMs = 90_000
-const output = resolve(REPO_ROOT, 'tmp', 'astohan-browser-run')
+const actionTimeoutMs = 25_000
+const outputOption = process.argv.indexOf('--output')
+const output = outputOption < 0 ? resolve(REPO_ROOT, 'tmp', 'astohan-browser-run') : resolve(process.argv[outputOption + 1])
+const throughOption = process.argv.indexOf('--through')
+const totalSteps = 12
+const through = throughOption < 0 ? totalSteps : Number(process.argv[throughOption + 1])
+assert.ok(Number.isInteger(through) && through >= 1 && through <= totalSteps, 'доступны шаги --through от 1 до 12')
+const seedOption = process.argv.indexOf('--seed')
+const seed = seedOption < 0 ? 12 : Number(process.argv[seedOption + 1])
+assert.ok(Number.isSafeInteger(seed), 'сид костей должен быть целым числом')
 const recipes = JSON.parse(await readFile(new URL('../data/astohan-pilot-builds-v1.json', import.meta.url), 'utf8')).builds
-const report = { engine: 'rust', code, steps: [], failures: [], network: [], console: [] }
+const report = { engine: 'rust', code, seed, mode: through < totalSteps ? 'partial' : 'full', requestedThrough: through,
+  steps: [], failures: [], network: [], console: [], shaders: [], compilerWarnings: [] }
 const context = []
 let currentStep = 'подготовка'
 
 function observe(page, seat) {
+  const requests = new Map()
   page.on('Runtime.exceptionThrown', ({ exceptionDetails }) => {
     const failure = exceptionDetails.exception?.description ?? exceptionDetails.text
     report.console.push({ seat, step: currentStep, type: 'exception', text: failure?.slice(0, 280) })
@@ -27,10 +41,20 @@ function observe(page, seat) {
       report.console.push({ seat, step: currentStep, type, text: message.slice(0, 280) })
     }
   })
-  page.on('Network.responseReceived', ({ response }) => {
+  page.on('Network.requestWillBeSent', ({ requestId, request }) => {
+    const url = new URL(request.url)
+    if (url.protocol === 'http:' || url.protocol === 'https:') requests.set(requestId, url.pathname)
+  })
+  page.on('Network.responseReceived', ({ response, requestId }) => {
     if (response.status < 400) return
-    const path = new URL(response.url).pathname
+    const path = requests.get(requestId) ?? new URL(response.url).pathname
     report.network.push({ seat, step: currentStep, status: response.status, path })
+  })
+  page.on('Network.loadingFinished', ({ requestId }) => requests.delete(requestId))
+  page.on('Network.loadingFailed', ({ requestId, canceled, errorText }) => {
+    const path = requests.get(requestId)
+    requests.delete(requestId)
+    if (path && !canceled) report.network.push({ seat, step: currentStep, path, error: errorText })
   })
 }
 
@@ -48,11 +72,10 @@ async function byText(page, selector, text) {
     if (!match) return null
     match.scrollIntoView({ block: 'center', inline: 'nearest' })
     const box = match.getBoundingClientRect()
-    return { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+    const point = { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+    return match.contains(document.elementFromPoint(point.x, point.y)) ? point : null
   }
-  await page.waitFor(async (pattern, expected) => Boolean([...document.querySelectorAll(pattern)]
-    .find(node => node.getClientRects().length && !node.disabled && node.textContent.replace(/\s+/gu, ' ').trim().includes(expected))),
-    { args: [selector, text], timeoutMs, label: text })
+  await page.waitFor(query, { args: [selector, text], timeoutMs: actionTimeoutMs, label: text || selector })
   const point = await page.evaluate(query, selector, text)
   assert.ok(point, `Кнопка исчезла: ${text}`)
   await pointClick(page, point)
@@ -69,10 +92,30 @@ async function preparePage(page, view, seat) {
   observe(page, seat)
   await page.command('Network.enable')
   await page.command('Emulation.setDeviceMetricsOverride', { ...viewport, deviceScaleFactor: 1, mobile: false })
-  await page.command('Page.addScriptToEvaluateOnNewDocument', { source: `
+  await page.command('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
     localStorage.setItem('skazanie-board-view', ${JSON.stringify(view)});
     localStorage.setItem('skazanie-3d-fps', 'true');
-  ` })
+    window.astohanShaderLogs = [];
+    if (typeof WebGL2RenderingContext === 'undefined') return;
+    const gl = WebGL2RenderingContext.prototype;
+    const getProgramInfoLog = gl.getProgramInfoLog;
+    gl.getProgramInfoLog = function (program) {
+      const log = getProgramInfoLog.call(this, program);
+      if (log?.trim()) {
+        const translated = this.getExtension('WEBGL_debug_shaders');
+        const lines = [...new Set([...log.matchAll(/\\((\\d+),/g)].map(match => Number(match[1])))];
+        window.astohanShaderLogs.push({ log, linked: Boolean(this.getProgramParameter(program, this.LINK_STATUS)),
+          stages: this.getAttachedShaders(program).map(shader => {
+            const code = this.getShaderSource(shader) ?? '';
+            const hlsl = translated?.getTranslatedShaderSource(shader).split('\\n') ?? [];
+            return { type: this.getShaderParameter(shader, this.SHADER_TYPE) === this.VERTEX_SHADER ? 'vertex' : 'fragment',
+              name: code.match(/#define SHADER_NAME (.+)/)?.[1], material: code.match(/#define SHADER_TYPE (.+)/)?.[1],
+              translatedLines: lines.flatMap(number => hlsl[number - 1] ? [{ number, text: hlsl[number - 1].trim() }] : []) };
+          }) });
+      }
+      return log;
+    };
+  })();` })
 }
 
 async function register(page, seat) {
@@ -85,8 +128,7 @@ async function register(page, seat) {
 }
 
 async function createCampaign(page) {
-  await byText(page, '.campaign-empty-screen button', 'Кампании и группы')
-  await page.click('.campaign-start-wizard')
+  await byText(page, '.campaign-start-wizard', 'Создать полностью новую кампанию')
   await byText(page, 'button.world-template-card', 'Асстоханские равнины')
   await page.type('.world-creator input[placeholder="Создастся автоматически"]', code)
   await byText(page, '.campaign-wizard-actions .primary', 'Продолжить')
@@ -151,6 +193,8 @@ function serverSlice(snapshot) {
     version: snapshot.version,
     location: state.scene.location_id, hash: state.scene.map_hash, chapter: state.adventure?.chapter,
     revealedCells: state.scene.cells.filter(cell => cell.revealed).length,
+    geometry: { width: state.scene.map?.width, height: state.scene.map?.height, generator: state.scene.map?.generator?.id,
+      props: state.scene.map?.props?.map(prop => prop.id) ?? [] },
     players: state.players.map(hero => ({ id: hero.id, name: hero.character, level: hero.level, hp: hero.hp, maxHp: hero.maxHp,
       x: hero.x, y: hero.y, resources: hero.combatResources, loadout: state.actor_appearances?.[hero.id]?.loadout })),
     npcs: state.scene_npcs?.map(npc => ({ id: npc.id, name: npc.name, x: npc.x, y: npc.y })),
@@ -171,9 +215,11 @@ async function displaySlice(page) {
         source: cell.dataset.modelSource, model: cell.dataset.modelKey }]
     })
     const status = [...document.querySelectorAll('.player-hud[aria-label]')].find(node => node.getClientRects().length)?.getAttribute('aria-label')
-    return { view, actors, status, canvas: board ? { width: board.width, height: board.height, ...board.dataset } : null,
-      panels: [...document.querySelectorAll('.player-hud, .map-turn-banner, .scene-who-card, .game-journal, .pending-check-overlay, .agent-interaction')]
-        .map(node => node.innerText.trim().slice(0, 340)).filter(Boolean) }
+    const frame = document.querySelector('.board-frame')
+    const cells2d = frame ? ['--board-columns', '--board-rows'].map(name => Number(getComputedStyle(frame).getPropertyValue(name))) : null
+    return { view, actors, status, cells2d, canvas: board ? { width: board.width, height: board.height, ...board.dataset } : null,
+      panels: [...document.querySelectorAll('.player-hud, .map-turn-banner, .scene-who-card, .server-column .messages, .pending-check-overlay, .agent-interaction')]
+        .map(node => node.innerText.trim().slice(-340)).filter(Boolean) }
   })
 }
 
@@ -191,8 +237,11 @@ async function receipt(id, title, players) {
     await page.waitForSelector('canvas.board-canvas,canvas.board3d-canvas', { timeoutMs })
     const source = serverSlice(await room(page))
     if (seat === 'guest') {
-      await page.waitFor(() => Number(document.querySelector('.board3d-canvas')?.dataset.modelParses) > 0
-        && Boolean(document.querySelector('[data-model-source="glb"]')), { timeoutMs, label: 'фигурки загружены' })
+      await page.waitFor((id) => {
+        const canvas = document.querySelector('.board3d-canvas')
+        return canvas?.dataset.locationId === id && Number(canvas.dataset.modelParses) > 0
+          && Boolean(document.querySelector('[data-model-source="glb"]'))
+      }, { args: [source.location], timeoutMs, label: 'фигурки загружены на текущей карте' })
     }
     const browser = await displaySlice(page)
     const overlaps = await textOverlaps(page, ['.player-hud', '.scene-who-card', '.map-turn-banner', '.pending-check-overlay', '.agent-interaction'])
@@ -203,6 +252,12 @@ async function receipt(id, title, players) {
   assert.equal(step.seats[0].source.hash, step.seats[1].source.hash, `${id}: карты расходятся между зрителями`)
   assert.deepEqual(step.seats[0].source.players.map(hero => [hero.id, hero.name, hero.level]), step.seats[1].source.players.map(hero => [hero.id, hero.name, hero.level]), `${id}: отряд зрителей`)
   for (const evidence of step.seats) {
+    if (evidence.browser.view === '2d') {
+      assert.deepEqual(evidence.browser.cells2d, [evidence.source.geometry.width, evidence.source.geometry.height],
+        `${id}: размеры карты 2D отличаются от комнаты`)
+    } else {
+      assert.equal(evidence.browser.canvas.locationId, evidence.source.location, `${id}: 3D отстаёт от комнаты`)
+    }
     for (const hero of evidence.source.players) {
       const actor = evidence.browser.actors.find(view => view.id === hero.id)
       assert.equal(actor?.at, `${hero.x},${hero.y}`, `${id} ${evidence.seat}: положение ${hero.name}`)
@@ -211,13 +266,207 @@ async function receipt(id, title, players) {
     assert.ok(evidence.source.players.some(hero => evidence.browser.status?.startsWith(`${hero.name}: здоровье ${hero.hp} из ${hero.maxHp}`)),
       `${id} ${evidence.seat}: здоровье в панели отличается от комнаты`)
   }
+  step.coverage = 'completed'
   report.steps.push(step)
   console.log(id, title)
 }
 
+async function openNpc(page, name) {
+  await page.command('Page.bringToFront')
+  await dismissLevelCelebration(page)
+  await byText(page, '.scene-who-row', name)
+  await page.waitForSelector('.npc-dialog [type=submit]', { timeoutMs: actionTimeoutMs })
+}
+
+async function chooseDialogue(page, text) {
+  await byText(page, '.npc-dialogue-options button', text)
+}
+
+async function rollDisplayedCheck(page, server, previousCount) {
+  await page.waitForSelector('.pending-check-overlay .dice-copy', { timeoutMs })
+  const card = await page.evaluate(() => ({
+    label: document.querySelector('.pending-check-overlay .dice-copy strong')?.textContent,
+    dc: Number(document.querySelector('.pending-check-overlay .dice-arch-dc b')?.textContent),
+  }))
+  assert.ok(Number.isFinite(card.dc) && card.dc > 0, 'в карточке видна сложность')
+  await byText(page, '.pending-check-overlay .d20-button', 'Бросить')
+  const until = Date.now() + timeoutMs
+  for (;;) {
+    const journal = await readJournal(server, code)
+    const check = journal.events.slice(previousCount).find(event => event.event_type === 'AbilityCheckResolved')
+    if (check) {
+      assert.equal(check.payload.difficulty, card.dc, 'СЛ карточки совпала с событием')
+      return { card, check: { type: check.event_type, actor: check.actor_id, payload: check.payload } }
+    }
+    if (Date.now() > until) throw new Error('Бросок на странице не появился в журнале Rust')
+    await new Promise(resolve => setTimeout(resolve, 350))
+  }
+}
+
+async function audience(owner, server, viewerSeats) {
+  await openNpc(owner, 'Король Арес')
+  await chooseDialogue(owner, 'Какое поручение вы даёте нам')
+  const journalBefore = await readJournal(server, code)
+  const question = 'Почему вы отводите взгляд при имени Вулканиса?'
+  const badge = await owner.evaluate(label => [...document.querySelectorAll('.npc-dialogue-options button')]
+    .find(button => button.textContent.includes(label))?.querySelector('.npc-dialogue-check')?.textContent, question)
+  assert.match(badge, /Проницательность · СЛ 17/iu)
+  await chooseDialogue(owner, question)
+  const conversation = await waitRoom(owner, state => state.social?.conversations?.some(turn => turn.player_message === question), 'ответ Ареса')
+  const answer = conversation.social.conversations.find(turn => turn.player_message === question).npc_reply
+  await owner.waitFor(text => document.querySelector('.npc-dialogue-greeting')?.textContent === text,
+    { args: [answer], timeoutMs, label: 'реплика Ареса в окне разговора' })
+  const afterQuestion = (await readJournal(server, code)).events.slice(journalBefore.events.length)
+  const choice = afterQuestion.find(event => event.event_type === 'DialogueOptionChosen' && event.payload.label === question)
+  const check = afterQuestion.find(event => event.event_type === 'AbilityCheckResolved' && event.actor_id === choice?.actor_id)
+  assert.ok(check, 'вариант Ареса открыл один серверный бросок')
+  assert.equal(choice.payload.check.dc, 17)
+  assert.equal(choice.payload.check.skill, 'insight')
+  assert.equal(choice.payload.check.total, check.payload.total)
+  assert.equal(choice.payload.reply, answer)
+  const result = { question, badge, answer, check: choice.payload.check }
+  console.log('Ш2', 'проверка зафиксирована в журнале Rust')
+  const coins = state => state.players.reduce((sum, { currency: amount }) =>
+    sum + (amount?.platinum ?? 0) * 1_000 + (amount?.gold ?? 0) * 100 + (amount?.silver ?? 0) * 10 + (amount?.copper ?? 0), 0)
+  const wealthBefore = coins((await room(owner)).state)
+  if (!await owner.evaluate(() => Boolean(document.querySelector('.npc-dialogue-options')))) await openNpc(owner, 'Король Арес')
+  await chooseDialogue(owner, 'Мы возьмём королевский кошель')
+  const withPurse = await waitRoom(owner, state => coins(state) > wealthBefore, 'золото королевского кошеля')
+  console.log('Ш2', 'кошель зачислен')
+  await chooseDialogue(owner, 'Покажите королевскую оружейную')
+  await chooseDialogue(owner, 'Беру длинный меч +1')
+  const weapon = 'Длинный меч +1'
+  const withWeapon = await waitRoom(owner, state => state.players[0].inventory?.some(item => item.name === weapon), 'вещь из оружейной')
+  const item = withWeapon.players[0].inventory.find(entry => entry.name === weapon)
+  if (await owner.evaluate(() => Boolean(document.querySelector('.npc-dialog')))) {
+    await byText(owner, '.npc-dialog button[aria-label="Закрыть разговор"]', '')
+  }
+  await byText(owner, 'button', 'Вещи')
+  await owner.waitForSelector('.inv-coins', { timeoutMs: actionTimeoutMs })
+  const purseInSheet = await owner.evaluate(() => document.querySelector('.inv-coins').textContent.trim())
+  const currency = withWeapon.players[0].currency
+  for (const [denomination, label] of [['gold', 'зм'], ['silver', 'см'], ['copper', 'мм'], ['platinum', 'пм']]) {
+    if (currency[denomination] || denomination !== 'platinum') assert.ok(purseInSheet.includes(`${currency[denomination]} ${label}`))
+  }
+  if (!item.equipped) {
+    await byText(owner, `button[title="${weapon}"]`, weapon)
+    await byText(owner, '.inv-detail-actions button', 'Надеть')
+    await waitRoom(owner, state => state.players[0].inventory?.some(entry => entry.id === item.id && entry.equipped), 'меч экипирован')
+  }
+  const sheet = resolve(output, '02-inventory.png')
+  await owner.screenshot(sheet, { fullPage: false })
+  await byText(owner, 'button', 'Игра')
+  await receipt('02', 'Аудиенция, проверка, королевский кошель и оружейная', viewerSeats)
+  const step = report.steps.at(-1)
+  for (const { source } of step.seats) {
+    assert.deepEqual(source.players.find(hero => hero.id === choice.actor_id)?.loadout?.main_hand,
+      { model_key: 'longsword', variant: 'enchanted' }, 'оба зрителя видят зачарованный клинок')
+  }
+  step.audience = { ...result, copperBefore: wealthBefore, copperAfter: coins(withPurse), purseInSheet, weapon, itemId: item.id, sheet }
+}
+
+async function freeDialogueAndCheck(owner, server, viewerSeats) {
+  const action = 'Я внимательно осматриваю зал, ищу скрытые следы недавней драки.'
+  const baseline = await readJournal(server, code)
+  await owner.command('Page.bringToFront')
+  await owner.type('.dialogue-composer textarea', action)
+  await byText(owner, '.dialogue-composer button[type=submit]', 'Отправить')
+  const check = await rollDisplayedCheck(owner, server, baseline.events.length)
+  assert.equal(check.check.payload.skill, 'perception')
+  assert.match(check.card.label, /Восприятие/u)
+  assert.equal(check.check.payload.player_rolled, true)
+  await owner.waitFor(() => !document.querySelector('.pending-check-overlay'), { timeoutMs, label: 'карточка проверки закрылась после результата' })
+  console.log('Ш3', 'свободная проверка зафиксирована в журнале Rust')
+  await openNpc(owner, 'Орен Фаль')
+  const text = 'Мастер Орен, кто был в отряде Ареса во время похода на Вулканиса?'
+  const before = await readJournal(server, code)
+  await owner.type('.npc-dialog input[placeholder^="Сказать"]', text)
+  await byText(owner, '.npc-dialog button[type=submit]', 'Сказать')
+  const until = Date.now() + timeoutMs
+  let reply
+  while (!reply) {
+    const journal = await readJournal(server, code)
+    reply = journal.events.slice(before.events.length).find(event => event.event_type === 'NpcConversationRecorded'
+      && event.payload.conversation?.player_message === text)
+    if (Date.now() > until) throw new Error('В журнале Rust нет реплики Орена')
+    if (!reply) await new Promise(resolve => setTimeout(resolve, 350))
+  }
+  const answer = reply.payload.conversation.npc_reply
+  await owner.waitFor(text => document.querySelector('.npc-dialogue-greeting')?.textContent === text,
+    { args: [answer], timeoutMs: actionTimeoutMs, label: 'свободная реплика Орена в окне разговора' })
+  const dialogue = resolve(output, '03-dialogue.png')
+  await owner.screenshot(dialogue, { fullPage: false })
+  await press(owner, 'Escape')
+  await owner.waitFor(() => !document.querySelector('.npc-dialog'), { timeoutMs: actionTimeoutMs, label: 'Escape закрыл разговор' })
+  const version = (await readJournal(server, code)).state_version
+  assert.ok(version > baseline.state_version, 'проверка и разговор сохранены в состоянии кампании')
+  await receipt('03', 'Свободная заявка и свободный разговор', viewerSeats)
+  report.steps.at(-1).freeAction = { action, check, question: text, reply: answer, versionBefore: baseline.state_version, version, dialogue }
+}
+
+async function travelToAshWatch(owner, guest, server, viewerSeats, finish) {
+  const before = await readJournal(server, code)
+  await owner.command('Page.bringToFront')
+  await byText(owner, 'button[title="Глобальная карта"], button[aria-label="Мир"]', 'Мир')
+  await byText(owner, '.world-map-places button', 'Пепельная застава')
+  const routeScreenshot = resolve(output, '04-route.png')
+  await owner.screenshot(routeScreenshot, { fullPage: false })
+  await byText(owner, 'button.travel-button', 'Предложить отряду этот путь')
+  const proposed = await waitRoom(owner, state => state.agentInteraction?.status === 'open', 'предложение пути отряду')
+  const route = proposed.agentInteraction
+  assert.equal(route.destinationLocationId, 'astohan-ash-watch', 'пункт назначения записан в решении')
+  const ballots = []
+  for (const [seat, page] of viewerSeats) {
+    await page.command('Page.bringToFront')
+    await page.waitForSelector('.agent-interaction .agent-options', { timeoutMs: actionTimeoutMs })
+    const seen = (await room(page)).state.agentInteraction
+    assert.equal(seen?.id, route.id, 'обе сессии получили одно голосование')
+    const panel = await page.evaluate(() => document.querySelector('.agent-interaction').innerText.trim())
+    assert.ok(panel.includes(seen.title), 'заголовок голосования совпадает с комнатой')
+    const overlaps = await textOverlaps(page, ['.agent-interaction'])
+    const screenshot = resolve(output, `04-${seat}.png`)
+    await page.screenshot(screenshot, { fullPage: false })
+    ballots.push({ seat, panel, overlaps, screenshot })
+  }
+  const choice = route.options.find(option => /пепельн|идти|отправить|соглас/iu.test(option.label))
+  assert.ok(choice, 'в голосовании есть предложение пути')
+  for (const page of [owner, guest]) {
+    await page.command('Page.bringToFront')
+    await byText(page, '.agent-options button', choice.label)
+  }
+  const arrived = await waitRoom(owner, state => state.scene.location_id === 'astohan-ash-watch', 'переход на Пепельную заставу')
+  const journal = await readJournal(server, code)
+  const events = journal.events.slice(before.events.length)
+  const votes = events.filter(event => event.event_type === 'PartyVoteCast' && event.payload.interaction_id === route.id)
+  assert.equal(votes.length, 2, 'записаны два отдельных голоса')
+  assert.equal(new Set(votes.map(vote => vote.payload.voter_id)).size, 2, 'голосовали два аккаунта')
+  assert.ok(votes.every(vote => vote.payload.option_id === choice.id), 'оба голоса за путь')
+  const transitions = events.filter(event => event.event_type === 'SceneAdvanced')
+  assert.equal(transitions.length, 1, 'решение отряда совершило один переход')
+  assert.equal(arrived.adventure.chapter, before.state.adventure.chapter + 1, 'открыта одна глава')
+  const step = { id: '04', title: 'Путь на карте мира и два голоса', coverage: 'completed',
+    decision: route.id, option: choice.label, transition: transitions[0].event_type, routeScreenshot, ballots,
+    votes: votes.map(vote => vote.actor_id), chapterBefore: before.state.adventure.chapter, chapter: arrived.adventure.chapter }
+  report.steps.push(step)
+  console.log('04', step.title)
+  if (!finish) return
+  currentStep = 'Ш5'
+  await receipt('05', 'Карта Пепельной заставы в двух представлениях', viewerSeats)
+  for (const seat of report.steps.at(-1).seats) {
+    assert.equal(seat.source.location, 'astohan-ash-watch')
+    assert.equal(seat.source.geometry.generator, 'authored-tactical-scene')
+    assert.ok(seat.source.hash && seat.source.geometry.props.length, 'авторская карта с открытыми предметами получена по хешу')
+    const previous = report.steps[0].seats.find(entry => entry.seat === seat.seat)
+    assert.notEqual(seat.source.hash, previous.source.hash, 'новая карта имеет свой хеш')
+    if (seat.browser.view === '3d') {
+      assert.ok(Number(seat.browser.canvas.modelParses) > Number(previous.browser.canvas.modelParses), 'после перехода загружены модели новой сцены')
+    }
+  }
+}
+
 await mkdir(output, { recursive: true })
-const server = await startTestServer({ after: callback => context.push(callback) }, { env: { DND_DATA_DIR: REPO_ROOT } })
 try {
+  const server = await startTestServer({ after: callback => context.push(callback) }, { env: { DND_DATA_DIR: REPO_ROOT, PLAYTEST_DICE_SEED: String(seed) } })
   // Первичная настройка изолированного инстанса. Владельца и гостя
   // регистрируют страницы, и оба читают обычную проекцию игрока.
   await setupAdmin(server)
@@ -242,7 +491,20 @@ try {
       await chooseBuild(guest, 'barbarian', 'Бран')
       const created = await waitRoom(guest, state => state.players.length === 2 && state.players.every(hero => hero.level === 7 && !hero.characterSetupRequired), 'оба листа 7-го уровня')
       assert.ok(created.players.every(hero => Object.keys(created.actor_appearances?.[hero.id]?.loadout ?? {}).length), 'открытая экипировка фигур')
-      await receipt('01', 'Кампания, приглашение и готовые листы', [['owner', owner], ['guest', guest]])
+      const viewerSeats = [['owner', owner], ['guest', guest]]
+      await receipt('01', 'Кампания, приглашение и готовые листы', viewerSeats)
+      if (through >= 2) {
+        currentStep = 'Ш2'
+        await audience(owner, server, viewerSeats)
+      }
+      if (through >= 3) {
+        currentStep = 'Ш3'
+        await freeDialogueAndCheck(owner, server, viewerSeats)
+      }
+      if (through >= 4) {
+        currentStep = 'Ш4'
+        await travelToAshWatch(owner, guest, server, viewerSeats, through >= 5)
+      }
     } catch (error) {
       report.screenOnFailure = []
       for (const [seat, page] of [['owner', owner], ['guest', guest]]) {
@@ -255,12 +517,18 @@ try {
         report.screenOnFailure.push({ seat, screen, screenshot: photo })
       }
       throw error
+    } finally {
+      for (const [seat, page] of [['owner', owner], ['guest', guest]]) {
+        const logs = await page.evaluate(() => window.astohanShaderLogs ?? []).catch(() => [])
+        report.shaders.push(...logs.map(log => ({ seat, ...log })))
+      }
     }
   })
 } catch (error) {
   report.failures.push({ step: currentStep, error: error.message })
   throw error
 } finally {
+  if (finishBrowserReport(report)) process.exitCode = 1
   await writeFile(resolve(output, 'report.json'), JSON.stringify(report, null, 2) + '\n')
   for (const callback of context.reverse()) await callback()
 }
