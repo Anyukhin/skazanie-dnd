@@ -247,9 +247,17 @@ export default function TacticalBoard3D(props: Props) {
   }, [showFps])
   useEffect(() => {
     let disposed = false
-    void loadActorModelManifest().then((value) => { if (!disposed) setCatalog(value) }).catch(() => {
-      if (!disposed) setModelWarning('Каталог моделей недоступен. Используются встроенные фигурки.')
-    })
+    void loadActorModelManifest()
+      .catch((error) => {
+        // Тяжёлая первая сборка карты может задержать ответ на запрос каталога.
+        // Повторяем один раз, пока доска ещё открыта.
+        if (disposed) throw error
+        return loadActorModelManifest()
+      })
+      .then((value) => { if (!disposed) setCatalog(value) })
+      .catch(() => {
+        if (!disposed) setModelWarning('Каталог моделей недоступен. Используются встроенные фигурки.')
+      })
     return () => { disposed = true }
   }, [])
 
