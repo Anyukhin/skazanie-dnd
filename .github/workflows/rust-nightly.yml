@@ -45,8 +45,7 @@ jobs:
           workspaces: rust
 
       - name: Бинарь сервера с крючками стендов
-        # test-hooks — сид костей PLAYTEST_DICE_SEED и подкоманда journal для
-        # перекрёстного replay (eval/stand-server.mjs).
+        # test-hooks — сид PLAYTEST_DICE_SEED, команды fixture, journal и audit.
         working-directory: rust
         run: cargo build --release --locked -p sk-server --features test-hooks --bin skazanie-server
 

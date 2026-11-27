@@ -1,5 +1,3 @@
-import { NARRATOR_CLICHE_CATALOG } from '../server/narrator-craft-quality.mjs'
-
 const WORD_PATTERN = /[a-zа-яё0-9]+/giu
 
 export const NARRATOR_CRAFT_THRESHOLDS = Object.freeze({
@@ -144,7 +142,7 @@ function suggestionMeasurement(samples) {
  * Пять основных метрик ремесла рассказчика. Вход — уже полученные ответы,
  * поэтому тот же расчёт можно воспроизвести без нового платного вызова модели.
  */
-export function measureNarratorCraft(samples = []) {
+export function measureNarratorCraft(samples, clicheCatalog) {
   const safeSamples = (Array.isArray(samples) ? samples : []).map((sample) => ({
     ...sample,
     text: String(sample?.text ?? ''),
@@ -153,7 +151,7 @@ export function measureNarratorCraft(samples = []) {
   const narratorTexts = safeSamples.filter((sample) => sample.kind === 'narrator').map((sample) => sample.text)
   const allText = safeSamples.map((sample) => sample.text).join('\n')
   const pairwiseNgram = pairwiseAverage(narratorTexts.map((text) => ngrams(text, 3)), jaccard)
-  const clicheRows = NARRATOR_CLICHE_CATALOG.map((entry) => ({
+  const clicheRows = clicheCatalog.map((entry) => ({
     id: entry.id,
     label: entry.label,
     source: entry.source,

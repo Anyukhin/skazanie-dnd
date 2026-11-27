@@ -3,59 +3,28 @@
  * же, что стоит на карте и что записала механика, держится ли сказанное от
  * хода к ходу и построена ли карта сцены так, как обещает её текст.
  *
- * Только чистые функции: состояние комнаты и текст на входе, список
+ * Только чтение: состояние комнаты и текст на входе, список
  * расхождений на выходе. Словари объектов и проверки карты — серверные
  * (`scene-requirements`, `map-quality`), чтобы прогон мерил тем же, чем
- * мерит себя игра. Сторож — `test/eval-consistency-checks.test.mjs`.
+ * мерит себя игра. План и словарь читает тестовая подкоманда Rust.
  *
  * Каждое расхождение — `{ code, severity, message, evidence }`. Проверки
  * намеренно осторожные: лучше пропустить спорный случай, чем завалить отчёт
- * ложными тревогами, — спорное разбирает судья с контекстом (`judgeContext`).
+ * ложными тревогами.
  */
-import { auditTacticalMap, countPlatforms, programReport } from '../server/map-quality.mjs'
-import { requirementLabel, requirementsCoverage, sceneRequirementsFromText } from '../server/scene-requirements.mjs'
-import { cellAt, deserializeTacticalMap } from '../server/tactical-map.mjs'
-import { worldClockForAgents } from '../server/weather.mjs'
+import { serverBatch, serverCall } from '../test/kit/fixtures.mjs'
 
 const clean = (value) => String(value ?? '').replace(/\s+/gu, ' ').trim()
 const lower = (value) => clean(value).toLocaleLowerCase('ru')
 const escape = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
-
-/** Тактическая карта сцены или `null`, если её нет или она не читается. */
-export function sceneMap(state) {
-  const raw = state?.scene?.map
-  if (!raw || typeof raw !== 'object') return null
-  try { return deserializeTacticalMap(raw) } catch { return null }
-}
-
-/** Счётчик предметов карты по `assetId` и число настилов — вход для словарных проверок. */
-export function mapObjectCounts(map) {
-  const props = {}
-  for (const prop of map?.props ?? []) props[prop.assetId] = (props[prop.assetId] ?? 0) + 1
-  return { props, terrain: { platform: map ? countPlatforms(map) : 0 } }
-}
-
-/**
- * Объекты словаря, которые текст называет, а карта не держит. Тот же словарь и
- * та же проверка покрытия, что у программы сцены: «колодец» в тексте без
- * колодца на карте — расхождение, которое игрок увидит своими глазами.
- */
-export function objectsMissingOnMap(text, map) {
-  if (!map) return []
-  const mentioned = sceneRequirementsFromText(text).map((entry) => ({ ...entry, count: 1 }))
-  if (!mentioned.length) return []
-  const { props, terrain } = mapObjectCounts(map)
-  const { missing } = requirementsCoverage(mentioned, props, terrain)
-  return missing.map((id) => ({ id, label: requirementLabel(id) }))
-}
 
 /**
  * Рассказчик против карты. Расхождение `minor`: текст может честно говорить о
  * том, что за пределами поля («в порту», «за рекой»), — но если такие слова
  * идут ответ за ответом, игрок перестаёт верить карте.
  */
-export function narrationVersusMap(text, state) {
-  return objectsMissingOnMap(text, sceneMap(state)).map((entry) => ({
+function narrationVersusMap(objects, state) {
+  return objects.map((entry) => ({
     code: 'NARRATION_OBJECT_NOT_ON_MAP', severity: 'minor',
     message: `рассказчик называет «${entry.label}», а на карте сцены «${state?.scene?.location ?? '?'}» его нет`,
     evidence: entry.id,
@@ -133,9 +102,7 @@ const NIGHT_WORDS = /(?<![\p{L}])(?:ночь|ночью|ночное|ночна�
 const DAY_WORDS = /(?<![\p{L}])(?:полдень|полуденн\p{L}*|палящее солнце|ярким солнцем|солнце в зените)(?![\p{L}])/iu
 
 /** Время суток в тексте против часов мира. Под крышей не проверяется. */
-export function narrationVersusClock(text, state) {
-  let clock
-  try { clock = worldClockForAgents(state) } catch { return [] }
+function narrationVersusClock(text, clock) {
   if (!clock || clock.indoors) return []
   const source = clean(text)
   const phase = String(clock.time_of_day ?? '')
@@ -179,12 +146,16 @@ export function truncatedText(text) {
 }
 
 /** Всё, что проверяется по одному ответу рассказчика. */
-export function narrationConsistency(text, state, { check = null } = {}) {
+export async function narrationConsistency(text, state, { check = null } = {}) {
+  const [map, clock] = await serverBatch([
+    ['inspectSceneMap', state?.scene?.map, text],
+    ['worldClockForAgents', state],
+  ])
   return [
-    ...narrationVersusMap(text, state),
+    ...narrationVersusMap(map?.missingObjects ?? [], state),
     ...narrationVersusCheck(text, check),
     ...narrationVersusState(text, state),
-    ...narrationVersusClock(text, state),
+    ...narrationVersusClock(text, clock),
     ...undeclinedPlaceNames(text, state),
     ...truncatedText(text),
   ]
@@ -195,39 +166,27 @@ export function narrationConsistency(text, state, { check = null } = {}) {
  * то, что обещают текст сцены и её программа. Проблемы аудита — `major`,
  * предупреждения и обещания текста — `minor`.
  */
-export function sceneMapConsistency(state) {
-  const map = sceneMap(state)
+export async function sceneMapConsistency(state) {
   const scene = state?.scene ?? {}
+  const sceneText = [scene.title, scene.objective, scene.description, scene.summary].filter(Boolean).join('. ')
+  const map = await serverCall('inspectSceneMap', scene.map, sceneText, scene.map_requirements, true)
   if (!map) return [{ code: 'SCENE_WITHOUT_MAP', severity: 'major', message: `у сцены «${scene.location ?? '?'}» нет тактической карты`, evidence: '' }]
   const found = []
-  // Аудит `map-quality` — тот же, что у `pnpm maps:preview --audit`: проходы,
+  // Аудит Rust проверяет проходы,
   // двери наружу, мебель в проёмах, досягаемость, бедность обстановки.
-  let audit = null
-  try { audit = auditTacticalMap(map) } catch { audit = null }
   // Одна находка на вид проблемы: аудит называет каждую клетку, и проход
   // длиной в двадцать клеток иначе давал двадцать одинаковых строк.
   const byCode = new Map()
-  for (const problem of audit?.problems ?? []) {
+  for (const problem of map.problems) {
     const entry = byCode.get(problem.code) ?? { count: 0, details: [] }
     entry.count += 1
     if (problem.detail && entry.details.length < 4) entry.details.push(problem.detail)
     byCode.set(problem.code, entry)
   }
   for (const [code, entry] of byCode) found.push({ code: `MAP_${code}`, severity: 'major', message: `карта «${scene.location}»: ${code} ×${entry.count}${entry.details.length ? ` (${entry.details.join('; ')})` : ''}`, evidence: entry.details[0] ?? '' })
-  if (scene.map_requirements) {
-    try {
-      const report = programReport(map, scene.map_requirements)
-      for (const problem of report.problems) found.push({ code: `PROGRAM_${problem.code}`, severity: 'major', message: `программа сцены «${scene.location}»: ${problem.code}${problem.detail ? ` — ${requirementLabel(problem.detail) || problem.detail}` : ''}`, evidence: problem.detail ?? '' })
-    } catch { /* программа старого формата */ }
-  }
-  // Текст самой сцены — заголовок, цель, описание — обещает объекты: игрок
-  // читает «у колодца» и ищет колодец на карте.
-  const promised = objectsMissingOnMap([scene.title, scene.objective, scene.description, scene.summary].filter(Boolean).join('. '), map)
-  for (const entry of promised) found.push({ code: 'SCENE_TEXT_OBJECT_NOT_ON_MAP', severity: 'minor', message: `текст сцены «${scene.location}» обещает «${entry.label}», на карте его нет`, evidence: entry.id })
-  const props = map.props?.length ?? 0
-  let passable = 0
-  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (cellAt(map, x, y)?.passable) passable += 1
-  if (passable >= 150 && props === 0) found.push({ code: 'MAP_EMPTY', severity: 'minor', message: `карта «${scene.location}» без единого предмета на ${passable} клетках`, evidence: '' })
+  for (const problem of map.programProblems) found.push({ code: `PROGRAM_${problem.code}`, severity: 'major', message: `программа сцены «${scene.location}»: ${problem.code}${problem.detail ? ` — ${problem.label || problem.detail}` : ''}`, evidence: problem.detail ?? '' })
+  for (const entry of map.missingObjects) found.push({ code: 'SCENE_TEXT_OBJECT_NOT_ON_MAP', severity: 'minor', message: `текст сцены «${scene.location}» обещает «${entry.label}», на карте его нет`, evidence: entry.id })
+  if (map.passableCells >= 150 && map.propCount === 0) found.push({ code: 'MAP_EMPTY', severity: 'minor', message: `карта «${scene.location}» без единого предмета на ${map.passableCells} клетках`, evidence: '' })
   return found
 }
 
@@ -248,27 +207,4 @@ export function sceneContinuity(state, previous = null) {
     found.push({ code: 'LOCATION_RENAMED', severity: 'minor', message: `точка карты мира «${current.name}» в сцене зовётся то «${previous.location}», то «${scene.location}»`, evidence: scene.location })
   }
   return found
-}
-
-/**
- * Контекст для судьи: что на самом деле есть в сцене в момент ответа. С ним
- * судья ловит то, что словарь не видит, — противоречия прошлому, выдуманных
- * людей, предметы, которых нет.
- */
-export function judgeContext(state, { check = null, recentNarrations = [] } = {}) {
-  const map = sceneMap(state)
-  const { props } = mapObjectCounts(map)
-  const objects = Object.entries(props).sort((a, b) => b[1] - a[1]).slice(0, 18).map(([asset, count]) => `${asset}×${count}`).join(', ')
-  const sceneLocation = lower(state?.scene?.location)
-  const npcsHere = (state?.social?.npcs ?? []).filter((npc) => !npc.location || lower(npc.location) === sceneLocation || npc.placement).map((npc) => npc.name).slice(0, 10)
-  let clock = null
-  try { clock = worldClockForAgents(state) } catch { clock = null }
-  return [
-    `Место: ${state?.scene?.location ?? '?'} — «${state?.scene?.title ?? ''}». Цель сцены: ${state?.scene?.objective ?? '—'}.`,
-    `Время: ${clock ? `${clock.time_of_day_label ?? clock.time_of_day}, ${clock.clock}, ${clock.indoors ? 'под крышей' : `погода: ${clock.weather_label ?? '—'}`}` : '—'}.`,
-    `Предметы на карте: ${objects || 'нет'}.`,
-    `Персонажи в сцене: ${npcsHere.join(', ') || 'никого'}. Герои: ${(state?.players ?? []).map((hero) => `${hero.character} (${hero.hp}/${hero.maxHp} ОЗ)`).join(', ')}.`,
-    check ? `Бросок: ${check.label ?? check.skill} ${check.total} против ${check.difficulty} — ${check.success ? 'успех' : 'провал'}.` : '',
-    recentNarrations.length ? `Перед этим ведущий говорил: ${recentNarrations.map((entry) => `«${clean(entry).slice(0, 220)}»`).join(' ')}` : '',
-  ].filter(Boolean).join('\n')
 }

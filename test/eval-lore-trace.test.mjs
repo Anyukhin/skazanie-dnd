@@ -1,35 +1,24 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { traceLoreAnswer } from '../eval/lore-trace.mjs'
-import { renderLorePlan } from '../server/lore-voice.mjs'
 
-const testimony = 'Саргат три месяца требует с поселений золото и сведения, десять дней назад сжёг Пепельную заставу.'
-const material = {
-  found: [],
-  heard: [{ who: 'Король Арес', line: testimony }],
-  known: [],
-}
+test('eval сверяет дословный ответ и передаёт новые формулировки на проверку с тем же материалом', async () => {
+  const material = { heard: [{ who: 'Король Арес', line: 'Саргат сжёг заставу десять дней назад.' }] }
+  const lore = { narration: 'Канонический ответ.', lore_material: material }
+  const canonical = await traceLoreAnswer(lore.narration, lore, () => assert.fail('дословный ответ уже проверен'))
+  assert.deepEqual(canonical, { status: 'checked', claims: 1, reasons: [] })
 
-test('eval проверяет ответ по источнику и ловит подмену субъекта и срока', () => {
-  const canonical = 'Вам говорили — Король Арес: «' + testimony + '»'
-  const lore = { narration: canonical, lore_material: material }
-  const checked = traceLoreAnswer(canonical, lore)
-  assert.equal(checked.status, 'checked')
-  assert.equal(checked.claims, 1)
-  assert.deepEqual(checked.reasons, [])
-  const rendered = renderLorePlan([{ kind: 'heard', index: 0 }], material)
-  assert.deepEqual(traceLoreAnswer(rendered, lore).reasons, [])
-  assert.ok(traceLoreAnswer(rendered + ' Значит, это король совершил налёт.', lore).reasons.length > 0)
-
-  const substituted = traceLoreAnswer('Король Арес потребовал от поселений золото, а заставу сожгли три месяца назад.', lore)
-  assert.equal(substituted.status, 'checked')
-  assert.ok(substituted.reasons.length > 0)
+  const rendered = 'Король Арес: «Саргат сжёг заставу десять дней назад.»'
+  const verify = async (answer, source) => {
+    assert.equal(source, material)
+    return answer === rendered
+  }
+  assert.deepEqual((await traceLoreAnswer(rendered, lore, verify)).reasons, [])
+  assert.deepEqual((await traceLoreAnswer('Король Арес сжёг заставу три месяца назад.', lore, verify)).reasons, ['unsupported_answer'])
 })
 
-test('deterministic fallback с пустым материалом считается проверенным', () => {
-  const lore = { narration: 'Пока ничего подтверждённого об этом не известно.', lore_material: { found: [], heard: [], known: [], unknown: true } }
-  const fallback = traceLoreAnswer(lore.narration, lore)
-  assert.deepEqual(fallback, { status: 'checked', claims: 0, reasons: [] })
-  assert.ok(traceLoreAnswer('Это сделал король.', lore).reasons.length > 0)
-  assert.equal(traceLoreAnswer('Новый ответ без trace-материала', null).status, 'unverified')
+test('ответ без сведений проверяется, а ответ без материала остаётся непроверенным', async () => {
+  const lore = { narration: 'Пока ничего подтверждённого об этом не известно.', lore_material: { unknown: true } }
+  assert.deepEqual(await traceLoreAnswer(lore.narration, lore), { status: 'checked', claims: 0, reasons: [] })
+  assert.equal((await traceLoreAnswer('Новый ответ без материала', null)).status, 'unverified')
 })
