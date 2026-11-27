@@ -458,6 +458,9 @@ const HERO_PLANS = {
   },
 }
 
+const PILOT_NAMES = { fighter: 'Торвальд', barbarian: 'Лада', monk: 'Мирра', paladin: 'Рейна' }
+for (const recipe of PILOT_BUILDS.builds) HERO_PLANS[recipe.id] = { name: PILOT_NAMES[recipe.id], recipe }
+
 /** Недостающие выборы текущего уровня — тем же каталогом, что и проверка сервера. */
 function pendingChoices(actor, plan, rulesetId) {
   const commands = []
