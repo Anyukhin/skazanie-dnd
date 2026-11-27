@@ -3368,6 +3368,47 @@ impl GameOrchestrator {
         Ok(response)
     }
 
+    /// У старых завершённых заявок трасса хранит решение и итоговый текст,
+    /// а журнал хранит исполненные события. По ним можно вернуть прежний исход.
+    fn legacy_free_action_result(&self, campaign_id: &str, duplicate: &Value, trace: &Value) -> OrchestratorResult<Option<Value>> {
+        if at(Some(trace), &["adjudication_plan", "free_action_reading"]).is_some() {
+            return Ok(None);
+        }
+        let recorded = list(duplicate.get("events"));
+        let Some(ruling) = recorded.iter()
+            .filter(|event| is_str(event.get("event_type"), "RulingRecorded"))
+            .filter_map(|event| at(Some(event), &["payload", "ruling"]))
+            .find(|value| is_str(at(Some(value), &["provenance", "source"]), "free-action-adjudication")) else {
+            return Ok(None);
+        };
+        let check = recorded.iter().find(|event| is_str(event.get("event_type"), "AbilityCheckResolved"));
+        let kind = match (ruling.get("selected_option").and_then(Value::as_str), at(check, &["payload", "success"]).and_then(Value::as_bool)) {
+            (Some("auto-success"), _) => "auto_success",
+            (Some("ability-check"), Some(true)) => "check_success",
+            (Some("ability-check"), Some(false)) => "check_failure",
+            _ => return Ok(None),
+        };
+        let Some(before) = trace.get("state_version_before").and_then(Value::as_i64) else { return Ok(None) };
+        let Some(after) = trace.get("state_version_after").and_then(Value::as_i64).filter(|version| *version > before) else { return Ok(None) };
+        let ids = list(trace.get("events")).iter().filter_map(|event| event.get("event_id").and_then(Value::as_str)).collect::<HashSet<_>>();
+        if ids.is_empty() {
+            return Ok(None);
+        }
+        let mut events = recorded.to_vec();
+        if events.len() != ids.len() || events.iter().any(|event| !ids.contains(js::string(event.get("event_id")).as_str())) {
+            let Some(event_range) = self.event_store.events_between(campaign_id, before, Some(after)) else { return Ok(None) };
+            events = event_range?.into_iter().filter(|event| ids.contains(js::string(event.get("event_id")).as_str())).collect();
+            if events.len() != ids.len() {
+                return Ok(None);
+            }
+        }
+        let state = self.event_store.load_at(campaign_id, after)?.state;
+        Ok(Some(json!({
+            "kind": kind, "duplicate": true, "state": state, "events": events,
+            "rolls": trace.get("rolls"), "ruling": trace.get("ruling"), "stakes": ruling.get("stakes"),
+        })))
+    }
+
     /// `voiceLore(lore, { message, state, playerId })`: пересказ материала
     /// Хранителя голосом ведущего; сам материал наружу не уходит.
     async fn voice_lore(&self, lore: Option<Value>, message: &str, state: &Value, player_id: &str) -> OrchestratorResult<Option<Value>> {
@@ -4455,6 +4496,20 @@ impl GameOrchestrator {
 
         if free_action_request {
             let turn_id = structured_command_turn_id(&campaign_id, &idempotency_key);
+            let resolved = pending_clarification.as_ref().map(|_| message.as_str());
+            if let (Some(duplicate), Some(trace)) = (&duplicate, &request_trace) {
+                if let Some(free_action) = self.legacy_free_action_result(&campaign_id, duplicate, trace)? {
+                    let mut response = self
+                        .free_action_response(free_action, &campaign_id, &player_id, &viewer, &message, &intent, &retrieval_queries, &retrieved_rules, &plan, &authoritative_state, &idempotency_key, Some(request_fingerprint), &turn_id, started, resolved)
+                        .await?;
+                    for key in ["narration", "provider", "prompt_version", "verification"] {
+                        if let Some(value) = at(Some(trace), &["narration_result", key]) {
+                            set(&mut response, key, value.clone());
+                        }
+                    }
+                    return Ok(response);
+                }
+            }
             let confirmed_action = !standalone_action && pending_clarification.as_ref().is_some_and(|pending| is_str(at(Some(pending), &["original_intent", "pending_step"]), "proposal") && is_str(pending.get("action"), &message));
             let request = UnknownAction {
                 campaign_id: campaign_id.clone(),
@@ -4468,7 +4523,6 @@ impl GameOrchestrator {
             };
             let _ = manual_roll;
             let free_action = self.unknown_action_handler.handle_unknown_action(&request).await?;
-            let resolved = pending_clarification.as_ref().map(|_| message.as_str());
             return self
                 .free_action_response(free_action, &campaign_id, &player_id, &viewer, &message, &intent, &retrieval_queries, &retrieved_rules, &plan, &authoritative_state, &idempotency_key, Some(request_fingerprint), &turn_id, started, resolved)
                 .await;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { addPlayer, createCampaign, expectStatus, setupAdmin, startTestServer } from './kit/http.mjs'
@@ -138,6 +138,20 @@ test('обрыв Рассказчика виден обоим игрокам и 
   const conflict = expectStatus(await player.post('/api/narrate', { ...body, action: 'Снимаю медную пластину' }), 409)
   assert.equal(conflict.code, 'IDEMPOTENCY_CONFLICT')
   await checkRoom()
+  checkTrace()
+  // Трасса предыдущей версии не хранила прочтение Судьи.
+  const legacyTrace = JSON.parse(readFileSync(traceFile, 'utf8'))
+  delete legacyTrace.adjudication_plan.free_action_reading
+  writeFileSync(traceFile, JSON.stringify(legacyTrace))
+  const legacy = expectStatus(await player.post('/api/narrate', body))
+  assert.equal(legacy.idempotent_replay, true, JSON.stringify({
+    outcome: result.free_action_outcome, selected: legacyTrace.ruling?.selected_option, provenance: legacyTrace.ruling?.provenance?.source,
+    versions: [legacyTrace.state_version_before, legacyTrace.state_version_after],
+    events: legacyTrace.events?.map((event) => [event.event_type, event.event_id]),
+  }))
+  assert.deepEqual(legacy.mechanics, result.mechanics)
+  assert.equal(legacy.narration, result.narration)
+  assert.equal(legacy.narration_origin, 'interrupted')
   checkTrace()
   const { usage } = expectStatus(await admin.get('/api/admin/usage'))
   const ledger = JSON.parse(readFileSync(join(server.storageDir, 'engine', 'llm-usage.json'), 'utf8'))
