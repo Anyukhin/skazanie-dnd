@@ -969,6 +969,9 @@ export function CharacterCreationWizard({
   }
 
   const selectClass = (classId: string) => {
+    // Класс, выбранный руками, отменяет готовый лист: иначе при создании к
+    // герою применились бы подкласс, стиль боя и навыки прежнего рецепта.
+    setSelectedPilotBuild(null)
     setDraft((current) => ({
       ...current,
       classId,
