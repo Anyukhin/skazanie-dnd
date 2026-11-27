@@ -3567,8 +3567,11 @@ impl GameOrchestrator {
         }
         let last_action = |recent: &[Value]| recent.last().and_then(|entry| nullish(entry.get("action"), None)).cloned();
         let discussed = if is_question && !lore_narration(&lore) && check_answer.is_empty() {
-            let action = match get(pending.as_ref(), "action").filter(|value| !value.is_null()).cloned().or_else(|| last_action(&recent)) {
-                Some(value) => js::s(Some(&value)),
+            // Исходная заявка есть только у открытого уточнения или предложения.
+            // Без него вопрос самостоятелен: прежняя реплика остаётся в `recent`
+            // как контекст, но ответ не выдаёт её за заявку, о которой спросили.
+            let action = match get(pending.as_ref(), "action").filter(|value| !value.is_null()) {
+                Some(value) => js::s(Some(value)),
                 None => String::new(),
             };
             Some(self.action_adjudicator.discuss(state, player_id, message, action, recent.clone()).await?)

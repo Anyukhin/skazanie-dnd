@@ -23,7 +23,7 @@ use sk_items::item_catalog::catalog_item;
 use sk_scenario::campaign_scenario::{scenario_armory_rules, scenario_informant_rules};
 use sk_scenario::party_exit_intent::announces_movement;
 use sk_social::npc_social_check::{affirmative_action_text, classify_npc_social_check};
-use sk_world_story::scenario_knight::scenario_knight_action_from_text;
+use sk_world_story::scenario_knight::scenario_knight_action_in_scene;
 
 use crate::support::{head_utf16, utf16_len};
 
@@ -753,7 +753,7 @@ pub fn parse_intent(message: Option<&Value>, player_id: Option<&Value>, visible_
         raw_pattern_intent
     };
     // Действие с проклятым рыцарем сценария — своя серверная команда, а не реплика.
-    let knight_action = scenario_knight_action_from_text(Some(&operative_value));
+    let knight_action = scenario_knight_action_in_scene(Some(&operative_value), state);
     // Договор с драконом финала — тоже своя команда сценария, а не реплика.
     let treaty_action = if knight_action.is_some() { None } else { scenario_treaty_action_from_text(&operative, state) };
     let purse_action = if knight_action.is_some() || treaty_action.is_some() { None } else { scenario_purse_action_from_text(&operative) };

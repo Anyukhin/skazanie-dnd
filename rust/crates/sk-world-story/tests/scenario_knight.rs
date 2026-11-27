@@ -119,6 +119,26 @@ fn player_phrases_become_knight_actions() {
     assert_eq!(action("Смотрю на рыцаря"), None);
 }
 
+/// «Страж», «покой» и «клятва» обычны и вне замка: по состоянию намерение
+/// узнаётся только в месте рыцаря, а без сценария рыцаря — нигде.
+#[test]
+fn knight_phrases_are_read_only_in_his_castle() {
+    let in_scene = |text: &str, state: Option<&Value>| scenario_knight_action_in_scene(Some(&json!(text)), state);
+    let castle = astohan_at(0, "astohan-forgotten-cliffs");
+    let capital = astohan_at(0, "astohan-stormberg");
+    let other_world = json!({ "scene": { "location": "Старый трактир" }, "players": [{ "id": "hero" }] });
+    for text in ["Убеждаю маршала дать нам отряд стражи в сопровождение", "убеждаю стражников пропустить нас"] {
+        assert_eq!(in_scene(text, Some(&capital)), None, "{text}: в столице это реплика, а не упокоение");
+        assert_eq!(in_scene(text, Some(&other_world)), None, "{text}: в мире без рыцаря");
+    }
+    assert_eq!(in_scene("Убеждаю рыцаря обрести покой", Some(&castle)), Some(KnightAction::Release { skill: "persuasion" }));
+    assert_eq!(in_scene("Молюсь об упокоении Каэлана", Some(&castle)), Some(KnightAction::Release { skill: "religion" }));
+    assert_eq!(in_scene("Ставлю голову перед рыцарем", Some(&castle)), Some(KnightAction::ReturnHead));
+    assert_eq!(in_scene("Ставлю голову перед рыцарем", Some(&capital)), None);
+    // Без состояния решает только текст — как у разбора без сцены.
+    assert_eq!(in_scene("Убеждаю рыцаря обрести покой", None), Some(KnightAction::Release { skill: "persuasion" }));
+}
+
 #[test]
 fn failed_release_spends_the_night() {
     let state = astohan_at(0, "astohan-forgotten-cliffs");
