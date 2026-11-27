@@ -771,15 +771,29 @@ export default function TacticalBoard3D(props: Props) {
       // Метки хода стоят над картой экранными элементами: их место
       // пересчитывается вместе с остальными подписями.
       labelsDirty = true
+      const blocked = current.trajectory?.blockedCell
+      if (blocked) renderer.domElement.dataset.fireBlockedCell = `${blocked.x},${blocked.y}`
+      else delete renderer.domElement.dataset.fireBlockedCell
       if (current.trajectory) {
         const path = current.trajectory
-        context.strokeStyle = '#f8db98'
-        context.lineWidth = 2
-        context.setLineDash([7, 5])
+        const color = path.blockedCell ? '#ef987d' : '#f8db98'
+        context.lineWidth = size * .15
+        context.strokeStyle = '#271812'
         context.beginPath()
         context.moveTo(path.x1 / 100 * overlay.canvas.width, path.y1 / 100 * overlay.canvas.height)
         context.lineTo(path.x2 / 100 * overlay.canvas.width, path.y2 / 100 * overlay.canvas.height)
         context.stroke()
+        context.setLineDash([size * .27, size * .13])
+        context.strokeStyle = color
+        context.lineWidth = size * .09
+        context.stroke()
+        context.setLineDash([])
+        if (path.blockedCell) {
+          const { x, y } = path.blockedCell
+          context.fillStyle = 'rgba(239, 112, 94, .28)'
+          context.fillRect(x * size, y * size, size, size)
+          context.strokeRect(x * size + 1, y * size + 1, size - 2, size - 2)
+        }
       }
       context.restore()
       overlay.texture.needsUpdate = true
@@ -1217,7 +1231,8 @@ export default function TacticalBoard3D(props: Props) {
         resize()
       }
       renderer.shadowMap.enabled = current.lighting !== false && profile.shadows
-      const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}:${pipeline.active}:${profile.detail}:${profile.floorRelief}:${profile.grassStyle}`
+      const nighttime = current.lighting !== false && current.nighttime === true
+      const style = `${current.lighting}:${nighttime}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}:${pipeline.active}:${profile.detail}:${profile.floorRelief}:${profile.grassStyle}`
       const signatures = mapSignaturesFor(map)
       const referenceSame = lastMap === map
       const contentChanged = Boolean(terrainSignature && terrainSignature !== signatures.staticKey)
@@ -1239,7 +1254,8 @@ export default function TacticalBoard3D(props: Props) {
       if (mapChanged || styleChanged || backdropChanged) {
         const preparedAt = performance.now()
         // Сумрак карты: в подземелье солнце гаснет, огни берут своё.
-        const darkness = current.lighting === false ? 0 : boardDarkness(map, (x, y) => cellAt(map, x, y))
+        const terrainDarkness = current.lighting === false ? 0 : boardDarkness(map, (x, y) => cellAt(map, x, y))
+        const darkness = nighttime ? terrainDarkness + (1 - terrainDarkness) * .46 : terrainDarkness
         const ambience = lightingForDarkness(darkness)
         if (mapChanged || styleChanged) {
           const css = getComputedStyle(element)
@@ -1318,7 +1334,7 @@ export default function TacticalBoard3D(props: Props) {
           if (cue?.kind === 'strike' && cue.actorId === actor.id) applyStrikeAppearance(model, cue)
           const root = new THREE.Group()
           root.add(model)
-          const ring = new THREE.Mesh(new THREE.RingGeometry(.405 * side - .035, .405 * side, 40), new THREE.MeshBasicMaterial({ color: actor.color ?? '#e2bb72', transparent: true, opacity: .85, side: THREE.DoubleSide }))
+          const ring = new THREE.Mesh(new THREE.RingGeometry(.405 * side - .068, .405 * side, 40), new THREE.MeshBasicMaterial({ color: actor.color ?? '#e2bb72', transparent: true, opacity: .90, side: THREE.DoubleSide }))
           ring.rotation.x = -Math.PI / 2; ring.position.y = .045
           root.add(ring); scene.add(root)
           view = { root, model, ring, key, defeated: Boolean(actor.defeated), height, abort: new AbortController() }; actorViews.set(actor.id, view)

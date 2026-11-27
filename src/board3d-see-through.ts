@@ -64,6 +64,24 @@ export function createSeeThrough() {
     seeThroughCount: { value: 0 },
   }
   const patched = new Map<THREE.Material, THREE.Material>()
+  const walls = new WeakSet<THREE.Material>()
+
+  function install(copy: THREE.Material, source: THREE.Material, wall: boolean) {
+    const before = source.onBeforeCompile.bind(source)
+    const key = source.customProgramCacheKey()
+    const fragment = wall
+      // Нижняя полоса кладки сохраняет читаемую границу клетки.
+      ? FRAGMENT_BODY.replace('if (along <', 'if (offset.y < -0.30) continue;\n    if (along <')
+      : FRAGMENT_BODY
+    copy.onBeforeCompile = (shader, renderer) => {
+      before(shader, renderer)
+      Object.assign(shader.uniforms, uniforms)
+      shader.vertexShader = VERTEX_DECLARATION + shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>\n${VERTEX_BODY}`)
+      shader.fragmentShader = FRAGMENT_DECLARATION + shader.fragmentShader.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n${fragment}`)
+    }
+    copy.customProgramCacheKey = () => `${key}|see-through${wall ? '-wall' : ''}`
+    copy.needsUpdate = true
+  }
 
   /** Копия материала кроны с окном; одна копия на исходный материал — объединение не ломается. */
   function patch(material: THREE.Material): THREE.Material {
@@ -71,19 +89,19 @@ export function createSeeThrough() {
     if (existing) return existing
     const copy = material.clone()
     copy.name = `${material.name || 'foliage'}:see-through`
-    copy.onBeforeCompile = (shader, renderer) => {
-      material.onBeforeCompile?.(shader, renderer)
-      Object.assign(shader.uniforms, uniforms)
-      shader.vertexShader = VERTEX_DECLARATION + shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>\n${VERTEX_BODY}`)
-      shader.fragmentShader = FRAGMENT_DECLARATION + shader.fragmentShader.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n${FRAGMENT_BODY}`)
-    }
-    copy.customProgramCacheKey = () => `${material.customProgramCacheKey?.() ?? ''}|see-through`
+    install(copy, material, false)
     patched.set(material, copy)
     return copy
   }
 
   return {
     patch,
+    /** Материал стены сохраняет свои загруженные асинхронно фактуры. */
+    wall(material: THREE.Material) {
+      if (walls.has(material)) return
+      walls.add(material)
+      install(material, material, true)
+    },
     /** Середины фигурок в мире на этот кадр; сверх предела — отбрасываются, пустой список — без окон. */
     setTargets(points: ReadonlyArray<{ x: number; y: number; z: number; radius?: number }>) {
       const count = Math.min(points.length, SEE_THROUGH_MAX_TARGETS)

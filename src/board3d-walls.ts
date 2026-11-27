@@ -407,7 +407,7 @@ export function libraryPortalContext(map: TacticalMap, edge: TacticalEdge) {
 export type LibraryPortalBlock = { position: [number, number, number]; size: [number, number, number]; rotationZ: number; shade: number; keystone?: boolean }
 
 export function libraryPortalMetrics(wallHeight: number) {
-  const centerY = Math.max(.82, wallHeight + .22)
+  const centerY = Math.min(1.2, Math.max(.82, wallHeight + .22))
   const radius = Math.min(.58, Math.max(.52, wallHeight * .60))
   return { centerY, radius, postHeight: centerY - .05 }
 }

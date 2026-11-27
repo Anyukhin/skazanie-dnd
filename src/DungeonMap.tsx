@@ -172,6 +172,7 @@ import {
   DetailHeader,
   EnemyGlyph,
   enemyHealthPresentation,
+  visibleWeaponFireLine,
   enemyVisualKind,
   hasClearActorLineOfFire,
   hasClearBoardTrajectory,
@@ -1690,18 +1691,26 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   /* Удар из исследования по нейтральному NPC: актёра у него ещё нет, есть
      фишка сцены. Табличке и подписи хватает имени и клетки. */
   const pendingNpcTarget = pendingTargetId && !pendingTarget ? sceneNpcs.find((npc) => npc.id === pendingTargetId) ?? null : null
-  const projectileTarget = pendingPoint ?? aimCell
-  const projectileEnd = pendingTarget ?? projectileTarget
-  const trajectoryStart = active
+  const rangedWeaponAiming = enemyAiming && selected && combatMode === 'weapon' && attackRangeFeet > CELL_FEET
+  const inspectedEnemyId = inspectedTarget?.team === 'enemy' ? inspectedTarget.id : null
+  const hoveredWeaponTarget = rangedWeaponAiming
+    ? state.enemies?.find(enemy => enemy.id === inspectedEnemyId
+      || aimCell && actorFootprintCells(enemy).some(cell => cell.x === aimCell.x && cell.y === aimCell.y)) ?? null
+    : null
+  const projectileTarget = pendingPoint ?? (rangedWeaponAiming ? null : aimCell)
+  const targetedActor = pendingTarget ?? hoveredWeaponTarget
+  const projectileEnd = targetedActor ?? projectileTarget
+  const fireLine = active && targetedActor && combatMode === 'weapon' && attackRangeFeet > CELL_FEET
+    ? visibleWeaponFireLine(state, active, targetedActor, selectedItem?.id ?? null)
+    : null
+  const blockedCell = fireLine?.obstruction ?? null
+  const trajectoryStart = fireLine ? { x: fireLine.start.x + .5, y: fireLine.start.y + .5 } : active
     ? boardMap ? actorPresentationCenter(boardMap, active) : { x: active.x + .5, y: active.y + .5 }
     : null
-  const trajectoryEnd = projectileEnd
-    ? pendingTarget && boardMap
-      ? actorPresentationCenter(boardMap, pendingTarget)
-      : { x: projectileEnd.x + .5, y: projectileEnd.y + .5 }
-    : null
-  const trajectory = trajectoryStart && trajectoryEnd
-    ? { x1: trajectoryStart.x / columns * 100, y1: trajectoryStart.y / rows * 100, x2: trajectoryEnd.x / columns * 100, y2: trajectoryEnd.y / rows * 100 }
+  const trajectoryEnd = blockedCell ?? fireLine?.end ?? projectileEnd
+  const trajectory = trajectoryStart && trajectoryEnd && (!targetedActor || fireLine)
+    ? { x1: trajectoryStart.x / columns * 100, y1: trajectoryStart.y / rows * 100,
+      x2: (trajectoryEnd.x + .5) / columns * 100, y2: (trajectoryEnd.y + .5) / rows * 100, blockedCell }
     : null
   const activeConditions = (state.mechanics?.conditions?.[turnActorId] ?? []).map(conditionPresentation)
   const pendingTargetName = pendingTarget
@@ -3611,6 +3620,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         artUrl={mapArt && scenicBackdrop && (!fortressMap || mapArt.mode === 'map') ? mapArt.url : null}
         artMode={mapArt?.mode}
         lighting={boardLighting}
+        nighttime={(state.weather_by_actor?.[active?.id ?? ''] ?? state.weather)?.phase === 'night'}
         ariaLabel={`Тактическая карта, вид сверху. Колесо меняет масштаб, перетаскивание двигает полотно, двойной клик центрирует. Активный участник: ${activeName}`}
         cells={boardCells}
         cellHints={boardHints}
@@ -3642,7 +3652,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           if (areaTargetSelectionActive) return
           const cell = point && state.scene.cells.find((candidate) => candidate.x === point.x && candidate.y === point.y)
           setAimCell(cell?.revealed && (cell.type === 'floor' || cell.type === 'door') ? { x: cell.x, y: cell.y } : null)
-        } : undefined}
+        } : rangedWeaponAiming ? setAimCell : undefined}
         battleLog={animatedBattleLog}
         visualBatch={visualBatch}
         animationActors={animationActors}
@@ -3658,7 +3668,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         levelIndex={sceneLevelIndex}
         onBackgroundActivate={() => { setOpenTokenLabelId(null); setSelectedSceneObjectId(null) }}
         decoration={trajectory && !spellAreaPreviewSelected
-          ? <svg className="projectile-trajectory" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1={trajectory.x1} y1={trajectory.y1} x2={trajectory.x2} y2={trajectory.y2} /></svg>
+          ? <svg className={`projectile-trajectory${trajectory.blockedCell ? ' blocked' : ''}`} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <line x1={trajectory.x1} y1={trajectory.y1} x2={trajectory.x2} y2={trajectory.y2} />
+            {trajectory.blockedCell && <rect x={trajectory.blockedCell.x / columns * 100} y={trajectory.blockedCell.y / rows * 100} width={100 / columns} height={100 / rows} />}
+          </svg>
           : null}
       />
       <div className="map-scale-plate">1 клетка = 5 футов</div>
