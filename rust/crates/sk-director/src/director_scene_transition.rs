@@ -316,7 +316,11 @@ pub fn build_director_transition_commands(input: DirectorTransitionInput<'_>) ->
     travel_options.insert("idempotencyKey".into(), json!(fingerprint));
     let travel = plan_server_travel(state, &Value::Object(travel_options));
     let duration = js::number(travel.get("duration_minutes"));
-    let travel_minutes = if duration.is_nan() { 0.0 } else { duration.max(0.0) };
+    let travel_minutes = if let Some(route_ids) = prop(input.scene_args, "travel_route").and_then(Value::as_array) {
+        let destination = prop(provisional_scene, "location_id").and_then(Value::as_str).unwrap_or_default();
+        sk_story::campaign_loop_policy::checked_world_route_minutes(state, route_ids, destination)
+            .ok_or_else(|| DirectorTransitionError::new("Путь к выбранной точке сейчас закрыт", "PARTY_TRAVEL_UNAVAILABLE"))? as f64
+    } else if duration.is_nan() { 0.0 } else { duration.max(0.0) };
     let kind = scene_kind(input.scene_args, &provisional);
     let normalized_shop_intent = commerce_for_scene(normalize_scene_shop_intent(input.shop_intent, input.scene_args), kind);
     let mut canonical = plain(input.scene_args).cloned().unwrap_or_default();

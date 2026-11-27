@@ -161,9 +161,9 @@ export type PartyDecisionPolicy = {
   policyVersion: string
   voterScope: 'account' | 'hero'
   decisionTtlMs: number
-  quorumMode: 'majority_of_active_voters'
-  disconnectAction: 'abstain'
-  expiryResolution: 'plurality_first_option'
+  quorumMode: 'majority_of_active_voters' | 'majority_of_roster'
+  disconnectAction: 'abstain' | 'retain'
+  expiryResolution: 'plurality_first_option' | 'cancel_without_majority'
   visibility: 'party'
 }
 

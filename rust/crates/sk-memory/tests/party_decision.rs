@@ -153,3 +153,29 @@ fn quest_decision_requires_the_server_and_a_resolved_decision() {
     assert_eq!(events[0]["payload"]["status"], "abandoned");
     assert_eq!(events[0]["payload"]["stay_in_location"], true);
 }
+
+#[test]
+fn roster_quorum_survives_disconnect_and_cancels_without_majority() {
+    let policy = json!({ "policyVersion": "skazanie:party-decision-policy:v2" });
+    let opened = party_decision_opened_event(&json!({
+        "id": "travel", "type": "vote", "createdAt": 1,
+        "options": [{ "id": "go", "label": "Уходим" }, { "id": "stay", "label": "Остаёмся" }],
+    }), None, &json!({
+        "policy": policy, "eligibleHeroIds": ["first", "first-alias", "second"],
+        "voterByHeroId": { "first": "account:one", "first-alias": "account:one", "second": "account:two" },
+    })).expect("снимок состава");
+    let mut state = json!({ "partyMemberIds": ["first", "first-alias", "second"], "agentInteraction": opened["payload"]["interaction"] });
+    let vote = |state: &Value, hero: &str| resolve_party_vote(state, &json!({
+        "interactionId": "travel", "heroId": hero, "optionId": "go", "eligibleHeroIds": ["first"],
+    })).expect("голос");
+    let first = vote(&state, "first");
+    assert_eq!(first["required"], 2);
+    state["agentInteraction"]["votes"] = first["votes"].clone();
+    let presence = party_decision_presence_events(&state, &json!({ "activeVoterIds": ["account:one"] })).expect("разрыв потока");
+    assert_eq!(presence["events"], json!([]));
+    assert_eq!(vote(&state, "first-alias")["votes"], json!({ "first-alias": "go" }));
+    assert_eq!(vote(&state, "second")["resolvedOptionId"], "go");
+    let expiry = party_decision_expiry_events(&state, Some(120_002.0)).expect("срок");
+    assert_eq!(expiry["events"][1]["event_type"], "PartyDecisionConsumed");
+    assert_eq!(expiry["events"][1]["payload"]["reason"], "quorum_not_reached");
+}

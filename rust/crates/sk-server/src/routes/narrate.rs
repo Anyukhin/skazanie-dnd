@@ -524,7 +524,7 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
         }
         match director_resolution {
             Some(resolution) if resolution.get("type").and_then(Value::as_str) == Some("scene_request") => {
-                return execute_director_scene_transition(TransitionInput { core, app, services: &services, campaign_id, room_state: state.clone(), user, action, idempotency_key, resolution }).await;
+                return execute_director_scene_transition(TransitionInput { core, app, services: &services, campaign_id, room_state: state.clone(), user, actor_id: None, action, idempotency_key, resolution }).await;
             }
             Some(resolution) if resolution.get("type").and_then(Value::as_str) == Some("narration") => {
                 return Ok(director_reply(resolution.get("narration").cloned().unwrap_or(Value::Null), empty_effects(), state));

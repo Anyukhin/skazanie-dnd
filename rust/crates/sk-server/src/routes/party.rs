@@ -264,10 +264,11 @@ async fn party_vote_body(ctx: &mut RouteCtx, user: Value) -> Result<axum::respon
 
 async fn cast_vote(core: &Rc<GameCore>, app: &std::sync::Arc<crate::state::AppState>, campaign_id: &str, user: &Value, body: &Value, interaction_id: &str, hero_id: &str, key: &str) -> Result<Value, Failure> {
     let abstain = body.get("abstain") == Some(&Value::Bool(true));
-    let assert_treaty_voter = |state: &Value| -> Result<(), sk_core::RuleError> {
+    let assert_snapshot_voter = |state: &Value| -> Result<(), sk_core::RuleError> {
         let decision = &state["agentInteraction"];
         let voter = decision["voterByActorId"][hero_id].as_str().unwrap_or_default();
-        if decision.get("scenarioTreaty").is_some() && decision["id"] == interaction_id && voter.starts_with("account:")
+        if (decision.get("scenarioTreaty").is_some() || sk_memory::party_decision::uses_roster_quorum(decision))
+            && decision["id"] == interaction_id && voter.starts_with("account:")
             && voter != crate::access::party_voter_id_for_account(campaign_id, &js::s(user.get("id"))) {
             return Err(sk_core::RuleError::new("ACTOR_FORBIDDEN", "Этот аккаунт не участвовал при открытии голосования"));
         }
@@ -299,7 +300,7 @@ async fn cast_vote(core: &Rc<GameCore>, app: &std::sync::Arc<crate::state::AppSt
             // Пересобирается против свежего состояния: кворум и разрешение
             // зависят от того, кто ещё в комнате на момент записи.
             let derive = |state: &Value, _loaded: &sk_store::Loaded| -> Result<Vec<Value>, sk_core::RuleError> {
-                assert_treaty_voter(state)?;
+                assert_snapshot_voter(state)?;
                 let resolved = if abstain { resolve_party_abstain(state, &input) } else { resolve_party_vote(state, &input) }.map_err(party_rule)?;
                 Ok(resolved.get("events").and_then(Value::as_array).cloned().unwrap_or_default())
             };
@@ -320,7 +321,7 @@ async fn cast_vote(core: &Rc<GameCore>, app: &std::sync::Arc<crate::state::AppSt
     if !recorded.is_some_and(same_option) {
         return Err(Failure::new("Ключ уже использован для другого голоса", Some("IDEMPOTENCY_CONFLICT")));
     }
-    assert_treaty_voter(&committed.state).map_err(Failure::from)?;
+    assert_snapshot_voter(&committed.state).map_err(Failure::from)?;
     let projected = projection::persist_authoritative_projection(core, campaign_id, &committed.state, &committed.events, None, PersistOptions::default())?;
     let mut latest = match projection::reconcile_campaign_projection(core, campaign_id)?.or(projected) {
         Some(room) => room,
@@ -339,6 +340,11 @@ async fn cast_vote(core: &Rc<GameCore>, app: &std::sync::Arc<crate::state::AppSt
             if let Some(projected) = projection::reconcile_campaign_projection(core, campaign_id)? {
                 latest = projected;
             }
+        }
+    }
+    if let Some(state) = latest.state.as_ref() {
+        if crate::director_transition::settle_world_travel(core, app, campaign_id, state).await? {
+            latest = room::get_room(core, campaign_id)?;
         }
     }
     room_reply(core, campaign_id, &latest, user, Some(&Value::String(hero_id.to_string())), commit_fields(&committed))

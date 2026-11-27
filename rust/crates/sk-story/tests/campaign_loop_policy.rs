@@ -221,3 +221,24 @@ fn abandonment_in_place_gives_neutral_objective() {
     state["worldMemory"]["quests"] = json!([{ "id": "quest:main", "title": "Старая цель", "status": "abandoned", "stay_in_location": true, "clock": { "current": 1, "max": 3 } }]);
     assert_eq!(p::director_objective_after_quest_abandonment(&state, None), p::QUEST_ABANDONMENT_NEXT_OBJECTIVE);
 }
+
+#[test]
+fn checked_route_sums_segments_and_rejects_an_unknown_leg() {
+    let mut state = json!({
+        "worldMap": {
+            "currentLocationId": "start",
+            "locations": [{ "id": "start", "known": true }, { "id": "middle", "known": true }, { "id": "end", "known": true }],
+            "routes": [
+                { "from": "start", "to": "middle", "distance": 1, "kind": "road", "discovered": true },
+                { "from": "middle", "to": "end", "distance": 1, "kind": "road", "discovered": true },
+            ],
+        },
+    });
+    let route = vec![json!("start"), json!("middle"), json!("end")];
+    assert_eq!(p::checked_world_route_minutes(&state, &route, "end"), Some(45 + 45));
+    state["worldMap"]["routes"][1]["discovered"] = json!(false);
+    assert_eq!(p::checked_world_route_minutes(&state, &route, "end"), None);
+    state["worldMap"]["routes"][1]["discovered"] = json!(true);
+    state["worldMap"]["locations"][1]["visibility"] = json!("gm_only");
+    assert_eq!(p::checked_world_route_minutes(&state, &route, "end"), None);
+}

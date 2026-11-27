@@ -88,7 +88,7 @@ pub fn execute_party_decision_tool(args: &Value, effects: &mut Value, state: &Va
     if js::truthy(effects.get("interaction")) {
         return json!({ "error": "Одновременно разрешено только одно активное решение группы" });
     }
-    let options: Vec<Value> = args
+    let mut options: Vec<Value> = args
         .get("options")
         .and_then(Value::as_array)
         .map(Vec::as_slice)
@@ -106,7 +106,7 @@ pub fn execute_party_decision_tool(args: &Value, effects: &mut Value, state: &Va
         Some(value) => Some(value),
         None => args.get("destination_location_id").filter(|value| !value.is_null()),
     };
-    let destination_location_id = text::head(&text::squash_spaces(&text::nfkc(&js::s(destination_source))), 120);
+    let mut destination_location_id = text::head(&text::squash_spaces(&text::nfkc(&js::s(destination_source))), 120);
     // Идентификатор обычно случайный: карточку открывает живой ход, и повтор
     // её не воспроизводит. Соло-путь передаёт свой — выведенный из ключа
     // идемпотентности, — иначе повтор одного запроса открыл бы второе решение.
@@ -116,6 +116,17 @@ pub fn execute_party_decision_tool(args: &Value, effects: &mut Value, state: &Va
         Some(kind @ ("vote" | "roll" | "choice")) => kind.to_string(),
         _ => "vote".to_string(),
     };
+    if kind == "vote" {
+        if destination_location_id.is_empty() {
+            destination_location_id = known_destination_for_options(state, &options).unwrap_or_default();
+        }
+        let in_scenario = sk_scenario::campaign_scenario::campaign_scenario(state)
+            .and_then(|scenario| scenario["locations"].as_array())
+            .is_some_and(|places| places.iter().any(|place| place["location_id"] == destination_location_id));
+        if in_scenario {
+            options.retain(|option| !classify_party_decision(&js::s(option.get("label"))).abandons_quest);
+        }
+    }
     let title = {
         let raw = if js::truthy(args.get("title")) { js::s(args.get("title")) } else { "Решение отряда".to_string() };
         text::head(&text::squash_spaces(&raw), 100)
@@ -161,6 +172,123 @@ thread_local! {
 /// `directorDecisionLockKey(campaignId, reference)` (3029–3037).
 fn decision_lock_key(campaign_id: &str, reference: &Value) -> String {
     hash::sha256_hex(format!("{campaign_id}\0{}\0{}", js::s(reference.get("interaction_id")), js::s(reference.get("resolved_option_id"))))
+}
+
+
+fn known_destination_for_options(state: &Value, options: &[Value]) -> Option<String> {
+    let first = classify_party_decision(options.first()?.get("label")?.as_str()?);
+    if first.kind != "move" {
+        return None;
+    }
+    let target = sk_agents::scene_architect::known_world_destination_id_for_name(state, &first.destination_hint)?;
+    options.iter().skip(1).all(|option| {
+        let candidate = classify_party_decision(&js::s(option.get("label")));
+        candidate.kind != "move"
+            || sk_agents::scene_architect::known_world_destination_id_for_name(state, &candidate.destination_hint) == Some(target.clone())
+    }).then_some(target)
+}
+
+fn recorded_world_destination(state: &Value, decision: &Value) -> Option<String> {
+    decision["destinationLocationId"].as_str().filter(|id| !id.is_empty()).map(str::to_string)
+        .or_else(|| known_destination_for_options(state, decision["options"].as_array()?))
+}
+
+/// Из серверной карточки выбирается только переход по карте мира.
+fn pending_world_travel(state: &Value) -> Option<&Value> {
+    let decision = state.get("agentInteraction")?;
+    if decision["status"] != "resolved" || decision["type"] != "vote"
+        || decision["id"].as_str().is_some_and(|id| id.starts_with("autonomy-"))
+        || ["questAcceptance", "questAbandonment", "scenarioTreaty"].iter().any(|field| decision.get(field).is_some())
+        || recorded_world_destination(state, decision).is_none() {
+        return None;
+    }
+    Some(decision)
+}
+
+fn close_travel(core: &Rc<GameCore>, campaign_id: &str, decision: &Value, reason: &str) -> Result<(), Failure> {
+    let interaction_id = &decision["id"];
+    let option_id = &decision["resolvedOptionId"];
+    let key = format!("party-travel-close:{}", js::s(Some(interaction_id)));
+    let derive = |state: &Value, _: &sk_store::Loaded| -> Result<Vec<Value>, sk_core::RuleError> {
+        let Some(current) = pending_world_travel(state).filter(|current| &current["id"] == interaction_id && &current["resolvedOptionId"] == option_id) else {
+            return Ok(Vec::new());
+        };
+        Ok(vec![json!({
+            "event_type": "PartyDecisionConsumed", "visibility": "party",
+            "payload": { "interaction_id": current["id"], "resolved_option_id": current["resolvedOptionId"], "reason": reason },
+        })])
+    };
+    let journal = HookedJournal(&core.events);
+    let request = DerivedRequest { campaign_id, idempotency_key: &key, events: None, derive_events: Some(&derive), producer: Some(Producer::PartyDecision), derived_from: Vec::new(), metadata: Value::Null, derive_metadata: None };
+    if let Some(resolved) = AuthoritativeExecutor::new(&journal).commit_derived(request).map_err(executor_failure)? {
+        crate::projection::persist_authoritative_projection(core, campaign_id, &resolved.commit.state, &resolved.commit.events, None, Default::default())?;
+    }
+    Ok(())
+}
+
+/// Завершить записанное решение после последнего голоса или перезапуска.
+pub async fn settle_world_travel(core: &Rc<GameCore>, app: &Arc<AppState>, campaign_id: &str, state: &Value) -> Result<bool, Failure> {
+    let Some(decision) = pending_world_travel(state) else { return Ok(false) };
+    let option_id = &decision["resolvedOptionId"];
+    let Some(option) = decision["options"].as_array().into_iter().flatten().find(|option| &option["id"] == option_id) else {
+        return Ok(false);
+    };
+    let eligible = decision["eligibleVoterIds"].as_array().map_or(0, Vec::len);
+    let required = eligible / 2 + 1;
+    let voters = decision["votes"].as_object().into_iter().flatten()
+        .filter(|(_, voted)| *voted == option_id)
+        .map(|(actor, _)| (actor.clone(), js::s(decision["voterByActorId"].get(actor))))
+        .collect::<Vec<_>>();
+    if voters.len() < required {
+        close_travel(core, campaign_id, decision, "travel_legacy_no_quorum")?;
+        return Ok(true);
+    }
+    let label = js::s(option.get("label"));
+    let action = format!("[РЕШЕНИЕ ГРУППЫ] {label}");
+    let Some(mut resolution) = resolve_party_decision(Some(&json!(action)), state)
+        .filter(|resolution| resolution["type"] == "scene_request") else {
+        close_travel(core, campaign_id, decision, "travel_stayed")?;
+        return Ok(true);
+    };
+    resolution["destinationLocationId"] = json!(recorded_world_destination(state, decision));
+    // Исполнитель — один из проголосовавших аккаунтов с тем же героем.
+    let campaign = campaign_id.to_string();
+    let accounts = app.accounts.clone();
+    let owner = blocking(move || -> Result<Option<(String, Value)>, Failure> {
+        let memberships = accounts.list_campaign_memberships(&campaign)?;
+        for member in memberships {
+            let user_id = js::s(member.get("userId"));
+            let party_voter = crate::access::party_voter_id_for_account(&campaign, &user_id);
+            let Some((hero, _)) = voters.iter().find(|(hero, voter)| {
+                (!voter.starts_with("account:") || voter == &party_voter)
+                    && member["heroIds"].as_array().into_iter().flatten().any(|id| id.as_str() == Some(hero))
+            }) else {
+                continue;
+            };
+            if let Some(user) = accounts.list_users()?.into_iter().find(|user| user["id"] == user_id) {
+                return Ok(Some((hero.clone(), user)));
+            }
+        }
+        Ok(None)
+    }).await??;
+    let Some((actor_id, user)) = owner else {
+        close_travel(core, campaign_id, decision, "travel_roster_unavailable")?;
+        return Ok(true);
+    };
+    let key = format!("party-travel:{}", js::s(decision.get("id")));
+    let services = crate::orchestration::orchestration(core, app)?;
+    match execute_director_scene_transition(TransitionInput {
+        core, app, services: &services, campaign_id, room_state: state.clone(), user: &user, actor_id: Some(&actor_id),
+        action: &action, idempotency_key: &key, resolution,
+    }).await {
+        Ok(_) => Ok(true),
+        Err(failure) if failure.code.as_deref() == Some("PARTY_DECISION_ALREADY_CONSUMED") => Ok(true),
+        Err(failure) if failure.code.as_deref() == Some("PARTY_TRAVEL_UNAVAILABLE") => {
+            close_travel(core, campaign_id, decision, "travel_route_unavailable")?;
+            Ok(true)
+        }
+        Err(failure) => Err(failure),
+    }
 }
 
 /// Ход того же решения ждёт предыдущий (`serializeDirectorDecision`,
@@ -225,6 +353,7 @@ pub struct TransitionInput<'a> {
     /// `room.state`.
     pub room_state: Value,
     pub user: &'a Value,
+    pub actor_id: Option<&'a str>,
     pub action: &'a str,
     pub idempotency_key: &'a str,
     pub resolution: Value,
@@ -251,6 +380,10 @@ pub async fn execute_director_scene_transition(input: TransitionInput<'_>) -> Re
         if let Some(consumed) = committed_scene_for_party_decision(input.core, input.campaign_id, &party_decision)? {
             if js::string(consumed.get("idempotency_key")) != input.idempotency_key {
                 return Err(policy_error("Это решение группы уже было исполнено переходом сцены", "PARTY_DECISION_ALREADY_CONSUMED"));
+            }
+            if let Some(commit) = input.core.events.get_by_idempotency_key(input.campaign_id, input.idempotency_key)? {
+                return replay_director_scene_transition(input.core, input.app, input.services, input.campaign_id, &input.room_state,
+                    input.user, input.action, input.idempotency_key, &commit, input.resolution).await;
             }
         }
         execute_director_scene_transition_once(input, party_decision).await
@@ -295,7 +428,7 @@ fn with_transition(result: &Value, transition: Value, extra: Vec<(&str, Value)>)
 
 /// `executeDirectorSceneTransitionOnce` (3195–3283).
 async fn execute_director_scene_transition_once(input: TransitionInput<'_>, party_decision: Value) -> Result<Value, Failure> {
-    let TransitionInput { core, app, services, campaign_id, room_state, user, action, idempotency_key, resolution } = input;
+    let TransitionInput { core, app, services, campaign_id, room_state, user, actor_id, action, idempotency_key, resolution } = input;
     let authoritative = latest_campaign_state(core, campaign_id, Some(&room_state))?;
     let planning_state = sk_rules::normalize::normalize_campaign_state(&authoritative)?;
     let decision = js::s(resolution.get("decision"));
@@ -307,7 +440,15 @@ async fn execute_director_scene_transition_once(input: TransitionInput<'_>, part
         destination_location_id: js::s(resolution.get("destinationLocationId")),
         abandons_quest: resolution.get("abandonsQuest") == Some(&Value::Bool(true)),
     };
-    let planned = services.scene_architect.plan(&planning_state, &request).await;
+    let planned = if request.destination_location_id.is_empty() {
+        services.scene_architect.plan(&planning_state, &request).await
+    } else {
+        if sk_agents::scene_architect::world_travel_destination(&planning_state, &request.destination_hint,
+            resolution.get("destinationLocationId")).is_none() {
+            return Err(policy_error("Путь к выбранной точке сейчас закрыт", "PARTY_TRAVEL_UNAVAILABLE"));
+        }
+        services.scene_architect.plan_world_travel(&planning_state, &request).await
+    };
     // Считаем только живую генерацию: детерминированный fallback токенов не
     // тратит. Лимита нет — на пересечении порога стол получает одну строку.
     if get(planned.get("trace"), "mode").and_then(Value::as_str) == Some("model") {
@@ -362,7 +503,7 @@ async fn execute_director_scene_transition_once(input: TransitionInput<'_>, part
     let fields = json!({
         "state": planning_state,
         "campaignId": campaign_id,
-        "playerId": or_empty(planning_state.get("activePlayerId")),
+        "playerId": actor_id.map(str::to_string).unwrap_or_else(|| or_empty(planning_state.get("activePlayerId"))),
         "message": action,
         "commands": plan.get("commands").cloned().unwrap_or(Value::Null),
         "idempotencyKey": idempotency_key,
@@ -558,7 +699,7 @@ pub async fn execute_solo_party_exit(input: SoloExitInput<'_>) -> Result<Option<
     }
     let state = if committed.commit.state.is_null() { room_state } else { Value::clone(&committed.commit.state) };
     let resolution = js::spread(&resolution, json!({ "partyDecision": { "interaction_id": interaction_id, "resolved_option_id": chosen_id } }));
-    execute_director_scene_transition(TransitionInput { core, app, services, campaign_id, room_state: state, user, action, idempotency_key, resolution }).await.map(Some)
+    execute_director_scene_transition(TransitionInput { core, app, services, campaign_id, room_state: state, user, actor_id: None, action, idempotency_key, resolution }).await.map(Some)
 }
 
 #[cfg(test)]

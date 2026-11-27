@@ -238,6 +238,12 @@ pub fn party_voter_snapshot_with(memberships: &[Value], campaign_id: &str, state
     Value::Object(snapshot)
 }
 
+/// Герои состава с назначенным аккаунтом, независимо от живого потока.
+pub(crate) fn claimed_party_heroes(memberships: &[Value], party: &[String]) -> Vec<String> {
+    let owned: IndexSet<&str> = memberships.iter().flat_map(|member| array(member.get("heroIds"))).filter_map(Value::as_str).collect();
+    party.iter().filter(|id| owned.contains(id.as_str())).cloned().collect()
+}
+
 /// Для договора берём назначенных героям игроков, включая отключённых.
 pub async fn scenario_treaty_voter_snapshot(app: &crate::state::AppState, campaign_id: &str, state: &Value, actor_id: &str) -> Result<Value, Failure> {
     use sk_scenario::campaign_scenario::{scenario_location_id, scenario_treaty_rules};
@@ -326,6 +332,28 @@ mod tests {
         assert_eq!(keys, ["2", "10", "h2"], "целые ключи — первыми, по возрастанию");
         assert_eq!(snapshot["eligibleVoterIds"], json!(["hero:2", "hero:10", "hero:h2"]));
         assert_eq!(campaign_voter_count(&accounts, "ABC", &state).ok(), Some(3));
+    }
+
+    #[test]
+    fn claimed_roster_groups_heroes_by_account_and_excludes_spectators() {
+        let memberships = [
+            json!({ "userId": "one", "heroIds": ["a", "b"] }),
+            json!({ "userId": "two", "heroIds": ["c"] }),
+            json!({ "userId": "spectator", "heroIds": [] }),
+        ];
+        let party = ["a".into(), "b".into(), "c".into(), "unclaimed".into()];
+        let claimed = claimed_party_heroes(&memberships, &party);
+        assert_eq!(claimed, ["a", "b", "c"]);
+        let snapshot = party_voter_snapshot_with(&memberships, "VOTE", &json!({}), &claimed);
+        assert_eq!(snapshot["eligibleVoterIds"].as_array().map(Vec::len), Some(2));
+        assert_eq!(snapshot["voterByHeroId"]["a"], snapshot["voterByHeroId"]["b"]);
+        assert_ne!(snapshot["voterByHeroId"]["a"], snapshot["voterByHeroId"]["c"]);
+
+        let accounts = accounts();
+        let spectator = json!({ "id": "spectator", "role": "player", "campaignMemberships": [{ "campaignId": "VOTE", "heroIds": [] }] });
+        let room = Room { code: "VOTE".into(), version: 1, state: Some(json!({ "sessionCode": "VOTE" })), updated_at: None };
+        assert!(can_access_room(&accounts, Some(&spectator), &room).expect("видит комнату"));
+        assert!(!can_use_hero(&accounts, &spectator, Some(&json!("a")), "VOTE").expect("нет героя"));
     }
 
     #[test]
