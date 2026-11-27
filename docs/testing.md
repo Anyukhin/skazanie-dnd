@@ -19,7 +19,7 @@ JS-библиотека `server/` (`server/README.md`), инструменты. 
 | Что проверяем | Уровень | Помощники |
 | --- | --- | --- |
 | правило, событие, reducer, replay | движок, без HTTP | `test/kit/engine.mjs`, `test/kit/dice.mjs` |
-| права, видимость, маршрут, restart процесса | HTTP, бинарь `skazanie-server` с `test-hooks` | `test/kit/http.mjs` |
+| права, видимость, маршрут, restart процесса | HTTP, бинарь `skazanie-server` с `test-hooks` | `test/kit/http.mjs`, входы — `test/kit/fixtures.mjs` |
 | роль модели (рассказчик, режиссёр, …) | модуль с внедрённым клиентом | `scriptedLlm` из `test/kit/llm.mjs` |
 | весь путь через `llm-client` и учёт расхода | HTTP + локальный провайдер | `startFakeProvider` + `startTestServer` |
 
@@ -198,11 +198,20 @@ await expireSession(server, cookie)   // cookie `skazanie_session=…`: срок
 
 Контрактный тест: сервер — только `startTestServer`, без своего `spawn`, без
 `preload` и `args`; кости и сбои — `dice`/`faults`; журнал — помощники выше;
-никакого чтения файлов `storage/`. Такие файлы вносятся в
+никакого чтения файлов `storage/` и **никакого импорта `server/`** — ни прямо,
+ни через набор (`test/kit/index.mjs` поэтому не реэкспортирует `dice.mjs` и
+`engine.mjs`). Входы — карту с дверью, предмет каталога, бой стенда, сцену
+сценария, план из команд — готовит `test/kit/fixtures.mjs`: те же функции под
+именами JS, но async и кодом Rust (подкоманда `skazanie-server fixture`,
+`rust/crates/sk-server/src/test_hooks/fixture_cli.rs`). Так вход строит тот же
+код, что его исполняет. Нужной функции нет — её добавляют в `fixture_cli.rs` и
+в `fixtures.mjs`, а не пишут замену на JS. Проверка JS-модуля в процессе, без
+сервера, — тест библиотеки: отдельный файл `test/<имя>-library.test.mjs` вне
+списка контракта. Такие файлы вносятся в
 `test/contract-rust.list`; общий корпус `pnpm test` их не запускает:
 
 ```bash
-(cd rust && cargo build --release -p sk-server --features test-hooks)   # крючки, подкоманды journal и session
+(cd rust && cargo build --release -p sk-server --features test-hooks)   # крючки, подкоманды journal, session, room, fixture
 SKAZANIE_RUST_SERVER_BIN=rust/target/release/skazanie-server pnpm test:contract
 ```
 
@@ -267,6 +276,7 @@ assert.equal(llm.calls.length, 1)            // лишний вызов моде
 | --- | --- |
 | `test/test-network-isolation.test.mjs` | ни один запуск сервера не уходит в сеть: ключ пуст или есть локальный `ROUTERAI_BASE_URL`; бинарь запускается только набором, его `isolatedServerEnv` проверяется исполнением |
 | `test/test-kit.test.mjs` | помощники набора работают как описано |
+| `test/contract-purity.test.mjs` | ни один тест из `contract-rust.list` не импортирует `server/` и архив JS — ни сам, ни через набор |
 | `sk-server/tests/crate_layers.rs` | ядро не зависит от слоя агентов |
 | `sk-narration-base` `prompt_descriptors` | привязки промптов |
 | `test/test-suite-runner.test.mjs` | порядок и изоляция запуска корпуса |

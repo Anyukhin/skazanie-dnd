@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildScenarioArcPlan, scenarioForWorldTemplate, scenarioSecretsFor } from '../server/campaign-scenario.mjs'
+import { buildScenarioArcPlan, scenarioForWorldTemplate, scenarioSecretsFor } from './kit/fixtures.mjs'
 import { addPlayer, createCampaign, expectStatus, registerUser, sendCommand, setupAdmin, startTestServer } from './kit/http.mjs'
 import { appendJournal, readJournal } from './kit/journal.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
@@ -63,8 +63,8 @@ test('признание Гедрика доступно обоим слушат
   const reserve = 'gedrik-reserve'
   const oldFact = 'fact:legacy-testimony'
   const privateFact = 'fact:private-testimony'
-  const campaignConcept = { arc: buildScenarioArcPlan(scenarioForWorldTemplate('astohan-plains')) }
-  const { fact_id: confessionFact, clue } = scenarioSecretsFor({ campaignConcept }, locationId).find((secret) => secret.clue_id === 'camp-gedrik')
+  const campaignConcept = { arc: await buildScenarioArcPlan(await scenarioForWorldTemplate('astohan-plains')) }
+  const { fact_id: confessionFact, clue } = (await scenarioSecretsFor({ campaignConcept }, locationId)).find((secret) => secret.clue_id === 'camp-gedrik')
   const secret = (id, summary) => ({ id, subject_id: npcId, predicate: 'gm_secret', visibility: 'gm_only', summary })
   const server = await startTestServer(t, {
     dice: { unmatched: 'random', rules: [{ sides: 20, value: 'max' }] },

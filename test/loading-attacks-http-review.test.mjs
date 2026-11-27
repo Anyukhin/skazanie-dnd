@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { startTestServer } from './kit/http.mjs'
-import { materializeCatalogItem } from '../server/item-catalog.mjs'
+import { materializeCatalogItem } from './kit/fixtures.mjs'
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -22,11 +22,11 @@ function cookieOf(result) {
   return result.response.headers.get('set-cookie')?.split(';')[0] ?? ''
 }
 
-function initialState(code) {
-  const weapons = ['a', 'b'].map((id) => materializeCatalogItem(
+async function initialState(code) {
+  const weapons = await Promise.all(['a', 'b'].map((id) => materializeCatalogItem(
     'srd_5_2_1:light-crossbow', { id: `crossbow-${id}`, quantity: 1, equipped: true },
-  ))
-  const bolts = materializeCatalogItem('srd_5_2_1:bolts-20', { id: 'bolts', quantity: 3 })
+  )))
+  const bolts = await materializeCatalogItem('srd_5_2_1:bolts-20', { id: 'bolts', quantity: 3 })
   return {
     state_version: 0, sessionCode: code, ruleset_id: 'dnd_5e_2014', campaign: 'HTTP loading review',
     activePlayerId: 'hero', partyMemberIds: ['hero'],
@@ -79,7 +79,7 @@ test('HTTP обычный игрок: sanitizer отбрасывает spoof, A�
   assert.equal(ownership.status, 200, `${ownership.text}\n${logs()}`)
   const code = 'LOADING-HTTP-REVIEW'
   const created = await request(baseUrl, '/api/campaigns', {
-    method: 'POST', cookie: adminCookie, body: { code, name: 'HTTP loading review', state: initialState(code) },
+    method: 'POST', cookie: adminCookie, body: { code, name: 'HTTP loading review', state: await initialState(code) },
   })
   assert.equal(created.status, 201, `${created.text}\n${logs()}`)
 

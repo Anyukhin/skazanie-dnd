@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
+import { tacticalMap } from './kit/fixtures.mjs'
 import { addPlayer, createCampaign, expectStatus, sendCommand, setupAdmin, startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
@@ -9,12 +9,13 @@ test('недоступное действие завершается, а нов�
   const { client: gm } = await setupAdmin(server)
   const code = 'FREE-ACTION-LIMIT'
   const hero = { id: 'hero', character: 'Шорох', hp: 20, maxHp: 20, speed: 30, x: 0, y: 0 }
-  const map = createTacticalMap({ width: 5, height: 3, locationId: 'gallery', seed: code, fill: { passable: true, revealed: true } })
-  addProp(map, { id: 'campfire-1', assetId: 'campfire', x: 3.5, y: 0.5, footprint: [{ x: 3, y: 0 }] })
+  const { map, cells } = await tacticalMap({ width: 5, height: 3, locationId: 'gallery', seed: code, fill: { passable: true, revealed: true } })
+    .prop({ id: 'campfire-1', assetId: 'campfire', x: 3.5, y: 0.5, footprint: [{ x: 3, y: 0 }] })
+    .build()
   await createCampaign(gm, { code, state: {
     sessionCode: code, campaign: 'Каменная галерея', activePlayerId: hero.id, partyMemberIds: [hero.id], players: [hero],
     ruleset_id: 'dnd_5e_2014', enabled_rule_packs: ['dnd_5e_2014'],
-    scene: { location: 'Каменная галерея', map: serializeTacticalMap(map), cells: legacyCellsFromTacticalMap(map) },
+    scene: { location: 'Каменная галерея', map, cells },
     mechanics: { positions: { [hero.id]: { x: 0, y: 0 } } },
   } })
   const { client: player } = await addPlayer(server, gm, code, { heroIds: [hero.id] })

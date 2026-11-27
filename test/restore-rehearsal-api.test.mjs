@@ -4,13 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import {
-  compareStorageToBackup,
-  createStorageBackup,
-  restoreStorageBackup,
-  verifyStorageBackup,
-} from '../server/backup-service.mjs'
-import { auditStorage, startTestServer } from './kit/index.mjs'
+import { auditStorage, spawnRust, startTestServer } from './kit/index.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
@@ -44,6 +38,37 @@ async function request(baseUrl, path, { method = 'GET', cookie = '', body, key =
   })
   const text = await response.text()
   return { response, status: response.status, body: text ? JSON.parse(text) : null, text }
+}
+
+/**
+ * Подкоманда бинаря `skazanie-server backup …` (`rust/crates/sk-server/src/storage_backup.rs`):
+ * успех — JSON итога в stdout и код 0, отказ — код 1 и JSON `{ ok: false, code }` в stderr.
+ *
+ * @param {string[]} args
+ * @param {{ storageDir: string, secret: string }} options
+ * @returns {Promise<{ code: number | null, result: any, failure: any, stderr: string }>}
+ */
+async function backupTool(args, { storageDir, secret }) {
+  const child = spawnRust(['backup', ...args], { storageDir, env: { DND_BACKUP_KEY: secret } })
+  let stdout = ''
+  let stderr = ''
+  child.stdout?.setEncoding('utf8')
+  child.stderr?.setEncoding('utf8')
+  child.stdout?.on('data', (chunk) => { stdout += chunk })
+  child.stderr?.on('data', (chunk) => { stderr += chunk })
+  const code = await new Promise((resolveExit, rejectExit) => {
+    child.once('error', rejectExit)
+    child.once('close', resolveExit)
+  })
+  const parse = (/** @type {string} */ text) => { try { return JSON.parse(text) } catch { return null } }
+  return { code, result: code === 0 ? parse(stdout) : null, failure: code === 0 ? null : parse(stderr.trim()), stderr }
+}
+
+/** Успешный вызов подкоманды — итог; отказ валит тест с текстом stderr. */
+async function backupOk(/** @type {string[]} */ args, /** @type {{ storageDir: string, secret: string }} */ options) {
+  const outcome = await backupTool(args, options)
+  assert.equal(outcome.code, 0, `skazanie-server backup ${args[0]}: ${outcome.stderr.slice(-2_000)}`)
+  return outcome.result
 }
 
 const sessionCookie = (result) => result.response.headers.get('set-cookie')?.split(';')[0]
@@ -100,23 +125,26 @@ test('из архива поднимается та же играбельная 
   // 2. Сервер остановлен: архив снимается с покоящегося хранилища.
   await liveServer.stop()
 
-  const created = createStorageBackup({ sourceDir: live, backupFile, secret: SECRET })
+  const tool = { storageDir: live, secret: SECRET }
+  const created = await backupOk(['create', live, backupFile], tool)
   assert.ok(created.file_count > 0)
   assert.equal(created.encrypted, true)
 
-  const verified = verifyStorageBackup({ backupFile, secret: SECRET })
+  const verified = await backupOk(['verify', backupFile], tool)
   assert.equal(verified.file_count, created.file_count)
 
-  const compared = compareStorageToBackup({ sourceDir: live, backupFile, secret: SECRET })
+  const compared = await backupOk(['compare', live, backupFile], tool)
   assert.equal(compared.identical, true, `архив разошёлся с источником: ${JSON.stringify(compared).slice(0, 400)}`)
   assert.deepEqual(compared.changed, [])
   assert.deepEqual(compared.missing, [])
 
   // Чужой ключ не открывает архив: шифрование — не украшение.
-  assert.throws(() => verifyStorageBackup({ backupFile, secret: `${SECRET}-wrong` }))
+  const wrongKey = await backupTool(['verify', backupFile], { storageDir: live, secret: `${SECRET}-wrong` })
+  assert.notEqual(wrongKey.code, 0, 'архив открылся чужим ключом')
+  assert.equal(wrongKey.failure?.ok, false, wrongKey.stderr)
 
   // 3. Восстановление в чистый каталог и подъём **нового** сервера на нём.
-  restoreStorageBackup({ backupFile, targetDir: restored, secret: SECRET })
+  await backupOk(['restore', backupFile, restored], tool)
 
   restoredServer = await startTestServer(t, { setupToken: 'rehearsal-setup', storageDir: restored })
   const restoredUrl = restoredServer.baseUrl

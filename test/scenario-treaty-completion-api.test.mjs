@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
-import { campaignScenario, scenarioClueFactId, scenarioEnding } from '../server/campaign-scenario.mjs'
-import { SceneArchitectAgent } from '../server/scene-architect.mjs'
-import { normalizeCampaignState, resolveCommands } from '../server/rules-engine.mjs'
-import { fixedDice } from './kit/dice.mjs'
+import {
+  campaignScenario, createCampaignState, normalizeCampaignState, planScene, resolveCommands, scenarioClueFactId, scenarioEnding,
+} from './kit/fixtures.mjs'
 import { addPlayer, createCampaign, expectStatus, sendCommand, setupAdmin, startTestServer } from './kit/http.mjs'
 import { readJournal } from './kit/journal.mjs'
 import { chatCompletion, startFakeProvider } from './kit/llm.mjs'
@@ -39,15 +37,15 @@ const MAX_DICE = {
 const COMPANION = { ...HERO, id: 'treaty-http-companion', character: 'Тавин' }
 
 async function lairState(code = CODE, { combat = false, players = [HERO], decisionTtlMs } = {}) {
-  let state = normalizeCampaignState(await new CampaignBootstrapper().create({
+  let state = await normalizeCampaignState(await createCampaignState({
     code,
     worldTemplateId: 'astohan-plains',
     players,
     campaignMode: 'adventure',
   }))
-  const scenario = campaignScenario(state)
+  const scenario = await campaignScenario(state)
   for (const clueId of ['stormberg-journal-page', 'ares-confession']) {
-    const factId = scenarioClueFactId(scenario, clueId)
+    const factId = await scenarioClueFactId(scenario, clueId)
     const secret = state.worldMemory.facts.find((fact) => fact.id === factId)
     assert.ok(secret, `${clueId}: исходная тайна должна быть записана`)
     state.worldMemory.facts.push({
@@ -63,36 +61,36 @@ async function lairState(code = CODE, { combat = false, players = [HERO], decisi
     })
   }
   for (const locationId of ['astohan-ash-watch', 'astohan-obsidian-pass', 'astohan-vulkanis-brazier']) {
-    const { sceneArgs } = await new SceneArchitectAgent().plan({
+    const { sceneArgs } = await planScene({
       state,
       decision: `Идём в ${locationId}`,
       destinationLocationId: locationId,
     })
-    state = normalizeCampaignState(resolveCommands([{
+    state = await normalizeCampaignState((await resolveCommands([{
       command_type: 'AdvanceScene',
       command_id: `${code}-arrive-${locationId}`,
       scene_args: sceneArgs,
-    }], state, { diceService: fixedDice(10), context: { isAdmin: true } }).state)
+    }], state, { fixed: 10, context: { isAdmin: true } })).state)
   }
   assert.equal(state.scene.location_id, 'astohan-vulkanis-brazier')
   if (combat) {
-    state = normalizeCampaignState(resolveCommands([{
+    state = await normalizeCampaignState((await resolveCommands([{
       command_type: 'CreateEncounter',
       command_id: `${code}-encounter`,
       actor_id: HERO.id,
       npc_id: SARGAT,
       difficulty: 'deadly',
       seed: `${code}-fight`,
-    }], state, { diceService: fixedDice(10), context: { isDirector: true } }).state)
-    state = normalizeCampaignState(resolveCommands([{
+    }], state, { fixed: 10, context: { isDirector: true } })).state)
+    state = await normalizeCampaignState((await resolveCommands([{
       command_type: 'StartCombat', command_id: `${code}-start`, actor_id: HERO.id, server_authoritative: true,
-    }], state, { diceService: fixedDice(10), context: { isDirector: true } }).state)
+    }], state, { fixed: 10, context: { isDirector: true } })).state)
     const boss = state.enemies.find((enemy) => enemy.id === SARGAT)
     assert.ok(boss, 'финальный босс должен быть в бою')
     boss.hp = Math.floor(Number(boss.maxHp) * 0.45)
     state.mechanics.combat.active_index = state.mechanics.combat.initiative.findIndex((entry) => entry.actor_id === HERO.id)
   }
-  return normalizeCampaignState({
+  return await normalizeCampaignState({
     sessionCode: code,
     campaign: 'Договор Асстохана',
     partyName: 'Отряд договора',
@@ -266,7 +264,7 @@ test('директор записывает исходы финала без п�
     await createCampaign(admin, { code, state })
     const { client: player } = await addPlayer(server, admin, code, { heroIds: [HERO_ID] })
     const initial = await readJournal(server, code)
-    assert.equal(scenarioEnding(initial.state)?.id, ending, outcome)
+    assert.equal((await scenarioEnding(initial.state))?.id, ending, outcome)
     const result = expectStatus(await admin.post(`/api/campaigns/${code}/autonomy/advance`, {
       idempotency_key: 'complete-finale', actor_id: HERO_ID, player_action: 'Подводим итог встречи с Саргатом',
     })).state

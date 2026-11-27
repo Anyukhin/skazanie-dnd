@@ -6,10 +6,11 @@ import { basename, join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { STORAGE_WRITER_MARKER } from '../server/backup-service.mjs'
 import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
+// Отметка писателя storage: rust/crates/sk-infra/src/backup_service.rs, STORAGE_WRITER_MARKER.
+const STORAGE_WRITER_MARKER = '.server-writer.json'
 const CLI = fileURLToPath(new URL('../tools/storage-backup.mjs', import.meta.url))
 const SECRET = 'test-only-backup-secret-with-more-than-32-bytes'
 

@@ -1,31 +1,20 @@
 // Самопроверка общего тестового набора `test/kit/`. Если набор сломается,
 // здесь это видно раньше, чем в десятках тестов, которые на него опираются.
+// Кости и движок JS (`kit/dice.mjs`, `kit/engine.mjs`) и клиент модели JS
+// проверяет test-kit-library.test.mjs.
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
 
-import { RouterAIClient } from '../server/llm-client.mjs'
-import { normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 import {
   DEFAULT_SETUP_TOKEN,
   addPlayer,
-  applyAll,
-  assertReplayMatches,
   chatCompletion,
-  commitEvents,
   createCampaign,
-  createCampaignStore,
   createClient,
-  createEngine,
-  dice,
-  diceThen,
   expectStatus,
-  fixedDice,
   forbiddenLlm,
   isolatedServerEnv,
-  maxDice,
-  minDice,
-  reopenStore,
   scriptedLlm,
   sendCommand,
   setupAdmin,
@@ -141,44 +130,6 @@ test('HTTP: сервер, администратор, кампания, игро
   await raw.arrayBuffer()
 })
 
-test('кости: последовательность, отказ на лишнем броске, крайние значения, id и время', () => {
-  const sequence = dice([3, 17], { prefix: 'kit', now: '2026-01-01T00:00:00.000Z' })
-  const first = sequence.rollD20({ purpose: 'check', actorId: 'hero' })
-  assert.equal(first.kept, 3)
-  assert.equal(first.roll_id, 'kit-1')
-  assert.equal(first.created_at, '2026-01-01T00:00:00.000Z')
-  assert.equal(sequence.roll('1d20', 'check', 'hero').total, 17)
-  assert.throws(() => sequence.roll('1d6', 'check', 'hero'), /закончилась/u)
-  assert.throws(() => dice([7]).roll('1d6', 'check', 'hero'), /диапазон/u)
-
-  assert.equal(maxDice().roll('2d6', 'damage', 'hero').total, 12)
-  assert.equal(minDice().roll('2d6', 'damage', 'hero').total, 2)
-  assert.equal(fixedDice(15).roll('1d20', 'check', 'hero').total, 15)
-  assert.equal(fixedDice(15).roll('1d6', 'check', 'hero').total, 6, 'значение прижимается к грани')
-  const tail = diceThen([20], 1)
-  assert.deepEqual([tail.roll('1d20', 'a', 'h').total, tail.roll('1d20', 'b', 'h').total, tail.roll('1d8', 'c', 'h').total], [20, 1, 1])
-})
-
-test('движок: команда → события → журнал, replay с нуля совпадает с головой', async (t) => {
-  const initial = normalizeCampaignState({ ...campaignState('KIT-ENGINE'), mechanics: { world_time: { elapsed_minutes: 0 } } })
-  const store = await createCampaignStore(t, 'KIT-ENGINE', initial)
-  const engine = createEngine([])
-  let expected = (await store.load('KIT-ENGINE')).state
-  for (const amount of [10, 50]) {
-    const result = engine.resolve({ command_type: 'AdvanceTime', actor_id: 'hero-1', amount, unit: 'minute', server_authoritative: true }, expected, { isAdmin: true })
-    assert.ok(result.events.length > 0)
-    await commitEvents(store, 'KIT-ENGINE', result.events)
-    expected = applyAll(expected, result.events)
-  }
-  const head = await assertReplayMatches(store, 'KIT-ENGINE', { expected })
-  assert.equal(head.mechanics.world_time.elapsed_minutes, 60)
-  assert.equal((await reopenStore(store).load('KIT-ENGINE')).current_state_version, (await store.load('KIT-ENGINE')).current_state_version)
-
-  // Тот же resolveCommand напрямую — с костями из набора.
-  const direct = resolveCommand({ command_type: 'AdvanceTime', actor_id: 'hero-1', amount: 1, unit: 'minute', server_authoritative: true }, head, { diceService: dice([]), context: { isAdmin: true } })
-  assert.equal(applyAll(head, direct.events).mechanics.world_time.elapsed_minutes, 61)
-})
-
 test('модель: scriptedLlm отвечает по очереди, записывает вызовы и не терпит лишних', async () => {
   const llm = scriptedLlm([{ ok: 1 }, new Error('сбой'), (input) => ({ echo: input.messages.length })])
   assert.deepEqual(await llm.completeJson({ messages: [] }, { timeoutMs: 5 }), { ok: 1 })
@@ -195,16 +146,12 @@ test('модель: scriptedLlm отвечает по очереди, запис
   await assert.rejects(forbiddenLlm().completeJson({}), (error) => error.code === 'LLM_FORBIDDEN')
 })
 
-test('модель: локальный провайдер говорит протоколом RouterAI и подключается к серверу', { timeout: runnerTimeout(60_000) }, async (t) => {
+test('модель: сервер подключается к локальному провайдеру набора', { timeout: runnerTimeout(60_000) }, async (t) => {
   const provider = await startFakeProvider(t, (request) => {
     if (request.path === '/chat/completions') return chatCompletion({ verdict: 'ok', model: request.body.model })
     return null
   })
   assert.match(provider.baseUrl, /^http:\/\/127\.0\.0\.1:\d+\/api\/v1$/u)
-  const client = new RouterAIClient({ apiKey: 'kit-key', baseUrl: provider.baseUrl, model: 'kit/model' })
-  assert.deepEqual(await client.completeJson({ messages: [{ role: 'user', content: 'проверка' }] }), { verdict: 'ok', model: 'kit/model' })
-  assert.equal(provider.requests.at(-1).headers.authorization, 'Bearer kit-key')
-
   const server = await startTestServer(t, { env: { ...provider.env, DND_AI_MODEL: 'kit/model', DND_AI_FALLBACK_MODELS: '' } })
   const health = expectStatus(await createClient(server).get('/api/health'))
   assert.equal(health.configured, true, 'сервер видит ключ заглушки')
@@ -250,11 +197,11 @@ test('крючки как данные: правила костей, сбои, �
   assert.deepEqual(hookEnv({}), {})
 })
 
-test('контрактный список: пути test/*.test.mjs, комментарии, без повторов; режим по умолчанию — js', () => {
+test('контрактный список: пути test/*.test.mjs, комментарии, без повторов; режим по умолчанию — rust', () => {
   assert.deepEqual(contractFiles('# шапка\n\ntest/a.test.mjs  # почему\r\ntest/b.test.mjs\n'), ['test/a.test.mjs', 'test/b.test.mjs'])
   assert.throws(() => contractFiles('test/kit/http.mjs'), /ожидается/u)
   assert.throws(() => contractFiles('test/a.test.mjs\ntest/a.test.mjs'), /дважды/u)
-  if (!process.env.SKAZANIE_SERVER_IMPL) assert.equal(serverImpl(), 'js')
+  if (!process.env.SKAZANIE_SERVER_IMPL) assert.equal(serverImpl(), 'rust')
 })
 
 test('HTTP: кости и сбои данными доходят до сервера, журнал читается и портится через набор', { timeout: runnerTimeout(60_000) }, async (t) => {

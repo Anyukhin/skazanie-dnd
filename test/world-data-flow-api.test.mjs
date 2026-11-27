@@ -2,10 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { startTestServer } from './kit/http.mjs'
-import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { normalizeCampaignState, resolveCommands } from '../server/rules-engine.mjs'
-import { materializeCatalogItem } from '../server/item-catalog.mjs'
-import { normalizeWorldMemory } from '../server/world-memory.mjs'
+import { materializeCatalogItem, normalizeCampaignState, normalizeWorldMemory, resolveCommands } from './kit/fixtures.mjs'
 import { palaceFixture } from './shared-npc-consequence-fixture.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
@@ -80,8 +77,8 @@ function memoryQuest(id, entityId = 'entity-0') {
   }
 }
 
-test('сохранность мира не теряет 501-ю сущность и связанные записи', () => {
-  const memory = normalizeWorldMemory({
+test('сохранность мира не теряет 501-ю сущность и связанные записи', async () => {
+  const memory = await normalizeWorldMemory({
     entities: Array.from({ length: 501 }, (_, index) => memoryEntity(`entity-${index}`)),
     facts: [memoryFact('fact-tail', 'entity-500')],
     relationships: [memoryRelationship('relation-tail', 'entity-0', 'entity-500')],
@@ -97,11 +94,11 @@ test('сохранность мира не теряет 501-ю сущность 
   assert.ok(memory.relationships.some((relationship) => relationship.id === 'relation-tail'))
   assert.ok(memory.quests.some((quest) => quest.id === 'quest-tail'))
   assert.ok(memory.knowledge_ledger.some((entry) => entry.id === 'knowledge-tail'))
-  assert.deepEqual(normalizeWorldMemory(memory), memory)
+  assert.deepEqual(await normalizeWorldMemory(memory), memory)
 })
 
-test('сохранность мира не отсекает факты, отношения и задания за прежними пределами', () => {
-  const memory = normalizeWorldMemory({
+test('сохранность мира не отсекает факты, отношения и задания за прежними пределами', async () => {
+  const memory = await normalizeWorldMemory({
     entities: [memoryEntity('entity-0'), memoryEntity('entity-1')],
     facts: Array.from({ length: 2_001 }, (_, index) => memoryFact(index === 2_000 ? 'fact-tail' : `fact-${index}`)),
     relationships: Array.from({ length: 2_001 }, (_, index) => memoryRelationship(index === 2_000 ? 'relation-tail' : `relation-${index}`)),
@@ -111,11 +108,11 @@ test('сохранность мира не отсекает факты, отно
   assert.ok(memory.facts.some((fact) => fact.id === 'fact-tail'))
   assert.ok(memory.relationships.some((relationship) => relationship.id === 'relation-tail'))
   assert.ok(memory.quests.some((quest) => quest.id === 'quest-tail'))
-  assert.deepEqual(normalizeWorldMemory(memory), memory)
+  assert.deepEqual(await normalizeWorldMemory(memory), memory)
 })
 
-test('длинный журнал знаний сохраняет раннее знание после нормализации', () => {
-  const memory = normalizeWorldMemory({
+test('длинный журнал знаний сохраняет раннее знание после нормализации', async () => {
+  const memory = await normalizeWorldMemory({
     entities: [memoryEntity('entity-0')],
     facts: [memoryFact('fact-0')],
     knowledge_ledger: Array.from({ length: 5_001 }, (_, index) => ({
@@ -131,7 +128,7 @@ test('длинный журнал знаний сохраняет раннее �
 
   assert.ok(memory.knowledge_ledger.some((entry) => entry.id === 'knowledge-0'))
   assert.ok(memory.knowledge_ledger.some((entry) => entry.id === 'knowledge-5000'))
-  assert.deepEqual(normalizeWorldMemory(memory), memory)
+  assert.deepEqual(await normalizeWorldMemory(memory), memory)
 })
 
 test('обычный игрок сохраняет смерть NPC, добычу, квест и историю через уход, возврат и restart', { timeout: runnerTimeout(120_000) }, async (t) => {
@@ -152,7 +149,7 @@ test('обычный игрок сохраняет смерть NPC, добыч�
 
   const fixture = await palaceFixture({ kingHp: 1, witnesses: false })
   const blade = {
-    ...materializeCatalogItem('srd_5_2_1:longsword', { id: 'ares-oathblade-instance', quantity: 1 }),
+    ...(await materializeCatalogItem('srd_5_2_1:longsword', { id: 'ares-oathblade-instance', quantity: 1 })),
     item_instance_id: 'ares-oathblade-instance',
     origin: 'enemy_loadout',
   }
@@ -177,16 +174,16 @@ test('обычный игрок сохраняет смерть NPC, добыч�
   fixture.state.worldMemory.knowledge_ledger.push({
     id: flowKnowledgeTailId, hero_id: HERO_ID, fact_id: flowFactTailId, summary: 'x', source_kind: 'knowledge_revealed',
   })
-  const prepared = normalizeCampaignState(fixture.state)
+  const prepared = await normalizeCampaignState(fixture.state)
   assert.ok(prepared.worldMemory.entities.some((entity) => entity.id === flowEntityTailId))
   assert.ok(prepared.worldMemory.facts.some((fact) => fact.id === flowFactTailId))
   assert.ok(prepared.worldMemory.knowledge_ledger.some((entry) => entry.id === flowKnowledgeTailId))
-  const initial = resolveCommands([
+  const initial = (await resolveCommands([
     { command_type: 'AttackNpc', command_id: 'world-data-flow-initiative', actor_id: HERO_ID, npc_id: NPC_ID },
   ], prepared, {
-    diceService: new DiceService({ rng: new SequenceDiceRng([20, 1]) }),
+    dice: [20, 1],
     context: { allowedActorIds: [HERO_ID] },
-  }).state
+  })).state
   initial.sessionCode = SESSION
   // `combatSpells` — производный серверный профиль: при импорте состояния
   // Rules Engine восстанавливает его из класса и выбранных id заклинаний.

@@ -330,11 +330,17 @@ README и `docs/rules-coverage.md`. То же для мультикласса.
    `skazanie-server backup` (create / verify / compare / restore, формат
    `pnpm backup`, отказ при живом писателе), `sk-server/tests/storage_backup.rs`,
    `docs/rust-docker.md` §«Резервная копия тома».
-3. **Контракт на чистый HTTP.** Контрактные тесты строят состояния правилами
-   JS-библиотеки (`server/rules-engine.mjs` и др.), в наборе `test/kit`
-   остались мёртвые ветки режима `js` (`journal`, `rooms`, `sessions`).
-   Переписать на ответы сервера и подкоманды бинаря — тогда `server/` нужен
-   только клиенту и инструментам.
+3. ~~**Контракт на чистый HTTP.**~~ — сделано 2026-11-27: входы контрактных
+   тестов (карты, предметы, бой стенда, сцены сценария, разбор команд,
+   проекция) строит подкоманда `skazanie-server fixture`
+   (`sk-server/src/test_hooks/fixture_cli.rs`, обёртки —
+   `test/kit/fixtures.mjs`); ветки режима `js` в `test/kit` удалены;
+   сторож `test/contract-purity.test.mjs` — ни один файл
+   `contract-rust.list` не импортирует `server/` и архив, ни прямо, ни через
+   набор. Проверки JS-модулей без сервера переехали в
+   `test/*-library.test.mjs` вне контракта. Осталось: `storage-backup-cli`
+   по-прежнему запускает Node-инструмент `tools/storage-backup.mjs` — это
+   проверка инструмента (пункт 4), а не сервера.
 4. **Инструменты контента на Rust.** `maps:preview --audit`, `models:scale`,
    `spells:verify`, `content:verify` гоняют генераторы и каталоги
    JS-библиотеки, а не те, что работают в игре. Перевести на подкоманды

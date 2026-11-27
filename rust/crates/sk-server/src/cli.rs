@@ -39,6 +39,7 @@ skazanie-server — HTTP-сервер «Сказания».
   skazanie-server journal …            журнал кампании (только сборка с test-hooks)
   skazanie-server session …            сессии входа (только сборка с test-hooks)
   skazanie-server room | audit …       комната и сверка хранилища (только сборка с test-hooks)
+  skazanie-server fixture              входы контрактных тестов кодом сервера (только сборка с test-hooks)
 
 Окружение (также из .env в текущем каталоге):
   AGENT_HOST, AGENT_PORT     адрес и порт (по умолчанию 0.0.0.0:8787)
@@ -60,6 +61,8 @@ pub enum Invocation {
     Journal(Vec<String>),
     /// `session` с остатком аргументов.
     Session(Vec<String>),
+    /// `fixture` с остатком аргументов.
+    Fixture(Vec<String>),
     /// `room` или `audit` набора тестов (`test/kit/rooms.mjs`): имя и остаток аргументов.
     Room(String, Vec<String>),
     /// `import-legacy` с остатком аргументов.
@@ -82,6 +85,7 @@ pub fn parse(args: &[String]) -> Invocation {
         "--help" | "-h" => Invocation::Help,
         "journal" => Invocation::Journal(rest),
         "session" => Invocation::Session(rest),
+        "fixture" => Invocation::Fixture(rest),
         "room" | "audit" => Invocation::Room(first.clone(), rest),
         "import-legacy" => Invocation::ImportLegacy(rest),
         "audit-storage" => Invocation::AuditStorage(rest),
@@ -102,6 +106,7 @@ pub fn run_tool(invocation: &Invocation) -> Option<i32> {
         }
         Invocation::Journal(rest) => Some(crate::test_hooks::journal_cli::main(rest)),
         Invocation::Session(rest) => Some(crate::test_hooks::session_cli::main(rest)),
+        Invocation::Fixture(rest) => Some(crate::test_hooks::fixture_cli::main(rest)),
         Invocation::Room(name, rest) => Some(crate::test_hooks::room_cli::main(name, rest)),
         Invocation::ImportLegacy(rest) => Some(crate::legacy_import::run(rest)),
         Invocation::AuditStorage(rest) => Some(crate::storage_audit::run(rest)),
@@ -130,6 +135,7 @@ mod tests {
         }
         assert_eq!(parse(&args(&["journal", "--storage", "x"])), Invocation::Journal(args(&["--storage", "x"])));
         assert_eq!(parse(&args(&["session", "--expire"])), Invocation::Session(args(&["--expire"])));
+        assert_eq!(parse(&args(&["fixture"])), Invocation::Fixture(Vec::new()));
         assert_eq!(parse(&args(&["import-legacy"])), Invocation::ImportLegacy(Vec::new()));
         assert_eq!(parse(&args(&["audit-storage", "--json"])), Invocation::AuditStorage(args(&["--json"])));
         assert_eq!(parse(&args(&["check-content"])), Invocation::CheckContent(Vec::new()));

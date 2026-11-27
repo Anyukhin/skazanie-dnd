@@ -3,8 +3,7 @@ import test from 'node:test'
 
 import { registerUser, setupAdmin, startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-import { authoredLocationMapFor } from '../server/authored-location-maps.mjs'
-import { cellAt } from '../server/tactical-map.mjs'
+import { authoredLocationMapFor, readMap } from './kit/fixtures.mjs'
 
 const SESSION = 'AUTHORED-MAP-MOVE'
 
@@ -81,10 +80,11 @@ function statePosition(room, actorId) {
 }
 
 test('authored Ares map enforces walls, table occupancy, routes around props, ACL, idempotency and replay', { timeout: runnerTimeout(45_000) }, async (t) => {
-  const map = authoredLocationMapFor('astohan-stormberg')
-  assert.ok(map, 'для HTTP movement test нужен опубликованный Ares map')
+  const authored = await authoredLocationMapFor('astohan-stormberg')
+  assert.ok(authored, 'для HTTP movement test нужен опубликованный Ares map')
+  const map = await readMap(authored.map)
   assert.deepEqual([map.width, map.height], [24, 18])
-  assert.equal(cellAt(map, 6, 4)?.passable ?? false, false)
+  assert.equal(map.cellAt(6, 4)?.passable ?? false, false)
   assert.ok(map.props.some((prop) => prop.id === 'war-table' && prop.footprint.some((cell) => cell.x === 11 && cell.y === 8)))
   const server = await startTestServer(t, { storagePrefix: 'skazanie-authored-map-movement-' })
 

@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { startTestServer } from './kit/http.mjs'
 import { appendJournal, readJournal } from './kit/journal.mjs'
-import { resolvePartyVote } from '../server/party-decision.mjs'
+import { resolvePartyVote } from './kit/fixtures.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
@@ -258,7 +258,7 @@ test('отказ от выбранного задания остаётся в с
 
   await server.stop()
   const beforeCrashFinish = await readJournal(server, 'QUEST-ABANDON')
-  const crashResolution = resolvePartyVote(beforeCrashFinish.state, {
+  const crashResolution = await resolvePartyVote(beforeCrashFinish.state, {
     interactionId: crashInteraction.id,
     heroId: 'hero-b',
     optionId: 'abandon',

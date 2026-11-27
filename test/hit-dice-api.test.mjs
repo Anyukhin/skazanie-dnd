@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-import { worldClockEventDrafts } from '../server/weather.mjs'
+import { worldClockEventDrafts } from './kit/fixtures.mjs'
 
 /**
  * Что может выпустить ход мира за продолжительный отдых
@@ -232,7 +232,7 @@ test('HTTP-отдых санитизирует поля, защищает гер
   // событие в контуре отдыха, — а сколько его быть должно, отвечают сами часы.
   const restedState = longRest.body.authoritative_state
   const beforeRest = { ...restedState, mechanics: { ...restedState.mechanics, world_time: { ...restedState.mechanics.world_time, elapsed_minutes: 60 } } }
-  const sky = worldClockEventDrafts(beforeRest, 480).map((draft) => draft.event_type)
+  const sky = (await worldClockEventDrafts(beforeRest, 480)).map((draft) => draft.event_type)
   assert.deepEqual(sky, ['TimeOfDayChanged'], 'восемь часов сна переводят время суток ровно один раз')
   // Восемь часов — существенный скачок, и мир делает за них свой ход
   // (`server/offscreen-world.mjs`): часы заданий, память мира и врезка «Пока вас

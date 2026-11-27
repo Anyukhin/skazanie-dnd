@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { startTestServer } from './kit/http.mjs'
-import { movementCostOfPath, shortestTacticalPath } from '../server/rules-engine.mjs'
+import { tacticalRoutes } from './kit/fixtures.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const CAMPAIGN = 'LONGSTRIDER-HTTP'
@@ -25,26 +25,29 @@ function occupiedActorKeys(state, exceptActorId) {
 // Снимок комнаты может перечислить соседнюю клетку раньше, чем её занятость
 // станет очевидна по карточке врага. Для команды источником координат остаётся
 // mechanics.positions, поэтому сценарий выбирает свободную клетку тем же ключом.
-function adjacentFreeStep(state, actorId, origin) {
+// Пути и их цену считает сервер (`shortestTacticalPath`, `movementCostOfPath`)
+// одним вызовом на все клетки-кандидаты: состояние комнаты уходит один раз.
+async function routesTo(state, actorId, cells) {
+  return cells.length ? tacticalRoutes(state, actorId, cells) : []
+}
+
+async function adjacentFreeStep(state, actorId, origin) {
   const occupied = occupiedActorKeys(state, actorId)
-  return state.scene.cells.find((cell) => {
-    if (Math.max(Math.abs(cell.x - origin.x), Math.abs(cell.y - origin.y)) !== 1
-      || cell.movement_blocked === true || occupied.has(`${cell.x},${cell.y}`)) return false
-    const path = shortestTacticalPath(state, actorId, cell)
-    return path?.length === 1 && movementCostOfPath(state, actorId, path) === 5
-  })
+  const candidates = state.scene.cells.filter((cell) => !(Math.max(Math.abs(cell.x - origin.x), Math.abs(cell.y - origin.y)) !== 1
+    || cell.movement_blocked === true || occupied.has(`${cell.x},${cell.y}`)))
+  const routes = await routesTo(state, actorId, candidates)
+  return candidates.find((_, index) => routes[index].path?.length === 1 && routes[index].cost === 5)
 }
 
 // После генерации карты рядом может оказаться труднопроходимая клетка. Подбираем
 // маршрут, который ровно делит 40 фт, сохраняя проверку полного запаса Скорохода.
-function combatMovementTargetForFortyFeet(state, actorId, origin) {
+async function combatMovementTargetForFortyFeet(state, actorId, origin) {
   const occupied = occupiedActorKeys(state, actorId)
-  return state.scene.cells
+  const candidates = state.scene.cells
     .filter((cell) => cell.movement_blocked !== true && !occupied.has(`${cell.x},${cell.y}`))
-    .map((cell) => {
-      const path = shortestTacticalPath(state, actorId, cell)
-      return { cell, path, cost: path?.length ? movementCostOfPath(state, actorId, path) : 0 }
-    })
+  const routes = await routesTo(state, actorId, candidates)
+  return candidates
+    .map((cell, index) => ({ cell, path: routes[index].path, cost: routes[index].path?.length ? routes[index].cost : 0 }))
     .filter(({ path, cost }) => path?.length && cost > 0 && cost <= 20 && 40 % cost === 0)
     .sort((left, right) => left.path.length - right.path.length || left.cost - right.cost
       || Math.abs(left.cell.x - origin.x) + Math.abs(left.cell.y - origin.y)
@@ -172,8 +175,9 @@ test('HTTP: два обычных игрока осваивают Скорохо
   let state = preparedState
   const caster = state.players.find((hero) => hero.id === 'hero-slot-1')
   const ally = state.players.find((hero) => hero.id === 'hero-slot-2')
-  const near = state.scene.cells.find((cell) => Math.max(Math.abs(cell.x - ally.x), Math.abs(cell.y - ally.y)) <= 1
-    && Array.isArray(shortestTacticalPath(state, caster.id, cell)))
+  const nearCandidates = state.scene.cells.filter((cell) => Math.max(Math.abs(cell.x - ally.x), Math.abs(cell.y - ally.y)) <= 1)
+  const nearRoutes = await routesTo(state, caster.id, nearCandidates)
+  const near = nearCandidates.find((_, index) => Array.isArray(nearRoutes[index].path))
   assert.ok(near, 'заклинатель должен иметь доступ к союзнику для касания')
   if (near.x !== caster.x || near.y !== caster.y) {
     state = expect(await api.command(owner, 'approach-ally', { command_type: 'MoveActor', actor_id: caster.id, to: { x: near.x, y: near.y } })).authoritative_state
@@ -207,7 +211,7 @@ test('HTTP: два обычных игрока осваивают Скорохо
     assert.equal(observed.mechanics.movement[id].current_speed, 40)
   }
   const explorationOrigin = actorPositionFor(observed, observed.players.find((hero) => hero.id === caster.id))
-  const explorationStep = adjacentFreeStep(observed, caster.id, explorationOrigin)
+  const explorationStep = await adjacentFreeStep(observed, caster.id, explorationOrigin)
   assert.ok(explorationStep, 'после наложения нужен короткий исследовательский путь')
   const explored = expect(await api.command(owner, 'exploration-movement', { command_type: 'MoveActor', actor_id: caster.id,
     to: { x: explorationStep.x, y: explorationStep.y } }))
@@ -228,7 +232,7 @@ test('HTTP: два обычных игрока осваивают Скорохо
   assert.equal(state.mechanics.combat.initiative[state.mechanics.combat.active_index].actor_id, caster.id)
   assert.equal(effects(state, caster.id)[0].expires_at_seconds, expiry)
   const origin = actorPositionFor(state, state.players.find((hero) => hero.id === caster.id))
-  const movementTarget = combatMovementTargetForFortyFeet(state, caster.id, origin)
+  const movementTarget = await combatMovementTargetForFortyFeet(state, caster.id, origin)
   const safeStep = movementTarget?.cell
   const movementStepCost = movementTarget?.cost ?? 0
   assert.ok(safeStep, 'в тестовой встрече нужен проходимый соседний путь')

@@ -1,15 +1,7 @@
-import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
-import { hasClearTrajectory, normalizeCampaignState } from '../server/rules-engine.mjs'
+import { createCampaignState, normalizeCampaignState } from './kit/fixtures.mjs'
 
 const ARES_ID = 'astohan-ares'
 const WIZARD_ID = 'consequence-wizard'
-
-export function palaceMeleePoint({ state, kingPoint }) {
-  return [[1, 0], [-1, 0], [0, 1], [0, -1]]
-    .map(([dx, dy]) => ({ x: kingPoint.x + dx, y: kingPoint.y + dy }))
-    .find((point) => state.scene.cells.some((cell) => cell.x === point.x && cell.y === point.y && cell.type === 'floor' && cell.revealed)
-      && hasClearTrajectory(state, point, kingPoint))
-}
 
 const wizard = {
   id: WIZARD_ID,
@@ -38,7 +30,7 @@ const wizard = {
  * не отключён.
  */
 export async function palaceFixture({ kingHp = 20, witnesses = true } = {}) {
-  const state = await new CampaignBootstrapper().create({
+  const state = await createCampaignState({
     code: 'NPC-OFFICE',
     worldTemplateId: 'astohan-plains',
     campaignMode: 'persistent',
@@ -73,7 +65,7 @@ export async function palaceFixture({ kingHp = 20, witnesses = true } = {}) {
     }))
   }
 
-  const normalized = normalizeCampaignState(state)
+  const normalized = await normalizeCampaignState(state)
   const kingPlacement = normalized.npc_world.placements.find((placement) => placement.npc_id === ARES_ID)
   if (!kingPlacement) throw new Error('Фикстура не разместила короля на авторской сцене')
   return {

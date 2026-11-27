@@ -3,9 +3,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
 
-import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { materializeCatalogItem } from '../server/item-catalog.mjs'
-import { resolveCommand } from '../server/rules-engine.mjs'
+import { materializeCatalogItem, resolveCommand } from './kit/fixtures.mjs'
 import { appendJournal, readJournal, startTestServer } from './kit/index.mjs'
 
 const WAND_ID = 'srd_5_2_1:wand-of-magic-missiles'
@@ -29,7 +27,7 @@ async function request(baseUrl, path, {
   return { response, status: response.status, body: text ? JSON.parse(text) : null, text }
 }
 
-function campaign(code, charges) {
+async function campaign(code, charges) {
   return {
     state_version: 0,
     sessionCode: code,
@@ -48,7 +46,7 @@ function campaign(code, charges) {
       x: 0,
       y: 0,
       abilities: { str: 16, dex: 12, con: 14, int: 8, wis: 10, cha: 10 },
-      inventory: [materializeCatalogItem(WAND_ID, {
+      inventory: [await materializeCatalogItem(WAND_ID, {
         id: 'wand',
         quantity: 1,
         equipped: true,
@@ -140,7 +138,7 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
     const created = await request(baseUrl, '/api/campaigns', {
       method: 'POST',
       cookie,
-      body: { code, name: 'Проверка жезла', state: campaign(code, charges) },
+      body: { code, name: 'Проверка жезла', state: await campaign(code, charges) },
     })
     assert.equal(created.status, 201, `${created.text}\n${server.output()}`)
   }
@@ -199,7 +197,7 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
   const before = await readJournal(server, 'WAND-DESTROY')
   const destroyKey = 'wand-destroyed-retry'
   const fingerprint = itemFingerprint(1)
-  const resolved = resolveCommand({
+  const resolved = await resolveCommand({
     command_type: 'UseItem',
     command_id: destroyKey,
     campaign_id: 'WAND-DESTROY',
@@ -210,14 +208,7 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
     request_fingerprint: fingerprint,
     server_authoritative: true,
   }, before.state, {
-    diceService: new DiceService({
-      rng: new SequenceDiceRng([2, 1]),
-      idFactory: (() => {
-        let id = 0
-        return () => `destroy-roll-${++id}`
-      })(),
-      now: () => '2026-07-31T12:00:00.000Z',
-    }),
+    dice: [2, 1],
     context: { isAdmin: true, serverAuthoritativeCombat: true },
   })
   const committed = await appendJournal(server, 'WAND-DESTROY', {

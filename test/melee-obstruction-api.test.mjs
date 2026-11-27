@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createTacticalMap, serializeTacticalMap, setDoor, setEdge } from '../server/tactical-map.mjs'
+import { tacticalMap } from './kit/fixtures.mjs'
 import { addPlayer, createCampaign, expectStatus, sendCommand, setupAdmin, startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
@@ -10,16 +10,17 @@ test('открытый проход, тонкая стена и закрытая
   const { client: admin } = await setupAdmin(server)
   for (const passage of ['open', 'wall', 'closed']) {
     const code = `MELEE-${passage.toUpperCase()}`
-    const map = createTacticalMap({ width: 2, height: 1, fill: { material: 'stone', passable: true, revealed: true } })
-    if (passage === 'wall') setEdge(map, 0, 0, 1, 0, { kind: 'wall' })
-    else setDoor(map, { id: 'door', x: 0, y: 0, dir: 'e', state: passage })
+    const builder = tacticalMap({ width: 2, height: 1, fill: { material: 'stone', passable: true, revealed: true } })
+    if (passage === 'wall') builder.edge(0, 0, 1, 0, { kind: 'wall' })
+    else builder.door({ id: 'door', x: 0, y: 0, dir: 'e', state: passage })
+    const { map } = await builder.build()
     await createCampaign(admin, { code, state: {
       partyMemberIds: ['hero'], activePlayerId: 'hero',
       players: [{ id: 'hero', character: 'Герой', x: 0, y: 0, hp: 12, maxHp: 12, armor: 14, proficiency: 2, abilities: { str: 16 }, inventory: [
         { id: 'sword', name: 'Меч', type: 'weapon', quantity: 1, equipped: true, combat: { kind: 'melee', ability: 'str', damage: '1d8', damageType: 'slashing', normalRange: 5 } },
       ] }],
       enemies: [{ id: 'enemy', name: 'Противник', x: 1, y: 0, hp: 12, maxHp: 12, armor: 12, alive: true }],
-      scene: { turn: 1, map: serializeTacticalMap(map), cells: [] },
+      scene: { turn: 1, map, cells: [] },
       mechanics: { combat: { active: true, round: 1, active_index: 0,
         initiative: [{ actor_id: 'hero' }, { actor_id: 'enemy' }], action_economy: { hero: { action: true } },
       } },

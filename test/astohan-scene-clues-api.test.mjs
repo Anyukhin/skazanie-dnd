@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
-import { scenarioClueFactId } from '../server/campaign-scenario.mjs'
-import { normalizeCampaignState, resolveCommands } from '../server/rules-engine.mjs'
-import { SceneArchitectAgent } from '../server/scene-architect.mjs'
-import { cellAt, deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
+// Правка готовой карты сцены (скрыть клетки, открыть след предмета, убрать
+// предмет): в `fixtures.mjs` нет шагов поверх уже построенной карты — импорт
+// остаётся до них.
+import { createCampaignState, editMap, normalizeCampaignState, planScene, readMap, resolveCommands, serverBatch } from './kit/fixtures.mjs'
 import { addPlayer, createCampaign, expectStatus, sendCommand, setupAdmin, startTestServer } from './kit/http.mjs'
 import { readJournal } from './kit/journal.mjs'
-import { fixedDice } from './kit/dice.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const SCENARIO_ID = 'astohan-dragon-hunt'
@@ -18,6 +16,17 @@ const HERO = {
   species: 'Человек', background: 'Солдат', level: 7, hp: 70, maxHp: 70,
   armor: 18, speed: 30, proficiency: 3,
   abilities: { str: 16, dex: 12, con: 14, int: 12, wis: 14, cha: 10 }, inventory: [],
+}
+
+// Id фактов улик считает сервер (`scenarioClueFactId`) одним пакетом.
+const CLUE_IDS = ['ash-journal', 'cliffs-frescoes', 'cliffs-diary', 'cliffs-maid']
+const CLUE_FACT_IDS = new Map((await serverBatch(CLUE_IDS.map((clueId) => ['scenarioClueFactId', { id: SCENARIO_ID }, clueId])))
+  .map((factId, index) => [CLUE_IDS[index], factId]))
+
+function clueFactId(clueId) {
+  const factId = CLUE_FACT_IDS.get(clueId)
+  assert.ok(factId, `${clueId}: id факта улики не посчитан`)
+  return factId
 }
 
 const CASES = [
@@ -40,39 +49,41 @@ const CASES = [
 ]
 
 async function arriveAndExpose(server, admin, scene, { atProp = true, expose = true, withoutDiary = false, worldTimeMinutes = null } = {}) {
-  let state = normalizeCampaignState(await new CampaignBootstrapper().create({
+  let state = await normalizeCampaignState(await createCampaignState({
     code: scene.code, worldTemplateId: 'astohan-plains', players: [HERO], campaignMode: 'adventure',
   }))
   for (let hop = 0; hop < 8 && state.scene.location_id !== scene.locationId; hop += 1) {
-    const { sceneArgs } = await new SceneArchitectAgent().plan({
+    const { sceneArgs } = await planScene({
       state, decision: `Идём в ${scene.locationId}`, destinationLocationId: scene.locationId,
     })
-    state = normalizeCampaignState(resolveCommands([{ command_type: 'AdvanceScene', command_id: `${scene.code}:arrive:${hop}`, scene_args: sceneArgs }], state, {
-      diceService: fixedDice(10), context: { isAdmin: true },
-    }).state)
+    state = await normalizeCampaignState((await resolveCommands([{ command_type: 'AdvanceScene', command_id: `${scene.code}:arrive:${hop}`, scene_args: sceneArgs }], state, {
+      fixed: 10, context: { isAdmin: true },
+    })).state)
   }
   assert.equal(state.scene.location_id, scene.locationId, `${scene.locationId}: сценарный переход должен дойти до места`)
-  const map = deserializeTacticalMap(state.scene.map)
-  if (withoutDiary) map.props = map.props.filter(prop => prop.id !== 'astohan-forgotten-cliffs:executioner-diary')
-  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
-    if (cellAt(map, x, y)) setCell(map, x, y, { revealed: false })
-  }
-  for (const [index, propId] of scene.propIds.entries()) {
+  // Карту правит сервер (`editMap`): шаги `setCell` по порядку, как раньше на JS.
+  const source = withoutDiary
+    ? { ...state.scene.map, props: state.scene.map.props.filter((prop) => prop.id !== 'astohan-forgotten-cliffs:executioner-diary') }
+    : state.scene.map
+  const map = await readMap(source)
+  const steps = map.cells.map(({ x, y }) => ({ cell: [x, y, { revealed: false }] }))
+  for (const propId of scene.propIds) {
     const prop = map.props.find((candidate) => candidate.id === propId)
     assert.ok(prop?.footprint[0], `${propId}: authored предмет должен быть на карте`)
-    if (expose) for (const cell of prop.footprint) setCell(map, cell.x, cell.y, { revealed: true })
+    if (expose) for (const cell of prop.footprint) steps.push({ cell: [cell.x, cell.y, { revealed: true }] })
   }
   const target = map.props.find(candidate => candidate.id === scene.propIds[0])
   const propCell = target.footprint[0]
   const occupied = new Set(map.props.filter(prop => prop.blocksMove || prop === target)
     .flatMap(prop => prop.footprint.map(cell => `${cell.x},${cell.y}`)))
   const besideProp = target.footprint.flatMap(({ x, y }) => [{ x, y: y + 1 }, { x: x + 1, y }, { x, y: y - 1 }, { x: x - 1, y }])
-    .find(({ x, y }) => cellAt(map, x, y)?.passable && !occupied.has(`${x},${y}`))
+    .find(({ x, y }) => map.cellAt(x, y)?.passable && !occupied.has(`${x},${y}`))
   const position = atProp ? besideProp : state.mechanics.positions[HERO_ID]
   assert.ok(position, 'для осмотра нужна свободная клетка рядом с предметом')
   if (!atProp) assert.ok(Math.max(Math.abs(position.x - propCell.x), Math.abs(position.y - propCell.y)) > 3)
-  setCell(map, position.x, position.y, { revealed: true })
-  const compact = normalizeCampaignState({
+  steps.push({ cell: [position.x, position.y, { revealed: true }] })
+  const edited = await editMap(source, steps)
+  const compact = await normalizeCampaignState({
     sessionCode: scene.code, campaign: 'Авторские улики Асстохана', partyName: 'Отряд улик',
     partyMemberIds: [HERO_ID], campaignConcept: state.campaignConcept, worldMap: state.worldMap,
     worldMemory: state.worldMemory, adventure: state.adventure, social: state.social, npc_world: state.npc_world,
@@ -83,7 +94,7 @@ async function arriveAndExpose(server, admin, scene, { atProp = true, expose = t
       positions: { [HERO_ID]: position },
     }, activePlayerId: HERO_ID,
     ruleset_id: state.ruleset_id, ruleset_version: state.ruleset_version, enabled_rule_packs: state.enabled_rule_packs,
-    scene: { ...state.scene, map: serializeTacticalMap(map), cells: legacyCellsFromTacticalMap(map) }, messages: [], battleLog: [], rulings: [], state_version: 0,
+    scene: { ...state.scene, map: edited.map, cells: edited.cells }, messages: [], battleLog: [], rulings: [], state_version: 0,
   })
   await createCampaign(admin, { code: scene.code, name: 'Авторские улики Асстохана', state: compact })
   return (await addPlayer(server, admin, scene.code, { heroIds: [HERO_ID], name: `Игрок ${scene.code}` })).client
@@ -94,12 +105,12 @@ function projectedProp(room, propId) {
 }
 
 function discovery(room, clueId) {
-  const factId = scenarioClueFactId({ id: SCENARIO_ID }, clueId)
+  const factId = clueFactId(clueId)
   return (room.state.worldMemory?.facts ?? []).filter((fact) => fact.predicate === 'discovery' && fact.supersedes_fact_id === factId)
 }
 
 function knowledge(room, clueId) {
-  const factId = scenarioClueFactId({ id: SCENARIO_ID }, clueId)
+  const factId = clueFactId(clueId)
   return (room.state.worldMemory?.knowledge_revealed ?? []).filter((entry) => entry.fact_id === factId)
 }
 

@@ -11,7 +11,7 @@ import test from 'node:test'
 
 import { addPlayer, createCampaign, createClient, expectStatus, registerUser, setupAdmin, startTestServer } from './kit/http.mjs'
 import { appendJournal, readJournal } from './kit/journal.mjs'
-import { partyDecisionOpenedEvent } from '../server/party-decision.mjs'
+import { partyDecisionOpenedEvent } from './kit/fixtures.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const CODE = 'PARTY-ROLL'
@@ -57,7 +57,7 @@ test('общий бросок отряда: серверная кость, пр�
   // Решение «общий бросок» — как его открывает ход ведущего.
   await server.stop()
   const before = await readJournal(server, CODE)
-  const opened = partyDecisionOpenedEvent({
+  const opened = await partyDecisionOpenedEvent({
     id: DECISION,
     type: 'roll',
     title: 'Прорваться через ворота?',

@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { narrationRequestFingerprint, structuredCommandsFingerprint } from '../server/game-orchestrator.mjs'
+import { narrationRequestFingerprint, serverBatch } from './kit/fixtures.mjs'
 
 /**
  * Аудит PR #131, CMD-01/02/03 (docs/reviews/2026-10-04/round-2/12-command-retries.md).
@@ -173,7 +173,7 @@ test('повтор ключа: то же намерение — replay, друг
   const legacy = await command('legacy-key', 'legacy message', identify('goblin-e'))
   assert.equal(legacy.status, 200, `${legacy.text}\n${server.output()}`)
   assert.ok(legacy.body.turn_id)
-  rewriteTrace(legacy.body.turn_id, narrationRequestFingerprint({ campaignId: CAMPAIGN, playerId: 'hero-a', message: 'legacy message' }))
+  rewriteTrace(legacy.body.turn_id, await narrationRequestFingerprint({ campaignId: CAMPAIGN, playerId: 'hero-a', message: 'legacy message' }))
   const legacyReplay = await command('legacy-key', 'legacy message', identify('goblin-e'))
   assert.equal(legacyReplay.status, 200, brief(legacyReplay))
   assert.equal(legacyReplay.body.idempotent_replay, true)
@@ -187,19 +187,36 @@ test('повтор ключа: то же намерение — replay, друг
   assert.equal(ancientReplay.body.idempotent_replay, true)
 })
 
-test('отпечаток пакета команд: транспорт и версия не в счёт, цель и тип — в счёт', () => {
-  const base = structuredCommandsFingerprint([identify('goblin-a')])
-  assert.equal(structuredCommandsFingerprint([{ target_id: 'goblin-a', actor_id: 'hero-a', command_type: 'IdentifyEnemy' }]), base, 'порядок полей не важен')
-  assert.equal(structuredCommandsFingerprint([{ ...identify('goblin-a'), expected_state_version: 7, command_id: 'x', server_authoritative: true }]), base)
-  // `rest_id` санитайзер отдыха берёт из состояния, которого после коммита уже нет.
+test('отпечаток пакета команд: транспорт и версия не в счёт, цель и тип — в счёт', async () => {
+  // Отпечатки считает сервер: все вызовы одним процессом, результаты по порядку.
   const rest = { command_type: 'CompleteRest', actor_id: 'hero-a' }
-  assert.equal(structuredCommandsFingerprint([{ ...rest, rest_id: 'rest-1' }]), structuredCommandsFingerprint([rest]))
-  assert.notEqual(structuredCommandsFingerprint([identify('goblin-b')]), base)
-  assert.notEqual(structuredCommandsFingerprint([identify('goblin-a', 'hero-b')]), base)
-  assert.notEqual(structuredCommandsFingerprint([{ ...identify('goblin-a'), command_type: 'EndTurn' }]), base)
-  assert.notEqual(structuredCommandsFingerprint([identify('goblin-a'), identify('goblin-a')]), base, 'кратность пакета важна')
-  // Пустая операция — прежний отпечаток: по нему узнаются старые трассы.
   const fields = { campaignId: CAMPAIGN, playerId: 'hero-a', message: 'текст' }
-  assert.equal(narrationRequestFingerprint({ ...fields, operation: '' }), narrationRequestFingerprint(fields))
-  assert.notEqual(narrationRequestFingerprint({ ...fields, operation: 'message' }), narrationRequestFingerprint(fields))
+  const [
+    base, reordered, transport, restWithId, restPlain, otherTarget, otherActor, otherType, doubled,
+    emptyOperation, plainFields, messageOperation,
+  ] = await serverBatch([
+    ['structuredCommandsFingerprint', [identify('goblin-a')]],
+    ['structuredCommandsFingerprint', [{ target_id: 'goblin-a', actor_id: 'hero-a', command_type: 'IdentifyEnemy' }]],
+    ['structuredCommandsFingerprint', [{ ...identify('goblin-a'), expected_state_version: 7, command_id: 'x', server_authoritative: true }]],
+    ['structuredCommandsFingerprint', [{ ...rest, rest_id: 'rest-1' }]],
+    ['structuredCommandsFingerprint', [rest]],
+    ['structuredCommandsFingerprint', [identify('goblin-b')]],
+    ['structuredCommandsFingerprint', [identify('goblin-a', 'hero-b')]],
+    ['structuredCommandsFingerprint', [{ ...identify('goblin-a'), command_type: 'EndTurn' }]],
+    ['structuredCommandsFingerprint', [identify('goblin-a'), identify('goblin-a')]],
+    ['narrationRequestFingerprint', { ...fields, operation: '' }],
+    ['narrationRequestFingerprint', fields],
+    ['narrationRequestFingerprint', { ...fields, operation: 'message' }],
+  ])
+  assert.equal(reordered, base, 'порядок полей не важен')
+  assert.equal(transport, base)
+  // `rest_id` санитайзер отдыха берёт из состояния, которого после коммита уже нет.
+  assert.equal(restWithId, restPlain)
+  assert.notEqual(otherTarget, base)
+  assert.notEqual(otherActor, base)
+  assert.notEqual(otherType, base)
+  assert.notEqual(doubled, base, 'кратность пакета важна')
+  // Пустая операция — прежний отпечаток: по нему узнаются старые трассы.
+  assert.equal(emptyOperation, plainFields)
+  assert.notEqual(messageOperation, plainFields)
 })

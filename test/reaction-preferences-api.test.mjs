@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildCombatLabState } from '../server/combat-lab-setup.mjs'
+import { buildCombatLabState } from './kit/fixtures.mjs'
 import { addPlayer, createCampaign, sendCommand, setupAdmin, startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 

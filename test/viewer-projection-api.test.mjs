@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-import { ITEM_CATALOG } from '../server/item-catalog.mjs'
+import { materializeCatalogItem } from './kit/fixtures.mjs'
 
 async function request(baseUrl, path, { method = 'GET', cookie, body, headers = {} } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -90,7 +90,7 @@ test('non-admin room and Director response cannot expose private world memory', 
   assert.equal(playerRoom.body.state.merchants[0].pricing.agent_adjustment_bps, undefined)
   const keepsake = playerRoom.body.state.players[0].inventory[0]
   assert.equal(keepsake.description, 'Подарок перед дорогой.', 'каталог не переписывает историю экземпляра')
-  assert.equal(keepsake.capabilities.catalog_description, ITEM_CATALOG['srd_5_2_1:torch'].description)
+  assert.equal(keepsake.capabilities.catalog_description, (await materializeCatalogItem('srd_5_2_1:torch')).description)
 
   const transitioned = await request(baseUrl, '/api/narrate', {
     method: 'POST', cookie: playerCookie, headers: { 'X-Memory-Transport': 'v2' },

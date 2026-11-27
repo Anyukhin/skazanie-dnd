@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { projectionHash } from '../server/projection-integrity.mjs'
+import { projectionHash } from './kit/fixtures.mjs'
 import { readJournal, readRoom, startTestServer, writeRoom } from './kit/index.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
@@ -155,5 +155,5 @@ test('подтверждение проекции при той же верси�
   assert.equal(repaired.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 8, 'комната восстановлена из журнала')
   assert.equal(repaired.state.tacticalTurn, undefined, 'поле, которого движок не держит, из комнаты снято')
   assert.equal(checkpoint.version, 1)
-  assert.equal(checkpoint.hash, projectionHash(repaired.state), 'подтверждён hash восстановленной комнаты')
+  assert.equal(checkpoint.hash, await projectionHash(repaired.state), 'подтверждён hash восстановленной комнаты')
 })

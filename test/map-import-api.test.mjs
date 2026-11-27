@@ -3,9 +3,12 @@ import test from 'node:test'
 
 import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-import { SLAB_MAX_INSTANCES } from '../server/talespire-slab.mjs'
 import { ASSETS, HOUSE_SLAB, encodeSlabV1, encodeSlabV1Raw, encodeSlabV2, housePlacements } from './talespire-fixtures.mjs'
-import { deserializeTacticalMap } from '../server/tactical-map.mjs'
+import { readMap } from './kit/fixtures.mjs'
+
+// Предел объектов слэба — `SLAB_MAX_INSTANCES` в
+// rust/crates/sk-scene-base/src/talespire_slab.rs.
+const SLAB_MAX_INSTANCES = 50_000
 
 /**
  * HTTP-путь импорта карты из TaleSpire: `POST /api/campaigns/:id/map-import`.
@@ -165,7 +168,7 @@ test('импорт карты по HTTP: предпросмотр, примен�
   // Безопасное обновление меняет только покрытие: геометрия, туман и позиции
   // остаются прежними, а owner route возвращает явный режим операции.
   const refreshBefore = await request(baseUrl, '/api/rooms/MAPIMP', { cookie: ownerCookie })
-  const refreshBeforeMap = deserializeTacticalMap(refreshBefore.body.state.scene.map)
+  const refreshBeforeMap = await readMap(refreshBefore.body.state.scene.map)
   const guestRefresh = await request(baseUrl, path, {
     method: 'POST', cookie: guestCookie,
     body: { mode: 'rebuild', preserve_layout: true, idempotency_key: 'map-refresh:guest' },
@@ -177,7 +180,7 @@ test('импорт карты по HTTP: предпросмотр, примен�
   })
   assert.equal(refresh.status, 200, refresh.text)
   assert.equal(refresh.body.preserve_layout, true)
-  const refreshAfterMap = deserializeTacticalMap(refresh.body.state.scene.map)
+  const refreshAfterMap = await readMap(refresh.body.state.scene.map)
   assert.deepEqual(refreshAfterMap.doors, refreshBeforeMap.doors)
   assert.deepEqual(refreshAfterMap.edges, refreshBeforeMap.edges)
   assert.deepEqual(refreshAfterMap.props, refreshBeforeMap.props)

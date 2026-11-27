@@ -3,9 +3,8 @@ import test from 'node:test'
 
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import { palaceFixture } from './shared-npc-consequence-fixture.mjs'
-import { dice } from './kit/dice.mjs'
 import { createCampaign, registerUser, setupAdmin, startTestServer } from './kit/http.mjs'
-import { resolveCommands } from '../server/rules-engine.mjs'
+import { resolveCommands } from './kit/fixtures.mjs'
 
 const SESSION = 'NPC-CONSEQUENCE-API'
 
@@ -16,9 +15,9 @@ test('HTTP огненный шар обычного игрока сохраня�
   const { client: outsider } = await registerUser(server, { name: 'Чужой', email: 'foreign@npc-consequence.test', password: 'npc-consequence-password' })
   const fixture = await palaceFixture({ kingHp: 1, witnesses: false })
   // Сценарий начинается в инициативе; атака и её урон ещё не исполнялись.
-  const initial = resolveCommands([{ command_type: 'AttackNpc', command_id: 'palace-initiative', actor_id: fixture.heroId, npc_id: fixture.kingId }], fixture.state, {
-    diceService: dice([20, 1]), context: { allowedActorIds: [fixture.heroId] },
-  }).state
+  const initial = (await resolveCommands([{ command_type: 'AttackNpc', command_id: 'palace-initiative', actor_id: fixture.heroId, npc_id: fixture.kingId }], fixture.state, {
+    dice: [20, 1], context: { allowedActorIds: [fixture.heroId] },
+  })).state
   initial.sessionCode = SESSION
   const users = await admin.get('/api/admin/users')
   const ownerId = users.body.users.find((user) => user.email === 'owner@npc-consequence.test').id

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setDoor } from '../server/tactical-map.mjs'
+import { tacticalMap } from './kit/fixtures.mjs'
 import { addPlayer, createCampaign, expectStatus, sendCommand, setupAdmin, startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
@@ -12,13 +12,14 @@ test('кнопки взлома двери и сундука передают о
     id: 'rogue', name: 'Игрок', character: 'Лиса', role: 'Плут', level: 7, hp: 35, maxHp: 35, x: 1, y: 1,
     abilities: { dex: 17 }, proficiency: 3, toolProficiencies: ['thieves_tools'], skillExpertiseIds: ['thieves_tools'],
   }
-  const map = createTacticalMap({ width: 5, height: 4, locationId: 'vault', seed: 'lockpick-6', fill: { passable: true, revealed: true } })
-  setDoor(map, { id: 'door', x: 1, y: 1, dir: 'e', state: 'locked', lockDc: 15, blocksMove: true, blocksSight: true })
-  addProp(map, { id: 'prop-chest', assetId: 'chest', x: 1.5, y: 2.5, footprint: [{ x: 1, y: 2 }] })
+  const { map, cells } = await tacticalMap({ width: 5, height: 4, locationId: 'vault', seed: 'lockpick-6', fill: { passable: true, revealed: true } })
+    .door({ id: 'door', x: 1, y: 1, dir: 'e', state: 'locked', lockDc: 15, blocksMove: true, blocksSight: true })
+    .prop({ id: 'prop-chest', assetId: 'chest', x: 1.5, y: 2.5, footprint: [{ x: 1, y: 2 }] })
+    .build()
   await createCampaign(gm, { code, state: {
     sessionCode: code, campaign: 'Хранилище', ruleset_id: 'dnd_5e_2014', enabled_rule_packs: ['dnd_5e_2014'],
     players: [hero], activePlayerId: hero.id, partyMemberIds: [hero.id],
-    scene: { location: 'Хранилище', map: serializeTacticalMap(map), cells: legacyCellsFromTacticalMap(map) },
+    scene: { location: 'Хранилище', map, cells },
     mechanics: { positions: { [hero.id]: { x: 1, y: 1 } } }, enemies: [], entities: [], messages: [], battleLog: [], state_version: 0,
   } })
   const { client: player } = await addPlayer(server, gm, code, { heroIds: [hero.id] })

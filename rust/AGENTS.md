@@ -87,7 +87,8 @@
   (`derived::settle_normalized`). Старые снимки и накладки с полями
   нормализация и `derived::strip_derived_fields` приводят к слотам.
 - **Тестовые крючки — только под фичей `test-hooks`**: подкоманды `journal`,
-  `session`, `room`, `audit`, кости `DND_TEST_DICE_RULES` и сбои
+  `session`, `room`, `audit`, `fixture` (входы контрактных тестов кодом
+  сервера, `test/kit/fixtures.mjs`), кости `DND_TEST_DICE_RULES` и сбои
   `DND_COMMIT_FAULTS`. Вне `NODE_ENV=test` и временного хранилища
   `skazanie-*` сервер с ними не стартует. Выпускной бинарь и Docker собираются
   без фичи.

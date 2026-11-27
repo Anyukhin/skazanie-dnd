@@ -3,15 +3,7 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { materializeCatalogItem } from '../server/item-catalog.mjs'
-import {
-  cellAt,
-  deserializeTacticalMap,
-  legacyCellsFromTacticalMap,
-  serializeTacticalMap,
-  setCell,
-  tacticalMapFromLegacyCells,
-} from '../server/tactical-map.mjs'
+import { materializeCatalogItem, readMap, tacticalMapFromLegacyCells } from './kit/fixtures.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
@@ -53,10 +45,9 @@ function cells() {
   return result
 }
 
+// Карта из старых клеток с одной труднопроходимой клеткой — строит сервер.
 function authoredSceneMap() {
-  const map = tacticalMapFromLegacyCells(cells(), { locationId: 'isolated-arena' })
-  setCell(map, 0, 0, { moveCost: 2 })
-  return { cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) }
+  return tacticalMapFromLegacyCells(cells(), { locationId: 'isolated-arena' }, [{ cell: [0, 0, { moveCost: 2 }] }])
 }
 
 function currentActor(state) {
@@ -146,7 +137,7 @@ test('player combat API is server-authoritative, bounded, and durable across res
   const playerCookie = sessionCookie(registered)
   assert.ok(playerCookie)
 
-  const authoredScene = authoredSceneMap()
+  const authoredScene = await authoredSceneMap()
   const initialState = {
     sessionCode: 'AUTH-COMBAT',
     campaign: 'Authoritative combat integration',
@@ -525,7 +516,7 @@ test('player combat API is server-authoritative, bounded, and durable across res
   const roomAfterRestart = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
   assertStatus(roomAfterRestart, 200, log)
   assert.deepEqual(stableCombatProjection(roomAfterRestart.body.state), stableCombatProjection(finalState))
-  assert.equal(cellAt(deserializeTacticalMap(roomAfterRestart.body.state.scene.map), 0, 0)?.moveCost, 2)
+  assert.equal((await readMap(roomAfterRestart.body.state.scene.map)).cellAt(0, 0)?.moveCost, 2)
 
   const replayed = await command(baseUrl, playerCookie, 'end-turn-with-npc-1', {
     command_type: 'EndTurn',
@@ -563,8 +554,8 @@ test('CastSpell игрока сохраняет список целей, вар�
       hp: 100, maxHp: 100, armor: 20, speed: 30, proficiency: 3,
       abilities: { str: 10, dex: 14, con: 14, int: 18, wis: 12, cha: 10 },
       inventory: [
-        materializeCatalogItem('srd_5_2_1:component-pouch', { id: 'hero-component-pouch', quantity: 1 }),
-        materializeCatalogItem('srd_5_2_1:diamond-50gp', { id: 'hero-chromatic-orb-diamond', quantity: 1 }),
+        await materializeCatalogItem('srd_5_2_1:component-pouch', { id: 'hero-component-pouch', quantity: 1 }),
+        await materializeCatalogItem('srd_5_2_1:diamond-50gp', { id: 'hero-chromatic-orb-diamond', quantity: 1 }),
       ], x: 1, y: 1,
       knownSpellIds: ['acid-splash', 'chromatic-orb', 'magic-missile'], preparedSpellIds: ['acid-splash', 'chromatic-orb', 'magic-missile'] }],
     enemies: ['first', 'second', 'far'].map((id, index) => ({ id, name: id, hp: 100, maxHp: 100,
@@ -684,6 +675,7 @@ for (const withResistance of [false, true]) test(`площадной урон${w
     assertStatus(account, 201, log)
     cookies[id] = sessionCookie(account)
   }
+  const casterPouch = await materializeCatalogItem('srd_5_2_1:component-pouch', { id: 'caster-component-pouch', quantity: 1 })
   const initial = {
     sessionCode: 'AUTH-COMBAT', campaign: 'Защита от области', partyMemberIds: ['caster', 'target'], activePlayerId: 'caster',
     ruleset_id: 'dnd_5e_2014', ruleset_version: '2014.1.0', enabled_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1'],
@@ -692,7 +684,7 @@ for (const withResistance of [false, true]) test(`площадной урон${w
       hp: 100, maxHp: 100, armor: 14, speed: 30, proficiency: 3,
       abilities: { str: 10, dex: 10, con: 14, int: 18, wis: 10, cha: 10 },
       inventory: id === 'caster'
-        ? [materializeCatalogItem('srd_5_2_1:component-pouch', { id: 'caster-component-pouch', quantity: 1 })]
+        ? [casterPouch]
         : [],
       x: id === 'caster' ? 0 : 6, y: 1,
       knownSpellIds: id === 'caster' ? ['fireball'] : ['absorb-elements'],

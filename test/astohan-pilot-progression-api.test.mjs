@@ -1,14 +1,22 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { astohanPilotBuildCatalog, stagedCommandsForPilotBuild } from '../server/astohan-pilot-builds.mjs'
-import { experienceForLevel } from '../server/character-lifecycle.mjs'
+import { compileClientModules } from './kit/client-ts.mjs'
+import { experienceForLevel } from './kit/fixtures.mjs'
 import { pilotImportDocument } from './kit/astohan-pilot.mjs'
 import { addPlayer, createCampaign, expectStatus, registerUser, sendCommand, setupAdmin, startTestServer } from './kit/http.mjs'
 import { readJournal } from './kit/journal.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const RULESET = 'dnd_5e_2014'
+// Каталог пилотных листов — данные (`astohanPilotBuildCatalog` отдаёт их копию).
+const astohanPilotBuildCatalog = () => JSON.parse(readFileSync(new URL('../data/astohan-pilot-builds-v1.json', import.meta.url), 'utf8'))
+// Шаги мастера героя после первого уровня — те, что шлёт клиент (`src/astohan-pilot-builds.ts`).
+const stagedCommandsForPilotBuild = async (/** @type {any} */ recipe, /** @type {string} */ actorId) => {
+  const { modules: [client] } = await compileClientModules(['src/astohan-pilot-builds.ts'])
+  return client.stagedCommandsForPilotBuild(recipe, actorId)
+}
 const PILOT = 'PILOT-HTTP'
 const ADVANCE = 'PILOT-LEVELS'
 
@@ -27,7 +35,7 @@ test('пилотные листы 7–10-го уровня, Ярость и Бе
     const player = index === 0 ? owner : (await addPlayer(server, owner, PILOT, { heroIds: [actorId] })).client
     const document = pilotImportDocument(catalog, recipe, `Герой ${index + 1}`)
     expectStatus(await sendCommand(player, PILOT, `pilot-import-${actorId}`, { command_type: 'ImportCharacter', actor_id: actorId, document }))
-    for (const [step, command] of stagedCommandsForPilotBuild(recipe, actorId).entries()) {
+    for (const [step, command] of (await stagedCommandsForPilotBuild(recipe, actorId)).entries()) {
       expectStatus(await sendCommand(player, PILOT, `pilot-${actorId}-${step}`, command))
     }
     const hero = await view(player, PILOT, actorId)
@@ -43,9 +51,10 @@ test('пилотные листы 7–10-го уровня, Ярость и Бе
   const { state: prepared } = await readJournal(server, PILOT)
   // Подготовка высокой награды тестовой кампании. Сами повышения и выбор
   // характеристики проходят через тот же маршрут, что в обычной игре.
+  const tenthLevelExperience = await experienceForLevel(10)
   await createCampaign(admin, { code: ADVANCE, state: {
     ruleset_id: RULESET, character_start_level: startLevel, activePlayerId: 'hero-slot-1', partyMemberIds: prepared.partyMemberIds,
-    players: prepared.players.map((hero) => ({ ...hero, experience: experienceForLevel(10) })),
+    players: prepared.players.map((hero) => ({ ...hero, experience: tenthLevelExperience })),
   } })
   for (const [index, recipe] of builds.entries()) {
     const actorId = `hero-slot-${index + 1}`
