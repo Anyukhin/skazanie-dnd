@@ -42,6 +42,8 @@ pub const ACTION_ADJUDICATOR_PROMPT: &str = include_str!("../../../../prompts/ac
 
 /// Версия контракта: она же попадает в метаданные контекста и трассу.
 pub const ACTION_ADJUDICATOR_PROMPT_VERSION: &str = "action_adjudicator/v10";
+pub const COMPACT_ADJUDICATOR_PROMPT_VERSION: &str = "action_adjudicator/v11";
+const COMPACT_ADJUDICATOR_PROMPT: &str = include_str!("../../../../prompts/action_adjudicator/v11.txt");
 
 /// Срок ответа по умолчанию (`timeoutMs = 12_000`).
 pub const ACTION_ADJUDICATOR_DEFAULT_TIMEOUT_MS: i64 = 12_000;
@@ -374,10 +376,34 @@ fn unavailable_selection(scope: &str) -> Value {
     bounded_selection_metadata(&SelectionOptions { scope: Some(&scope), candidate_count: None, limit: None, source_available: Some(&unavailable) })
 }
 
-fn participants_brief(state: &Value, actor_id: &str) -> (Vec<Value>, Value) {
-    let candidates = participant_candidates(state, actor_id);
-    let metadata = selection("visible_living_participants_in_current_scene", candidates.len(), 24);
-    (candidates.into_iter().take(24).collect(), metadata)
+fn mentioned_participant(action: &str, entry: &Value) -> bool {
+    [entry.get("name"), entry.get("id")].into_iter().flatten().chain(arr(entry.get("aliases")))
+        .filter_map(Value::as_str).any(|name| name.chars().count() >= 3 && action.contains(&text::lower(name)))
+}
+
+fn participants_brief(state: &Value, actor_id: &str, compact_action: Option<&str>) -> (Vec<Value>, Value) {
+    let mut candidates = participant_candidates(state, actor_id);
+    let limit = if let Some(action) = compact_action {
+        let action = text::lower(action);
+        let hero_at = hero_position(state, actor_id);
+        let score = |entry: &Value| {
+            let distance = hero_at.and_then(|(x, y)| {
+                let at = entry.get("at")?;
+                Some((x - at.get("x")?.as_f64()?).abs().max((y - at.get("y")?.as_f64()?).abs()))
+            });
+            (!mentioned_participant(&action, entry), distance.unwrap_or(f64::INFINITY))
+        };
+        candidates.sort_by(|left, right| {
+            let (named_left, distance_left) = score(left);
+            let (named_right, distance_right) = score(right);
+            named_left.cmp(&named_right).then_with(|| distance_left.total_cmp(&distance_right))
+        });
+        8
+    } else {
+        24
+    };
+    let metadata = selection("visible_living_participants_in_current_scene", candidates.len(), limit);
+    (candidates.into_iter().take(limit).collect(), metadata)
 }
 
 /// Позиция героя так же, как её видит движок: `mechanics.positions` первична.
@@ -420,7 +446,7 @@ pub fn revealed_prop_predicate(state: &Value) -> RevealedPropPredicate {
 const SCENE_PROPS_SCOPE: &str = "visible_interactable_objects_in_current_area";
 
 /// Предметы обстановки, с которыми движок действительно умеет работать.
-fn scene_props_brief(state: &Value, actor_id: &str) -> (Vec<Value>, Value) {
+fn scene_props_brief(state: &Value, actor_id: &str, compact_action: Option<&str>) -> (Vec<Value>, Value) {
     let hero_at = hero_position(state, actor_id);
     let hero = players(state).iter().find(|actor| js::string(prop(Some(actor), "id")) == actor_id);
     let Some(serialized) = at(Some(state), &["scene", "map"]).filter(|map| map.is_object() || map.is_array()) else {
@@ -465,13 +491,17 @@ fn scene_props_brief(state: &Value, actor_id: &str) -> (Vec<Value>, Value) {
         });
         candidates.push((item, distance, id));
     }
-    // Ближнее — первым, порядок устойчивый.
+    let action = compact_action.map(text::lower);
+    // Сначала названные в заявке предметы, затем ближайшие.
     candidates.sort_by(|left, right| {
+        let mentioned = |entry: &Value| action.as_ref().is_some_and(|action| mentioned_participant(action, entry));
         let (a, b) = (left.1.unwrap_or(10_000.0), right.1.unwrap_or(10_000.0));
-        a.partial_cmp(&b).filter(|order| order.is_ne()).unwrap_or_else(|| text::locale_compare(&left.2, &right.2))
+        mentioned(&right.0).cmp(&mentioned(&left.0))
+            .then_with(|| a.partial_cmp(&b).filter(|order| order.is_ne()).unwrap_or_else(|| text::locale_compare(&left.2, &right.2)))
     });
-    let metadata = selection(SCENE_PROPS_SCOPE, candidates.len(), 12);
-    (candidates.into_iter().take(12).map(|(item, _, _)| item).collect(), metadata)
+    let limit = if compact_action.is_some() { 6 } else { 12 };
+    let metadata = selection(SCENE_PROPS_SCOPE, candidates.len(), limit);
+    (candidates.into_iter().take(limit).map(|(item, _, _)| item).collect(), metadata)
 }
 
 fn insert_selection_fields(target: &mut Map<String, Value>, metadata: &Value, prefix: &str) {
@@ -582,35 +612,52 @@ fn known_places_for(state: &Value) -> Vec<String> {
         .collect()
 }
 
-fn context_metadata(state: &Value, actor_id: &str) -> Value {
+fn context_metadata(state: &Value, actor_id: &str, prompt_version: &str) -> Value {
     let role = json!("action_adjudicator");
     let actor = json!(actor_id);
-    let contract = json!(ACTION_ADJUDICATOR_PROMPT_VERSION);
+    let contract = json!(prompt_version);
     agent_context_metadata(state, &AgentContextOptions { role: Some(&role), actor_id: Some(&actor), target_id: None, contract_version: Some(&contract) })
 }
 
 /// `adjudicationBrief(state, actorId, text, dialogue)`: что видит модель —
 /// лист героя, сцена, участники, предметы, экономия хода и закрытые списки.
 pub fn adjudication_brief(state: &Value, actor_id: &str, value: &str, dialogue: Option<&Value>) -> Value {
-    let (participants, participants_metadata) = participants_brief(state, actor_id);
-    let (props, props_metadata) = scene_props_brief(state, actor_id);
+    model_brief(state, actor_id, value, dialogue, false)
+}
+
+fn model_brief(state: &Value, actor_id: &str, value: &str, dialogue: Option<&Value>, compact: bool) -> Value {
+    let action = compact.then_some(value);
+    let (participants, participants_metadata) = participants_brief(state, actor_id, action);
+    let (props, props_metadata) = scene_props_brief(state, actor_id, action);
     let mut brief = Map::new();
-    brief.insert("context_metadata".into(), context_metadata(state, actor_id));
+    let version = if compact { COMPACT_ADJUDICATOR_PROMPT_VERSION } else { ACTION_ADJUDICATOR_PROMPT_VERSION };
+    brief.insert("context_metadata".into(), context_metadata(state, actor_id, version));
     brief.insert("player_action".into(), json!(clean(value, 1_000)));
     let recent = prop(dialogue, "recent");
     if length_truthy(recent) || js::truthy(prop(dialogue, "action")) {
         let entries = arr(recent);
-        let skip = entries.len().saturating_sub(6);
+        let skip = entries.len().saturating_sub(if compact { 3 } else { 6 });
+        let (question_limit, answer_limit) = if compact { (180, 300) } else { (500, 800) };
         brief.insert(
             "dialogue".into(),
             json!({
                 "request_kind": nullish(prop(dialogue, "request_kind"), None).cloned().unwrap_or_else(|| json!("action")),
                 "action": clean_v(prop(dialogue, "action"), 1_000),
-                "recent": entries.iter().skip(skip).map(|entry| json!({ "question": clean_v(prop(Some(entry), "question"), 500), "answer": clean_v(prop(Some(entry), "answer"), 800) })).collect::<Vec<_>>(),
+                "recent": entries.iter().skip(skip).map(|entry| json!({ "question": clean_v(prop(Some(entry), "question"), question_limit), "answer": clean_v(prop(Some(entry), "answer"), answer_limit) })).collect::<Vec<_>>(),
             }),
         );
     }
-    brief.insert("hero".into(), hero_brief(state, actor_id));
+    let mut hero = hero_brief(state, actor_id);
+    if compact {
+        if let Some(hero) = hero.as_object_mut() {
+            // Русские названия магии уже присутствуют в spell_names.
+            for field in ["prepared_spells", "known_spells"] {
+                hero.shift_remove(field);
+            }
+        }
+    }
+    brief.insert("hero".into(), hero);
+    let description = known_scene_description(state);
     brief.insert(
         "scene".into(),
         json!({
@@ -618,7 +665,7 @@ pub fn adjudication_brief(state: &Value, actor_id: &str, value: &str, dialogue: 
             "location": clean_v(at(Some(state), &["scene", "location"]), 120),
             "mood": clean_v(at(Some(state), &["scene", "mood"]), 160),
             "objective": clean_v(at(Some(state), &["scene", "objective"]), 160),
-            "known_description": known_scene_description(state),
+            "known_description": if compact { text::head(&description, 420) } else { description },
             "canon": scene_canon_for(state),
         }),
     );
@@ -628,7 +675,8 @@ pub fn adjudication_brief(state: &Value, actor_id: &str, value: &str, dialogue: 
     insert_selection_fields(&mut brief, &participants_metadata, "participants");
     insert_selection_fields(&mut brief, &props_metadata, "scene_props");
     brief.insert("turn_economy".into(), economy_brief(state, actor_id));
-    brief.insert(
+    if !compact {
+        brief.insert(
         "allowed".into(),
         json!({
             "effects": IMPROVISED_EFFECT_IDS,
@@ -638,7 +686,8 @@ pub fn adjudication_brief(state: &Value, actor_id: &str, value: &str, dialogue: 
             "activity_kinds": FREE_ACTION_ACTIVITY_KINDS,
             "duration_classes": FREE_ACTION_DURATION_CLASSES,
         }),
-    );
+        );
+    }
     Value::Object(brief)
 }
 
@@ -648,6 +697,71 @@ enum ReadFailure {
     References(Vec<&'static str>),
 }
 
+fn adjudicator_examples(action: &str, reading: &Value) -> &'static str {
+    if text::test(re!(r"(?<!\p{L})(?:ид[её]м|пойд[её]м|отправля[ею]|поед[еу]|двига[ею]|возвраща[ею])", "iu"), action) {
+        return "Пример перехода. «Пойдём вместе к маяку» → travel, destination «маяк» (предпочти точное имя из known_places). «Подхожу к окну» → check в текущей комнате.";
+    }
+    match reading.get("activity_kind").and_then(Value::as_str) {
+        Some("social") => "Пример беседы. «Спрашиваю Бранна о дороге» → talk и его имя. «Убеждаю Бранна пропустить отряд» → check, cha, persuasion, lost_opportunity. «Целую Бранна в щёку» без цели влиять → routine, trivial, none.",
+        Some("stunt") => "Пример трюка. «Делаю колесо на мокрой брусчатке» → stunt, brief, dex, acrobatics, plausible, minor. «Держу стойку на скользком высоком карнизе» → strenuous. Injury означает риск самому исполнителю.",
+        Some("knowledge") => "Пример знания. «Вспоминаю знакомый родовой герб» → knowledge, brief, int, history. «Изучаю устройство незнакомого механизма» → knowledge, investigation. Не выдавай находку или прочтение за уже полученное.",
+        Some("stealth") => "Пример скрытности. «Прокрадываюсь мимо стражника» → check, stealth, dex, exposure. «Становлюсь невидимым» без магии → impossible_without_means. Никто ещё не заметил героя.",
+        Some("environmental") => "Пример обстановки. «Опрокидываю названную бочку» → topple_prop только с таким id и глаголом topple в scene_props. «Упираюсь щитом в дверь» → щит средство, дверь цель. Не добавляй обвал или звук, которых не вызывает способ.",
+        _ => "Пример рутины. «Завязываю простой узел своей верёвкой» → routine, trivial, none, time. «Прислушиваюсь у двери» → perception, когда есть что проверять. Видимая деталь не подтверждает присутствие за дверью.",
+    }
+}
+
+#[cfg(test)]
+mod compact_prompt_tests {
+    use super::*;
+
+    fn context_bytes(brief: &Value) -> usize {
+        build_data_only_context(Some(&json!({ "free_action_brief": brief }))).len()
+    }
+
+    #[test]
+    fn same_actions_keep_named_targets_and_profile_constraints() {
+        let mut heroes: Vec<Value> = (0..26).map(|index| json!({
+            "id": format!("hero-{index}"), "character": format!("Путник {index}"), "x": index, "y": 0,
+        })).collect();
+        heroes[25]["character"] = json!("Рагнар");
+        let map = json!({
+            "scene": { "location": "Зал", "objective": "Найти дорогу", "intro": "Камни вдоль стен." },
+            "players": heroes, "mechanics": { "positions": { "hero-0": { "x": 0, "y": 0 } } },
+        });
+        let cases = [
+            ("Расспрашиваю Рагнара о дороге домой", "social", "беседы"),
+            ("Делаю колесо на мокрой брусчатке", "stunt", "трюка"),
+            ("Пойдём вместе к маяку", "routine", "перехода"),
+            ("Вспоминаю знакомый родовой герб", "knowledge", "знания"),
+            ("Прокрадываюсь мимо стражника", "stealth", "скрытности"),
+            ("Опрокидываю названную бочку", "environmental", "обстановки"),
+            ("Завязываю узел своей верёвкой", "routine", "рутины"),
+        ];
+        assert!(COMPACT_ADJUDICATOR_PROMPT.len() * 3 < ACTION_ADJUDICATOR_PROMPT.len());
+        for (action, activity, example) in cases {
+            let legacy = adjudication_brief(&map, "hero-0", action, None);
+            let compact = model_brief(&map, "hero-0", action, None, true);
+            let examples = adjudicator_examples(action, &json!({ "activity_kind": activity }));
+            assert!(examples.starts_with(&format!("Пример {example}.")));
+            assert_eq!(compact["player_action"], legacy["player_action"]);
+            assert_eq!(compact["hero"]["inventory_status"], legacy["hero"]["inventory_status"]);
+            assert_eq!(compact["turn_economy"], legacy["turn_economy"]);
+            assert_eq!(arr(compact.get("participants")).len(), 8);
+            assert_eq!(compact["participants_status"], "truncated");
+            assert_eq!(compact["context_metadata"]["contract_version"], COMPACT_ADJUDICATOR_PROMPT_VERSION);
+            if activity == "social" {
+                assert_eq!(compact["participants"][0]["id"], "hero-25");
+                assert_eq!(compact["participants"][1]["id"], "hero-0");
+            }
+            let v10 = ACTION_ADJUDICATOR_PROMPT.len() + context_bytes(&legacy);
+            let v11 = COMPACT_ADJUDICATOR_PROMPT.len() + examples.len() + context_bytes(&compact);
+            assert!(v11 * 3 < v10, "{action}: {v10} / {v11}");
+            eprintln!("{activity}: v10 {v10} байт, v11 {v11} байт");
+        }
+    }
+}
+
 /// `ActionAdjudicator`.
 #[derive(Clone)]
 pub struct ActionAdjudicator {
@@ -655,6 +769,7 @@ pub struct ActionAdjudicator {
     /// `timeoutMs` как передан (JS отдаёт его клиенту без приведения).
     timeout_ms: Value,
     system_prompt: String,
+    compact: bool,
 }
 
 /// Параметры [`ActionAdjudicator::discuss`].
@@ -671,14 +786,27 @@ impl ActionAdjudicator {
     /// или `None` — встроенный промпт.
     pub fn new(llm_client: Option<Arc<dyn LlmClient>>, timeout_ms: Option<Value>, system_prompt: Option<String>) -> Self {
         let system_prompt = system_prompt.filter(|prompt| !text::trim(prompt).is_empty()).unwrap_or_else(|| ACTION_ADJUDICATOR_PROMPT.to_string());
-        Self { llm_client, timeout_ms: timeout_ms.unwrap_or_else(|| Value::from(ACTION_ADJUDICATOR_DEFAULT_TIMEOUT_MS)), system_prompt }
+        Self { llm_client, timeout_ms: timeout_ms.unwrap_or_else(|| Value::from(ACTION_ADJUDICATOR_DEFAULT_TIMEOUT_MS)), system_prompt, compact: false }
+    }
+
+    /// Короткий запрос для сравнения с v10 на том же наборе ходов.
+    pub fn with_compact_prompt(mut self, compact: bool) -> Self {
+        if compact {
+            self.system_prompt = COMPACT_ADJUDICATOR_PROMPT.into();
+            self.compact = true;
+        }
+        self
+    }
+
+    pub fn prompt_version(&self) -> &'static str {
+        if self.compact { COMPACT_ADJUDICATOR_PROMPT_VERSION } else { ACTION_ADJUDICATOR_PROMPT_VERSION }
     }
 
     /// `read(state, actorId, text, fallbackReading, dialogue)`: прочтение
     /// задумки. Отказ модели — возврат к детерминированному прочтению; наружу
     /// выходит только ошибка привязки к состоянию (как исключение в JS).
     pub async fn read(&self, state: &Value, actor_id: &str, value: &str, fallback_reading: &Value, dialogue: Option<&Value>) -> FreeActionResult<Value> {
-        let metadata = context_metadata(state, actor_id);
+        let metadata = context_metadata(state, actor_id, self.prompt_version());
         let with_metadata = |mut reading: Value| {
             if let Some(map) = reading.as_object_mut() {
                 map.insert("context_metadata".into(), metadata.clone());
@@ -691,7 +819,7 @@ impl ActionAdjudicator {
         let Some(client) = self.llm_client.as_ref() else {
             return Ok(with_metadata(bind_free_action_reading_to_state(state, actor_id, value, fallback_reading, false)?));
         };
-        match self.ask(client, state, actor_id, value, dialogue).await {
+        match self.ask(client, state, actor_id, value, fallback_reading, dialogue).await {
             Ok((bound, extras)) => {
                 // `{ ...bound, context_metadata, ...route, ...details }`.
                 let mut reading = with_metadata(bound);
@@ -721,13 +849,15 @@ impl ActionAdjudicator {
 
     /// Тело `try` в `read`: вызов модели, проверка ответа и привязка.
     /// `Err` — любая ошибка внутри `try` (ответ отбрасывается целиком).
-    async fn ask(&self, client: &Arc<dyn LlmClient>, state: &Value, actor_id: &str, value: &str, dialogue: Option<&Value>) -> Result<(Value, Vec<(&'static str, Value)>), ReadFailure> {
-        let brief = adjudication_brief(state, actor_id, value, dialogue);
+    async fn ask(&self, client: &Arc<dyn LlmClient>, state: &Value, actor_id: &str, value: &str, fallback_reading: &Value, dialogue: Option<&Value>) -> Result<(Value, Vec<(&'static str, Value)>), ReadFailure> {
+        let brief = model_brief(state, actor_id, value, dialogue, self.compact);
+        let mut messages = vec![json!({ "role": "system", "content": self.system_prompt })];
+        if self.compact {
+            messages.push(json!({ "role": "system", "content": adjudicator_examples(value, fallback_reading) }));
+        }
+        messages.push(json!({ "role": "user", "content": build_data_only_context(Some(&json!({ "free_action_brief": brief }))) }));
         let request = json!({
-            "messages": [
-                { "role": "system", "content": self.system_prompt },
-                { "role": "user", "content": build_data_only_context(Some(&json!({ "free_action_brief": brief }))) },
-            ],
+            "messages": messages,
             "temperature": 0.2,
             "maxTokens": 1000,
             "role": "action_adjudicator",
@@ -869,7 +999,7 @@ impl ActionAdjudicator {
         }
         let uncertain = js::string(reading.get("source")).starts_with("deterministic-default") && !has_recognized_free_action_approach(question);
         if uncertain {
-            let props: Vec<String> = scene_props_brief(state, actor_id).0.iter().take(3).map(|entry| js::string(entry.get("name"))).collect();
+            let props: Vec<String> = scene_props_brief(state, actor_id, None).0.iter().take(3).map(|entry| js::string(entry.get("name"))).collect();
             let props = props.join(", ");
             let kept = if options.action.is_empty() { String::new() } else { format!(" Сохраняю исходную заявку: «{}».", clean(&options.action, 300)) };
             let available = if props.is_empty() { String::new() } else { format!(" Из доступной обстановки можно использовать: {props}.") };
@@ -877,7 +1007,7 @@ impl ActionAdjudicator {
         }
         let label = d20_check_label(&json!({ "kind": "check", "ability": reading.get("ability"), "skill": reading.get("skill") }));
         let prop_id = js::s(reading.get("prop_id"));
-        let found = if js::truthy(reading.get("prop_id")) { scene_props_brief(state, actor_id).0.into_iter().find(|entry| is_str(entry.get("id"), &prop_id)) } else { None };
+        let found = if js::truthy(reading.get("prop_id")) { scene_props_brief(state, actor_id, self.compact.then_some(question)).0.into_iter().find(|entry| is_str(entry.get("id"), &prop_id)) } else { None };
         if let Some(found) = &found {
             let name = clean_v(found.get("name"), 80);
             if is_str(reading.get("effect"), "ignite_prop") {

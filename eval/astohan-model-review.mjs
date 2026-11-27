@@ -66,6 +66,7 @@ export async function judgeAstohanNarration(sample, router, model) {
 
 export function astohanRoleReport(storage, campaign, narrations, judge) {
   const roles = Object.create(null)
+  const adjudicator = { prompt_versions: new Set(), successful_turn_ms: [], input_tokens: 0, attempts_with_input_tokens: 0 }
   const count = (role, type, times = 1) => {
     const row = roles[role] ??= { model: 0, interrupted: 0, template: 0, error: 0, unclassified: 0 }
     row[type] += times
@@ -84,9 +85,17 @@ export function astohanRoleReport(storage, campaign, narrations, judge) {
     }
     for (const [role, calls] of attempts) {
       if (role === 'narrator') continue
-      if (calls.some((call) => call.outcome === 'success')) count(role, 'model')
+      if (calls.some((call) => call.outcome === 'success')) {
+        count(role, 'model')
+        if (role === 'action_adjudicator' && calls.every((call) => Number.isFinite(call.duration_ms))) {
+          adjudicator.successful_turn_ms.push(calls.reduce((sum, call) => sum + call.duration_ms, 0))
+        }
+      }
       else if (calls.some((call) => INTERRUPTED.has(call.error_code))) count(role, 'interrupted')
       else count(role, 'error')
+      if (role === 'action_adjudicator' && trace.prompt_versions?.action_adjudicator) {
+        adjudicator.prompt_versions.add(trace.prompt_versions.action_adjudicator)
+      }
     }
   }
   for (const entry of narrations) {
@@ -100,6 +109,10 @@ export function astohanRoleReport(storage, campaign, narrations, judge) {
     const statuses = { completed: 'model', failed: 'error', interrupted: 'interrupted' }
     for (const entry of Object.values(JSON.parse(readFileSync(ledger, 'utf8')).requests ?? {})) {
       if (entry.role && !traced.has(entry.role)) count(entry.role, statuses[entry.status] ?? 'unclassified')
+      if (entry.role === 'action_adjudicator' && entry.input_tokens > 0) {
+        adjudicator.input_tokens += entry.input_tokens
+        adjudicator.attempts_with_input_tokens++
+      }
     }
   }
   if (judge) {
@@ -107,5 +120,5 @@ export function astohanRoleReport(storage, campaign, narrations, judge) {
     count('playtest_judge', 'interrupted', judge.interrupted)
     count('playtest_judge', 'error', judge.errors)
   }
-  return roles
+  return { roles, adjudicator: { ...adjudicator, prompt_versions: [...adjudicator.prompt_versions] } }
 }

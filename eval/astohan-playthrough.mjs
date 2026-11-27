@@ -1875,7 +1875,7 @@ async function usageReport() {
   return playthroughUsage(usage.body.usage, stats.narrate + stats.directorSteps)
 }
 
-function writeReport(final, scorecard, usage, audit, quality, judge, sample, roles, budget) {
+function writeReport(final, scorecard, usage, audit, quality, judge, sample, roles, budget, adjudicator) {
   const minutes = ((Date.now() - startedAt) / 60_000).toFixed(1)
   const byRoute = {}
   for (const entry of timings) (byRoute[entry.route] ??= []).push(entry.ms)
@@ -1930,6 +1930,8 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample, rol
     '',
     'Для рассказчика учитывается итог реплики. Обрыв означает, что после прерывания игрок получил шаблон. Остальные игровые роли учитываются по трассам ходов или, для вызовов вне ходов, по журналу расхода. Судья проверяет выборку отдельно.',
     '',
+    `Промпты Судьи в трассах ${adjudicator.prompt_versions.join(', ') || '—'}. Успешные ходы ${adjudicator.successful_turn_ms.length}, p50 ${adjudicator.p50_ms ?? '—'} мс, p95 ${adjudicator.p95_ms ?? '—'} мс. Известно ${adjudicator.input_tokens} входных токенов в ${adjudicator.attempts_with_input_tokens} попытках.`,
+    '',
     '## Согласованность',
     '',
     `Сверено ответов рассказчика ${stats.consistencyChecked}, сцен ${stats.scenes.length}. Расхождения по видам: ${Object.entries(stats.consistency).sort((a, b) => b[1] - a[1]).map(([code, count]) => `${code} ×${count}`).join(', ') || 'нет'}.`,
@@ -1979,7 +1981,7 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample, rol
     }),
   ].join('\n') + '\n')
   writeFileSync(join(OUT, 'transcript.md'), `# Хроника прогона ${STAMP}\n${transcript.join('\n')}\n`)
-  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, impl: IMPL, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, budget, narration: { quality, judge, roles }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
+  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, impl: IMPL, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, budget, adjudicator, narration: { quality, judge, roles }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
   const serverErrors = logs.split('\n').filter((line) => /error|ошибк|exception|unhandled/iu.test(line) && !/ROUTERAI|api[_-]?key/iu.test(line)).slice(0, 60)
   writeFileSync(join(OUT, 'server-errors.log'), serverErrors.join('\n'))
 }
@@ -2105,13 +2107,15 @@ const judgeModel = process.env.DND_ASTOHAN_JUDGE_MODEL || 'z-ai/glm-5.3-flash'
 const judge = JUDGE && !budgetStop ? await judgeAstohanNarration(sample, budgetRouter, judgeModel) : null
 await budgetRouter?.close()
 const budget = budgetRouter?.report() ?? null
-const roles = astohanRoleReport(storage, CODE, narrations, judge)
+const { roles, adjudicator } = astohanRoleReport(storage, CODE, narrations, judge)
+adjudicator.p50_ms = percentile(adjudicator.successful_turn_ms, 50)
+adjudicator.p95_ms = percentile(adjudicator.successful_turn_ms, 95)
 budgetStop = budget?.exceeded_quote ? 'STAND_PROVIDER_EXCEEDED_QUOTE' : budgetStop || judge?.stop_reason
 if (budgetStop) finding('blocker', budgetStop, budgetStopMessages[budgetStop])
 if (judge && sample.length && !judge.verdicts.length) finding('major', 'judge-without-verdicts', 'Судья не оценил реплики выборки.')
 const scorecard = grade(final, usage, audit, quality, judge)
 if (budgetStop) scorecard.status = budget.stop_reason = budgetStop
-writeReport(final, scorecard, usage, audit, quality, judge, sample, roles, budget)
+writeReport(final, scorecard, usage, audit, quality, judge, sample, roles, budget, adjudicator)
 console.log(`\nИтог: ${scorecard.status}, оценка ${scorecard.overall}/10, блокеров ${scorecard.blockers}, критичных ${scorecard.critical}, серьёзных ${scorecard.major}`)
 console.log(`Отчёт: ${relative(ROOT, join(OUT, 'report.md'))}`)
 if (!KEEP) rmSync(storage, { recursive: true, force: true })

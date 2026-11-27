@@ -2347,7 +2347,7 @@ fn deterministic_free_action_narration(free_action: &Value, message: &str, event
 }
 
 /// `turnPromptVersions(narration)`: честные версии промптов хода.
-fn turn_prompt_versions(narration: Option<&Value>) -> Value {
+fn turn_prompt_versions(narration: Option<&Value>, agent_contexts: &[Value]) -> Value {
     let mut by_role: IndexMap<&str, &str> = IndexMap::new();
     for descriptor in PROMPT_DESCRIPTORS {
         by_role.insert(descriptor.role, descriptor.prompt_id);
@@ -2356,9 +2356,12 @@ fn turn_prompt_versions(narration: Option<&Value>) -> Value {
         Some(version) => version.clone(),
         None => by_role.get("narrator").map_or(Value::Null, |id| str_value(*id)),
     };
+    let adjudicator = agent_contexts.iter().find(|context| is_str(context.get("role"), "action_adjudicator"))
+        .and_then(|context| context.get("contract_version").and_then(Value::as_str))
+        .or_else(|| by_role.get("action_adjudicator").copied());
     json!({
         "intent_parser": null,
-        "action_adjudicator": by_role.get("action_adjudicator").map_or(Value::Null, |id| str_value(*id)),
+        "action_adjudicator": adjudicator.map_or(Value::Null, str_value),
         "narrator": narrator,
         "verifier": null,
     })
@@ -5237,7 +5240,7 @@ impl GameOrchestrator {
             ("request_fingerprint", Some(trace.request_fingerprint.clone().map_or(Value::Null, Value::String))),
             ("proposal_id", Some(str_value(proposal_id_for(&trace.campaign_id, &seed)))),
             ("engine_mode", Some(str_value("enforce"))),
-            ("prompt_versions", Some(turn_prompt_versions(narration))),
+            ("prompt_versions", Some(turn_prompt_versions(narration, &agent_contexts))),
             ("model_identifiers", Some(model_identifiers(narration))),
             ("agent_contexts", Some(Value::Array(agent_contexts))),
             ("intent", trace.intent.clone()),
