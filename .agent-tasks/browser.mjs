@@ -107,6 +107,17 @@ class CdpConnection {
     })
   }
 
+  on(method, listener, sessionId = null) {
+    const key = `${sessionId ?? ''}:${method}`
+    const listeners = this.listeners.get(key) ?? new Set()
+    listeners.add(listener)
+    this.listeners.set(key, listeners)
+    return () => {
+      listeners.delete(listener)
+      if (!listeners.size) this.listeners.delete(key)
+    }
+  }
+
   close() {
     this.#rejectAll(new Error('CDP connection closed by runner'))
     if (this.webSocket.readyState === WebSocket.OPEN || this.webSocket.readyState === WebSocket.CONNECTING) {
@@ -135,6 +146,10 @@ export class CdpPage {
 
   command(method, params = {}, timeoutMs) {
     return this.connection.send(method, params, this.sessionId, timeoutMs)
+  }
+
+  on(method, listener) {
+    return this.connection.on(method, listener, this.sessionId)
   }
 
   async navigate(url, { waitUntil = 'load', timeoutMs = DEFAULT_TIMEOUT } = {}) {
