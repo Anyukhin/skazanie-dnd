@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context as TaskContext, Poll, Waker};
 
 use serde_json::{json, Map, Value};
-use sk_agents::action_adjudicator::{ActionAdjudicator, DiscussOptions};
+use sk_agents::action_adjudicator::{revealed_prop_predicate, ActionAdjudicator, DiscussOptions};
 use sk_agents::free_action_adjudication::{
     d20_check_label, explain_action_check, free_action_approach_plan, free_action_goal_is_passage, free_action_is_copy_request, has_recognized_free_action_approach, interpret_free_action, minutes_label_ru, SKILL_LABELS_RU,
 };
@@ -45,8 +45,7 @@ use sk_agents::player_request_router::{answer_known_lore, answer_table_question,
 use sk_agents_base::llm_client::{current_model_attempt_trace, with_model_attempt_trace};
 use sk_core::fancy_regex;
 use sk_core::indexmap::IndexMap;
-use sk_core::{hash, js, re, text, RuleError};
-use sk_director::campaign_lifecycle::treaty_ends_adventure;
+use sk_core::{game, hash, js, re, text, RuleError};
 use sk_economy::merchant_economy::currency_to_copper;
 use sk_encounters::agent_context::{agent_context_metadata, campaign_concept_for_agent, hero_card_for_agent, npc_known_by_name, scene_context_for_agent, AgentContextOptions};
 use sk_infra::roll_registry::RollRegistry;
@@ -69,14 +68,16 @@ use sk_rules::pause::Halt;
 use sk_rules::preview_checks::{preview_d20_check, preview_tavern_dice_roll, shrine_prayer_refusal_for};
 use sk_rules::resolve::api::RulesEngine;
 use sk_rules::summary::{actor_name_resolver, event_summary, NameResolver};
-use sk_scenario::campaign_scenario::scenario_narrator_brief;
+use sk_scenario::campaign_scenario::{scenario_narrator_brief, scenario_inspection_for_prop};
+use sk_tactical::scene_interactions::{nearest_scene_object_command_with_scenario, scene_object_operation_from_text};
 use sk_social::npc_social::{ensure_npc_social_state, npc_conversation_narration, npc_profile_at_world_time, npc_social_for_viewer, relationship_tier};
 use sk_social::npc_social_check::{assert_npc_social_check_fingerprint, build_npc_social_check_policy, npc_social_check_outcome};
 use sk_society::law_and_order::{guard_encounter_for, LAW_POLICY_ID};
 use sk_society::parley::{mentions_parley, parley_morale_for, parley_skill_for, truce_for, PARLEY_ABILITY, PARLEY_POLICY_ID};
 use sk_society::quest_consequences::{knowledge_gate_visible, quest_state_for_viewer};
 use sk_store::{CommitRequest, CommitResult, StoreError};
-use sk_story::intent_parser::{action_sequence, build_rule_queries, infer_request_kind, named_known_spell, normalize_request_kind, same_name_token, IntentParser};
+use sk_story::campaign_dialogues::{dialogue_check_line, dialogue_option_for_utterance, DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT};
+use sk_story::intent_parser::{action_sequence, build_rule_queries, direct_dialogue_speech, infer_request_kind, named_known_spell, normalize_request_kind, same_name_token, IntentParser};
 use sk_tactics::adjudicator::Adjudicator;
 use sk_tactics::security::{build_narration_brief, project_visible_state, redact_trace, validate_allowed_commands, verify_narration, SecurityValidationError};
 use sk_world_story::scene_canon::scene_canon_for;
@@ -406,6 +407,11 @@ fn same(a: Option<&Value>, b: Option<&Value>) -> bool {
     }
 }
 
+fn pending_treaty_epilogue(state: &Value) -> bool {
+    is_str(at(Some(state), &["mechanics", "campaign_lifecycle", "status"]), "active")
+        && sk_director::campaign_lifecycle::treaty_ends_adventure(state)
+}
+
 fn is_str(value: Option<&Value>, expected: &str) -> bool {
     value.and_then(Value::as_str) == Some(expected)
 }
@@ -582,9 +588,34 @@ fn empty_effects() -> Value {
     json!({ "roll": null, "reveal": [], "spawn": [], "objective": null, "grantItems": [] })
 }
 
-fn pending_treaty_epilogue(state: &Value) -> bool {
-    is_str(at(Some(state), &["mechanics", "campaign_lifecycle", "status"]), "active")
-        && treaty_ends_adventure(state)
+/// Авторская улика не должна уезжать в общий маршрут `ability_check`: текст
+/// выбирает тот же `OperateSceneObject`, что и кнопка на карте.
+fn authored_scene_object_command_for(state: &Value, actor_id: &str, message: &str) -> Option<Value> {
+    let message = str_value(message.to_string());
+    if scene_object_operation_from_text(Some(&message))?.intent != "inspect" { return None; }
+    let props = at(Some(state), &["scene", "map", "props"])?.as_array()?;
+    let scene = state.get("scene")?;
+    let location = scene.get("location_id").or_else(|| scene.get("locationId"))?.as_str()?;
+    let mut clues = Map::new();
+    let mut candidates = Vec::new();
+    for prop in props {
+        let Some(id) = prop.get("id").and_then(Value::as_str) else { continue };
+        if let Some(clue) = scenario_inspection_for_prop(state, location, id) {
+            clues.insert(id.to_owned(), clue);
+            candidates.push(prop.clone());
+        }
+    }
+    if candidates.is_empty() { return None; }
+    let clues = Value::Object(clues);
+    let position = game::actor_position(state, actor_id).map(|point| json!({ "x": point.x, "y": point.y }));
+    let select = |props: &Value| nearest_scene_object_command_with_scenario(Some(props), position.as_ref(), Some(&message), Some(&clues));
+    let candidates = Value::Array(candidates);
+    let target = select(&candidates)?;
+    let all = candidates.as_array()?;
+    if all.len() == 1 { return Some(target); }
+    let visible = revealed_prop_predicate(state);
+    let visible_props = Value::Array(all.iter().filter(|prop| visible.test(prop)).cloned().collect());
+    select(&visible_props).or(Some(target))
 }
 
 pub const DIALOGUE_RESPONSE_PLAN_VERSION: &str = "dialogue-response-plan/v1";
@@ -647,16 +678,17 @@ fn narration_memory_query(state: &Value, message: &str, events: &[Value]) -> Str
     text::head(&parts.join(" "), 4_000)
 }
 
-/// `narrationWorldFacts(state, viewer, message, events)`.
-fn narration_world_facts(state: &Value, viewer: &Value, message: &str, events: &[Value]) -> Vec<Value> {
+/// `narrationWorldFacts(state, message, events)`.
+fn narration_world_facts(state: &Value, message: &str, events: &[Value]) -> Vec<Value> {
     let mut memory = match state.get("worldMemory") {
         Some(Value::Object(map)) => Value::Object(map.clone()),
         _ => json!({}),
     };
     let facts: Vec<Value> = list(at(Some(state), &["worldMemory", "facts"])).iter().filter(|fact| is_str(get(Some(fact), "visibility"), "public") || is_str(get(Some(fact), "visibility"), "party")).cloned().collect();
     set(&mut memory, "facts", Value::Array(facts));
-    let scoped = obj(vec![("playerId", get(Some(viewer), "playerId").cloned()), ("partyIds", get(Some(viewer), "partyIds").cloned()), ("isPartyMember", get(Some(viewer), "isPartyMember").cloned())]);
-    let mut options = json!({ "query": narration_memory_query(state, message, events), "limit": NARRATION_WORLD_FACT_LIMIT });
+    // Память общего повествования не зависит от личного журнала знания героя.
+    let scoped = json!({ "isPartyMember": true });
+    let mut options = json!({ "query": narration_memory_query(state, message, events), "limit": NARRATION_WORLD_FACT_LIMIT, "kind": "fact" });
     if let Some(minutes) = at(Some(state), &["mechanics", "world_time", "elapsed_minutes"]) {
         set(&mut options, "asOfMinutes", minutes.clone());
     }
@@ -675,6 +707,32 @@ fn narration_world_facts(state: &Value, viewer: &Value, message: &str, events: &
         .filter(|fact| js::truthy(fact.get("id")) && js::truthy(fact.get("summary")))
         .take(NARRATION_WORLD_FACT_LIMIT)
         .collect()
+}
+
+#[cfg(test)]
+mod narration_memory_tests {
+    use super::*;
+
+    #[test]
+    fn party_brief_keeps_a_fact_when_quests_rank_first() {
+        let subject = "location:gates";
+        let quests: Vec<Value> = (1..=3).map(|n| json!({
+            "id": format!("quest:{n}"), "title": "Караван у Северных ворот",
+            "summary": "Найти след каравана у Северных ворот.", "entity_ids": [subject], "visibility": "party"
+        })).collect();
+        let state = json!({ "worldMemory": {
+            "entities": [{ "id": subject, "kind": "location", "name": "Северные ворота", "visibility": "party" }],
+            "quests": quests,
+            "facts": [
+                { "id": "fact:mark", "subject_id": subject, "predicate": "discovery",
+                  "summary": "На камне осталась отметка.", "visibility": "party" },
+                { "id": "fact:secret", "subject_id": subject, "predicate": "gm_secret",
+                  "summary": "Кто увёл караван у Северных ворот.", "visibility": "gm_only" }
+            ]
+        }});
+        let facts = narration_world_facts(&state, "Найти след каравана у Северных ворот", &[]);
+        assert_eq!(facts.iter().map(|fact| fact["id"].as_str()).collect::<Vec<_>>(), [Some("fact:mark")]);
+    }
 }
 
 /// Пределы контекста сюжета Рассказчика (`NARRATION_STORY_LIMITS`).
@@ -1457,9 +1515,34 @@ fn legacy_narration_request_fingerprint(fields: &RequestFingerprint) -> String {
     sha256(&format!("{}\0{}\0{}\0{}", text::upper(&fields.campaign_id), fields.player_id, text::squash_spaces(&text::nfkc(&fields.message)), fields.npc_id))
 }
 
+pub fn authored_dialogue_request_fingerprint(events: &[Value]) -> Option<&str> {
+    events.iter().find_map(|event| event.get("narration_request_fingerprint").and_then(Value::as_str))
+}
+
+pub fn authored_narration_replay_matches(events: &[Value], campaign_id: &str, player_id: &str, message: &str, npc_id: &str, body: &Value) -> bool {
+    let Some(stored) = authored_dialogue_request_fingerprint(events) else { return false };
+    let field = |camel, snake, limit| text::head(text::trim(&js::s(nullish(body.get(camel), body.get(snake)))), limit);
+    stored == narration_request_fingerprint(&RequestFingerprint {
+        campaign_id: campaign_id.into(), player_id: player_id.into(), message: message.into(), npc_id: npc_id.into(),
+        clarification_id: field("clarificationId", "clarification_id", 8_000),
+        supersedes_check_id: field("supersedesCheckId", "supersedes_check_id", 200),
+        supersedes_proposal_id: field("supersedesProposalId", "supersedes_proposal_id", 300),
+        question_check_id: field("questionCheckId", "question_check_id", 200),
+        question_proposal_id: field("questionProposalId", "question_proposal_id", 300),
+        operation: MESSAGE_REQUEST_OPERATION.into(), ..Default::default()
+    })
+}
+
 /// `assertNarrationRequestIdempotency(duplicate, trace, request)`.
 fn assert_narration_request_idempotency(duplicate: Option<&Value>, trace: Option<&Value>, request: &RequestFingerprint, idempotency_key: &str) -> OrchestratorResult<()> {
     let Some(duplicate) = duplicate.filter(|value| js::truthy(Some(value))) else { return Ok(()) };
+    let dialogue_event = list(duplicate.get("events")).iter().find(|event| is_str(event.get("event_type"), DIALOGUE_EVENT));
+    if let Some(fingerprint) = authored_dialogue_request_fingerprint(list(duplicate.get("events"))) {
+        if fingerprint != narration_request_fingerprint(request) {
+            return Err(idempotency_conflict(&request.campaign_id, idempotency_key));
+        }
+        return Ok(());
+    }
     let fields = RequestFingerprint { operation: String::new(), ..request.clone() };
     let request_fingerprint = narration_request_fingerprint(&fields);
     if js::truthy(get(trace, "request_fingerprint")) {
@@ -1471,6 +1554,10 @@ fn assert_narration_request_idempotency(duplicate: Option<&Value>, trace: Option
             return Err(idempotency_conflict(&request.campaign_id, idempotency_key));
         }
         return Ok(());
+    }
+    // До маршрутизации свободной реплики это событие писала только кнопка.
+    if dialogue_event.is_some() && request.operation == MESSAGE_REQUEST_OPERATION {
+        return Err(idempotency_conflict(&request.campaign_id, idempotency_key));
     }
     if request.npc_id.is_empty() {
         return Ok(());
@@ -3026,7 +3113,7 @@ impl GameOrchestrator {
             "structured_result": obj(vec![("outcome", free_action.get("kind").cloned()), ("event_types", Some(Value::Array(public_events.iter().map(|event| event.get("event_type").cloned().unwrap_or(Value::Null)).collect())))]),
             "world_clock": world_clock_for_agents(&state, Some(&str_value(player_id))),
             "scene_canon": scene_canon_for(&state, Some(&json!({ "playerId": nullish(viewer.get("playerId"), None).cloned().unwrap_or_else(|| str_value(player_id)), "actorId": player_id }))),
-            "world_memory": { "facts": narration_world_facts(&state, viewer, message, &public_events) },
+            "world_memory": { "facts": narration_world_facts(&state, message, &public_events) },
             "story_context": story_context.clone(),
         });
         if let Some(scenario) = narration_scenario_context(&state) {
@@ -3576,6 +3663,7 @@ impl GameOrchestrator {
             && !redirected
             && self.npc_social_controller.is_some()
             && len_of(result.get("mechanics")) > 0
+            && !js::truthy(result.get("rejected"))
             && !js::truthy(result.get("check"))
             && !js::truthy(result.get("clarification"))
             && !js::truthy(result.get("action_proposal"))
@@ -3616,7 +3704,7 @@ impl GameOrchestrator {
             let check = with(&result["check"], json!({ "clarification_id": head.clarification_id }));
             return Ok(with(&result, json!({ "check": check })));
         }
-        if len_of(result.get("mechanics")) == 0 || js::truthy(result.get("clarification")) || js::truthy(result.get("action_proposal")) || steps.len() < 2 {
+        if js::truthy(result.get("rejected")) || len_of(result.get("mechanics")) == 0 || js::truthy(result.get("clarification")) || js::truthy(result.get("action_proposal")) || steps.len() < 2 {
             return Ok(result);
         }
         let depth = js::number(Some(nullish(input.field("planStep"), None).unwrap_or(&Value::from(0))));
@@ -3735,6 +3823,8 @@ impl GameOrchestrator {
             "allowedActorIds": nullish(input.field("allowedActorIds"), None).cloned().unwrap_or_else(|| json!([player_id])),
             "isAdmin": is_admin,
             "isDirector": input.director_capability,
+            "scenarioTreatyNow": self.now_ms(),
+            "scenarioTreatyVoters": input.field("scenarioTreatyVoters"),
         });
         let mut turn_id = structured_command_turn_id(&campaign_id, &idempotency_key);
         let manual_roll = js::is_true(input.field("manualRoll"));
@@ -3768,6 +3858,10 @@ impl GameOrchestrator {
         let social_options = json!({ "playerId": player_id, "isAdmin": is_admin, "isPartyMember": true, "state": original_state });
         let ensured = ensure_npc_social_state(original_state.get("social").unwrap_or(&Value::Null), &original_state, &json!({}));
         set(&mut visible_state, "social", npc_social_for_viewer(&ensured, &social_options));
+        let direct_speech = if !input.has_commands() && request_kind == "action" { direct_dialogue_speech(&message, &visible_state, &explicit_npc_id) } else { None };
+        let addressed_authored_speech = explicit_npc_id.is_empty() && direct_speech.as_ref().is_some_and(|(npc_id, utterance)| {
+            dialogue_option_for_utterance(&original_state, npc_id, &player_id, utterance).is_some()
+        });
         let worldkeeper_viewer = obj(vec![("playerId", Some(str_value(player_id.clone()))), ("isAdmin", Some(Value::Bool(is_admin))), ("isPartyMember", Some(Value::Bool(true))), ("role", role.clone())]);
         let mut worldkeeper_state = js::spread(&visible_state, json!({}));
         match original_state.get("worldMemory") {
@@ -3775,7 +3869,8 @@ impl GameOrchestrator {
             None => unset(&mut worldkeeper_state, "worldMemory"),
         }
         let in_combat = js::is_true(at(Some(&original_state), &["mechanics", "combat", "active"]));
-        let lore_answer = if request_kind != "action" || input.has_commands() || !explicit_npc_id.is_empty() || (in_combat && mentions_parley(&str_value(message.clone()))) {
+        let authored_replay = js::is_true(input.field("authoredDialogueReplay"));
+        let lore_answer = if request_kind != "action" || input.has_commands() || !explicit_npc_id.is_empty() || addressed_authored_speech || authored_replay || (in_combat && mentions_parley(&str_value(message.clone()))) {
             None
         } else {
             let known = answer_known_lore(&message, &worldkeeper_state, &KnownLoreOptions { viewer: Some(worldkeeper_viewer), actor_id: None });
@@ -3816,32 +3911,35 @@ impl GameOrchestrator {
             return Ok(response);
         }
         let (authoritative_state, _) = self.load_state(&campaign_id)?;
-        // Договор или завершившаяся кульминация могли остаться в активном
+        // Договор или завершившаяся кульминация могут остаться в активном
         // сохранении, если процесс остановился между player commit и шагом
-        // Директора. Закрываем хвост до разбора новой заявки.
-        if pending_treaty_epilogue(&authoritative_state) {
-            if let Some(completion) = self.unknown_action_handler.settle_accepted_treaty(&campaign_id, &idempotency_key, &authoritative_state).await? {
-                let events = list(completion.get("events")).to_vec();
-                let epilogue = events.iter().find(|event| is_str(event.get("event_type"), "CampaignCompleted"))
-                    .and_then(|event| at(Some(event), &["payload", "epilogue"]))
-                    .cloned()
-                    .unwrap_or_else(|| str_value("Кампания завершена."));
-                return Ok(json!({
-                    "narration": epilogue,
-                    "effects": events_to_client_effects(&events, &[]),
-                    "provider": "deterministic-campaign-completion",
-                    "model": "deterministic",
-                    "turn_id": turn_id,
-                    "engine_mode": "enforce",
-                    "state_version": completion.get("state_version"),
-                    "mechanics": events,
-                    "visible_state_changes": visible_changes(&events),
-                    "authoritative_state": completion.get("state"),
-                    "verification": { "valid": true, "violations": [], "origin": { "source": "template", "reason": "campaign_completion" } },
-                    "turn_consumed": false,
-                    "idempotent_replay": js::is_true(completion.get("duplicate")),
-                }));
-            }
+        // Директора. Закрываем такой хвост до разбора новой заявки, иначе она
+        // успеет создать следующую встречу после уже принятого договора.
+        let completion = if !authored_replay && pending_treaty_epilogue(&authoritative_state) {
+            self.unknown_action_handler.settle_accepted_treaty(&campaign_id, &idempotency_key, &authoritative_state).await?
+        } else {
+            None
+        };
+        if let Some(completion) = completion {
+            let events = list(completion.get("events")).to_vec();
+            let epilogue = events.iter().find(|event| is_str(event.get("event_type"), "CampaignCompleted"))
+                .and_then(|event| event.get("payload")).and_then(|payload| payload.get("epilogue")).cloned()
+                .unwrap_or_else(|| str_value("Кампания завершена."));
+            return Ok(json!({
+                "narration": epilogue,
+                "effects": events_to_client_effects(&events, &[]),
+                "provider": "deterministic-campaign-completion",
+                "model": "deterministic",
+                "turn_id": turn_id,
+                "engine_mode": "enforce",
+                "state_version": completion.get("state_version"),
+                "mechanics": events,
+                "visible_state_changes": visible_changes(&events),
+                "authoritative_state": completion.get("state"),
+                "verification": { "valid": true, "origin": { "source": "template", "reason": "campaign_completion" } },
+                "turn_consumed": false,
+                "idempotent_replay": js::is_true(completion.get("duplicate")),
+            }));
         }
         if request_kind != "action" {
             if let Some(pending) = &pending_clarification {
@@ -3877,7 +3975,7 @@ impl GameOrchestrator {
             })
             .collect();
         let pending_steps = len_of(at(pending_clarification.as_ref(), &["original_intent", "action_steps"]));
-        if !input.has_commands() && explicit_npc_id.is_empty() && !steps.is_empty() && (standalone_action || pending_steps == 0) {
+        if !input.has_commands() && explicit_npc_id.is_empty() && !addressed_authored_speech && !authored_replay && !steps.is_empty() && (standalone_action || pending_steps == 0) {
             let first_step_key = format!("{idempotency_key}:step-1");
             let first_step_replay = self.by_key(&campaign_id, &first_step_key)?;
             let version = coalesce(&[list(get(first_step_replay.as_ref(), "events")).first().and_then(|event| event.get("state_version_before")), authoritative_state.get("state_version")]).cloned();
@@ -3921,7 +4019,10 @@ impl GameOrchestrator {
         assert_narration_request_idempotency(duplicate.as_ref(), request_trace.as_ref(), &idempotency_request, &idempotency_key)?;
 
         // Парлей: единственная развилка на оба входа (хотбар и окрик).
-        if let Some(mut parley_command) = self.parley_command_for(&input, &player_id, &message, &authoritative_state) {
+        let parley = self.parley_command_for(&input, &player_id, &message, &authoritative_state);
+        if let Some(command) = parley.as_ref().filter(|_| sk_rules::validate::scenario_treaty_parley(&authoritative_state)) {
+            input = input.with(vec![("commands", json!([{ "command_type": "NegotiateScenarioTreaty", "actor_id": command["actor_id"] }]))]);
+        } else if let Some(mut parley_command) = parley {
             if manual_roll && verified_roll.is_none() && self.roll_registry.is_some() && duplicate.is_none() {
                 if let Some(card) = self.parley_check_card(&campaign_id, &player_id, &authoritative_state, &parley_command)? {
                     let narration = format!("Требуется проверка: {}, СЛ {}. Бросьте d20, чтобы узнать, услышат ли вас.", template(card.get("label")), template(card.get("difficulty")));
@@ -4051,6 +4152,8 @@ impl GameOrchestrator {
             message,
             idempotency_key,
             explicit_npc_id,
+            direct_speech,
+            addressed_authored_speech,
             user,
             viewer,
             visible_state,
@@ -4072,7 +4175,7 @@ impl GameOrchestrator {
 
     /// Вторая половина `_handle`: разбор намерения, план, разговор,
     /// исполнение, рассказ и трасса.
-    async fn handle_planned(&self, input: HandleInput, context: HandleContext) -> OrchestratorResult<Value> {
+    async fn handle_planned(&self, mut input: HandleInput, context: HandleContext) -> OrchestratorResult<Value> {
         let HandleContext {
             started,
             campaign_id,
@@ -4080,6 +4183,8 @@ impl GameOrchestrator {
             message,
             idempotency_key,
             explicit_npc_id,
+            direct_speech,
+            addressed_authored_speech,
             user,
             viewer,
             visible_state,
@@ -4097,6 +4202,35 @@ impl GameOrchestrator {
             request_fingerprint,
         } = context;
         let pre_resolve_span = sk_store::perf::span("orch.planned.pre_resolve");
+        let replayed_dialogue = list(get(duplicate.as_ref(), "events")).iter().find_map(|event| {
+            if is_str(event.get("event_type"), DIALOGUE_EVENT) { event.get("payload") } else { event.get("authored_dialogue_option") }
+        });
+        if !input.has_commands() && replayed_dialogue.is_none() && authored_dialogue_request_fingerprint(list(get(duplicate.as_ref(), "events"))).is_some() {
+            input = input.with(vec![("commands", json!([{ "command_type": "NegotiateScenarioTreaty", "actor_id": player_id }]))]);
+        }
+        let dialogue_npc_id = if explicit_npc_id.is_empty() {
+            direct_speech.as_ref().map_or("", |(npc_id, _)| npc_id.as_str())
+        } else {
+            &explicit_npc_id
+        };
+        let dialogue_utterance = direct_speech.as_ref().filter(|(npc_id, _)| npc_id == dialogue_npc_id)
+            .map_or(message.as_str(), |(_, utterance)| utterance.as_str());
+        let dialogue_speech = if !input.has_commands() && (!explicit_npc_id.is_empty() || addressed_authored_speech) && duplicate.is_none() {
+            dialogue_option_for_utterance(authoritative_state.value(), dialogue_npc_id, &player_id, dialogue_utterance)
+        } else {
+            None
+        };
+        let action_option = get(replayed_dialogue, "option_id").and_then(Value::as_str).or(dialogue_speech.flatten());
+        let authored_speech = !input.has_commands() && action_option.is_some();
+        if let Some(option_id) = action_option.filter(|_| authored_speech) {
+            if verified_roll.is_some() {
+                return Err(context_mismatch("Этот бросок регистрировался не для авторского разговора"));
+            }
+            let npc_id = get(replayed_dialogue, "npc_id").and_then(Value::as_str).unwrap_or(dialogue_npc_id);
+            input = input.with(vec![("commands", json!([{
+                "command_type": DIALOGUE_COMMAND_TYPE, "actor_id": player_id, "npc_id": npc_id, "option_id": option_id,
+            }]))]);
+        }
         let has_commands = input.has_commands();
         let mut intent = if has_commands {
             json!({ "actor_id": player_id, "intent": "structured_commands", "approach": "api", "targets": [], "mentioned_entities": [], "missing_information": [], "requires_clarification": false, "confidence": 1, "raw_message": message })
@@ -4104,20 +4238,31 @@ impl GameOrchestrator {
             self.intent_parser.parse(&message, &player_id, &visible_state).await?
         };
         let intent_kind = |intent: &Value| js::s(intent.get("intent"));
+        let authored_scene_object = if !has_commands
+            && ["ability_check", "improvised_action", "unknown", "explore"].contains(&js::s(intent.get("intent")).as_str())
+        {
+            authored_scene_object_command_for(&original_state, &player_id, &message)
+        } else {
+            None
+        };
+        if authored_scene_object.is_some() {
+            intent = with(&intent, json!({ "intent": "improvised_action", "free_action_kind": "scene_interaction", "authored_scene_object": authored_scene_object.clone().unwrap_or(Value::Null), "missing_information": [], "requires_clarification": false }));
+        }
         const DETERMINISTIC_ACTION_INTENTS: [&str; 19] = [
             "improvised_action", "compound_maneuver", "approach_attack", "attack", "damage", "ability_check", "saving_throw", "healing", "cast_spell", "start_combat", "end_combat", "end_turn", "rest", "wait", "scenario_knight", "scenario_treaty", "scenario_purse", "scenario_armory", "scenario_informant",
         ];
         let explicit_pickpocket = is_str(intent.get("intent"), "improvised_action") && text::test(re!(r"(?:обчищ|обчист|карман|кошел)", "iu"), &message);
         let deterministic_action = intent.get("intent").and_then(Value::as_str).is_some_and(|kind| DETERMINISTIC_ACTION_INTENTS.contains(&kind))
             && (!is_str(intent.get("intent"), "improvised_action") || js::truthy(intent.get("free_action_kind")) || explicit_pickpocket);
-        if !has_commands && !explicit_npc_id.is_empty() && !deterministic_action {
-            intent = with(&intent, json!({ "intent": "social", "targets": [explicit_npc_id], "missing_information": [], "requires_clarification": false }));
+        if !has_commands && (dialogue_speech.is_some() || (!explicit_npc_id.is_empty() && !deterministic_action)) {
+            let target = if dialogue_speech.is_some() { dialogue_npc_id } else { &explicit_npc_id };
+            intent = with(&intent, json!({ "intent": "social", "targets": [target], "missing_information": [], "requires_clarification": false }));
         }
         let original_combat = js::is_true(at(Some(&original_state), &["mechanics", "combat", "active"]));
         if !has_commands && !original_combat && is_str(intent.get("intent"), "cast_spell") && !js::truthy(intent.get("spell_id")) {
             intent = with(&intent, json!({ "intent": "improvised_action", "missing_information": [], "requires_clarification": false }));
         }
-        if !has_commands && explicit_npc_id.is_empty() && !original_combat && ["improvised_action", "explore", "unknown", "social"].contains(&js::string(intent.get("intent")).as_str()) {
+        if !has_commands && explicit_npc_id.is_empty() && dialogue_speech.is_none() && !original_combat && ["improvised_action", "explore", "unknown", "social"].contains(&js::string(intent.get("intent")).as_str()) {
             let addressee = speech_addressee(&message, &visible_state, &player_id, false);
             let social_ids: HashSet<String> = list(at(Some(&visible_state), &["social", "npcs"])).iter().map(|npc| js::string(npc.get("id"))).collect();
             let asks = match_all(re!(r"«([^«»]{1,800})»", "gu"), &message).iter().map(|found| group(found, 1)).collect::<Vec<_>>().join(" ").contains('?');
@@ -4576,8 +4721,22 @@ impl GameOrchestrator {
                 let mut outcome: Option<(Value, Value)> = None;
                 for attempt in 0..3 {
                     let resolve_span = sk_store::perf::span("orch.resolve_turn_plan");
-                    let engine = self.rules_engine.resolve_turn_plan_normalized(&plan, &resolution_state, &rules_context)?;
+                    let mut engine = self.rules_engine.resolve_turn_plan_normalized(&plan, &resolution_state, &rules_context)?;
                     drop(resolve_span);
+                    if let Some(events) = engine.get_mut("events").and_then(Value::as_array_mut) {
+                        if let Some(event) = events.iter_mut().find(|event| is_str(event.get("event_type"), DIALOGUE_EVENT)) {
+                            set(event, "narration_request_fingerprint", str_value(request_fingerprint.clone()));
+                        } else if let Some(command) = list(plan.get("proposed_commands")).first().filter(|command| is_str(command.get("command_type"), DIALOGUE_COMMAND_TYPE)) {
+                            if let Some(event) = events.iter_mut().find(|event| is_str(event.get("event_type"), "PartyDecisionOpened")) {
+                                set(event, "narration_request_fingerprint", str_value(request_fingerprint.clone()));
+                                set(event, "authored_dialogue_option", json!({ "npc_id": command["npc_id"], "option_id": command["option_id"] }));
+                            }
+                        } else if list(plan.get("proposed_commands")).first().is_some_and(|command| is_str(command.get("command_type"), "NegotiateScenarioTreaty")) {
+                            if let Some(event) = events.iter_mut().find(|event| matches!(event.get("event_type").and_then(Value::as_str), Some("PartyDecisionOpened" | "ScenarioTreatyConcluded" | "ScenarioTreatyRefused"))) {
+                                set(event, "narration_request_fingerprint", str_value(request_fingerprint.clone()));
+                            }
+                        }
+                    }
                     let events = list(engine.get("events")).to_vec();
                     if events.is_empty() {
                         return Err(OrchestratorError::plain("Enforce-ход не создал ни события, ни ruling"));
@@ -4589,7 +4748,7 @@ impl GameOrchestrator {
                             break;
                         }
                         Err(error) => {
-                            if error.code == "STATE_VERSION_CONFLICT" && attempt < 2 && !js::truthy(plan.get("maneuver")) {
+                            if error.code == "STATE_VERSION_CONFLICT" && attempt < 2 && !js::truthy(plan.get("maneuver")) && !authored_speech {
                                 resolution_state = self.load_state(&campaign_id)?.0;
                                 continue;
                             }
@@ -4667,7 +4826,7 @@ impl GameOrchestrator {
             "participants": narration_participants(&committed_state, &public_events),
             "world_clock": world_clock_for_agents(&committed_state, Some(&str_value(player_id.clone()))),
             "scene_canon": scene_canon_for(&committed_state, Some(&json!({ "playerId": nullish(viewer.get("playerId"), None).cloned().unwrap_or_else(|| str_value(player_id.clone())), "actorId": player_id }))),
-            "world_memory": { "facts": narration_world_facts(&committed_state, &viewer, &message, &public_events) },
+            "world_memory": { "facts": narration_world_facts(&committed_state, &message, &public_events) },
             "story_context": story_context.clone(),
         });
         if let Some(scenario) = narration_scenario_context(&committed_state) {
@@ -4696,7 +4855,15 @@ impl GameOrchestrator {
             },
             _ => None,
         };
-        let mut stored_social = npc_conversation_narration(&committed_events, &committed_state);
+        let authored_reply = public_events.iter().find(|event| authored_speech && is_str(event.get("event_type"), DIALOGUE_EVENT))
+            .and_then(|event| event.get("payload"));
+        let authored_narration = authored_reply.map(|reply| json!({
+            "narration": ([dialogue_check_line(reply.get("check")), js::s(reply.get("reply"))].into_iter().filter(|line| !line.is_empty()).collect::<Vec<_>>().join("\n")),
+            "journal_author": reply.get("npc_name").and_then(Value::as_str).filter(|name| !name.is_empty()).unwrap_or("Собеседник"),
+            "provider": "AuthoredDialogue", "prompt_version": null,
+            "verification": { "valid": true, "violations": [] },
+        }));
+        let mut stored_social = authored_narration.clone().or_else(|| npc_conversation_narration(&committed_events, &committed_state));
         if let (Some(social), Some(usage)) = (stored_social.as_mut(), social_token_usage) {
             set(social, "token_usage", usage);
         }
@@ -4731,7 +4898,9 @@ impl GameOrchestrator {
         });
         drop(brief_span);
         let narration_span = sk_store::perf::span("orch.narration");
-        let narration = if idempotent_replay {
+        let narration = if let Some(authored) = &authored_narration {
+            authored.clone()
+        } else if idempotent_replay {
             cached_narration(replay_trace.as_ref(), &brief, &resolved_rule_ids)?.unwrap_or(replay_fallback)
         } else if let Some(response) = &deterministic_response {
             response.clone()
@@ -4781,7 +4950,7 @@ impl GameOrchestrator {
         set(&mut response, "explanation_url", str_value(explanation_url(&campaign_id, &turn_id)));
         set(&mut response, "idempotent_replay", Value::Bool(idempotent_replay));
         if stored_social.is_some() {
-            set(&mut response, "turn_consumed", Value::Bool(true));
+            set(&mut response, "turn_consumed", Value::Bool(authored_narration.is_none()));
             set(&mut response, "action_kind", str_value("social"));
         }
         let mut trace_engine = engine_result.clone();
@@ -5118,6 +5287,8 @@ struct HandleContext {
     message: String,
     idempotency_key: String,
     explicit_npc_id: String,
+    direct_speech: Option<(String, String)>,
+    addressed_authored_speech: bool,
     user: Value,
     viewer: Value,
     visible_state: Value,

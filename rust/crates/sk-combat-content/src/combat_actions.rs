@@ -93,8 +93,8 @@ fn class_url(class_key: Option<&str>) -> Option<&'static str> {
     })
 }
 
-const VERIFIED_ACTION_EFFECTS: [&str; 13] =
-    ["stand_up", "break_free", "steady_nerves", "extinguish_flames", "dash", "check", "contest", "heal", "weapon_attack", "cleanse", "restore_action", "stabilize", "first_aid"];
+const VERIFIED_ACTION_EFFECTS: [&str; 14] =
+    ["stand_up", "break_free", "steady_nerves", "extinguish_flames", "dash", "check", "contest", "heal", "weapon_attack", "cleanse", "restore_action", "stabilize", "first_aid", "awaken"];
 const DEFAULT_PARTIAL_ACTION_NOTE: &str = "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.";
 
 /// `action(id, name, options)`: карточка с умолчаниями и статусом механики.
@@ -143,6 +143,7 @@ static COMMON_ACTIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
         action("dodge", "Уклонение", json!({"category":"common","description":"Атаки по вам совершаются с помехой до начала следующего хода.","effect":{"kind":"condition","condition":"dodging","duration":"until-next-turn"}})),
         action("hide", "Засада", json!({"category":"common","description":"Проверка Ловкости (Скрытность), чтобы получить преимущество из укрытия.","effect":{"kind":"check","ability":"dex","skill":"stealth"}})),
         action("help", "Помощь", json!({"category":"common","target":"ally","range":5,"description":"Союзник получает преимущество на следующую атаку.","effect":{"kind":"condition","condition":"helped","duration":"until-used"}})),
+        action("awaken", "Разбудить", json!({"category":"common","target":"ally","range":5,"description":"Действием разбудить союзника рядом. Снимает с него «Усыпление» или «Гипнотический узор», если выбранный эффект принадлежит этому заклинанию.","effect":{"kind":"awaken","spellChoices":["sleep","hypnotic-pattern"]}})),
         action("stabilize", "Стабилизировать", json!({"category":"common","target":"ally","range":5,"description":"Проверка Мудрости (Медицина) СЛ 10, чтобы стабилизировать союзника с 0 ОЗ.","effect":{"kind":"stabilize","ability":"wis","skill":"medicine","difficulty":10}})),
         action("first-aid", "Первая помощь", json!({"category":"common","target":"creature","range":5,"description":"Проверка Мудрости (Медицина) СЛ 10, чтобы привести нокаутированное существо в сознание.","effect":{"kind":"first_aid","ability":"wis","skill":"medicine","difficulty":10}})),
         action("grapple", "Захват", json!({"category":"common","target":"enemy","range":5,"description":"Состязание Атлетики против Атлетики или Акробатики; при успехе цель схвачена.","effect":{"kind":"contest","condition":"grappled"}})),

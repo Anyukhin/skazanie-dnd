@@ -398,6 +398,10 @@ function candidateCells(map, npc, occupied, propOccupied, footprint = null) {
   const assignedZone = map.zones.find((zone) => zone.id === post)
   const anchorId = (npc.tags ?? []).find((tag) => String(tag).startsWith('anchor:'))?.slice(7)
   const assignedProp = map.props.find((prop) => prop.id === anchorId)
+  // Сюжетный NPC с якорем ждёт, пока отряд действительно откроет этот
+  // реквизит. Иначе первый вход у края карты создавал бы ему пост у случайной
+  // травы, одновременно выдавая положение скрытой сцены.
+  if (assignedProp && !propCells(assignedProp).some((cell) => cellAt(map, cell.x, cell.y)?.revealed === true)) return []
   const props = assignedProp ? [assignedProp] : suitableProps(map, npc)
   // Пост без предмета — настил: житель стоит на самом настиле, а не у
   // случайного стола (мастер настилов в программе скита).
@@ -520,6 +524,23 @@ export function planSceneNpcPlacementEvents(state = {}) {
     })
   }
   return events
+}
+
+/**
+ * Быстрая проверка для горячего пути движения. Полный план постов требует
+ * projection событий, поэтому вызывающий сначала проверяет, есть ли вообще
+ * видимый в сцене NPC с authored-якорем без сохранённого поста.
+ *
+ * @param {LooseState} state
+ */
+export function hasUnplacedAnchoredNpc(state = {}) {
+  const locationId = sceneLocationId(state)
+  if (!locationId) return false
+  const placed = new Set(normalizeNpcWorldState(state.npc_world).placements
+    .filter((entry) => entry.location_id === locationId)
+    .map((entry) => entry.npc_id))
+  return presentSceneNpcs(state).some((npc) => !placed.has(String(npc.id))
+    && (Array.isArray(npc.tags) ? npc.tags : []).some((tag) => String(tag).startsWith('anchor:')))
 }
 
 function socialNpc(state, npcId) {

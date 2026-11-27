@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
+import { authoredLocationMapFor } from '../server/authored-location-maps.mjs'
 import { campaignCanAutoComplete, campaignCanAdvanceArc } from '../server/campaign-lifecycle.mjs'
 import {
   authorizeDirectorIntent,
@@ -17,6 +18,7 @@ import {
   scenarioDestinationIds,
   scenarioEncounterFor,
   scenarioEnding,
+  scenarioSceneObjectClueForLocation,
   scenarioProgress,
 } from '../server/campaign-scenario.mjs'
 import { fallbackDirectorIntent } from '../server/director-agent.mjs'
@@ -25,6 +27,7 @@ import { normalizeCampaignState, replayEvents, resolveCommands } from '../server
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import { pendingOnwardTarget } from '../server/party-exit-intent.mjs'
 import { getWorldTemplate } from '../server/world-template-catalog.mjs'
+import { deserializeTacticalMap } from '../server/tactical-map.mjs'
 
 const hero = {
   id: 'scenario-hero',
@@ -41,6 +44,22 @@ const hero = {
 }
 
 const dice = () => new DiceService({ rng: new SequenceDiceRng([]) })
+
+test('пять сюжетных NPC привязаны к существующему посту на собственной карте', () => {
+  const scenario = listCampaignScenarios().find(entry => entry.world_template_id === 'astohan-plains')
+  const template = getWorldTemplate(scenario.world_template_id)
+  const residents = new Map([...template.opening.npcs, ...scenario.locations.flatMap(card => card.npcs ?? [])].map(npc => [npc.id, npc]))
+  for (const [id, location, landmark] of [
+    ['toban', 'redstone', 'toban-swift-cage'], ['lars', 'mittlayd', 'lars-lamp'],
+    ['gedrik', 'quiet-watch-camp', 'gedrik-command-tent'], ['trent', 'wild-forest', 'treant-oak'],
+    ['eldrin', 'eldrin-heart', 'great-tree-eldrin'],
+  ]) {
+    const locationId = 'astohan-' + location
+    const propId = locationId + ':' + landmark
+    assert.ok(residents.get('astohan-' + id)?.tags.includes('anchor:' + propId), id)
+    assert.ok(authoredLocationMapFor(locationId)?.props.some(prop => prop.id === propId), propId)
+  }
+})
 
 async function astohanCampaign() {
   const state = await new CampaignBootstrapper().create({
@@ -181,6 +200,45 @@ test('карточка промежуточной сцены сохраняет 
   assert.equal(state.scene.location_id, 'astohan-redstone')
   assert.equal(pendingOnwardTarget(state.scene), '')
   assert.match(state.scene.objective, /мельниц|осведомител/iu)
+})
+
+test('авторские предметы привязаны к своим уликам и не раскрываются в другой сцене', () => {
+  const journal = scenarioSceneObjectClueForLocation('astohan-ash-watch', 'astohan-ash-watch:burnt-journal')
+  assert.deepEqual([journal?.clue_id, journal?.label], ['ash-journal', 'обгоревший журнал'])
+  assert.equal(scenarioSceneObjectClueForLocation('astohan-forgotten-cliffs', 'astohan-ash-watch:burnt-journal'), null)
+  for (const propId of ['fresco-1', 'fresco-2', 'fresco-3']) {
+    const clue = scenarioSceneObjectClueForLocation('astohan-forgotten-cliffs', `astohan-forgotten-cliffs:${propId}`)
+    assert.deepEqual([clue?.clue_id, clue?.label], ['cliffs-frescoes', 'фреска'])
+  }
+})
+
+test('старый осмотр фрески дочитывает улику и не создаёт повтор', async () => {
+  const start = await astohanCampaign()
+  const atLake = (await travel(start, 'astohan-mirror-lake', 'scenario-clue-lake')).state
+  const atCliffs = (await travel(atLake, 'astohan-forgotten-cliffs', 'scenario-clue-cliffs')).state
+  const map = deserializeTacticalMap(atCliffs.scene.map)
+  const prop = map.props.find((entry) => entry.id === 'astohan-forgotten-cliffs:fresco-1')
+  assert.ok(prop, 'авторская карта содержит фреску')
+  const position = { x: Math.floor(prop.x), y: Math.floor(prop.y) }
+  const positioned = normalizeCampaignState({
+    ...atCliffs,
+    players: atCliffs.players.map((player) => ({ ...player, ...position })),
+    mechanics: {
+      ...atCliffs.mechanics,
+      positions: { ...atCliffs.mechanics.positions, [hero.id]: position },
+      scene_interactions: { [prop.id]: { inspected: true, inspection_attempted: true, inspection_attempted_by: [hero.id] } },
+    },
+  })
+  const result = resolveCommands([{
+    command_type: 'OperateSceneObject', command_id: 'scenario-clue-old-inspection', campaign_id: positioned.sessionCode,
+    actor_id: hero.id, prop_id: prop.id, intent: 'inspect',
+  }], positioned, { diceService: dice() })
+  const knowledge = result.events.find((event) => event.event_type === 'SceneObjectKnowledgeRevealed')
+  const discovery = result.events.find((event) => event.event_type === 'WorldFactRecorded')
+  assert.match(knowledge?.event_id ?? '', /^scene-object-clue:[0-9a-f]{24}$/u)
+  assert.ok(discovery && discovery.event_id !== knowledge.event_id)
+  assert.deepEqual(discovery.payload.fact.source_event_ids, [knowledge.event_id])
+  assert.equal(discovery.payload.fact.supersedes_fact_id, scenarioClueFactId(campaignScenario(positioned), 'cliffs-frescoes'))
 })
 
 test('находка закрывает главу, и сюжет зовёт к ближайшей линии; возвращение не дублирует тайны', async () => {

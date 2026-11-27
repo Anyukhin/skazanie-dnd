@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import { Narrator } from '../server/narrator.mjs'
@@ -16,7 +17,7 @@ const state = normalizeCampaignState({
   players: [{ id: 'hero', character: 'Ада', hp: 10, maxHp: 10, armor: 14, abilities: { str: 14 }, inventory: [] }, { id: 'goblin', character: 'Гоблин', hp: 8, maxHp: 8, armor: 12, abilities: { dex: 12 }, inventory: [] }],
 })
 
-async function setup(values = [], { narrator = new Narrator(), ...orchestratorOptions } = {}) {
+async function setup(values = [], { narrator = new Narrator(), initialState = state, ...orchestratorOptions } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-orchestrator-'))
   const dice = new DiceService({ rng: new SequenceDiceRng(values), idFactory: (() => { let id = 0; return () => `roll-${++id}` })() })
   const eventStore = new FileEventStore({ rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState, idFactory: (() => { let id = 0; return () => `id-${++id}` })() })
@@ -30,7 +31,7 @@ async function setup(values = [], { narrator = new Narrator(), ...orchestratorOp
     idFactory: (() => { let id = 0; return () => `turn-${++id}` })(),
     ...orchestratorOptions,
   })
-  await eventStore.initializeCampaign({ campaign_id: 'TEST-ROOM', initial_state: state })
+  await eventStore.initializeCampaign({ campaign_id: 'TEST-ROOM', initial_state: initialState })
   return { orchestrator, eventStore, traceStore, rulesEngine }
 }
 
@@ -401,6 +402,77 @@ test('structured merchant command bypasses free-form Narrator and speaks only fr
   assert.equal(result.verification.valid, true)
   assert.match(result.narration, /Мартен.*Факел.*1 мм/u)
   assert.doesNotMatch(result.narration, /повозк|перенес/u)
+})
+
+test('после post-commit договора оркестратор добавляет эпилог до следующего запроса', async () => {
+  let completionCalls = 0
+  let completed = false
+  const base = normalizeCampaignState(await new CampaignBootstrapper().create({
+    code: 'TEST-ROOM', worldTemplateId: 'astohan-plains', players: state.players,
+  }))
+  const treatyState = normalizeCampaignState({
+    ...base,
+    scene: { ...base.scene, location_id: 'astohan-vulkanis-brazier', location: 'Жаровня Вулканиса' },
+    worldMap: { ...base.worldMap, currentLocationId: 'astohan-vulkanis-brazier' },
+    scenario_attention: { ...base.scenario_attention, treaty: { ...base.scenario_attention.treaty, concluded: true } },
+  })
+  const prepared = await setup([], {
+    initialState: treatyState,
+    rulesEngine: {
+      resolvePlan: () => ({
+        commands: [],
+        rolls: [],
+        events: [{
+          event_id: 'scenario-treaty',
+          event_type: 'ScenarioTreatyConcluded',
+          actor_id: 'hero',
+          target_ids: ['astohan-sargat'],
+          visibility: 'party',
+          source_rule_ids: [],
+          payload: {},
+        }],
+      }),
+    },
+    unknownActionHandler: {
+      actionAdjudicator: null,
+      handleUnknownAction: async () => ({ narration: '', effects: [] }),
+      settleAcceptedTreaty: async () => {
+        completionCalls += 1
+        if (completed) return null
+        completed = true
+        const loaded = await prepared.eventStore.load('TEST-ROOM')
+        const committed = await prepared.eventStore.commit({
+          campaign_id: 'TEST-ROOM',
+          expected_state_version: loaded.state_version,
+          idempotency_key: 'treaty-post-commit:campaign-completion',
+          command_id: 'treaty-post-commit:campaign-completion',
+          events: [{
+            event_id: 'campaign-completed', event_type: 'CampaignCompleted', actor_id: null, target_ids: [], visibility: 'party', source_rule_ids: [],
+            payload: { reason: 'main_thread_resolved_at_climax', ending: { id: 'treaty' }, epilogue: 'Договор заключён.' },
+          }],
+        })
+        return committed
+      },
+    },
+  })
+  await prepared.eventStore.commit({
+    campaign_id: 'TEST-ROOM', expected_state_version: 0,
+    idempotency_key: 'seed-treaty', command_id: 'seed-treaty',
+    events: [{ event_id: 'seed-treaty-event', event_type: 'ScenarioTreatyConcluded', actor_id: 'hero', target_ids: ['sargat'], visibility: 'party', source_rule_ids: [], payload: { npc_id: 'sargat', text: 'Договор заключён.' } }],
+  })
+  const input = {
+    state: treatyState,
+    playerId: 'hero',
+    message: 'Мы заключили договор.',
+    idempotencyKey: 'treaty-post-commit',
+    commands: [{ command_type: 'ApplyDamage', actor_id: 'hero', target_id: 'goblin', amount: 1, damage_type: 'slashing' }],
+  }
+  const first = await prepared.orchestrator.handle(input)
+  assert.equal(first.authoritative_state.mechanics.campaign_lifecycle.status, 'completed')
+  assert.ok(first.mechanics.some((event) => event.event_type === 'CampaignCompleted'))
+  const replay = await prepared.orchestrator.handle(input)
+  assert.ok(completionCalls >= 1, 'первый запрос должен проверить готовность завершения')
+  assert.equal(replay.mechanics.filter((event) => event.event_type === 'CampaignCompleted').length, 0)
 })
 
 test('/why объясняет последнее решение человеческим языком, без сырых идентификаторов', async () => {

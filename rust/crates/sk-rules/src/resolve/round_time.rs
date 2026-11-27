@@ -17,12 +17,12 @@ use crate::core::{command_with, command_with_rules, event_from};
 pub const COMBAT_ROUND_TIME_POLICY: &str = "round6-completed-and-final-started";
 
 /// `COMBAT_ROUND_TIME_COMMANDS`: команды, действие которых тратит время раунда.
-pub const COMBAT_ROUND_TIME_COMMANDS: [&str; 23] = [
+pub const COMBAT_ROUND_TIME_COMMANDS: [&str; 24] = [
     "MakeAttack", "MakeAreaAttack", "CastSpell", "UseCombatAction", "UseMonsterAction",
     "UseLegendaryAction", "MoveActor", "ChangeWeapon", "UseItem", "ActivateItem", "EquipItem",
     "IdentifyEnemy", "ResolveImprovisedAction", "CalmBeast", "FeedBeast", "ScareWithBeast",
     "ProposeParley", "BarricadeDoor", "ClearDoorBarricade", "OperateDoor", "OperateSceneObject",
-    "ReturnKnightHead", "NegotiateScenarioTreaty",
+    "ReturnKnightHead", "NegotiateScenarioTreaty", "ResolveScenarioTreatyDecision",
 ];
 
 fn payload_str<'a>(event: &'a Value, key: &str) -> Option<&'a str> {

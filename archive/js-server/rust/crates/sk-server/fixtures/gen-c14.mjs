@@ -30,8 +30,8 @@ import { MAX_CURRENCY_CP } from '../../../../server/merchant-economy.mjs'
 import { FIXTURES_DIR, GOLDEN_FORMAT, recorder, startGoldenServer } from './golden.mjs'
 
 const root = new URL('../../../../', import.meta.url)
-const SOURCE_SHA256 = '5d972e446f05fa2c4fbb604e5a65914422264ed323dbebb94feca1d231e31ecd'
-const RANGES = [[637, 637], [641, 664], [1026, 1249]]
+const SOURCE_SHA256 = '15a7810c655c3e17373025e15695e85658a0aae74750908aded83efca2ce4555'
+const RANGES = [[678, 678], [682, 705], [1067, 1290]]
 
 const sha = (text) => createHash('sha256').update(text).digest('hex')
 const source = readFileSync(new URL('server/index.mjs', root), 'utf8').replace(/\r\n/gu, '\n')

@@ -288,6 +288,9 @@ pub fn damage_payload(state: &Value, target_id: &str, raw_amount: Option<&Value>
             after_defense *= 2.0;
         }
     }
+    if let Some(limit) = at(source, "damage_limit") {
+        after_defense = after_defense.min(js::number(Some(limit)));
+    }
     let temporary_before = js::safe_int(sk_core::game::mechanics(state).get("temporary_hp").and_then(|all| all.get(target_id)), 0).max(0) as f64;
     let absorbed = crate::tactical_geometry::js_min(temporary_before, after_defense);
     let applied = after_defense - absorbed;

@@ -231,10 +231,37 @@ pub fn check_scenario_armory(v: &mut Validation<'_>) -> Step {
     Ok(())
 }
 
+/// В логове мир с живым Саргатом проходит по договору сценария.
+pub fn scenario_treaty_parley(state: &Value) -> bool {
+    if !sk_core::game::combat_active(state) {
+        return false;
+    }
+    let Some(treaty) = sk_scenario::campaign_scenario::scenario_treaty_rules(state) else { return false };
+    let boss = treaty.get("boss_npc_id");
+    treaty["boss_location_id"] == sk_scenario::campaign_scenario::scenario_location_id(state)
+        && (sk_society::parley::standing_enemies(state).iter().any(|enemy| enemy.get("id") == boss)
+            || sk_society::parley::truce_for(state).as_ref().and_then(|truce| truce.get("leader_id")) == boss)
+}
+
 /// Блок 22 (6572–6601): договор.
 pub fn check_scenario_treaty(v: &mut Validation<'_>) -> Step {
-    if !SCENARIO_TREATY_COMMAND_TYPES.contains(&command_type(v).as_str()) {
+    let decision = v.state.get("agentInteraction").filter(|card| !card.is_null());
+    let kind = command_type(v);
+    if kind == "ResolveScenarioTreatyDecision" {
+        if !v.context.is_director() {
+            return Err(rule("Решение исполняет только сервер", "PARTY_DECISION_FORBIDDEN"));
+        }
+        if !decision.is_some_and(|card| card.get("scenarioTreaty").is_some() && card["status"] == "resolved" && card.get("id") == v.command.get("interaction_id")) {
+            return Err(rule("Нет завершённого решения по договору", "PARTY_DECISION_REQUIRED"));
+        }
+        set_field(&mut v.command, "house_rule_id", json!("skazanie:scenario-treaty-decision:v1"));
         return Ok(());
+    }
+    if !SCENARIO_TREATY_COMMAND_TYPES.contains(&kind.as_str()) {
+        return Ok(());
+    }
+    if decision.is_some() && !v.context.is_true("scenarioTreatyResolution") {
+        return Err(rule("Сначала завершите текущее решение отряда", "PARTY_DECISION_CONFLICT"));
     }
     let Some(rules) = sk_scenario::campaign_scenario::scenario_treaty_rules(v.state) else {
         return Err(rule("В этой кампании договор с противником не предусмотрен", "SCENARIO_TREATY_ABSENT"));

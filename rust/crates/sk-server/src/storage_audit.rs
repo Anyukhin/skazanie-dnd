@@ -20,20 +20,16 @@
 //!   нет в журнале, — дрейф через неё возможен; сверка проекций при старте
 //!   сервера его чинит, а этот аудит показывает до запуска.
 //!
-//! Данные не меняются: база только читается (при открытии схема создаётся
-//! `IF NOT EXISTS` — на готовой базе это пустая операция). Живой писатель
+//! Аудит читает временную копию базы и её WAL. Живой писатель
 //! storage (`.server-writer.json`, как у бэкапа и `import-legacy`) — отказ:
 //! снимок работающего сервера несогласован. Тестовая подкоманда `audit`
-//! (`test_hooks::room_cli`) зовёт ту же сверку [`audit_storage`] без этой
-//! проверки — набор тестов JS сверяет хранилище при живом тестовом сервере.
+//! (`test_hooks::room_cli`) сверяет живой тестовый сервер в одной транзакции чтения.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
 use serde_json::{json, Map, Value};
 use sk_core::js;
 use sk_store::{EventStore, LoadOptions};
-use sk_tactics::cutover_audit::{open_game_store, GameReducer, STORE_FILE};
+use sk_tactics::cutover_audit::{open_audit_store, open_audit_store_live, AuditStore, STORE_FILE};
 
 use crate::room::read_room;
 
@@ -123,12 +119,17 @@ pub fn audit_for_cutover(storage: &Path) -> Outcome {
 /// проекции) плюс сверка комнат с головой журнала. Базы нет — пустой готовый
 /// отчёт (как у JS). Живого писателя не проверяет.
 pub fn audit_storage(storage: &Path) -> Result<Value, String> {
-    let mut report = sk_tactics::cutover_audit::audit_legacy_cutover(Some(storage))?;
-    let database = storage.join(STORE_FILE);
-    if !database.is_file() {
-        return Ok(report);
-    }
-    let store = open_game_store(&database, Arc::new(GameReducer::new()))?;
+    audit_storage_opened(open_audit_store(Some(storage))?)
+}
+
+/// Обе части проверки живого тестового сервера работают в одной транзакции чтения.
+pub fn audit_storage_live(storage: &Path) -> Result<Value, String> {
+    audit_storage_opened(open_audit_store_live(Some(storage))?)
+}
+
+fn audit_storage_opened(opened: AuditStore) -> Result<Value, String> {
+    let mut report = opened.report;
+    let Some(store) = opened.store else { return Ok(report) };
     let journal_ids: Vec<String> = report["campaigns"].as_array().map(|list| list.iter().map(|entry| js::string(entry.get("campaign_id"))).collect()).unwrap_or_default();
     let room_ids = store.room_overlay_ids().map_err(|error| error.to_string())?;
     let mut blockers = Vec::new();

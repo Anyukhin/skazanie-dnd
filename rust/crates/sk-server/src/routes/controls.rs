@@ -54,10 +54,10 @@ use crate::state::AppState;
 pub fn routes() -> Vec<Route> {
     vec![
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/controls$/` и `POST`.
-        Route::post(4979, Matcher::path_template("/api/campaigns/{id}/controls"), campaign_controls),
+        Route::post(5046, Matcher::path_template("/api/campaigns/{id}/controls"), campaign_controls),
         // `/^\/api\/campaigns\/([A-Za-z0-9-]+)\/lifecycle$/`; метод — в обработчике
         // (`GET` 4968, `POST` 4976), прочие идут дальше по таблице.
-        Route::pass(5044, Methods::Any, Matcher::path_template("/api/campaigns/{id}/lifecycle"), campaign_lifecycle),
+        Route::pass(5111, Methods::Any, Matcher::path_template("/api/campaigns/{id}/lifecycle"), campaign_lifecycle),
     ]
 }
 

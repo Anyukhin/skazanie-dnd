@@ -56,6 +56,22 @@ use crate::combat::monsters::{sync_authored_npc_vital, sync_social_npc_vital};
 pub fn damage_applied(state: &mut Value, event: &Event) {
     let target = target_of(event);
     let payload = payload(event).clone();
+    if let Some(effect_id) = payload.get("area_damage_effect_id").filter(|value| truthy(Some(value))).map(|value| s(Some(value))) {
+        let amount = safe_int(crate::core::coalesce(&[payload.get("area_damage_dealt"), payload.get("applied_amount")]), 0).max(0);
+        let effects = mechanics_mut(state).entry("active_effects").or_insert_with(|| Value::Array(Vec::new()));
+        if let Some(list) = effects.as_array_mut() {
+            for effect in list.iter_mut() {
+                let id = s(effect.get("effect_id").filter(|value| !value.is_null()).or_else(|| effect.get("id")));
+                if id != effect_id { continue; }
+                let dealt = safe_int(effect.get("damage_dealt"), 0) + amount;
+                effect["damage_dealt"] = Value::from(dealt);
+            }
+            list.retain(|effect| {
+                let limit = safe_int(effect.get("damage_limit"), 0);
+                limit <= 0 || safe_int(effect.get("damage_dealt"), 0) < limit
+            });
+        }
+    }
     let blocked_magic_missile = s(payload.get("spell_id")) == "magic-missile" && is_true(payload.get("blocked_by_shield"));
     let enemy = is_enemy_actor(state, &target);
     replace_actor(state, &target, |actor| {

@@ -127,6 +127,7 @@ function selectedDecision(action, state = {}) {
  * отряд уже проголосовал, мог не опознаться как уход.
  */
 export function interpretResolvedPartyDecision(action, state = {}) {
+  if (state.agentInteraction?.scenarioTreaty) return null
   const text = clean(action, 2000).normalize('NFKC')
   if (!/^\[РЕШЕНИЕ ГРУППЫ\]/iu.test(text)) return null
   const decision = selectedDecision(text, state)

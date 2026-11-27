@@ -961,6 +961,11 @@ pub fn answer_known_lore(action: &str, state: &Value, options: &KnownLoreOptions
         scored.sort_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));
         let best = scored[0].0;
         let sentence = &sentences[best];
+        let previous = best.checked_sub(1).and_then(|index| sentences.get(index));
+        let continuation = test(re!(r"^(?:\d|ноль|один|два|три|четыре|пять|шесть|семь|восемь|девять|десять|сегодня|вчера|завтра|назад|через|последн\p{L}*|раз\s+в)", "iu"), sentence);
+        if let Some(previous) = previous.filter(|previous| continuation && len16(previous) + len16(sentence) <= 220) {
+            return visible_str(&format!("{previous} {sentence}"), 240);
+        }
         match sentences.get(best + 1) {
             Some(next) if len16(sentence) + len16(next) <= 220 => visible_str(&format!("{sentence} {next}"), 240),
             _ => visible_str(sentence, 240),

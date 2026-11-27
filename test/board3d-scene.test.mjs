@@ -6,7 +6,7 @@ import test from 'node:test'
 
 import { compileClientModules } from './kit/client-ts.mjs'
 
-import { addProp, createTacticalMap, serializeTacticalMap, setCell, setDoor, setEdge } from '../server/tactical-map.mjs'
+import { addProp, addZone, createTacticalMap, serializeTacticalMap, setCell, setDoor, setEdge } from '../server/tactical-map.mjs'
 import { publicTacticalMapFor } from '../server/viewer-projection.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -222,6 +222,45 @@ test('отделка среза есть только у видимых стен
   } finally { scene.dispose() }
 })
 
+test('портал библиотеки привязан к двери и зонам, работает в резервном 3D-пути', () => {
+  const source = createTacticalMap({ width: 3, height: 2, locationId: 'astohan-forgotten-cliffs', theme: 'building', seed: 'library-portal-test' })
+  addZone(source, { id: 'library', kind: 'interior', material: 'wood', lightLevel: 'dim', label: 'Библиотека' })
+  addZone(source, { id: 'courtyard', kind: 'exterior', material: 'stone', lightLevel: 'dim', label: 'Двор' })
+  for (let y = 0; y < 2; y += 1) for (let x = 0; x < 3; x += 1) {
+    const library = x === 1 && y === 0
+    setCell(source, x, y, { passable: true, material: library ? 'wood' : 'stone', zone: library ? 'library' : 'courtyard', revealed: true })
+  }
+  setDoor(source, { id: 'astohan-forgotten-cliffs:door-5', x: 1, y: 0, dir: 's', state: 'closed' })
+  const map = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(source))))
+  const scene = scene3d.createBoard3DScene(map, { graphicsStyle: false, landscapeDetail: 'reduced' })
+  try {
+    const portal = scene.group.getObjectByName('library-portal-fallback')
+    assert.ok(portal, 'резервный путь строит портал библиотеки')
+    const wedges = portal.getObjectByName('library-portal-fallback-wedges')
+    assert.ok(wedges && wedges.count === 9, 'арка состоит из восьми клиньев и замкового камня')
+    assert.ok(wedges.geometry.userData.portalWedge, 'клинья имеют радиальный профиль')
+    portal.updateMatrixWorld(true)
+    const bounds = new THREE.Box3().setFromObject(portal)
+    assert.ok(bounds.max.y > 1.4 && bounds.max.y < 2, 'арка выше героя, но не превращается в стену')
+    assert.ok(bounds.max.x - bounds.min.x < 1.5 && bounds.max.z - bounds.min.z < 1.5, 'портал не занимает соседние клетки')
+    assert.ok(objectsNamed(scene.group, 'door-leaf:1,0,s:closed').length > 0, 'закрытая створка согласована с порталом')
+  } finally { scene.dispose() }
+  setDoor(source, { id: 'astohan-forgotten-cliffs:door-5', x: 1, y: 0, dir: 's', state: 'open' })
+  const openMap = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(source))))
+  const openScene = scene3d.createBoard3DScene(openMap, { graphicsStyle: false, landscapeDetail: 'reduced' })
+  try {
+    const openLeaf = objectsNamed(openScene.group, 'door-leaf:1,0,s:open')[0]
+    assert.ok(openLeaf, 'открытая створка существует у петли')
+    openLeaf.updateWorldMatrix(true, true)
+    const openBounds = new THREE.Box3().setFromObject(openLeaf)
+    assert.ok(openBounds.max.x < 1.15 && openBounds.min.x >= .98,
+      `открытая створка стоит под левым косяком ребра x=1…2: [${openBounds.min.x}, ${openBounds.max.x}]`)
+    const ray = new THREE.Raycaster(new THREE.Vector3(1.5, 1.3, 1.8), new THREE.Vector3(0, 0, -1), 0, 1.6)
+    assert.equal(ray.intersectObject(openLeaf).length, 0, 'в центре проёма на высоте героя нет полотна')
+    assert.ok(openBounds.max.y > 1, 'открытая створка имеет высоту портала')
+  } finally { openScene.dispose() }
+})
+
 test('распознаваемый реквизит и локальный свет создаются только для видимой опоры', () => {
   const map = mapOf({ revealed: [{ x: 1, y: 1 }] })
   addProp(map, { id: 'crate', assetId: 'crate', x: 1.5, y: 1.5 })
@@ -239,6 +278,50 @@ test('распознаваемый реквизит и локальный све
   assert.ok(fireLight.position.y > 0 && fireLight.position.y < 1, 'локальный свет поднят над костром')
   assert.equal(fireLight.position.z, 1.5, 'локальный свет стоит над костром по Z')
   scene.dispose()
+})
+
+test('резная спинка замкового трона выше обычного трона при том же сиденье', async () => {
+  const props = await build.load('src/board3d-props.ts')
+  const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js')
+  const file = readFileSync(join(root, 'public/assets/styles/stylized/props/sk_royal_throne.glb'))
+  const { scene: model } = await new GLTFLoader().parseAsync(file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength), '')
+  const key = 'style-sk-royal-throne'
+  const assets = { catalog: { models: [{ key, assetIds: ['royal_throne'], yaw: 0 }] }, models: new Map([[key, model]]) }
+  const id = 'astohan-forgotten-cliffs:throne'
+  const castle = JSON.parse(readFileSync(join(root,'data/authored-location-maps-v1.json'),'utf8')).maps.find(m => m.locationId === 'astohan-forgotten-cliffs')
+  const object = mapClient.decodeTacticalMap(castle).props.find(p => p.id === id)
+  for (const templates of [null, assets]) {
+    const library = props.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, templates)
+    try {
+      const throne = library.create(object), other = library.create({ ...object, id: 'other' })
+      assert.equal(other.getObjectByName('castle-throne-back'), undefined)
+      assert.ok(throne.getObjectByName('pierced-back'))
+      const top = item => new THREE.Box3().setFromObject(item).max.y
+      assert.ok(top(throne) > top(other) + .5)
+      const seat = templates ? 'cloth' : 'throne-seat'
+      assert.equal(top(throne.getObjectByName(seat)), top(other.getObjectByName(seat)))
+    } finally { library.dispose() }
+  }
+})
+
+test('огонь принадлежит целому источнику, яркость свечи определяется её комнатой', () => {
+  const source = createTacticalMap({ width: 8, height: 2, seed: 'room-fire' })
+  source.zones.push({ id: 'library', kind: 'interior', lightLevel: 'dim', material: 'wood' })
+  for (let x = 0; x < 8; x++) setCell(source, x, 0, { revealed: true, passable: true, zone: 'library' })
+  for (const [i, state] of ['toppled', 'broken', 'burned', 'intact'].entries()) {
+    addProp(source, { id: 'bowl' + i, assetId: 'guard_brazier', x: i + .5, y: .5, state })
+  }
+  addProp(source, { id: 'desk', assetId: 'candle_desk', x: 4.5, y: .5 })
+  const map = mapClient.decodeTacticalMap(serializeTacticalMap(source))
+  const scene = scene3d.createBoard3DScene(map, { darkness: 0 })
+  try {
+    const lights = objectsNamed(scene.group, 'fire-light')
+    assert.equal(lights.length, 2)
+    assert.ok(lights.every(light => light.position.x >= 3))
+    assert.equal(objectsNamed(scene.group, 'fire-core').length, 2)
+    assert.ok(lights[1].intensity > 2 && lights[1].intensity < lights[0].intensity)
+    assert.equal(lights[0].shadow.camera.far, lights[0].distance)
+  } finally { scene.dispose() }
 })
 
 test('pointLightShadows управляет только тенями локальных PointLight', () => {
@@ -603,6 +686,52 @@ test('трава: изогнутые травинки, гуще у кромки 
   assert.equal(reduced.group.getObjectByName('landscape-flowers'), undefined, 'цветы только на «Высоком»')
   full.dispose()
   reduced.dispose()
+})
+
+test('геометрия пучка распределяет корни по площади, а не собирает звезду в центре', () => {
+  const geometry = landscape.createGrassTuftGeometry()
+  const position = geometry.getAttribute('position')
+  const roots = []
+  for (let index = 0; index < position.count; index += 1) if (position.getY(index) === 0) roots.push([position.getX(index), position.getZ(index)])
+  assert.ok(Math.max(...roots.map(([x]) => x)) - Math.min(...roots.map(([x]) => x)) > .3)
+  assert.ok(Math.max(...roots.map(([, z]) => z)) - Math.min(...roots.map(([, z]) => z)) > .3)
+  geometry.dispose()
+})
+
+test('ковёр травы: декоративная grass_tuft не вырезает клетку, корни следуют впадине пола', () => {
+  const map = terrainMap({ width: 3, height: 2, cell: () => ({}) })
+  const built = landscape.createGrassTufts(map, [{
+    assetId: 'grass_tuft', x: .5, y: .5, footprint: [{ x: 0, y: 0 }],
+  }, {
+    assetId: 'rock_small', x: 1.5, y: .5, footprint: [{ x: 1, y: 0 }], interactive: false,
+  }], 'reduced', 'carpet')
+  const relief = landscape.createTileGroundGeometry(map, {
+    include: (_x, _y, cell) => cell.material === 'grass', uvCells: 1, seamless: () => true,
+    relief: { subdivisions: 4, depth: .18, height: (u, v) => u < .5 ? .08 * Math.cos(9 * v) + .1 : 1, surfaceKey: () => 'grass' },
+    indexForGrass: true,
+  })
+  try {
+    const blades = built.group.getObjectByName('landscape-grass-blades')
+    assert.ok(blades && !built.group.getObjectByName('grass-carpet-base'))
+    assert.ok(blades.count >= 3 * 2 * 3 * 3, 'ковёр заполняет обе строки и не теряет grass_tuft')
+    assert.equal(typeof built.setSurfaceGeometry, 'function')
+    built.setSurfaceGeometry('grass', relief)
+    const soil = new THREE.Mesh(relief)
+    const ray = new THREE.Raycaster()
+    ray.ray.direction.set(0, -1, 0)
+    const matrix = new THREE.Matrix4(), left = [], right = []
+    for (let index = 0; index < blades.count; index += 1) {
+      blades.getMatrixAt(index, matrix)
+      const x = matrix.elements[12]
+      ray.ray.origin.set(x, 2, matrix.elements[14])
+      const hit = ray.intersectObject(soil)[0]
+      assert.ok(hit && Math.abs(hit.point.y - matrix.elements[13]) < .0001, 'центр травы лежит на треугольнике пола')
+      ;(x < .5 ? left : right).push(matrix.elements[13])
+    }
+    assert.ok(Math.min(...left) < Math.max(...right) - .08, 'корни повторяют искусственную впадину')
+    const floorY = Array.from(relief.getAttribute('position').array)
+    assert.ok(Math.min(...left, ...right) >= Math.min(...floorY) - .001, 'корень не висит ниже поверхности')
+  } finally { relief.dispose(); built.dispose() }
 })
 
 test('газон без швов: соседние естественные клетки стыкуются вплотную, кромка — только к плитке', () => {

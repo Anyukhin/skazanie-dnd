@@ -131,6 +131,9 @@ pub fn check_parley(v: &mut Validation<'_>) -> Step {
     if !PARLEY_COMMAND_TYPES.contains(&kind.as_str()) {
         return Ok(());
     }
+    if super::scenario_treaty_parley(v.state) && !(kind == "SettleParley" && v.command["outcome"] == "resume") {
+        return Err(rule("Условия мира с Саргатом выносит на голосование переговорщик", "SCENARIO_TREATY_REQUIRED"));
+    }
     if !sk_core::game::combat_active(v.state) {
         return Err(rule("Переговоры посреди боя возможны только в бою", "COMBAT_NOT_ACTIVE"));
     }

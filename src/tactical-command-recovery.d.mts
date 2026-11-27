@@ -52,6 +52,7 @@ export function narrateRecoveryFor(
   intent: NarrateIntent,
   options: { newKey: () => string; manualRoll?: boolean },
 ): NarrateRecovery | null
+export function narrateRequestAction(action: string, recovery: NarrateRecovery | null | undefined): string
 export function pendingNarrateStorageKey(accountId: string | undefined, campaignId: string | undefined): string | null
 export function parsePendingNarrate(raw: string | null): NarrateRecovery | null
 export function readPendingNarrate(storage: Storage | null | undefined, key: string | null): NarrateRecovery | null

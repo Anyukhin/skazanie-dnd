@@ -11,10 +11,11 @@
 //! [`normalize_scene_interactions`]: нормализация памяти сцены о тронутых
 //! объектах (`normalizeSceneInteractions` из `rules-engine.mjs`).
 
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use sk_combat_content::scene_hazards::{ignite_definition_for, scene_hazard_verbs_for, topple_definition_for};
 use sk_core::indexmap::{IndexMap, IndexSet};
 use sk_core::{hash, js, re, text};
+use sk_scenario::campaign_scenario::scenario_inspection_for_location_prop;
 
 pub const SCENE_INTERACTION_POLICY_ID: &str = "skazanie:scene-interactions-v1";
 
@@ -285,6 +286,15 @@ pub fn scene_object_label_for(asset_id: Option<&Value>) -> String {
         .map_or_else(String::new, |word| clean(word, 60))
 }
 
+/// Русская подпись предмета авторской улики, если место и полный id пропа
+/// подтверждают такую связь. В остальных сценах используется обычный assetId.
+pub fn scene_object_label_for_prop(asset_id: Option<&Value>, location_id: &str, prop_id: &str) -> String {
+    scenario_inspection_for_location_prop(location_id, prop_id)
+        .and_then(|clue| clue.get("label").and_then(Value::as_str).map(str::to_string))
+        .filter(|label| !label.is_empty())
+        .unwrap_or_else(|| scene_object_label_for(asset_id))
+}
+
 /// Запись каталога пропа (`sceneInteractionCatalogEntry`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SceneInteractionCatalogEntry {
@@ -449,10 +459,28 @@ fn check_value(ability: &str, skill: &str, dc: u64, purpose: &str) -> Value {
 /// `sceneInteractionDefinition({ mapSeed, props, propId })`: полное серверное
 /// определение объекта — замок, ловушка, проверка осмотра, деталь, эффект.
 pub fn scene_interaction_definition(map_seed: &str, props: &[Value], prop_id: Option<&Value>) -> Option<Value> {
+    scene_interaction_definition_with_clue(map_seed, props, prop_id, None)
+}
+
+/// Полное определение с уже проверенной сценарием уликой предмета.
+pub fn scene_interaction_definition_with_clue(
+    map_seed: &str,
+    props: &[Value],
+    prop_id: Option<&Value>,
+    scenario_clue: Option<&Value>,
+) -> Option<Value> {
     let wanted = clean_value(prop_id, 120);
     let prop = props.iter().find(|candidate| clean_value(field(Some(candidate), "id"), 120) == wanted)?;
     let prop_ref = PropRef::from_value(Some(prop));
-    let metadata = scene_interaction_metadata(map_seed, props).shift_remove(&clean(&prop_ref.id, 120))?;
+    let metadata = scene_interaction_metadata(map_seed, props).shift_remove(&clean(&prop_ref.id, 120)).or_else(|| {
+        scenario_clue.map(|_| InteractionMetadata {
+            kind: "lore",
+            verbs: vec!["inspect"],
+            point_of_interest: true,
+            detail_key: String::new(),
+            reward_key: String::new(),
+        })
+    })?;
     let alias = asset_alias(&prop_ref.asset_id);
     let seed = format!("{}:{}:{}", clean(map_seed, 160), clean(&prop_ref.id, 160), clean(&prop_ref.asset_id, 160));
     let difficulty = 10 + (hash_number(&format!("{seed}:dc")) % 3) * 2;
@@ -488,7 +516,7 @@ pub fn scene_interaction_definition(map_seed: &str, props: &[Value], prop_id: Op
         "lore" | "corpse" => check_value("wis", "investigation", difficulty, &purpose),
         _ => Value::Null,
     };
-    object.insert("check".into(), check);
+    object.insert("check".into(), if scenario_clue.is_some() { Value::Null } else { check });
     object.insert(
         "lock".into(),
         if locked { check_value("dex", "sleight_of_hand", difficulty, "scene-object:container:lock") } else { Value::Null },
@@ -506,15 +534,22 @@ pub fn scene_interaction_definition(map_seed: &str, props: &[Value], prop_id: Op
         Value::Null
     };
     object.insert("trap".into(), trap);
-    object.insert(
-        "detail".into(),
-        detail.map_or(Value::Null, |(id, text)| {
-            let mut detail = Map::new();
-            detail.insert("id".into(), Value::String(id.into()));
-            detail.insert("text".into(), Value::String(text.into()));
-            Value::Object(detail)
-        }),
-    );
+    let detail = scenario_clue
+        .and_then(|clue| {
+            let clue_id = clean_value(clue.get("clue_id"), 120);
+            let text = clean_value(clue.get("clue"), 1_000);
+            (!text.is_empty()).then(|| json!({ "id": format!("scenario-clue:{clue_id}"), "text": text }))
+        })
+        .or_else(|| {
+            detail.map(|(id, text)| {
+                let mut detail = Map::new();
+                detail.insert("id".into(), Value::String(id.into()));
+                detail.insert("text".into(), Value::String(text.into()));
+                Value::Object(detail)
+            })
+        })
+        .unwrap_or(Value::Null);
+    object.insert("detail".into(), detail);
     let effect = if metadata.kind == "relic" {
         let mut effect = Map::new();
         effect.insert("id".into(), Value::String("minor-ward".into()));
@@ -555,6 +590,8 @@ pub struct SceneObjectOperation {
     pub aliases: Vec<&'static str>,
     /// Названа цель, которая не предмет обстановки (дверь, рычаг, люк).
     pub names_other_target: bool,
+    /// Поиск авторского предмета по его server-owned подписи (`ищу журнал`).
+    pub search: bool,
 }
 
 impl SceneObjectOperation {
@@ -567,6 +604,9 @@ impl SceneObjectOperation {
         if self.names_other_target {
             object.insert("namesOtherTarget".into(), Value::Bool(true));
         }
+        if self.search {
+            object.insert("search".into(), Value::Bool(true));
+        }
         Value::Object(object)
     }
 }
@@ -576,8 +616,8 @@ const NON_PROP_TARGET: &str = r"(?<![а-яё])(?:двер(?:ь|и|ью|ей|ям
 
 /// `sceneObjectOperationFromText(text)`.
 pub fn scene_object_operation_from_text(text_value: Option<&Value>) -> Option<SceneObjectOperation> {
-    let normalized = text::lower(&clean_value(text_value, 1_000));
-    if normalized.is_empty() {
+    let normalized = text::without_quoted_or_negated_actions(&text::lower(&clean_value(text_value, 1_000)));
+    if normalized.is_empty() || text::test(re!(r"^(?:как|где|когда|кто|зачем|почему|что|если|спрашиваю|рассказываю|обсуждаю)(?!\p{L})", "iu"), normalized.trim()) {
         return None;
     }
     let lockpick = text::test(
@@ -594,20 +634,26 @@ pub fn scene_object_operation_from_text(text_value: Option<&Value>) -> Option<Sc
         "use"
     } else if text::test(re!(r"(?<![а-яё])(?:открыть|разбить|сломать|взломать|выломать)", "u"), &normalized) {
         "open"
-    } else if text::test(re!(r"(?<![а-яё])(?:осмотреть|изучить|прочитать|проверить|обыскать)", "u"), &normalized) {
+    } else if text::test(re!(r"(?<![а-яё])(?:осмотр[а-яё]*|осматр[а-яё]*|изуч[а-яё]*|прочит[а-яё]*|чита[а-яё]*|провер[а-яё]*|обыск[а-яё]*|ищ\p{L}*|найт\p{L}*|отыск\p{L}*)", "iu"), &normalized) {
         "inspect"
     } else {
         return None;
     };
     let approach = if !lockpick && text::test(re!(r"(?:разбить|сломать|взломать|выломать|ударить|топор)", "u"), &normalized) { "force" } else { "hand" };
-    // После указания места может идти ориентир уже названной двери или рычага.
+    let search = intent == "inspect" && text::test(re!(r"(?<![а-яё])(?:ищ\p{L}*|найт\p{L}*|отыск\p{L}*)", "iu"), &normalized);
+    // После уже названной цели («открыть дверь рядом с сундуком») ориентир
+    // не должен переносить операцию на соседний предмет.
     let before_landmark = re!(r"\s+(?:у|возле|около|рядом\s+с|к|ко|в|во|на|до)\s+", "u")
         .find(&normalized).ok().flatten().map_or(normalized.as_str(), |marker| &normalized[..marker.start()]);
-    let target_text = if text::test(re!(NON_PROP_TARGET, "u"), before_landmark) { before_landmark } else { &normalized };
-    let aliases: Vec<&'static str> =
-        ASSET_ALIASES_RU.iter().filter(|(_, words)| words.iter().any(|word| target_text.contains(word))).map(|(alias, _)| *alias).collect();
+    let target_text = if text::test(re!(NON_PROP_TARGET, "u"), before_landmark) { before_landmark } else { normalized.as_str() };
+    let text_words = normalized_words(target_text);
+    let aliases: Vec<&'static str> = ASSET_ALIASES_RU.iter()
+        .filter(|(_, words)| words.iter().any(|word| if search {
+            normalized_words(word).iter().all(|target| text_words.iter().any(|candidate| candidate == target || word_stem(candidate) == word_stem(target)))
+        } else { target_text.contains(word) }))
+        .map(|(alias, _)| *alias).collect();
     let names_other_target = aliases.is_empty() && text::test(re!(NON_PROP_TARGET, "u"), target_text);
-    Some(SceneObjectOperation { intent, approach, aliases, names_other_target })
+    Some(SceneObjectOperation { intent, approach, aliases, names_other_target, search })
 }
 
 /// `Number.isSafeInteger(number)`.
@@ -646,9 +692,38 @@ pub fn scene_object_distance(prop: Option<&Value>, actor_position: Option<&Value
     prop_cells(prop).into_iter().map(|(cx, cy)| (cx - x).abs().max((cy - y).abs())).fold(f64::INFINITY, f64::min)
 }
 
+fn normalized_words(value: &str) -> Vec<String> {
+    re!(r"\p{L}[\p{L}\p{M}0-9-]*", "u").find_iter(&text::lower(value)).filter_map(Result::ok).map(|item| item.as_str().to_string()).collect()
+}
+
+fn word_stem(value: &str) -> String {
+    let word = text::lower(value);
+    if word.chars().count() < 3 || !word.chars().all(|ch| ch.is_ascii() || ch.is_alphabetic()) { return word; }
+    for suffix in ["иями", "ями", "ами", "ого", "ему", "ому", "ыми", "ими", "ах", "ях", "ой", "ей", "ом", "ем", "а", "я", "у", "ю", "е", "ы", "и"] {
+        if word.ends_with(suffix) && word.chars().count() - suffix.chars().count() >= 3 {
+            return word[..word.len() - suffix.len()].to_string();
+        }
+    }
+    word
+}
+
 /// `nearestSceneObjectCommand({ props, actorPosition, text })`: команда
 /// `OperateSceneObject` к ближайшему подходящему пропу или `None`.
 pub fn nearest_scene_object_command(props: Option<&Value>, actor_position: Option<&Value>, text_value: Option<&Value>) -> Option<Value> {
+    nearest_scene_object_command_with_scenario(props, actor_position, text_value, None)
+}
+
+/// Вариант свободного разбора для активной авторской кампании. `scenario_clues`
+/// — карта `prop_id -> { label }`, собранная из текущего состояния. Она нужна
+/// только для предметов, которых нет в общем каталоге реквизита, например
+/// обгоревшего журнала. Без этой карты произвольный `paper_scatter` не станет
+/// интерактивным и не сможет раскрыть тайну другой кампании.
+pub fn nearest_scene_object_command_with_scenario(
+    props: Option<&Value>,
+    actor_position: Option<&Value>,
+    text_value: Option<&Value>,
+    scenario_clues: Option<&Value>,
+) -> Option<Value> {
     let operation = scene_object_operation_from_text(text_value)?;
     if operation.names_other_target && operation.intent != "pray" {
         return None;
@@ -657,34 +732,55 @@ pub fn nearest_scene_object_command(props: Option<&Value>, actor_position: Optio
         Some(Value::Array(items)) => items,
         _ => &[],
     };
-    let mut candidates: Vec<(&Value, f64)> = props
+    let clue_for = |prop: &Value| {
+        let id = clean_value(field(Some(prop), "id"), 120);
+        scenario_clues.and_then(|clues| field(Some(clues), &id))
+    };
+    let target_text = text::without_quoted_or_negated_actions(&text::lower(&clean_value(text_value, 1_000)));
+    let text_words = normalized_words(&target_text);
+    let label_matches = |clue: Option<&Value>| {
+        ["label", "alias"].iter().any(|key| {
+            let words = normalized_words(&clean_value(clue.and_then(|value| field(Some(value), key)), 120));
+            !words.is_empty() && words.iter().all(|word| text_words.iter().any(|candidate| candidate == word || word_stem(candidate) == word_stem(word)))
+        })
+    };
+    let mut candidates: Vec<(&Value, f64, bool)> = props
         .iter()
         .filter_map(|prop| {
             let asset_id = js::s(field(Some(prop), "assetId"));
-            let entry = catalog_record(&asset_id)?;
+            let clue = clue_for(prop);
+            let clue_match = label_matches(clue);
+            let entry = catalog_record(&asset_id);
+            if entry.is_none() && !(operation.intent == "inspect" && clue_match) { return None; }
             if operation.intent == "pray" && !is_shrine_str(&asset_id) {
                 return None;
             }
-            if operation.intent == "lockpick" && entry.kind != "container" {
+            if operation.intent == "lockpick" && entry?.kind != "container" {
                 return None;
             }
-            if operation.intent != "pray" && !entry.verbs.contains(&operation.intent) {
+            if operation.intent != "pray" && !entry.as_ref().is_some_and(|item| item.verbs.contains(&operation.intent)) && !(operation.intent == "inspect" && clue_match) {
                 return None;
             }
-            if !operation.aliases.is_empty() && !asset_alias(&asset_id).is_some_and(|alias| operation.aliases.contains(&alias)) {
+            if (operation.search || (clue.is_some() && operation.intent == "inspect")) && !clue_match {
                 return None;
             }
-            Some((prop, scene_object_distance(Some(prop), actor_position)))
+            if !operation.aliases.is_empty() && !asset_alias(&asset_id).is_some_and(|alias| operation.aliases.contains(&alias)) && !(operation.intent == "inspect" && clue_match) {
+                return None;
+            }
+            Some((prop, scene_object_distance(Some(prop), actor_position), clue_match))
         })
-        .filter(|(_, distance)| !operation.aliases.is_empty() || operation.intent == "pray" || *distance <= 1.0)
+        .filter(|(_, distance, clue_match)| !operation.aliases.is_empty() || *clue_match || operation.intent == "pray" || *distance <= 1.0)
         .collect();
     candidates.sort_by(|left, right| {
+        if operation.intent == "inspect" && left.2 != right.2 {
+            return right.2.cmp(&left.2);
+        }
         let by_distance = if left.1 == right.1 { None } else { left.1.partial_cmp(&right.1) };
         by_distance.unwrap_or_else(|| {
             text::locale_compare(&clean_value(field(Some(left.0), "id"), 160), &clean_value(field(Some(right.0), "id"), 160))
         })
     });
-    let (selected, _) = candidates.first()?;
+    let (selected, _, _) = candidates.first()?;
     let mut command = Map::new();
     command.insert("command_type".into(), Value::String("OperateSceneObject".into()));
     command.insert("prop_id".into(), Value::String(clean_value(field(Some(selected), "id"), 120)));

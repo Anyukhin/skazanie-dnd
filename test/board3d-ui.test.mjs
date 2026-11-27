@@ -44,7 +44,7 @@ for (const path of emittedFiles(buildDir).filter((candidate) => candidate.endsWi
   rmSync(path)
 }
 
-const { default: TacticalBoard3D, targetPreviewCells, moveRoute, queuedStartCell } = await import(pathToFileURL(join(buildDir, 'src', 'TacticalBoard3D.mjs')).href)
+const { default: TacticalBoard3D, targetPreviewCells, moveRoute, queuedStartCell, nameplateShifts } = await import(pathToFileURL(join(buildDir, 'src', 'TacticalBoard3D.mjs')).href)
 const quality = await import(pathToFileURL(join(buildDir, 'src', 'board3d-quality.mjs')).href)
 
 test('профиль качества сохраняет событие и не повышает уже ограниченную детализацию', () => {
@@ -106,6 +106,16 @@ test('3D-прицел выбирает только временные клет�
     { x: 3, y: 2, className: 'spell-preview-cell' },
   ])
   assert.deepEqual(cells.map(({ x, y }) => `${x},${y}`), ['1,2'])
+})
+
+test('3D-подписи расходятся, сохраняя приоритет цели и оставаясь в кадре', () => {
+  const neighbour = { left: 35, right: 90, top: 11, bottom: 28, priority: 0 }
+  const selected = { left: 20, right: 80, top: 8, bottom: 25, priority: 2 }
+  const separate = { left: 100, right: 160, top: 8, bottom: 25, priority: 1 }
+  assert.deepEqual(nameplateShifts([neighbour, selected, separate], 80), [17, 0, 0])
+
+  const nearBottom = { ...selected, top: 60, bottom: 77 }
+  assert.deepEqual(nameplateShifts([{ ...neighbour, top: 61, bottom: 78 }, nearBottom], 80), [-21, 0])
 })
 
 test('SSR не создаёт DOM-обёртки для пустых клеток и сохраняет полезные слои', () => {
@@ -177,6 +187,25 @@ test('SSR скрывает FPS по умолчанию и уважает сох�
     assert.match(on, /aria-label="Частота кадров"/u)
     assert.match(on, /aria-live="off"/u)
     assert.match(on, /— FPS/u)
+  } finally {
+    if (previousStorage === undefined) delete globalThis.localStorage
+    else globalThis.localStorage = previousStorage
+  }
+})
+
+test('SSR показывает переключатель фона 3D с безопасным вариантом по умолчанию', () => {
+  const previousStorage = globalThis.localStorage
+  try {
+    globalThis.localStorage = {
+      getItem: (key) => key === 'skazanie-3d-backdrop' ? 'неизвестный-режим' : null,
+      setItem: () => {},
+    }
+    const markup = renderBoard([])
+    assert.match(markup, /aria-label="Фон 3D"/u)
+    assert.match(markup, /value="landscape"/u)
+    assert.match(markup, />Пейзаж</u)
+    assert.match(markup, />Атлас</u)
+    assert.match(markup, />Классический</u)
   } finally {
     if (previousStorage === undefined) delete globalThis.localStorage
     else globalThis.localStorage = previousStorage

@@ -49,13 +49,7 @@ fn stable_hash(parts: &[Option<&Value>]) -> String {
 /// отрицаемых действий («не угрожаю», «не хочу его запугивать»).
 pub fn affirmative_action_text(message: &Value) -> String {
     let lowered = text::lower(&clean(Some(message), DEFAULT_CLEAN));
-    let unquoted = text::replace_all(re!(r#"«[^»]*»|"[^"]*"|'[^']*'"#, "gu"), &lowered, " ");
-    let without_intent = text::replace_all(
-        re!(r"(?:^|\s)(?:не|ни|без|никогда)\s+(?!только(?:\s|$))(?:буду|хочу|собираюсь)\s+(?:(?:его|её|их|это|так|себя)\s+)?\p{L}+", "giu"),
-        &unquoted,
-        " ",
-    );
-    text::replace_all(re!(r"(?:^|\s)(?:не|ни|без|никогда)\s+(?!только(?:\s|$))\p{L}+", "giu"), &without_intent, " ")
+    text::without_quoted_or_negated_actions(&lowered)
 }
 
 /// Вид социальной проверки по реплике (`classifyNpcSocialCheck`).

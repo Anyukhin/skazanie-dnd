@@ -318,6 +318,17 @@ pub fn append_room_journal_at(core: &Rc<GameCore>, campaign_id: &str, entries: &
     Ok(None)
 }
 
+fn scenario_treaty_chronicle_entry(event: &Value) -> Option<Value> {
+    let payload = &event["payload"];
+    let text = match event["event_type"].as_str() {
+        Some("ScenarioTreatyConcluded" | "ScenarioTreatyRefused") if payload.get("party_decision_id").is_some() => payload["text"].as_str(),
+        Some("PartyDecisionConsumed") if event["house_rule_id"] == "skazanie:scenario-treaty-decision:v1" => payload["unavailable"].as_str()
+            .or((payload["resolved_option_id"] == "decline").then_some("Отряд не согласился на договор с Саргатом. Приключение продолжается.")),
+        _ => None,
+    }?;
+    Some(json!({ "id": format!("treaty-decision:{}", js::s(event.get("event_id"))), "speaker": "narrator", "author": "Рассказчик", "text": text, "turnConsumed": false }))
+}
+
 /// `journalCandidatesFor(events, journalMessage)` (3372–3381): карточки из
 /// событий (ход мира, почта, зверь, решение отряда, сюжет, контора) и
 /// переданная маршрутом реплика (одна запись или список — `.flat()`).
@@ -328,6 +339,7 @@ pub fn journal_candidates_for(events: &[Value], journal_message: Option<&Value>)
     candidates.extend(events.iter().filter_map(sk_world_life::courier_letters::courier_letter_chronicle_entry));
     candidates.extend(events.iter().filter_map(sk_npc_world::beast_taming::beast_chronicle_entry));
     candidates.extend(events.iter().filter_map(sk_character::quest_decisions::quest_decision_chronicle_entry));
+    candidates.extend(events.iter().filter_map(scenario_treaty_chronicle_entry));
     candidates.extend(events.iter().filter_map(sk_society::campaign_stories::campaign_story_chronicle_entry));
     candidates.extend(events.iter().filter_map(|event| sk_world_life::world_offices::office_chronicle_entry(event, &empty)));
     match journal_message {

@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { actorPresentationCenter, actorPresentationSize } from './tactical-ui'
 import { terrainHeightAt } from './board3d-terrain'
 import { cellAt, edgeBetween, revealedAt } from './tactical-map-client'
-import { projectileEndpoints, projectileVolley, spellBurstCells, spellChannelTargetIds, spellEffectPalette, spellIdFromEffect, type SpellEffectDetail } from './spell-effects'
+import { projectileEndpoints, projectileVolley, spellBurstCells, spellChannelTargetIds, spellEffectPalette, spellIdFromEffect, type PersistentSpellEffect, type SpellEffectDetail } from './spell-effects'
 import type { ActorFootprint, TacticalMap } from './types'
 import type { BoardPoint, CombatAnimationCue, SpellAnimationCue } from './combat-animation'
 
@@ -971,6 +971,7 @@ function createAreaBurst(
   actors: readonly SpellEffectActor[],
   map: TacticalMap,
 ): SpellEffect3D | null {
+  if (cue.spellId === 'guardian-of-faith') return createGuardianOfFaith(cue, actors, map)
   if (cue.shape === 'line' && cue.originMode === 'self') return createBurstLine(cue, actors, map)
   const footprint = burstFootprint(map, cue, actors)
   // Частично скрытый footprint остаётся в точном Canvas-слое. 3D не дорисовывает
@@ -1054,6 +1055,71 @@ function createAreaBurst(
       group.removeFromParent()
       geometries.forEach((entry) => entry.dispose())
       materials.forEach((entry) => entry.dispose())
+    },
+  }
+}
+
+/** Страж веры остаётся на месте сотворения, пока авторитетная область живёт в
+ * проекции. У него нет коллизии или picker-цели, это только визуальный слой. */
+function createGuardianOfFaith(
+  cue: Extract<SpellAnimationCue, { kind: 'burst' }>,
+  actors: readonly SpellEffectActor[],
+  map: TacticalMap,
+): SpellEffect3D | null {
+  const anchor = cue.center ?? cue.cells?.[0]
+  if (!anchor || !visible(map, anchor)) return null
+  const detail = detailOf(cue)
+  const { geometries, materials, track, material } = resources()
+  const group = new THREE.Group()
+  group.userData.guardianOfFaith = true
+  group.userData.board3dPickable = false
+  const ground = terrainHeightAt(map, anchor.x, anchor.y)
+  const center = new THREE.Vector3(anchor.x + .5, ground, anchor.y + .5)
+  const ghost = material(new THREE.MeshStandardMaterial({
+    color: '#8b91a6', emissive: '#222a45', emissiveIntensity: .7,
+    transparent: true, opacity: detail === 'minimal' ? .38 : .66,
+    roughness: .7, metalness: .1, depthWrite: false,
+  }))
+  const gold = material(new THREE.MeshStandardMaterial({
+    color: '#f1d58b', emissive: '#7d5e2d', emissiveIntensity: 1.1,
+    transparent: true, opacity: .8, roughness: .42, metalness: .32, depthWrite: false,
+  }))
+  const ring = new THREE.Mesh(track(new THREE.TorusGeometry(Math.max(.7, (Number(cue.sizeFeet) || 10) / 10), .025, 6, detail === 'full' ? 28 : 16)), gold)
+  ring.rotation.x = -Math.PI / 2
+  group.add(ring)
+  const torso = new THREE.Mesh(track(new THREE.CapsuleGeometry(.23, .72, 3, detail === 'full' ? 8 : 6)), ghost)
+  torso.position.set(center.x, center.y + .64, center.z)
+  group.add(torso)
+  const head = new THREE.Mesh(track(new THREE.SphereGeometry(.15, detail === 'full' ? 10 : 7, 5)), ghost)
+  head.position.set(center.x, center.y + 1.22, center.z)
+  group.add(head)
+  const shield = new THREE.Mesh(track(new THREE.CylinderGeometry(.26, .30, .07, 6)), gold)
+  shield.rotation.x = Math.PI / 2
+  shield.position.set(center.x - .30, center.y + .72, center.z + .03)
+  group.add(shield)
+  const spear = new THREE.Mesh(track(new THREE.CylinderGeometry(.025, .035, 1.55, 6)), gold)
+  spear.position.set(center.x + .30, center.y + .75, center.z)
+  spear.rotation.z = -.08
+  group.add(spear)
+  const blade = new THREE.Mesh(track(new THREE.ConeGeometry(.09, .25, 4)), gold)
+  blade.position.set(center.x + .30, center.y + 1.61, center.z)
+  group.add(blade)
+  group.traverse(object => { object.frustumCulled = false; object.raycast = () => {} })
+  return {
+    group,
+    update(progressValue) {
+      const progress = clamp01(progressValue)
+      const fade = Math.max(.68, Math.sin(Math.PI * Math.min(1, progress)))
+      ghost.opacity = (detail === 'minimal' ? .38 : .66) * fade
+      gold.opacity = .8 * fade
+      group.visible = visible(map, anchor) && fade > .015
+      const pulse = cue.motion === 'reduced' ? 1 : .97 + .03 * Math.sin(progress * Math.PI * 2)
+      group.scale.setScalar(pulse)
+    },
+    dispose() {
+      group.removeFromParent()
+      geometries.forEach(entry => entry.dispose())
+      materials.forEach(entry => entry.dispose())
     },
   }
 }
@@ -2055,6 +2121,35 @@ export function createSpellEffect3D(
   map: TacticalMap,
 ): SpellEffect3D | null {
   return withoutFrustumCulling(createSpellEffect3DUnculled(cue, actors, map))
+}
+
+/** Постоянный 3D-слой из публичной проекции. Сейчас только Страж веры имеет
+ * специальную фигуру, остальные области продолжают рисоваться общей сеткой. */
+export function createPersistentSpellEffect3D(
+  effect: PersistentSpellEffect,
+  actors: readonly SpellEffectActor[],
+  map: TacticalMap,
+): SpellEffect3D | null {
+  if (effect.kind !== 'area' || effect.spellId !== 'guardian-of-faith') return null
+  return createSpellEffect3D({
+    id: `persistent:${effect.id}`,
+    kind: 'burst',
+    actorId: effect.actorId ?? '',
+    targetIds: [],
+    spellId: effect.spellId,
+    school: effect.school ?? 'conjuration',
+    center: effect.center,
+    cells: effect.cells,
+    shape: effect.shape,
+    originMode: effect.originMode,
+    sizeFeet: effect.sizeFeet,
+    areaSideFeet: effect.areaSideFeet,
+    geometryVersion: effect.geometryVersion,
+    gridOrigin: effect.gridOrigin,
+    motion: 'reduced',
+    detail: 'reduced',
+    durationMs: 1,
+  }, actors, map)
 }
 
 function createSpellEffect3DUnculled(

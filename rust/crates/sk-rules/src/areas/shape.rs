@@ -601,13 +601,23 @@ fn slot_level_number(command: &Value, spell: &Value) -> f64 {
     }
 }
 
-/// `spellTargetsAt(state, command, spell)`: цели заклинания по той же
-/// геометрии, по которой оно затем разрешается.
+fn susceptible_to_hypnotic_pattern(state: &Value, actor: &Value) -> bool {
+    let conditions = crate::core::condition_ids_for(state, &game::actor_id(actor));
+    if ["blinded", "cannot-see", "unconscious", "charm-immune", "immune:charmed"].iter().any(|id| conditions.contains(*id)) {
+        return false;
+    }
+    let immunities = unique_strings(actor.get("condition_immunities").filter(|v| !v.is_null()).or_else(|| actor.get("conditionImmunities")));
+    !immunities.iter().any(|id| matches!(id.to_lowercase().as_str(), "charmed" | "charm" | "очарование" | "очарованный"))
+}
+
+/// Цели заклинания по той же геометрии, по которой оно затем разрешается.
 pub fn spell_targets_at(state: &Value, command: &Value, spell: &Value) -> Vec<Value> {
     let scene = Scene::new(state);
     let actor_id = js::s(command.get("actor_id"));
     let is_caster = |id: &str| command.get("actor_id").and_then(Value::as_str) == Some(id);
-    let can_be_affected = |actor: &Value| !sk_combat_content::combat_spells::is_untargetable_summon(Some(actor)) && (game::is_living_actor(actor) || is_dying_hero(state, &game::actor_id(actor)));
+    let can_be_affected = |actor: &Value| !sk_combat_content::combat_spells::is_untargetable_summon(Some(actor))
+        && (game::is_living_actor(actor) || is_dying_hero(state, &game::actor_id(actor)))
+        && (spell.get("id").and_then(Value::as_str) != Some("hypnotic-pattern") || susceptible_to_hypnotic_pattern(state, actor));
     let target = spell.get("target").and_then(Value::as_str);
     let kind = spell.get("kind").and_then(Value::as_str);
     let select_in_area = js::is_true(spell.get("selectTargetsInArea"));
@@ -647,7 +657,15 @@ pub fn spell_targets_at(state: &Value, command: &Value, spell: &Value) -> Vec<Va
         let upcast = js_max(0.0, slot_level_number(command, spell) - level) * js::safe_int(spell.get("upcastTargetsPerLevel"), 0).max(0) as f64;
         let maximum = js_max(1.0, js::safe_int(spell.get("maxTargets"), 1) as f64 + upcast);
         let count = if maximum.is_nan() { 0 } else { maximum as usize };
-        return unique_strings(Some(&requested)).into_iter().take(count).filter_map(|id| spell_creature_for(state, &id, spell)).collect();
+        let require_line_of_sight = js::is_true(spell.get("requiresLineOfSight"));
+        let scene = Scene::new(state);
+        return unique_strings(Some(&requested)).into_iter().take(count).filter_map(|id| {
+            let target = spell_creature_for(state, &id, spell)?;
+            if !require_line_of_sight { return Some(target); }
+            let source = actor_point(state, &actor_id)?;
+            let target_position = actor_point(state, &id)?;
+            if area_target_has_line_of_effect(&scene, command, spell, Some(source), Some(target_position), Some(&target), &|_, _| true) { Some(target) } else { None }
+        }).collect();
     }
     let to = Point::from_value(command.get("to"));
     let radius_fallback = if kind.is_some_and(|kind| kind.starts_with("area-")) { 5 } else { 0 };
@@ -740,7 +758,8 @@ pub fn npc_spell_targets_at(state: &Value, command: &Value, spell: &Value) -> Ve
     let scene = Scene::new(state);
     let actor_id = js::s(command.get("actor_id"));
     let target_ids = command.get("target_ids");
-    let candidates: Vec<NpcTarget> = placed_scene_npc_targets(state).into_iter().filter(|target| game::find_actor(state, &target.id()).is_none()).collect();
+    let candidates: Vec<NpcTarget> = placed_scene_npc_targets(state).into_iter().filter(|target| game::find_actor(state, &target.id()).is_none()
+        && (spell.get("id").and_then(Value::as_str) != Some("hypnotic-pattern") || susceptible_to_hypnotic_pattern(state, &target.npc))).collect();
     let explicit = select_in_area && has_length(target_ids);
     let selected_ids: Option<Vec<String>> = explicit.then(|| unique_strings(target_ids));
     let selected: Vec<&NpcTarget> = match &selected_ids {

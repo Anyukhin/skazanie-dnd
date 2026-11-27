@@ -79,6 +79,18 @@ test('Маяк надежды даёт преимущество на спасб�
   assert.notEqual(saveOf(withCondition('sacred-flame', ['beacon-of-hope'])).mode, 'advantage', 'Ловкость — без преимущества')
 })
 
+test('Гипнотический узор действует только на видящую цель, восприимчивую к очарованию', () => {
+  for (const defense of ['blinded', 'immune:charmed', 'stat-block']) {
+    const cast = session('hypnotic-pattern', { mode: 'low', patch: { to: { x: 6, y: 2 } }, mutate: state => {
+      state.mechanics.positions.enemy = { x: 6, y: 2 }
+      if (defense === 'stat-block') state.enemies[0].condition_immunities = ['charmed']
+      else state.mechanics.conditions.enemy = [{ id: defense }]
+    } })
+    for (const id of ['charmed', 'incapacitated', 'speed-zero']) assert.equal(cast.has(id), false, defense)
+    cast.assertReplay()
+  }
+})
+
 test('Гипнотический узор снимает любой урон, а не только урон союзников заклинателя', () => {
   const pattern = session('hypnotic-pattern', { mode: 'low', patch: { to: { x: 6, y: 2 } }, mutate: (state) => {
     state.mechanics.positions.enemy = { x: 6, y: 2 }

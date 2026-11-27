@@ -97,6 +97,18 @@ fn matched_quest_passes_strength_to_its_entities() {
 }
 
 #[test]
+fn kind_filter_is_applied_before_limit_after_graph_boost() {
+    let unfiltered = retrieve_world_memory(&memory(), &player(), &json!({ "query": "новости по делу о пропавших рыбаках", "limit": 1 }));
+    assert_eq!(unfiltered[0]["kind"], "quest");
+
+    let facts = retrieve_world_memory(&memory(), &player(), &json!({
+        "query": "новости по делу о пропавших рыбаках", "limit": 1, "kind": "fact",
+    }));
+    assert_eq!(facts[0]["kind"], "fact");
+    assert_eq!(facts[0]["id"], "fact:caves-tracks");
+}
+
+#[test]
 fn stop_words_do_not_match_and_unmatched_contract_holds() {
     let stop = ids(&retrieve_world_memory(&memory(), &player(), &json!({ "query": "что это?", "limit": 5, "whenUnmatched": "none" })));
     assert_eq!(stop, ids(&retrieve_world_memory(&memory(), &player(), &json!({ "query": "", "limit": 5 }))));

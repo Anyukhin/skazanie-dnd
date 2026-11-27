@@ -12,7 +12,7 @@ use sk_agents::campaign_bootstrap::{CampaignBootstrapper, CAMPAIGN_BOOTSTRAP_TIM
 use sk_agents::campaign_recap::{recap_sources, CampaignRecapService, RecapCacheStore};
 use sk_agents::creative_director::{critical_moment_for, CriticalNarrationCoordinator, CriticalNarrator, CRITICAL_NARRATION_TIMEOUT_MS};
 use sk_agents::lore_author::LoreAuthor;
-use sk_agents::lore_voice::{verify_lore_answer, LoreVoice};
+use sk_agents::lore_voice::{render_lore_plan, verify_lore_answer, LoreVoice};
 use sk_agents_base::llm_client::{LlmClient, LlmError, LlmFuture};
 use sk_core::{js, text};
 use sk_tactical::tactical_map::{cell_at, deserialize_tactical_map};
@@ -459,23 +459,21 @@ fn lore_material() -> Value {
 #[test]
 fn lore_answer_check_rejects_invented_names_digits_and_lost_findings() {
     let material = lore_material();
-    let good = "Вы сами видели на корме выжженную чайку с перебитым крылом — так метит лодки артель Ворониных. А Марен рассказывала, что баркас видели у северной отмели в ночь грозы. Кто им правил — пока загадка; Борс, рыбак, может знать больше.";
+    let good = json!({ "plan": [{ "kind": "found", "index": 0 }, { "kind": "heard", "index": 0 }, { "kind": "lead", "index": 0 }] });
     let context = json!({ "location": "Старый маяк", "hero": "Мирель" });
-    assert!(verify_lore_answer(Some(&json!(good)), Some(&material), Some(&context)).expect("проверка").valid);
-    let reasons = |answer: String| verify_lore_answer(Some(&json!(answer)), Some(&material), None).expect("проверка").reasons.join(",");
-    assert!(reasons(format!("{good} Капитан Грейвз тоже что-то скрывает.")).contains("invented_names"));
-    assert!(reasons(format!("{good} Это было 3 дня назад.")).contains("digits"));
-    assert!(reasons("Марен рассказывала про отмель и грозу, а больше вы ничего не знаете о баркасе.".into()).contains("lost_finding"));
+    assert!(verify_lore_answer(Some(&good), Some(&material), Some(&context)).expect("проверка").valid);
+    assert!(!verify_lore_answer(Some(&json!({ "answer": "Капитан Грейвз всё скрыл." })), Some(&material), None).expect("проверка").valid);
+    assert!(!verify_lore_answer(Some(&json!({ "plan": [{ "kind": "heard", "index": 0 }] })), Some(&material), None).expect("проверка").valid);
 }
 
 #[test]
 fn lore_voice_retells_or_yields_to_server_answer() {
-    let told = "Вы сами видели на корме выжженную чайку с перебитым крылом — знак артели Ворониных. Марен говорила, что баркас видели у северной отмели в ночь грозы.";
+    let plan = json!({ "plan": [{ "kind": "found", "index": 0 }, { "kind": "heard", "index": 0 }] });
     let input = json!({ "question": "Что мы знаем о баркасе?", "material": lore_material() });
-    let stub = Stub::new(vec![Ok(json!({ "answer": told }))]);
+    let stub = Stub::new(vec![Ok(plan.clone())]);
     let out = block_on(LoreVoice::new(client(&stub), None).retell(&input)).expect("пересказ");
-    assert_eq!(out["narration"], told);
-    let inventing = Stub::new(vec![Ok(json!({ "answer": format!("{told} Его хозяин — Грейвз из Нижнего города.") }))]);
+    assert_eq!(out["narration"], render_lore_plan(plan["plan"].as_array().unwrap(), &input["material"]));
+    let inventing = Stub::new(vec![Ok(json!({ "plan": plan["plan"], "text": "Грейвз" }))]);
     assert!(block_on(LoreVoice::new(client(&inventing), None).retell(&input)).is_none());
     assert!(block_on(LoreVoice::new(None, None).retell(&input)).is_none());
 }

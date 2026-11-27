@@ -206,6 +206,11 @@ function validPendingNarrate(value) {
   return { ...intent, requestId, manualRoll: value.manualRoll === true }
 }
 
+function legacyNpcUtterance(record) {
+  if (!record?.npcId || record.requestKind !== 'action') return null
+  return /^Обращаюсь к [^:]{1,240}:\s*(\S[\s\S]*)$/u.exec(record.action)?.[1] ?? null
+}
+
 /** Та же ли это заявка: кампания, герой, текст, вид реплики и ссылки на карточки. */
 export function narrateIntentMatches(pending, intent) {
   const left = narrateIntent(pending)
@@ -213,7 +218,7 @@ export function narrateIntentMatches(pending, intent) {
   if (!left || !right) return false
   return left.campaignId === right.campaignId
     && left.actorId === right.actorId
-    && left.action === right.action
+    && (left.action === right.action || legacyNpcUtterance(left) === right.action)
     && left.requestKind === right.requestKind
     && Object.keys(NARRATE_ID_LIMITS).every((field) => (left[field] ?? '') === (right[field] ?? ''))
 }
@@ -229,6 +234,11 @@ export function narrateRecoveryFor(existing, intent, { newKey, manualRoll = fals
   if (previous && narrateIntentMatches(previous, intent)) return previous
   const fresh = narrateIntent(intent)
   return fresh ? validPendingNarrate({ ...fresh, requestId: newKey(), manualRoll: manualRoll === true }) : null
+}
+
+/** Старый ключ повторяется со старым телом, даже если новое досье отправляет только речь. */
+export function narrateRequestAction(action, recovery) {
+  return legacyNpcUtterance(recovery) === narrateAction(action) ? recovery.action : action
 }
 
 export function pendingNarrateStorageKey(accountId, campaignId) {

@@ -6,9 +6,12 @@ import {
   Box3,
   BoxGeometry,
   BufferGeometry,
+  CatmullRomCurve3,
   Color,
   ConeGeometry,
   CylinderGeometry,
+  DoubleSide,
+  Float32BufferAttribute,
   Group,
   IcosahedronGeometry,
   LoopOnce,
@@ -26,7 +29,14 @@ import {
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { ActorAppearance, ActorStature, PublicLoadout } from './types'
 import { normalizePublicLoadout } from '../server/equipment-visuals.mjs'
+import { eldrinBarkTexture, eldrinOakGeometry } from './board3d-eldrin'
+import { addGhostMaidGlbOverlays, buildGhostMaidModel } from './ghost-maid-model'
 import { applyAstohanNpcFigure, astohanNpcModelKey } from './astohan-npc-figures'
+import { astohanHeroFigureEntry, decorateAstohanHeroFigure } from './astohan-hero-figures'
+import { authoredEnemyEntry, buildCampaignEnemy, dressCampaignEnemy } from './astohan-enemy-figures'
+import { buildCampaignSummon, isCampaignSummonKey } from './astohan-summon-figures'
+import { buildAshTraveler } from './astohan-ash-traveler'
+import { buildAstohanKaelan } from './astohan-kaelan'
 import { createEquipmentController, type EquipmentControllerStatus } from './equipment-models'
 import {
   clearSharedModelBufferCache,
@@ -58,7 +68,8 @@ export type ActorKind = 'hero' | 'enemy' | 'summon' | 'neutral'
  * пока не вызывает; у модели без такого клипа поза совпадает с idle.
  */
 export type ActorPose = 'idle' | 'walk' | 'attack' | 'ranged-attack' | 'cast' | 'hit' | 'death' | 'spawn'
-export type ActorModelProfile = 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast' | 'dragon'
+/** `elder-tree` — внутренний визуальный профиль, не серверный ActorAppearance DTO. */
+export type ActorModelProfile = 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast' | 'dragon' | 'elder-tree' | 'ghost-maid'
 export type ActorEquipment = ActorAppearance['equipment']
 
 export type ActorModelInput = {
@@ -190,12 +201,12 @@ const DEFAULT_MAX_MANIFEST_BYTES = 256 * 1024
 const DEFAULT_MAX_GLB_BYTES = 16 * 1024 * 1024
 const MODEL_ROOT = '/assets/models/'
 const MODEL_KEY_PATTERN = /^[a-z0-9][a-z0-9._-]*$/u
-const ACTOR_PROFILES: readonly ActorModelProfile[] = ['warrior', 'mage', 'rogue', 'goblin', 'skeleton', 'beast', 'dragon']
+const ACTOR_PROFILES: readonly ActorModelProfile[] = ['warrior', 'mage', 'rogue', 'goblin', 'skeleton', 'beast', 'dragon', 'elder-tree', 'ghost-maid']
 const ACTOR_KINDS: readonly ActorKind[] = ['hero', 'enemy', 'summon', 'neutral']
 const ACTOR_EQUIPMENT: readonly ActorEquipment[] = ['unknown', 'unarmed', 'sword', 'sword-shield', 'bow', 'staff', 'dagger']
 
 const profileLabels: Record<ActorModelProfile, string> = {
-  warrior: 'Воин', mage: 'Волшебник', rogue: 'Плут / следопыт', goblin: 'Гоблин', skeleton: 'Скелет', beast: 'Зверь', dragon: 'Дракон',
+  warrior: 'Воин', mage: 'Волшебник', rogue: 'Плут / следопыт', goblin: 'Гоблин', skeleton: 'Скелет', beast: 'Зверь', dragon: 'Дракон', 'elder-tree': 'Элдрин · древо', 'ghost-maid': 'Призрачная служанка',
 }
 
 /** Встроенный каталог позволяет начать бой при недоступном manifest.json. */
@@ -207,8 +218,9 @@ export const DEFAULT_ACTOR_MODEL_MANIFEST: ActorModelManifest = {
     profile,
     actorIds: [],
     archetypes: [profile],
+    ...(profile === 'ghost-maid' ? { auto: false } : {}),
     url: null,
-    height: profile === 'dragon' ? 2.4 : profile === 'goblin' || profile === 'beast' ? 1.18 : DEFAULT_HEIGHT,
+    height: profile === 'dragon' ? 2.4 : profile === 'goblin' || profile === 'beast' ? 1.18 : profile === 'elder-tree' ? 1.8 : DEFAULT_HEIGHT,
     rights: { source: 'Процедурная модель проекта «Сказание»', license: 'original', attribution: 'Проект «Сказание»' },
   })),
 }
@@ -235,6 +247,10 @@ function isProfile(value: unknown): value is ActorModelProfile {
   return typeof value === 'string' && (ACTOR_PROFILES as readonly string[]).includes(value)
 }
 
+function isPublicAppearanceProfile(value: unknown): value is ActorAppearance['profile'] {
+  return isProfile(value) && value !== 'elder-tree'
+}
+
 function isActorKind(value: unknown): value is ActorKind {
   return typeof value === 'string' && (ACTOR_KINDS as readonly string[]).includes(value)
 }
@@ -244,7 +260,7 @@ function isEquipment(value: unknown): value is ActorEquipment {
 }
 
 function normalizeAppearance(value: unknown): ActorAppearance | undefined {
-  if (!objectLike(value) || (value.version !== 1 && value.version !== 2) || !isProfile(value.profile)) return undefined
+  if (!objectLike(value) || (value.version !== 1 && value.version !== 2) || !isPublicAppearanceProfile(value.profile)) return undefined
   const equipment = isEquipment(value.equipment) ? value.equipment : 'unknown'
   const stature = isStature(value.stature) ? value.stature : undefined
   return value.version === 2
@@ -399,6 +415,23 @@ function profileFromText(value: string): ActorModelProfile | null {
   return null
 }
 
+/**
+ * Сюжетные фигурки выбираются по видимым имени и роли. Нейтральный
+ * NPC несёт роль «Великое Древо», а боевой снимок сохраняет публичные имя
+ * «Элдрин» и тип существа `plant`. Закрытый actor id здесь не участвует.
+ */
+function visibleActorProfile(actor: NormalizedActorModelInput): ActorModelProfile | null {
+  if (actor.kind === 'neutral'
+    && slug(actor.label) === 'призрачная-служанка'
+    && slug(actor.archetype ?? '') === 'служанка-разрушенной-кухни') return 'ghost-maid'
+  if (/(?:^|-)трент(?:-|$)|(?:^|-)trent(?:-|$)/u.test(slug(actor.label))
+    && /(?:страж|treant|древн|forest|лес)/u.test(slug(actor.archetype ?? ''))) return 'elder-tree'
+  if (!/^(?:элдрин|eldrin)(?:-\d+)?$/u.test(slug(actor.label))) return null
+  const role = slug(actor.archetype ?? '')
+  if (actor.kind === 'enemy' && role === 'plant') return 'elder-tree'
+  return actor.kind === 'neutral' && /^(?:великое-древо|great-tree)(?:-|$)/u.test(role) ? 'elder-tree' : null
+}
+
 function fallbackProfile(input: NormalizedActorModelInput): ActorModelProfile {
   // Неизвестный гуманоидный враг — воинская нейтральная форма. Зелёный
   // гоблин допустим только когда это видно из имени/архетипа; иначе модель
@@ -429,13 +462,32 @@ export function resolveModelProfile(input: ActorModelInput, manifest: ActorModel
   const catalog = validateModelManifest(manifest)
   const explicit = actor.modelKey ? catalog.models.find((entry) => entry.key === actor.modelKey) : undefined
   if (explicit) return explicit
-  const pilotNpcKey = astohanNpcModelKey(actor)
-  if (pilotNpcKey) {
-    const pilotEntry = catalog.models.find((entry) => entry.key === pilotNpcKey)
-    if (pilotEntry) return pilotEntry
+  if (!actor.modelKey && (actor.kind === 'neutral' || actor.kind === 'enemy')) {
+    const name = slug(actor.label).replace(/-\d+$/u, '')
+    if (name === 'каэлан-вердант') return {key:'astohan-mounted-kaelan', profile:'warrior', height:2.05, url:null, rights:{source:'Сказание',license:'original'}}
+    if (name === 'незнакомец-в-пепельном-плаще') return {key:'astohan-ash-traveler',profile:'warrior',height:1.43,url:null,rights:{source:'Сказание',license:'original'}}
   }
+  if ((actor.kind === 'summon' || actor.kind === 'enemy') && isCampaignSummonKey(actor.modelKey)) {
+    return { key: actor.modelKey, profile: 'beast', height: 1.15, url: null, rights: { source: 'Сказание', license: 'original' } }
+  }
+  const species = authoredEnemyEntry(actor, catalog.models)
+  if (species) return species
+  const astohanNpcKey = astohanNpcModelKey(actor)
+  if (astohanNpcKey) {
+    const astohanNpc = catalog.models.find((entry) => entry.key === astohanNpcKey)
+    if (astohanNpc) return astohanNpc
+  }
+  const astohanHero = astohanHeroFigureEntry(actor, catalog.models)
+  if (astohanHero) return astohanHero
   // Дальше — только автоподбор: записи с auto=false открываются лишь по ключу.
   const automatic = catalog.models.filter((entry) => entry.auto !== false)
+  const visibleProfile = visibleActorProfile(actor)
+  if (visibleProfile) {
+    const visibleEntry = catalog.models.find((entry) => entry.key === visibleProfile && entry.profile === visibleProfile)
+      ?? automatic.find((entry) => entry.profile === visibleProfile)
+      ?? DEFAULT_ACTOR_MODEL_MANIFEST.models.find((entry) => entry.profile === visibleProfile)
+    if (visibleEntry) return visibleEntry
+  }
   // Серверная внешность уже прошла проверку прав. Она должна предшествовать
   // actorIds/archetype: иначе локальный каталог может раскрыть замаскированный
   // профиль по прежнему идентификатору или классу.
@@ -542,6 +594,13 @@ function material(hex: string, options: { metalness?: number; roughness?: number
   return result
 }
 
+function smoothMaterial(hex: string, options: { metalness?: number; roughness?: number; emissive?: string } = {}): MeshStandardMaterial {
+  const result = material(hex, options)
+  result.flatShading = false
+  result.needsUpdate = true
+  return result
+}
+
 function maybeColor(value: string | undefined, fallback: string): string {
   if (!value) return fallback
   try { return `#${new Color(value).getHexString()}` } catch { return fallback }
@@ -572,6 +631,12 @@ function cone(parent: Object3D, name: string, radius: number, height: number, su
 
 function sphere(parent: Object3D, name: string, radius: number, surface: Material, position: [number, number, number], scale?: [number, number, number]) {
   const result = mesh(parent, new SphereGeometry(radius, 10, 6), surface, name, position)
+  if (scale) result.scale.set(...scale)
+  return result
+}
+
+function smoothSphere(parent: Object3D, name: string, radius: number, surface: Material, position: [number, number, number], scale?: [number, number, number]) {
+  const result = mesh(parent, new SphereGeometry(radius, 18, 12), surface, name, position)
   if (scale) result.scale.set(...scale)
   return result
 }
@@ -780,7 +845,7 @@ function applyProceduralPose(rig: Rig, pose: ActorPose, progress: number, appear
 function base(root: Group, accent: string, neutral = '#665b4d') {
   cylinder(root, 'miniature-base', .29, .34, .05, material(neutral, { metalness: .32, roughness: .58 }), [0, .025, 0], undefined, 24)
   cylinder(root, 'miniature-base-inlay', .205, .205, .008, material(accent, { metalness: .25, roughness: .55 }), [0, .055, 0], undefined, 24)
-  mesh(root, new TorusGeometry(.28, .012, 5, 24), material('#b49b73', { metalness: .45, roughness: .5 }), 'miniature-base-rim', [0, .058, 0], [0, 0, 0])
+  mesh(root, new TorusGeometry(.28, .012, 8, 40), material('#b49b73', { metalness: .45, roughness: .5 }), 'miniature-base-rim', [0, .058, 0], [-Math.PI / 2, 0, 0])
 }
 
 type Palette = { skin: string; cloth: string; clothDark: string; metal: string; leather: string; wood: string; bone: string; accent: string }
@@ -793,6 +858,8 @@ const PALETTES: Record<ActorModelProfile, Palette> = {
   skeleton: { skin: '#c9bea1', cloth: '#2d2f36', clothDark: '#16181d', metal: '#666d73', leather: '#4a3629', wood: '#563c2e', bone: '#e1d3b0', accent: '#9c5960' },
   beast: { skin: '#766451', cloth: '#4f443a', clothDark: '#26221f', metal: '#7b766c', leather: '#4b3529', wood: '#533b2d', bone: '#c6b494', accent: '#9c7151' },
   dragon: { skin: '#6e1c14', cloth: '#a5481c', clothDark: '#2a0d0a', metal: '#8a6d4a', leather: '#4b2018', wood: '#533b2d', bone: '#d8c39a', accent: '#e0902e' },
+  'elder-tree': { skin: '#6f573f', cloth: '#5b7048', clothDark: '#2d3b28', metal: '#b6934f', leather: '#4b3828', wood: '#68503c', bone: '#c7b27a', accent: '#dfad52' },
+  'ghost-maid': { skin: '#d9f8f5', cloth: '#b6e7e7', clothDark: '#527f8b', metal: '#caedf1', leather: '#7faeb6', wood: '#6e9aa3', bone: '#d6ffff', accent: '#75d8e1' },
 }
 
 function addSword(parent: Object3D, surface: Material, guard: Material, name = 'sword') {
@@ -1180,6 +1247,194 @@ function buildBeast(input: NormalizedActorModelInput): { root: Group; rig: Rig }
   return { root, rig }
 }
 
+/** Фишка Элдрина показывает лицо в коре, без второго монументального ствола. */
+function buildEldrinAvatar(input: NormalizedActorModelInput): { root: Group; rig: Rig } {
+  const root = new Group()
+  root.name = `procedural-elder-tree-${input.id}`
+  const rig = newRig(root)
+  const surface = material('#ffffff', { roughness: 1, metalness: 0 })
+  surface.vertexColors = true
+  surface.side = DoubleSide
+  surface.map = eldrinBarkTexture()
+  surface.needsUpdate = true
+  mesh(rig.motion, eldrinOakGeometry('bust'), surface, 'elder-tree-face')
+  return { root, rig }
+}
+
+type DragonSection = [x: number, y: number, z: number, halfWidth: number, halfDepth: number]
+
+/** Эллиптические сечения вдоль позвоночника, конечности или рога. Общие вершины
+ * соседних колец дают плавный переход нормалей в изгибе. */
+function dragonLoft(parent: Object3D, name: string, surface: Material, sections: DragonSection[], sides = 20) {
+  const spine = new CatmullRomCurve3(sections.map(([x, y, z]) => new Vector3(x, y, z)))
+  const rows = 4 * (sections.length - 1)
+  const vertices: number[] = []
+  const indices: number[] = []
+  for (let row = 0; row <= rows; row += 1) {
+    const t = row / rows
+    const at = spine.getPoint(t), tangent = spine.getTangent(t)
+    const side = new Vector3(1, 0, 0).addScaledVector(tangent, -tangent.x).normalize()
+    const up = new Vector3().crossVectors(tangent, side)
+    const segment = Math.min(sections.length - 2, Math.floor(row / 4))
+    const fraction = row / 4 - segment
+    const width = MathUtils.lerp(sections[segment][3], sections[segment + 1][3], fraction)
+    const depth = MathUtils.lerp(sections[segment][4], sections[segment + 1][4], fraction)
+    for (let col = 0; col < sides; col += 1) {
+      const angle = 2 * Math.PI * col / sides
+      const p = at.clone().addScaledVector(side, width * Math.cos(angle)).addScaledVector(up, depth * Math.sin(angle))
+      vertices.push(p.x, p.y, p.z)
+      if (row === rows) continue
+      const a = row * sides + col, b = row * sides + (col + 1) % sides
+      indices.push(a, b, a + sides, b, b + sides, a + sides)
+    }
+  }
+  const geometry = new BufferGeometry()
+  geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  return mesh(parent, geometry, surface, name)
+}
+
+/** Перепонка между двумя пальцами крыла. Лучи сходятся в одной вершине
+ * запястья, а свободный край слегка провисает между кончиками костей. */
+function dragonWingMembrane(wrist: Vector3, firstTip: Vector3, secondTip: Vector3, side: number) {
+  const radialSteps = 10, across = 8
+  const vertices = wrist.toArray()
+  const indices: number[] = []
+  for (let row = 1; row <= radialSteps; row += 1) {
+    const radius = row / radialSteps
+    const rowStart = vertices.length / 3
+    for (let col = 0; col <= across; col += 1) {
+      const fraction = col / across, scallop = Math.sin(fraction * Math.PI)
+      const point = wrist.clone().lerp(firstTip.clone().lerp(secondTip, fraction), radius)
+      point.x += side * .043 * Math.sin(radius * Math.PI) * scallop
+      point.y += .058 * radius * radius * scallop
+      vertices.push(point.x, point.y, point.z)
+      if (col === 0) continue
+      const left = rowStart + col - 1, right = left + 1
+      if (row === 1) indices.push(0, right, left)
+      else {
+        const innerLeft = left - across - 1
+        indices.push(innerLeft, innerLeft + 1, left, innerLeft + 1, right, left)
+      }
+    }
+  }
+  const geometry = new BufferGeometry()
+  geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+/** Резервная миниатюра Саргата, когда файл модели недоступен. */
+function buildDragon(input: NormalizedActorModelInput): { root: Group; rig: Rig } {
+  const root = new Group()
+  root.name = `procedural-dragon-${input.id}`
+  const palette = PALETTES.dragon
+  const plinth = new Group()
+  plinth.scale.set(2.15, 1, 2.15)
+  root.add(plinth)
+  base(plinth, maybeColor(input.color, palette.accent))
+  const rig = newRig(root)
+  const body = part(rig, 'torso', [0, .68, .06])
+  const neck = part(rig, 'neck', [0, .79, -.25])
+  const head = part(rig, 'head', [0, 1.32, -.55])
+  const tail = part(rig, 'tail', [0, .66, .48])
+  const scute = smoothMaterial('#963c2c', { roughness: .72 })
+  const scale = smoothMaterial(palette.skin, { roughness: .76 })
+  const belly = smoothMaterial('#ad7048', { roughness: .81 })
+  const web = smoothMaterial('#883526', { roughness: .87 })
+  web.side = DoubleSide
+  const dark = smoothMaterial('#372322'), horn = smoothMaterial('#c2a379')
+  const eye = smoothMaterial('#ffc74b', { emissive: '#b85708' })
+
+  dragonLoft(body, 'dragon-body', scale, [
+    [0,.14,-.51,.03,.035], [0,.025,-.39,.28,.28], [0,.015,-.19,.39,.37],
+    [0,.025,.08,.35,.32], [0,.01,.32,.32,.28], [0,-.005,.5,.19,.18], [0,-.02,.67,.075,.08],
+  ])
+  dragonLoft(neck, 'dragon-neck', scale, [
+    [0,-.15,.14,.24,.22], [0,.03,-.03,.235,.24], [0,.22,-.13,.19,.18],
+    [0,.40,-.17,.145,.14], [0,.52,-.29,.14,.13], [0,.55,-.39,.09,.08],
+  ])
+  for (let i = 0; i < 5; i += 1) {
+    const f = i / 4
+    smoothSphere(neck, 'throat-plate-' + i, .11, belly, [0,.075 + f * .32,-.245 - f * .045], [1.6 - .55*f,.55,.36])
+  }
+  dragonLoft(head, 'dragon-skull', scute, [
+    [0,.075,.21,.055,.055], [0,.065,.10,.19,.135], [0,.05,-.015,.212,.14],
+    [0,.025,-.14,.145,.10], [0,-.005,-.30,.105,.063], [0,-.01,-.40,.09,.055], [0,-.008,-.438,.05,.038],
+  ])
+  dragonLoft(head, 'dragon-lower-jaw', dark, [
+    [0,-.055,.07,.11,.07], [0,-.101,-.095,.145,.045], [0,-.103,-.24,.104,.029],
+    [0,-.099,-.365,.074,.023], [0,-.08,-.412,.035,.015],
+  ])
+  for (const s of [-1,1]) {
+    const side = s === -1 ? 'left' : 'right'
+    smoothSphere(head, 'dragon-eye-' + side, .043, eye, [s*.177,.085,-.073], [.8,.72,1.1])
+    smoothSphere(head, 'dragon-pupil-' + side, .028, dark, [s*.202,.085,-.084], [.35,.85,.23])
+    dragonLoft(head, 'dragon-brow-' + side, scale, [
+      [s*.122,.091,-.172,.012,.010], [s*.175,.132,-.079,.044,.04], [s*.19,.142,.015,.045,.045], [s*.207,.151,.078,.017,.018],
+    ], 12)
+    smoothSphere(head, 'nostril-' + side, .021, dark, [s*.067,.032,-.398], [.77,.4,1])
+    dragonLoft(head, 'dragon-horn-' + side, horn, [
+      [s*.123,.14,.05,.068,.062], [s*.155,.215,.09,.061,.055], [s*.19,.267,.18,.048,.04],
+      [s*.21,.295,.275,.029,.023], [s*.225,.36,.352,.004,.004],
+    ], 14)
+    dragonLoft(head, 'cheek-spur-' + side, horn, [
+      [s*.162,.04,.057,.048,.04], [s*.216,.052,.13,.037,.029], [s*.286,.088,.238,.004,.004],
+    ], 12)
+    for (const z of [-.17,-.29]) cone(head,'dragon-fang-'+side+'-'+z,.018,.064,horn,[s*(z===-.17?.116:.083),-.067,z],[Math.PI,0,0],12)
+  }
+
+  for (const s of [-1,1]) {
+    for (const front of [true,false]) {
+      const legName = (s < 0 ? 'left' : 'right') + (front ? 'Arm' : 'Leg')
+      const leg = part(rig, legName, [s * (front ? .28 : .265), .69, front ? -.26 : .34])
+      const bend = front ? .10 : -.14
+      dragonLoft(leg, legName + '-haunch', scale, [
+        [0,.07,0,.125,.15], [s*.06,-.035,.01,.13,.15], [s*.105,-.22,bend,.098,.10],
+        [s*.115,-.32,bend+.018,.072,.078], [s*.085,-.43,-bend*.62,.06,.07],
+        [s*.085,-.55,-bend*.45,.044,.047], [s*.09,-.605,-.026,.047,.046],
+      ])
+      const toeY = -.605
+      smoothSphere(leg,front?'dragon-claw-'+s:'dragon-hind-paw-'+s,.076,dark,[s*.09,toeY,-.06],[1.08,.47,1.6])
+      for (const digit of [-1,0,1]) {
+        const x = s*.09 + digit*.044
+        dragonLoft(leg,legName+'-talon-'+digit,horn,[
+          [x,toeY-.002,-.105,.022,.020], [x+digit*.013,toeY-.006,-.15,.017,.018],
+          [x+digit*.021,toeY-.020,-.194,.003,.003],
+        ],10)
+      }
+    }
+    const wing = new Group()
+    wing.name = `dragon-wing-${s}`
+    wing.position.set(s * .26, .12, -.15)
+    body.add(wing)
+    const wrist = new Vector3(s*.29,.64,.005)
+    const elbow = new Vector3(s*.17,.26,.25)
+    const fingers = [new Vector3(s*.37,.41,.98),new Vector3(s*.41,.12,.86),new Vector3(s*.33,-.045,.62),new Vector3(s*.23,-.09,.30),elbow]
+    const section = (p: Vector3, radius: number): DragonSection => [p.x, p.y, p.z, radius, radius]
+    dragonLoft(wing, 'dragon-wing-arm-' + s, scale, [[0, 0, 0, .091, .081], section(elbow, .073), section(wrist, .053)], 14)
+    for (let i = 0; i < fingers.length - 1; i += 1) {
+      const tip = fingers[i]
+      const membrane = dragonWingMembrane(wrist, tip, fingers[i + 1], s)
+      mesh(wing, membrane, web, i === 0 ? `dragon-wing-membrane-${s}` : `wing-web-${s}-${i}`)
+      const mid = wrist.clone().lerp(tip, .55)
+      dragonLoft(wing, `wing-finger-${s}-${i}`, scute, [section(wrist, .03), section(mid, .022), section(tip, .004)], 10)
+    }
+  }
+  dragonLoft(tail,'dragon-tail',scale,[
+    [0,0,-.12,.192,.158], [0,-.02,.15,.168,.138], [.055,-.065,.41,.126,.105],
+    [.159,-.13,.64,.089,.08], [.29,-.195,.85,.057,.053], [.39,-.18,1.04,.032,.034], [.43,-.12,1.19,.017,.019],
+  ])
+  dragonLoft(tail,'dragon-tail-spade',scute,[[.426,-.13,1.16,.018,.02],[.434,-.102,1.21,.045,.019],[.435,-.05,1.338,.002,.002]],12)
+  for (const [i,z] of [-.23,-.025,.18,.36].entries()) {
+    const h = .29 - Math.abs(z-.04)*.18
+    dragonLoft(body,'dragon-dorsal-spine-'+i,horn,[[0,h-.015,z,.044,.062],[0,h+.075,z+.025,.032,.045],[0,h+.16,z+.065,.003,.004]],12)
+  }
+  return { root, rig }
+}
+
 /**
  * Габарит тела без встроенного снаряжения KayKit 2.0: в позе покоя (T-pose)
  * двуручный топор или лук торчат из ладони вниз и вбок, и рост фигурки иначе
@@ -1495,6 +1750,7 @@ const HELD_LOADOUT_SLOTS = ['main_hand', 'off_hand', 'focus'] as const
 const SHELL_OVER_OUTFIT = new Set(['armor-chainshirt', 'armor-ringmail', 'armor-scalemail', 'armor-chainmail', 'armor-breastplate', 'armor-halfplate', 'armor-splint', 'armor-plate'])
 
 function visibleLoadout(loadout: PublicLoadout, entry: ActorModelManifestEntry): PublicLoadout {
+  if (entry.profile === 'beast' || entry.profile === 'dragon' || entry.profile === 'elder-tree') return {}
   if (entry.outfit !== 'builtin') return loadout
   // Вылепленный костюм KayKit целиком: поверх него — только вещи в руках.
   const sculpted = /\/kaykit\//u.test(entry.url ?? '')
@@ -1531,7 +1787,8 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
     model.equipmentReady = wardrobe.setLoadout(appearance?.version === 2 ? visibleLoadout(appearance.loadout, entry) : {})
   }
   model.setEquipment = (equipment: ActorEquipment | undefined) => {
-    model.setAppearance(equipment === undefined ? undefined : { version: 1, profile: entry.profile, equipment })
+    const appearanceProfile = entry.profile === 'elder-tree' || entry.profile === 'ghost-maid' ? 'beast' : entry.profile
+    model.setAppearance(equipment === undefined ? undefined : { version: 1, profile: appearanceProfile, equipment })
   }
   const releaseAim = () => {
     aimPose?.reset()
@@ -1649,7 +1906,10 @@ async function createGlbModel(input: NormalizedActorModelInput, entry: ActorMode
   let model: ActorModel | undefined
   try {
     enableActorShadows(root)
+    if (entry.profile === 'ghost-maid') addGhostMaidGlbOverlays(root)
+    decorateAstohanHeroFigure(root, input)
     fitToHeight(root, targetHeight, false)
+    dressCampaignEnemy(root, input)
     if (!input.modelKey) applyAstohanNpcFigure(root, input, 'glb')
     // Запрос может быть отменён уже после parse callback. Не отдаём компоненту
     // частично готовую сцену и сразу освобождаем поздно пришедший результат.
@@ -1730,7 +1990,23 @@ export function createProceduralActorModel(input: ActorModelInput, manifest: Act
   const normalized = normalizeActorInput(input)
   const entry = resolveModelProfile(normalized, manifest)
   const targetHeight = finitePositive(height, entry.height ?? DEFAULT_HEIGHT)
-  const built = entry.profile === 'beast' || entry.profile === 'dragon' ? buildBeast(normalized) : buildHumanoid(normalized, entry.profile)
+  const creature = entry.key === 'astohan-mounted-kaelan' ? buildAstohanKaelan(new Group())
+    : entry.key === 'astohan-ash-traveler' ? buildAshTraveler()
+    : isCampaignSummonKey(entry.key) ? buildCampaignSummon(entry.key) : buildCampaignEnemy(entry.key)
+  if (creature) {
+    const root = new Group()
+    const rig = newRig(root)
+    rig.motion.add(creature)
+    enableActorShadows(root)
+    fitToHeight(root, targetHeight)
+    const model = decorateModel(root, normalized, entry, 'procedural', targetHeight, rig)
+    addProceduralMethods(model, rig)
+    return model
+  }
+  const built = entry.profile === 'elder-tree'
+    ? buildEldrinAvatar(normalized)
+    : entry.profile === 'ghost-maid' ? buildGhostMaidModel(normalized)
+      : entry.profile === 'dragon' ? buildDragon(normalized) : entry.profile === 'beast' ? buildBeast(normalized) : buildHumanoid(normalized, entry.profile)
   // Встроенная фигурка собрана лицом в −Z, а доска, GLB-модели и слой
   // экипировки считают перёд по +Z. Разворачивается только тело: корень
   // остаётся без поворота, и плащ одежды ложится на спину, а не на грудь.
@@ -1738,10 +2014,12 @@ export function createProceduralActorModel(input: ActorModelInput, manifest: Act
   body.name = 'procedural-body'
   body.rotation.y = Math.PI
   body.add(...built.root.children)
+  decorateAstohanHeroFigure(body, normalized)
   built.root.add(body)
   const equipmentController = createProceduralEquipment(built.rig, entry.profile, PALETTES[entry.profile], normalized)
   fitToHeight(built.root, targetHeight)
   if (!normalized.modelKey) applyAstohanNpcFigure(built.root, normalized)
+  dressCampaignEnemy(built.root, normalized)
   const model = decorateModel(built.root, normalized, entry, 'procedural', targetHeight, built.rig, undefined, undefined, equipmentController)
   addProceduralMethods(model, built.rig)
   return model

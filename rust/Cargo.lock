@@ -2003,6 +2003,7 @@ dependencies = [
  "sk-npc-world",
  "sk-rules",
  "sk-ruleset",
+ "sk-scenario",
  "sk-scene-base",
  "sk-social",
  "sk-society",

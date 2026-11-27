@@ -289,6 +289,9 @@ fn selected_decision(action: &str, state: &Value) -> String {
 /// решения группы (`{ kind, decision, destinationHint?, abandonsQuest,
 /// destinationLocationId? }`); `None` — это не решение группы.
 pub fn interpret_resolved_party_decision(action: Option<&Value>, state: &Value) -> Option<Value> {
+    if state.get("agentInteraction").and_then(|card| card.get("scenarioTreaty")).is_some() {
+        return None;
+    }
     let text_value = text::nfkc(&clean(action, 2000));
     if !test(re!(r"^\[РЕШЕНИЕ ГРУППЫ\]", "iu"), &text_value) {
         return None;

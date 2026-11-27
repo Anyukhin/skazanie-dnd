@@ -84,8 +84,24 @@ function declaredToolIds(actor) {
     ...list(actor?.toolProficiencyIds),
     ...list(actor?.characterSheet?.tool_proficiencies),
     ...list(actor?.characterSheet?.tools),
+    ...list(actor?.creationBenefits?.tool_proficiencies),
     text(actor?.backgroundBenefits?.tool_proficiency, 120),
   ].filter(Boolean)
+}
+
+/**
+ * Expertise PHB 2014 может выбрать `thieves_tools` вместо второго навыка.
+ * Список приезжает в `characterSheet.skill_expertise` вместе с результатом
+ * мастера героя. Отдельные поля поддерживают старые импортированные листы.
+ */
+export function thievesToolsExpertise(actor) {
+  const expertise = [
+    ...list(actor?.skillExpertiseIds),
+    ...list(actor?.expertiseSkillIds),
+    ...list(actor?.characterSheet?.skill_expertise),
+    ...list(actor?.creationBenefits?.expertise),
+  ]
+  return expertise.includes(THIEVES_TOOLS_ID)
 }
 
 /**

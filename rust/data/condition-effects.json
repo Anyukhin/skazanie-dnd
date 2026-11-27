@@ -13,7 +13,8 @@
  "hasted": {
   "armorClassBonus": 2,
   "speedMultiplier": 2,
-  "extraActions": 1
+  "extraActions": 1,
+  "saveAdvantageAbilities": ["dex"]
  },
  "slowed": {
   "armorClassBonus": -2,

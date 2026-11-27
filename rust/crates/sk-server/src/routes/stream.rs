@@ -14,8 +14,8 @@ use crate::streams::TYPING_TTL_MS;
 
 pub fn routes() -> Vec<Route> {
     vec![
-        Route::new(4234, Methods::One(Method::PUT), Matcher::path_template("/api/campaigns/{id}/presence/typing"), typing),
-        Route::get(4255, Matcher::path_template("/api/campaigns/{id}/stream"), stream),
+        Route::new(4291, Methods::One(Method::PUT), Matcher::path_template("/api/campaigns/{id}/presence/typing"), typing),
+        Route::get(4312, Matcher::path_template("/api/campaigns/{id}/stream"), stream),
     ]
 }
 

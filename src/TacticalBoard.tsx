@@ -22,6 +22,7 @@ import {
   isSpellAnimationCue,
   systemPrefersReducedMotion,
 } from './spell-effects'
+import type { PersistentSpellEffect } from './spell-effects'
 import {
   DOOR_SWING_MS,
   ambientFrameWanted,
@@ -410,6 +411,8 @@ export type BoardAnimationActor = {
   kind: 'hero' | 'enemy' | 'summon' | 'neutral'
   /** Только внешний вид; не влияет на размеры и правила существа. */
   modelKey?: string
+  /** Публичная форма временно перекрывает сохранённый выбор фигурки героя. */
+  shapeModelKey?: string
   archetype?: string
   appearance?: ActorAppearance
   /** Серверная квадратная площадь; отсутствие у старых акторов означает 1×1. */
@@ -473,6 +476,8 @@ export type TacticalBoardProps = {
   overlayCells: BoardOverlayCell[]
   /** Один упорядоченный конвейер для всех canvas-эффектов над подсветкой команд. */
   effectRenderers?: readonly BoardEffectRenderer[]
+  /** Снимок постоянных областей для 3D-слоя, синхронный с 2D проекцией. */
+  persistentSpellEffects?: readonly PersistentSpellEffect[]
   decoration?: React.ReactNode
   battleLog?: BattleEvent[]
   visualBatch?: CombatVisualBatch | null

@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import type { ActorModelInput } from './actor-models'
-export type AstohanNpcStyle = 'ares' | 'oren' | 'gedrik' | 'sargat' | 'ivara' | 'mira' | 'lomar' | 'lars' | 'toban' | 'trent'
+import { buildAstohanKaelan } from './astohan-kaelan'
+
+export type AstohanNpcStyle = 'ares' | 'ivara' | 'oren' | 'mira' | 'lomar' | 'kaelan' | 'sargat' | 'lars' | 'toban' | 'gedrik' | 'trent'
 
 const clean = (value: unknown) => String(value ?? '').toLocaleLowerCase('ru-RU').normalize('NFKC')
   .replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/gu, ' ').trim()
@@ -9,7 +11,7 @@ const names: Readonly<Record<string, AstohanNpcStyle>> = {
   'король арес':'ares','арес':'ares','king ares':'ares','ares':'ares',
   'маршал ивара тейн':'ivara','ивара тейн':'ivara','marshal ivara thain':'ivara',
   'орен фаль':'oren','oren fal':'oren','мира венн':'mira','mira venn':'mira',
-  'ломар':'lomar','lomar':'lomar',
+  'ломар':'lomar','lomar':'lomar','каэлан вердант':'kaelan','каэлан':'kaelan',
   'саргат':'sargat','sargat':'sargat','ларс':'lars','lars':'lars','тобан':'toban','toban':'toban',
   'гедрик сол':'gedrik','gedrik sol':'gedrik','трент':'trent','trent':'trent',
 }
@@ -179,6 +181,7 @@ function applyStyle(root: THREE.Object3D, style: AstohanNpcStyle, orientation: '
     case 'oren': spectacles(root, orientation); cape(root, '#30323d', orientation, .62); break
     case 'mira': cape(root, '#3f664e', orientation, .64); break
     case 'lomar': cape(root, '#214b57', orientation, .70); break
+    case 'kaelan': buildAstohanKaelan(root); break
     // Саргат уже получает полноценную драконью модель. Дополнительная чешуя
     // поверх нормализованного дракона только пересекалась бы с его шеей.
     case 'sargat': break
@@ -213,10 +216,8 @@ function applyStyle(root: THREE.Object3D, style: AstohanNpcStyle, orientation: '
 /** Ивара и Мира открыто описаны как женщины. Их базовая модель выбирается
  * по имени/роли, пока ручной modelKey не отменил автоматический выбор. */
 export function astohanNpcModelKey(input: Pick<ActorModelInput, 'kind' | 'label' | 'archetype'>): string | null {
-  if (input.kind !== 'neutral' && input.kind !== 'enemy') return null
-  const style = astohanNpcStyle(input)
-  if (style === 'sargat') return 'dragon'
   if (input.kind !== 'neutral') return null
+  const style = astohanNpcStyle(input)
   return style === 'ivara' || style === 'mira' ? 'hero-female' : null
 }
 

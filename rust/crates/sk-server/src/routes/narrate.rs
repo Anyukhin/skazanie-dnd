@@ -36,7 +36,7 @@ use sk_agents::free_action_adjudication::assert_free_action_confirmation;
 use sk_agents::player_request_router::{propose_agent_interaction, propose_routed_travel, resolve_party_decision};
 use sk_core::{js, text};
 use sk_director::director_scene_transition::{director_transition_fingerprint, resolved_party_decision_reference};
-use sk_orchestrator::game_orchestrator::{HandleInput, NarrationProgress, NarrationStart};
+use sk_orchestrator::game_orchestrator::{authored_dialogue_request_fingerprint, authored_narration_replay_matches, HandleInput, NarrationProgress, NarrationStart};
 use sk_social::npc_social::{ensure_npc_social_state, npc_profile_at_world_time, npc_social_for_viewer};
 use sk_story::intent_parser::{infer_request_kind, normalize_request_kind, REQUEST_KINDS};
 
@@ -58,7 +58,7 @@ use crate::streams::NarrationHub;
 
 pub fn routes() -> Vec<Route> {
     // `req.url === '/api/narrate' && req.method === 'POST'` (6144).
-    vec![Route::post(6268, Matcher::raw("/api/narrate"), narrate)]
+    vec![Route::post(6340, Matcher::raw("/api/narrate"), narrate)]
 }
 
 /// Коды 409 (6473).
@@ -212,6 +212,7 @@ struct Turn {
     state: Value,
     player_id: String,
     explicit_npc_id: String,
+    authored_dialogue_replay: bool,
     idempotency_key: String,
 }
 
@@ -225,6 +226,7 @@ async fn narrate_body(ctx: &mut RouteCtx, user: Value) -> Result<axum::response:
         }
     }
     let request_kind = match raw_kind {
+        None if body.get("npc_id").is_some_and(|id| !id.is_null() && id.as_str() != Some("")) => "action",
         None => infer_request_kind(Some(&Value::String(action.clone()))),
         Some(kind) => normalize_request_kind(Some(kind)),
     };
@@ -272,9 +274,6 @@ async fn narrate_body(ctx: &mut RouteCtx, user: Value) -> Result<axum::response:
     if !blocking(move || can_access_room(&accounts, Some(&checked_user), &checked_room)).await?? {
         return Err(ApiError::new(StatusCode::FORBIDDEN, NO_ACCESS).into());
     }
-    if !conversation_only {
-        sk_director::campaign_lifecycle::assert_campaign_playable(&trusted).map_err(|error| Failure::new(error.message, error.code.as_deref()))?;
-    }
     let requested_player = js::s(body.get("actor_id"));
     let player_id = if requested_player.is_empty() { or_empty(trusted.get("activePlayerId")) } else { requested_player };
     let accounts = state.accounts.clone();
@@ -282,26 +281,51 @@ async fn narrate_body(ctx: &mut RouteCtx, user: Value) -> Result<axum::response:
     if !blocking(move || can_use_hero(&accounts, &checked_user, Some(&hero), &code)).await?? {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "Этот герой не принадлежит вашему аккаунту").into());
     }
-    let explicit_npc_id = if conversation_only { String::new() } else { explicit_narration_npc_id(&trusted, &user, &player_id, body.get("npc_id"))? };
-    let combat = at(Some(&trusted), &["mechanics", "combat"]);
-    let combat_actor_id = js::s(get(index_of(get(combat, "initiative"), Some(nullish(get(combat, "active_index"), None).unwrap_or(&json!(0)))), "actor_id"));
-    if !conversation_only && js::truthy(get(combat, "active")) && !combat_actor_id.is_empty()
-        && !sk_rules::combat::turn::is_own_combat_turn(&trusted, Some(&json!(player_id)))
-    {
-        return Err(ApiError::coded(StatusCode::CONFLICT, format!("Сейчас ходит другой участник: {combat_actor_id}"), "NOT_ACTIVE_ACTOR").into());
-    }
-    let death = at(Some(&trusted), &["mechanics", "death"]);
-    if !conversation_only && get(death, "campaign_status").and_then(Value::as_str) == Some("party_defeated") {
-        return Err(ApiError::coded(StatusCode::CONFLICT, "Все герои погибли. Эта история завершена, продолжать игру в этом мире нельзя", "WORLD_ENDED").into());
-    }
-    if !conversation_only && at(death, &["heroes", &player_id, "status"]).and_then(Value::as_str) == Some("dead") {
-        return Err(ApiError::coded(StatusCode::CONFLICT, "Сначала воскресите погибшего героя или замените его новым", "HERO_DEAD_UNRESOLVED").into());
-    }
+    let idempotency_key = narrate_key_or_uuid(&body, &ctx.headers);
+    let (explicit_npc_id, authored_dialogue_replay) = if conversation_only {
+        (String::new(), false)
+    } else {
+        let availability = sk_director::campaign_lifecycle::assert_campaign_playable(&trusted)
+            .map_err(|error| Failure::new(error.message, error.code.as_deref()))
+            .and_then(|_| explicit_narration_npc_id(&trusted, &user, &player_id, body.get("npc_id")));
+        let combat = at(Some(&trusted), &["mechanics", "combat"]);
+        let combat_actor_id = js::s(get(index_of(get(combat, "initiative"), Some(nullish(get(combat, "active_index"), None).unwrap_or(&json!(0)))), "actor_id"));
+        let death = at(Some(&trusted), &["mechanics", "death"]);
+        let blocked = if js::truthy(get(combat, "active")) && !combat_actor_id.is_empty() && player_id != combat_actor_id {
+            Some(ApiError::coded(StatusCode::CONFLICT, format!("Сейчас ходит другой участник: {combat_actor_id}"), "NOT_ACTIVE_ACTOR"))
+        } else if get(death, "campaign_status").and_then(Value::as_str) == Some("party_defeated") {
+            Some(ApiError::coded(StatusCode::CONFLICT, "Все герои погибли. Эта история завершена, продолжать игру в этом мире нельзя", "WORLD_ENDED"))
+        } else if at(death, &["heroes", &player_id, "status"]).and_then(Value::as_str) == Some("dead") {
+            Some(ApiError::coded(StatusCode::CONFLICT, "Сначала воскресите погибшего героя или замените его новым", "HERO_DEAD_UNRESOLVED"))
+        } else {
+            None
+        };
+        let requested_npc = body.get("npc_id").and_then(Value::as_str).map(text::trim).unwrap_or("");
+        let valid_npc = body.get("npc_id").is_none_or(|id| id.is_null() || id.as_str() == Some(""))
+            || (!requested_npc.is_empty() && requested_npc.len() <= 120 && requested_npc.bytes().all(|ch| ch.is_ascii_alphanumeric() || b"._:-".contains(&ch)));
+        let authorized_replay = if valid_npc && (availability.is_err() || blocked.is_some()) {
+            let (code, key) = (campaign_id.clone(), idempotency_key.clone());
+            let duplicate = state.core.call(move |core| Box::pin(async move {
+                core.events.get_by_idempotency_key(&code, &key)
+            })).await?.map_err(Failure::from)?;
+            duplicate.is_some_and(|commit| authored_narration_replay_matches(&commit.events, &campaign_id, &player_id, &action, requested_npc, &body))
+        } else {
+            false
+        };
+        if authorized_replay {
+            (requested_npc.to_string(), true)
+        } else {
+            let npc_id = availability?;
+            if let Some(error) = blocked {
+                return Err(error.into());
+            }
+            (npc_id, false)
+        }
+    };
     if state.limits.exceeds_rate(&format!("narrate:{}", js::string(user.get("id"))), 40, None) {
         return Err(ApiError::new(StatusCode::TOO_MANY_REQUESTS, "Слишком много ходов за короткое время").into());
     }
-    let idempotency_key = narrate_key_or_uuid(&body, &ctx.headers);
-    let turn = Turn { app: state.clone(), user, body, action, request_kind, conversation_only, campaign_id, room, state: trusted, player_id, explicit_npc_id, idempotency_key };
+    let turn = Turn { app: state.clone(), user, body, action, request_kind, conversation_only, campaign_id, room, state: trusted, player_id, explicit_npc_id, authored_dialogue_replay, idempotency_key };
     let run_span = sk_store::perf::span("narrate.run_turn");
     let answered = state.core.call(move |core| Box::pin(async move { run_turn(core, turn).await })).await?;
     drop(run_span);
@@ -385,8 +409,9 @@ fn interaction_description(effects: &Value) -> Result<Value, Failure> {
 }
 
 async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message_id: &str, transport: &Arc<Mutex<Transport>>, reservation: &mut Option<Value>) -> Result<Value, Caught> {
-    let Turn { app, user, body, action, request_kind, conversation_only, campaign_id, room, state, player_id, explicit_npc_id, idempotency_key } = turn;
+    let Turn { app, user, body, action, request_kind, conversation_only, campaign_id, room, state, player_id, explicit_npc_id, authored_dialogue_replay, idempotency_key } = turn;
     let (conversation_only, request_kind) = (*conversation_only, *request_kind);
+    let mut authored_dialogue_replay = *authored_dialogue_replay;
     let start: NarrationStart = {
         let (hub, transport, campaign, id) = (hub.clone(), transport.clone(), campaign_id.clone(), message_id.to_string());
         Arc::new(move |_progress: &Value| {
@@ -435,11 +460,16 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
 
     let mut director_resolution: Option<Value> = None;
     let mut director_replay: Option<(sk_store::CommitResult, Value)> = None;
-    if !conversation_only && explicit_npc_id.is_empty() {
+    if !conversation_only && explicit_npc_id.is_empty() && !authored_dialogue_replay {
         let duplicate = core.events.get_by_idempotency_key(campaign_id, idempotency_key).map_err(Failure::from)?;
         let duplicate_scene = duplicate.as_ref().and_then(|commit| commit.events.iter().find(|event| event.get("event_type").and_then(Value::as_str) == Some("SceneAdvanced"))).cloned();
         let interaction = state.get("agentInteraction");
-        if let Some(scene) = duplicate_scene {
+        if let Some(commit) = duplicate.as_ref().filter(|commit| authored_dialogue_request_fingerprint(&commit.events).is_some()) {
+            authored_dialogue_replay = authored_narration_replay_matches(&commit.events, campaign_id, player_id, action, explicit_npc_id, body);
+            if !authored_dialogue_replay {
+                return Err(policy_error("Этот ключ идемпотентности уже использован для другого игрового действия", "IDEMPOTENCY_CONFLICT").into());
+            }
+        } else if let Some(scene) = duplicate_scene {
             let fingerprint = director_transition_fingerprint(Some(&campaign_value), Some(&action_value)).map_err(|error| Failure::new(error.message, error.code.as_deref()))?;
             if get(scene.get("payload"), "request_fingerprint").and_then(Value::as_str) != Some(fingerprint.as_str()) {
                 return Err(policy_error("Этот ключ идемпотентности уже использован для другого перехода сцены", "IDEMPOTENCY_CONFLICT").into());
@@ -463,7 +493,7 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
         }
     }
     let director_interaction =
-        if !conversation_only && explicit_npc_id.is_empty() && director_resolution.is_none() && director_replay.is_none() { propose_agent_interaction(action, state, "", &actor_name) } else { None };
+        if !conversation_only && explicit_npc_id.is_empty() && !authored_dialogue_replay && director_resolution.is_none() && director_replay.is_none() { propose_agent_interaction(action, state, "", &actor_name) } else { None };
     // Соло-стол не голосует. Бросок судьбы остаётся карточкой и в одиночку:
     // там решение принимает кубик, а не отряд.
     let solo_exit = match director_interaction.as_ref().filter(|proposal| proposal.get("type").and_then(Value::as_str) == Some("vote")) {
@@ -517,6 +547,8 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
         }
         let allowed = crate::director_transition::allowed_actor_ids(app, user, campaign_id).await?;
         let mut patch = Map::new();
+        let treaty_voters = crate::access::scenario_treaty_voter_snapshot(app, campaign_id, state, player_id).await?;
+        patch.insert("scenarioTreatyVoters".into(), treaty_voters);
         patch.insert("state".into(), state.clone());
         patch.insert("roomVersion".into(), Value::from(room.version));
         patch.insert("campaignId".into(), campaign_value.clone());
@@ -528,6 +560,7 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
         patch.insert("requestKind".into(), json!(request_kind));
         patch.insert("idempotencyKey".into(), Value::String(idempotency_key.clone()));
         patch.insert("npcId".into(), Value::String(explicit_npc_id.clone()));
+        patch.insert("authoredDialogueReplay".into(), Value::Bool(authored_dialogue_replay));
         patch.insert("verifiedRoll".into(), verified_roll.clone());
         patch.insert("manualRoll".into(), Value::Bool(body.get("manual_roll") == Some(&Value::Bool(true))));
         patch.insert("confirmedProposalId".into(), body.get("confirmed_proposal_id").filter(|value| value.is_string()).cloned().unwrap_or(Value::Null));
@@ -644,8 +677,7 @@ async fn turn_body(core: &Rc<GameCore>, turn: &Turn, hub: &NarrationHub, message
         patch.insert("narration_message_id".into(), Value::String(id.clone()));
     }
     if let Some(engine_state) = &authoritative {
-        let mut canonical = journaled.as_ref().and_then(|room| room.state.clone()).or_else(|| projected.as_ref().and_then(|room| room.state.clone())).unwrap_or_else(|| engine_state.clone());
-        crate::streams::attach_group_turn_phase(&mut canonical)?;
+        let canonical = journaled.as_ref().and_then(|room| room.state.clone()).or_else(|| projected.as_ref().and_then(|room| room.state.clone())).unwrap_or_else(|| engine_state.clone());
         patch.insert("authoritative_state".into(), canonical);
     }
     // Рассказ может пережить чужую запись комнаты: версия при начале запроса

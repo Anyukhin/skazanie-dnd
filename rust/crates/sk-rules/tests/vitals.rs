@@ -253,7 +253,7 @@ fn run_call(f: &str, a: &Args<'_>) -> Result<Value, Halt> {
         "hitPointDicePoolForActor" => ok(rest::hit_point_dice_pool_for_actor(st, &a.id(0)).map_or(Value::Null, rest::HitPointDicePool::to_value)),
         "elapsedRestMinutes" => ok(json!(rest::elapsed_rest_minutes(st, a.v(0)))),
         // lockpick.rs
-        "lockpickCheckModifier" => ok(json!(lockpick::lockpick_check_modifier(a.actor(0)))),
+        "lockpickCheckModifier" => ok(json!(lockpick::lockpick_check_modifier(a.actor(0), Some(st)))),
         "lockpickNoticeEvents" => {
             let args = lockpick::LockpickNotice { target_kind: a.v(1), target_id: a.v(2), target_label: a.v(3), check: a.v(4), notice: a.v(5) };
             ok(Value::Array(lockpick::lockpick_notice_events(st, a.v(0).unwrap_or(&Value::Null), args)))

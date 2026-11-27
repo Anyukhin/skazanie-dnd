@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 
 import * as THREE from 'three'
 import { actorAppearanceFor, actorStatureFor } from '../server/actor-appearance.mjs'
@@ -11,8 +12,63 @@ import { compileClientModules } from './kit/client-ts.mjs'
  * стул на карте выходил 1,8 фт при столе в 3 фт, свеча — выше колена.
  */
 
-const { modules: [models, props, render, catalog, seeThrough] } = await compileClientModules(['src/actor-models.ts', 'src/board3d-props.ts', 'src/board-render.ts', 'src/prop-model-catalog.ts', 'src/board3d-see-through.ts'])
+const { modules: [models, props, render, catalog, seeThrough, styles] } = await compileClientModules(['src/actor-models.ts', 'src/board3d-props.ts', 'src/board-render.ts', 'src/prop-model-catalog.ts', 'src/board3d-see-through.ts', 'src/board3d-style.ts'])
 const HUMAN = 1.3
+
+test('шкаф и кошель из выпуска карты держат размер относительно героя', () => {
+  const read = name => JSON.parse(readFileSync(new URL('../public/assets/' + name, import.meta.url), 'utf8'))
+  const environment = catalog.validatePropModelCatalog(read('models/environment/manifest.json'))
+  const style = styles.validateGraphicsStylePack(read('styles/stylized/manifest.json'))
+  const closed = id => ({ id, assetId: id, rotation: 0, scale: 1, x: .5, y: .5, footprint: [{ x: 0, y: 0 }] })
+  const objects = [closed('cupboard'), closed('coin_pouch')]
+  const published = render.withStyleProps(environment, style, objects)
+  assert.equal(catalog.propModelFor(environment, 'cupboard', 'cupboard').key, 'sk-household-wardrobe')
+  const meshes = new Map()
+  const lib = props.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, { catalog: published, models: meshes })
+  try {
+    for (const prop of objects) {
+      const entry = catalog.propModelFor(published, prop.assetId, prop.id)
+      const template = new THREE.Mesh(new THREE.BoxGeometry(...entry.size), new THREE.MeshBasicMaterial())
+      meshes.set(entry.key, template)
+      const model = lib.create(prop)
+      const bounds = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3())
+      assert.equal(model.userData.modelSource, 'glb')
+      assert.ok(bounds.x <= 1 && bounds.z <= 1, 'занимаемые клетки сохранены')
+      if (prop.assetId === 'cupboard') {
+        assert.equal(entry.key, 'style-sk-wardrobe')
+        assert.ok(bounds.y >= 1.20 && bounds.y <= 1.38, 'высокий шкаф примерно в рост человека')
+      } else {
+        assert.ok(bounds.y >= .095 && bounds.y <= .14, 'кошелёк помещается в ладонь')
+      }
+    }
+  } finally {
+    lib.dispose()
+    for (const mesh of meshes.values()) { mesh.geometry.dispose(); mesh.material.dispose() }
+  }
+})
+
+test('низкий буфет из старого выпуска заменяется процедурным шкафом, отдельная авторская модель сохраняется', () => {
+  const cabinet = { key: 'q-cabinet', assetIds: ['cupboard'] }
+  assert.equal(catalog.propModelFor({ models: [cabinet] }, 'cupboard', 'test'), null)
+  const custom = { key: 'custom-cupboard', assetIds: ['cupboard'] }
+  assert.equal(catalog.propModelFor({ models: [custom] }, 'cupboard', 'test'), custom)
+  const library = props.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE)
+  try {
+    for (const [assetId, low, high] of [['cupboard', 1.2, 1.38], ['coin_pouch', .095, .14]]) {
+      const prop = { id: assetId, assetId, x: .5, y: .5, rotation: 0, scale: 1, footprint: [{ x: 0, y: 0 }] }
+      const size = new THREE.Box3().setFromObject(library.create(prop)).getSize(new THREE.Vector3())
+      assert.ok(size.y >= low && size.y <= high, assetId)
+    }
+  } finally {
+    library.dispose()
+  }
+})
+
+test('плоский мелкий камень ограничен по ширине, а валун может занять всю клетку', () => {
+  const entry = { size: [1, .10, .9] }
+  assert.ok(catalog.propModelFit('rock_small', entry, 1, 1, render.PROP_FOOTPRINT_FILL) <= .48)
+  assert.ok(catalog.propModelFit('boulder', entry, 1, 1, render.PROP_FOOTPRINT_FILL) > .8)
+})
 
 test('рост фигурки идёт по категории размера: маленький ниже человека, огромный заметно выше большого', () => {
   const medium = models.figureHeightFor(HUMAN, 'warrior', 1)

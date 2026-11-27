@@ -19,6 +19,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { standImpl } from './stand-server.mjs'
+import { endingFor, seedPassed, victoryFor } from './astohan-seed-status.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const argv = process.argv.slice(2)
@@ -92,11 +93,15 @@ const cell = (value) => String(value ?? '—').replace(/\|/gu, '\\|').replace(/\
 
 function summarize(results) {
   const rows = results.map(({ seed, report, code }) => {
-    if (!report) return { seed, status: `упал (${code})` }
+    if (!report) return { seed, status: `упал (${code})`, code }
     const { scorecard, stats, minutes } = report
+    const ending = endingFor(report)
     return {
       seed,
+      code,
       status: scorecard.status,
+      ending,
+      victory: victoryFor(ending),
       overall: scorecard.overall,
       minutes,
       chapters: stats.chapters,
@@ -127,7 +132,7 @@ function summarize(results) {
   const findings = [...kinds.values()]
     .map((entry) => ({ ...entry, seeds: [...entry.seeds].sort((a, b) => a - b) }))
     .sort((left, right) => (order[left.severity] ?? 9) - (order[right.severity] ?? 9) || right.seeds.length - left.seeds.length || left.kind.localeCompare(right.kind))
-  const completed = rows.filter((row) => row.status === 'completed').length
+  const completed = rows.filter((row) => row.status === 'completed' && row.victory === true).length
   // Поражение отряда — тоже конец истории: сюжет дошёл до развязки, просто не
   // в пользу героев. Не дошедший до конца прогон — это `active` или падение.
   const finished = rows.filter((row) => ['completed', 'failed'].includes(row.status)).length
@@ -152,7 +157,7 @@ function writeSummary(results, summary) {
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     ...summary.rows.map((row) => row.overall == null
       ? `| ${row.seed} | ${cell(row.status)} | — | — | — | — | — | — | — | — | — | — | — |`
-      : `| [${row.seed}](seed-${row.seed}/report.md) | ${row.status} | ${row.overall} | ${row.minutes} | ${row.chapters} | ${row.combats} (${row.wins}) | ${row.deaths} | ${row.dead_ends} | ${row.corpus} | ${row.text} | ${row.consistency} | ${row.refused} | ${row.blockers} / ${row.critical} / ${row.major} |`),
+      : `| [${row.seed}](seed-${row.seed}/report.md) | ${cell(`${row.status}${row.ending ? ` (${row.ending})` : ''}`)} | ${row.overall} | ${row.minutes} | ${row.chapters} | ${row.combats} (${row.wins}) | ${row.deaths} | ${row.dead_ends} | ${row.corpus} | ${row.text} | ${row.consistency} | ${row.refused} | ${row.blockers} / ${row.critical} / ${row.major} |`),
     '',
     '## Находки по видам',
     '',
@@ -180,4 +185,6 @@ const summary = summarize(results)
 writeSummary(results, summary)
 console.log(`\nДо конца: ${summary.finished} из ${results.length} (победой ${summary.completed}), оценка средняя ${summary.mean ?? '—'}, худшая ${summary.min ?? '—'}`)
 console.log(`Сводка: ${relative(ROOT, join(OUT, 'summary.md'))}`)
-process.exitCode = summary.finished === results.length && results.every((result) => result.report?.scorecard.blockers === 0) ? 0 : 1
+process.exitCode = summary.finished === results.length
+  && results.every((result) => result.code === 0 && seedPassed(result.report))
+  ? 0 : 1

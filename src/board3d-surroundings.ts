@@ -15,6 +15,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { cellAt } from './tactical-map-client'
 import type { TacticalMap } from './types'
 import { createBoulderGeometry } from './board3d-landscape'
+import { createDistantTerrain, createGroundShadows, type BoardBackdropStyle } from './board3d-distant-terrain'
 
 export type SurroundingsBiome = 'forest' | 'deadwood' | 'meadow' | 'mountain' | 'rock' | 'sea' | 'indoor'
 type OutdoorBiome = Exclude<SurroundingsBiome, 'indoor'>
@@ -73,7 +74,7 @@ function derivedBiome(map: TacticalMap): SurroundingsBiome {
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
       const cell = cellAt(map, x, y)
-      if (!cell) continue
+      if (!cell?.revealed) continue
       present += 1
       if (!cell.passable || !isExteriorZone(map, cell.zone)) continue
       exterior += 1
@@ -89,8 +90,17 @@ function derivedBiome(map: TacticalMap): SurroundingsBiome {
 }
 
 /** Цвета фона (центр и край виньетки) в тон окрестностям. */
-export function surroundingsBackdrop(map: TacticalMap): [string, string] {
-  return BACKDROP[surroundingsBiome(map)]
+export function surroundingsBackdrop(map: TacticalMap, style: BoardBackdropStyle = 'landscape'): [string, string] {
+  const biome = surroundingsBiome(map)
+  if (style === 'classic') return BACKDROP[biome]
+  if (biome === 'indoor' || biome === 'rock') {
+    return style === 'atlas' ? ['#625d4e', '#202322'] : ['#353735', '#101516']
+  }
+  if (style === 'atlas') return ['#9d9786', '#494a43']
+  const horizon: Record<Exclude<OutdoorBiome, 'rock'>, string> = {
+    meadow: '#637868', forest: '#526c61', mountain: '#677779', sea: '#587584', deadwood: '#716b68',
+  }
+  return [horizon[biome], '#233334']
 }
 
 type Source = { color: THREE.Color; water: boolean }
@@ -189,7 +199,7 @@ function nearestSources(map: TacticalMap, margin: number, biomeColor: THREE.Colo
   return { width, height, distance, source, present, clearance, biomeColor }
 }
 
-function groundTexture(map: TacticalMap, main: OutdoorBiome, grid: ReturnType<typeof nearestSources>, margin: number): THREE.Texture | null {
+function groundTexture(map: TacticalMap, main: OutdoorBiome, grid: ReturnType<typeof nearestSources>, margin: number, style: BoardBackdropStyle): THREE.Texture | null {
   if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null
   const raw = document.createElement('canvas')
   raw.width = grid.width * PIXELS_PER_CELL
@@ -197,23 +207,32 @@ function groundTexture(map: TacticalMap, main: OutdoorBiome, grid: ReturnType<ty
   const context = raw.getContext('2d')
   if (!context) return null
   const color = new THREE.Color()
+  const coolStone = new THREE.Color('#536568'), undergrowth = new THREE.Color('#496445')
   const rgb = { r: 0, g: 0, b: 0 }
   for (let y = 0; y < grid.height; y += 1) {
     for (let x = 0; x < grid.width; x += 1) {
       const index = y * grid.width + x
       const found = grid.source[index]
       const d = grid.distance[index]
-      const biomeColor = new THREE.Color(BIOME_GROUND[cellBiome(map, main, margin, x, y, grid.present, grid.width)])
+      const local = cellBiome(map, main, margin, x, y, grid.present, grid.width)
+      const biomeColor = new THREE.Color(BIOME_GROUND[local])
       if (found?.water && d <= WATER_REACH) color.copy(found.color)
       else if (found && Number.isFinite(d)) color.copy(found.color).lerp(biomeColor, Math.min(1, d / 6))
       else color.copy(biomeColor)
+      const outside = Math.max(margin - x, margin - y, x - margin - map.width, y - margin - map.height, 0)
+      if (style === 'landscape' && local !== 'sea' && !(found?.water && d <= WATER_REACH)) {
+        const wash = .27 + .17 * Math.sin(x * .23 + 1.8 * Math.sin(y * .19))
+        color.lerp(local === 'mountain' || local === 'deadwood' ? coolStone : undergrowth,
+          wash * THREE.MathUtils.smoothstep(outside, 2, margin - 2))
+      }
       const shade = .9 + hash(x, y, 7) * .18
       color.multiplyScalar(shade)
       // Гаснет к внешнему краю полосы: окрестности растворяются в фоне.
       const edge = Math.min(x, y, grid.width - 1 - x, grid.height - 1 - y)
       // Под самой картой земли нет: там её пол и вода, иначе плоскость их
       // перекрыла бы (вода лежит ниже верха плиток).
-      const alpha = grid.present[index] ? 0 : Math.max(0, Math.min(1, edge / (margin * .7)))
+      const atlasFade = style === 'atlas' ? 1 - THREE.MathUtils.smoothstep(outside, 3, margin - 1) : 1
+      const alpha = grid.present[index] ? 0 : Math.max(0, Math.min(1, edge / (margin * .7))) * atlasFade
       // THREE.Color хранит линейные значения, холст ждёт sRGB.
       color.getRGB(rgb, THREE.SRGBColorSpace)
       context.fillStyle = `rgba(${Math.round(rgb.r * 255)},${Math.round(rgb.g * 255)},${Math.round(rgb.b * 255)},${alpha.toFixed(3)})`
@@ -618,7 +637,7 @@ export type Surroundings = {
  * `null` — у помещения окрестностей нет. `models` — модели, которые сцена
  * успела загрузить; чего нет, то рисуется заменителем.
  */
-export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' | 'minimal' = 'reduced', models: SurroundingsModels = {}): Surroundings | null {
+export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' | 'minimal' = 'reduced', models: SurroundingsModels = {}, backdropStyle: BoardBackdropStyle = 'landscape', darkness = 0): Surroundings | null {
   const resolved = surroundingsBiome(map)
   if (resolved === 'indoor') return null
   const biome: OutdoorBiome = resolved
@@ -627,6 +646,7 @@ export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' 
   const grid = nearestSources(map, margin, biomeColor)
   const group = new THREE.Group()
   group.name = 'surroundings'
+  group.userData.biome = biome
   const owned: Array<{ dispose: () => void }> = []
   const fallback = fallbackModels()
   owned.push(...fallback.owned)
@@ -638,7 +658,20 @@ export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' 
     .filter((value): value is OutdoorBiome => typeof value === 'string' && OUTDOOR_BIOMES.has(value))
   const drop = Math.max(CLIFF_DROP[biome], ...sideBiomes.map((value) => CLIFF_DROP[value]))
 
-  const texture = groundTexture(map, biome, grid, margin)
+  const style = biome === 'rock' ? 'classic' : backdropStyle
+  if (style !== 'classic') {
+    const distant = createDistantTerrain(map, biome, style, detail, margin, drop, models.groundDetail)
+    const dim = THREE.MathUtils.smoothstep(darkness, .35, .95)
+    const light = new THREE.Color('#ffffff').lerp(new THREE.Color('#7c8d99'), dim)
+    group.add(distant)
+    distant.traverse(object => {
+      if (object instanceof THREE.Mesh) {
+        object.material.color.multiply(light)
+        owned.push(object.geometry, object.material)
+      }
+    })
+  }
+  const texture = groundTexture(map, biome, grid, margin, style)
   const groundMaterial = new THREE.MeshStandardMaterial({
     color: texture ? '#ffffff' : biomeColor,
     map: texture,
@@ -773,7 +806,9 @@ export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' 
       if (found?.water && d <= WATER_REACH) continue
       const edge = Math.min(gx, gy, grid.width - 1 - gx, grid.height - 1 - gy)
       if (edge < 2) continue
+      const outside = Math.max(margin - gx, margin - gy, gx - margin - map.width, gy - margin - map.height, 0)
       const fade = Math.min(1, edge / (margin * .6))
+        * (style === 'atlas' ? 1 - THREE.MathUtils.smoothstep(outside, 4, margin - 2) : 1)
       const local = cellBiome(map, biome, margin, gx, gy, grid.present, grid.width)
       const x = gx - margin + .5 + (hash(gx, gy, 1) - .5) * .7
       const z = gy - margin + .5 + (hash(gx, gy, 2) - .5) * .7
@@ -787,7 +822,7 @@ export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' 
       const modelled = (list: readonly SurroundingsModel[] | undefined) => Boolean(list?.length)
       if (DEAD[local] && roll < DEAD[local] * fade) {
         place('dead', models.dead, fallback.models.dead, size(1.8, 3), modelled(models.dead) ? null : new THREE.Color('#3b3128'))
-      } else if (roll < TREE[local] * fade) {
+      } else if (roll < TREE[local] * fade * (style === 'landscape' ? 1 + .48 * Math.sin(x * .31 + 1.8 * Math.sin(z * .22)) : 1)) {
         const conifer = hash(gx, gy, 5) < CONIFER[local]
         const tone = modelled(conifer ? models.conifers : models.broadleaf) ? null
           : new THREE.Color(conifer ? '#2f4a2a' : '#45632f').offsetHSL((hash(gx, gy, 6) - .5) * .05, 0, (hash(gx, gy, 8) - .5) * .12)
@@ -807,16 +842,34 @@ export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' 
     return Array.from({ length: maximum }, (_, index) => list[Math.floor(index * step)])
   }
   // Лиственные модели в несколько раз тяжелее хвойных: их доля меньше.
-  instanceItems(group, 'surroundings-trees', capped(decor.broadleaf, .08))
-  instanceItems(group, 'surroundings-conifers', capped(decor.conifers, .45))
-  instanceItems(group, 'surroundings-deadwood', capped(decor.dead, .5))
-  instanceItems(group, 'surroundings-bushes', capped(decor.bushes, .2))
-  instanceItems(group, 'surroundings-rocks', capped(decor.rocks, .3))
+  const shadeMatrices: THREE.Matrix4[] = []
+  const plantBatch = (name: string, items: Item[]) => {
+    instanceItems(group, name, items)
+    if (style === 'classic' || detail === 'minimal') return
+    for (const { matrix, model } of items) {
+      matrix.decompose(object.position, object.quaternion, object.scale)
+      object.position.y += .022
+      object.scale.x *= model.size.x * 1.5
+      object.scale.z *= model.size.z * 1.7
+      object.updateMatrix(); shadeMatrices.push(object.matrix.clone())
+    }
+  }
+  plantBatch('surroundings-trees', capped(decor.broadleaf, .08))
+  plantBatch('surroundings-conifers', capped(decor.conifers, .45))
+  plantBatch('surroundings-deadwood', capped(decor.dead, .5))
+  plantBatch('surroundings-bushes', capped(decor.bushes, .2))
+  plantBatch('surroundings-rocks', capped(decor.rocks, .3))
+  if (shadeMatrices.length) {
+    const shade = createGroundShadows(shadeMatrices, style === 'atlas' ? .65 : 1)
+    shade.name = 'surroundings-contact-shade'
+    group.add(shade); owned.push(shade.geometry, shade.material)
+  }
   return {
     group,
     animated: Boolean(seaMaterial),
     animate: (seconds: number) => { if (seaMaterial) seaMaterial.userData.time.value = seconds },
     dispose: () => {
+      group.traverse(object => { if (object instanceof THREE.InstancedMesh) object.dispose() })
       for (const resource of owned) resource.dispose()
       group.clear()
     },

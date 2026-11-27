@@ -43,7 +43,7 @@ pub const PROMPT_DESCRIPTORS: &[PromptDescriptor] = &[
     descriptor("scene_architect", "map_architect/v8", "scene-architect.mjs"),
     descriptor("recap", "recap/v1", "campaign-recap.mjs"),
     descriptor("hero_hooks", "hero_hooks/v1", "hero-hooks.mjs"),
-    descriptor("lore_keeper", "lore_keeper/v1", "lore-voice.mjs"),
+    descriptor("lore_keeper", "lore_keeper/v2", "lore-voice.mjs"),
 ];
 
 /// Корень репозитория (где лежат `server/` и `prompts/`), известный при сборке.

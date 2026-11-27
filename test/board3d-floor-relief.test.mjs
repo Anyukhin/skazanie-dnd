@@ -103,6 +103,68 @@ test('рельеф газона только опускает впадины: н
   assert.ok(Math.min(...topHeights(bumpy)) < Math.max(...topHeights(plain)) - .04, 'впадины опускаются')
 })
 
+test('рельеф: граница травы и песка получает фаску, внутренний ковёр остаётся бесшовным', () => {
+  const map = mapWith([[0, 0, { material: 'grass' }], [1, 0, { material: 'sand' }]], { width: 2, height: 1 })
+  const options = (material) => ({
+    include: (_x, _y, cell) => cell.material === material,
+    uvCells: 1,
+    seamless: () => true,
+    neutralShade: true,
+    relief: { subdivisions: 4, depth: .05, height: () => 1, surfaceKey: (cell) => cell.material },
+  })
+  const grass = landscape.createTileGroundGeometry(map, options('grass'))
+  const sand = landscape.createTileGroundGeometry(map, options('sand'))
+  const upperX = (geometry) => {
+    const position = geometry.getAttribute('position'), normal = geometry.getAttribute('normal')
+    return Array.from({ length: position.count }, (_, index) => ({ x: position.getX(index), y: normal.getY(index) }))
+      .filter(({ y }) => y > .99).map(({ x }) => x)
+  }
+  assert.ok(Math.max(...upperX(grass)) < 1, 'газон отступает от кромки песка')
+  assert.ok(Math.min(...upperX(sand)) > 1, 'песок отступает от кромки газона')
+  grass.dispose(); sand.dispose()
+})
+
+test('рельеф газона публикует O(1) индекс верхних сеток по клеткам', () => {
+  const map = mapWith([[0, 0, { material: 'grass' }]])
+  const geometry = landscape.createTileGroundGeometry(map, {
+    include: (_x, _y, cell) => cell.material === 'grass', uvCells: 1, seamless: () => true,
+    relief: { subdivisions: 4, depth: .1, height: () => .5, surfaceKey: () => 'grass' },
+    indexForGrass: true,
+  })
+  const index = geometry.userData.grassSurfaceGrid
+  assert.ok(index?.firstByCell instanceof Int32Array)
+  assert.equal(index.subdivisions, 4)
+  assert.ok(index.firstByCell[0] >= 0)
+  geometry.dispose()
+})
+
+test('цвет перехода земли детерминирован и не просачивается в скрытую клетку', () => {
+  const visible = mapWith([[0, 0, { material: 'grass' }], [1, 0, { material: 'sand' }]], { width: 2, height: 1 })
+  const hidden = mapWith([[0, 0, { material: 'grass' }], [1, 0, { material: 'sand', revealed: false }]], { width: 2, height: 1 })
+  const options = (map) => ({
+    include: (_x, _y, cell) => cell.material === 'grass',
+    uvCells: 1,
+    seamless: () => true,
+    surfaceKey: (cell) => cell.material,
+  })
+  const edge = landscape.createTileGroundGeometry(visible, options(visible))
+  const fog = landscape.createTileGroundGeometry(hidden, options(hidden))
+  const topBand = (geometry, edgeBand) => {
+    const position = geometry.getAttribute('position'), normal = geometry.getAttribute('normal'), color = geometry.getAttribute('color')
+    const values = []
+    for (let index = 0; index < position.count; index += 1) {
+      const x = position.getX(index)
+      if (normal.getY(index) > .99 && (edgeBand ? x > .85 : x < .35)) values.push(color.getY(index))
+    }
+    return values
+  }
+  const edgeColor = topBand(edge, true), interiorColor = topBand(edge, false), hiddenEdgeColor = topBand(fog, true)
+  assert.ok(edgeColor.length && interiorColor.length && hiddenEdgeColor.length)
+  assert.ok(Math.min(...edgeColor) < Math.max(...interiorColor) - .01, 'открытая граница получает пыльный переход')
+  assert.ok(Math.abs(Math.min(...hiddenEdgeColor) - Math.max(...interiorColor)) < .001, 'скрытая соседняя клетка не меняет цвет')
+  edge.dispose(); fog.dispose()
+})
+
 test('ковёр пучков: трава по всей клетке газона, а не пятнами', () => {
   const map = mapWith(Array.from({ length: 12 }, (_, index) => [index % 4, Math.floor(index / 4), { material: 'grass' }]))
   const count = (style) => {

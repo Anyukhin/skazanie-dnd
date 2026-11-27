@@ -79,6 +79,10 @@ fn registry_constants_match_js() {
     let generic: Map<String, Value> = GENERIC_PREDICATE_CONSUMERS.iter().map(|(module, why)| (module.to_string(), json!(why))).collect();
     assert_eq!(serde_json::to_string(&generic).ok(), serde_json::to_string(&constants["GENERIC_PREDICATE_CONSUMERS"]).ok());
     assert_eq!(constants["EXTERNAL_ONLY_PREDICATES"], json!(EXTERNAL_ONLY_PREDICATES));
+    let legacy: Map<String, Value> = LEGACY_PREDICATE_READERS.iter()
+        .map(|(predicate, readers)| ((*predicate).to_string(), json!(readers)))
+        .collect();
+    assert_eq!(serde_json::to_string(&legacy).ok(), serde_json::to_string(&constants["LEGACY_PREDICATE_READERS"]).ok());
 }
 
 #[test]
@@ -146,9 +150,15 @@ fn every_consumed_predicate_has_a_producer() {
     let audit = audit_ontology(&as_pairs(&files));
     let predicates = audit["predicates"].as_object().cloned().unwrap_or_default();
     assert!(predicates.get("died").is_some_and(|entry| !strings(&entry["consumers"]).is_empty()), "сканер обязан видеть чтение died");
+    let legacy = |name: &str, entry: &Value| LEGACY_PREDICATE_READERS.iter()
+        .find(|(known, _)| *known == name)
+        .is_some_and(|(_, readers)| {
+            let consumers = strings(&entry["consumers"]);
+            readers.len() == consumers.len() && readers.iter().all(|reader| consumers.iter().any(|consumer| consumer == reader))
+        });
     let orphan: Vec<&String> = predicates
         .iter()
-        .filter(|(name, entry)| !strings(&entry["consumers"]).is_empty() && strings(&entry["producers"]).is_empty() && !EXTERNAL_ONLY_PREDICATES.contains(&name.as_str()))
+        .filter(|(name, entry)| !strings(&entry["consumers"]).is_empty() && strings(&entry["producers"]).is_empty() && !EXTERNAL_ONLY_PREDICATES.contains(&name.as_str()) && !legacy(name, entry))
         .map(|(name, _)| name)
         .collect();
     assert!(orphan.is_empty(), "предикат читается, но его никто не пишет: {orphan:?}");

@@ -44,6 +44,7 @@ function runRunner(files, {
   repeats = 1,
   reasoning = {},
   fail = false,
+  rejectFirstDraft = false,
   maxCalls = 20,
   budgetRub = 30,
 } = {}) {
@@ -67,6 +68,7 @@ import { writeFileSync } from 'node:fs'
 const requests = []
 const recordPath = ${JSON.stringify(files.requests)}
 const shouldFail = ${JSON.stringify(fail)}
+const rejectFirstDraft = ${JSON.stringify(rejectFirstDraft)}
 const newline = String.fromCharCode(10)
 const frame = payload => ['data: ', JSON.stringify(payload), newline, newline].join('')
 
@@ -79,7 +81,8 @@ globalThis.fetch = async (url, init) => {
     status: 200,
     body: {
       async *[Symbol.asyncIterator]() {
-        yield Buffer.from(frame({ model: body.model, choices: [{ delta: { content: 'Пока ничего не меняется.' } }] }))
+        const content = rejectFirstDraft && requests.length === 1 ? 'Выпало 20, и герой получает 1000 HP.' : 'Пока ничего не меняется.'
+        yield Buffer.from(frame({ model: body.model, choices: [{ delta: { content } }] }))
         yield Buffer.from(frame({ choices: [], usage: { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 } }))
         yield Buffer.from(['data: [DONE]', newline, newline].join(''))
       },
@@ -139,6 +142,21 @@ test('runner сообщает о превышении бюджета до provid
     assert.match(message, /Достигнут оценочный лимит/u)
     assert.doesNotMatch(message, /Narrator не вызвал модель/u)
     assert.deepEqual(readJson(files.requests), [])
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true })
+  }
+})
+
+test('отклонённый черновик и правка учитываются как два вызова одной сцены', () => {
+  const files = makeFixtures(['test/model'])
+  try {
+    assertSucceeded(runRunner(files, { modelIds: ['test/model'], rejectFirstDraft: true }))
+    const report = readJson(files.output)
+    assert.equal(report.samples.length, 1)
+    assert.deepEqual(report.requests.map(call => call.usage.total_tokens), [14, 14])
+    assert.match(report.requests[0].raw_text, /1000/)
+    assert.equal(report.requests[1].raw_text, report.samples[0].final_text)
+    assert.ok(report.requests.every(call => call.case_id === 'runner-case' && call.cost_ceiling_rub > 0))
   } finally {
     rmSync(files.directory, { recursive: true, force: true })
   }

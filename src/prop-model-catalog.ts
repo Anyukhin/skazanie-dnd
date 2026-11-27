@@ -26,8 +26,8 @@ export type PropModelEntry = {
  */
 export const PROP_MODEL_MAX_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({
   // Посуда и мелочь — стоят на столах и полках.
-  mug: .3, plate: .1, bowl_stew: .3, bottle: .42, jug: .42, bread_loaf: .25, cheese_wheel: .25,
-  candle: .4, dice_cup: .3, coin_pile: .1, cutting_board: .06, pot: .4, lute: .6,
+  mug: .3, plate: .1, bowl_stew: .3, bottle: .42, jug: .42, bread_loaf: .098, cheese_wheel: .25,
+  candle: .4, dice_cup: .3, coin_pile: .057, coin_pouch: .115, cutting_board: .03, pot: .4, lute: .6,
   // Бытовые предметы на полу.
   broom: .9, sack: .6, basket: .4, bucket: .3, offering_bowl: .5, urn: .6, bone_pile: .4,
   firewood_stack: .5, woodpile: .6, cauldron: .6, keg: .6, crate: .6, chest: .6, barrel: .75,
@@ -42,7 +42,7 @@ export const PROP_MODEL_MAX_HEIGHTS: Readonly<Record<string, number>> = Object.f
   // Мебель.
   table_round: .8, table_long: .8, table_royal: .85, table_small: .75, bar_counter: .9,
   bench: .6, prayer_bench: .6, stool: .55, chair: 1, royal_throne: 1.3, night_table: .6,
-  bed: .75, bunk_bed: 1.2, washbasin: .85, cupboard: 1.1, wardrobe: 1.2, bookshelf: 1.2,
+  bed: .75, bunk_bed: 1.2, washbasin: .85, cupboard: 1.35, wardrobe: 1.2, bookshelf: 1.2,
   bar_shelf: 1.2, shelf_wall: .5, fireplace: 1.2, hearth_fire: .7,
   // Свет и стенные предметы.
   torch_wall: .9, lantern_wall: .9, candelabra: .9, chandelier: 1, brazier: .9, campfire: .4,
@@ -56,7 +56,7 @@ export const PROP_MODEL_MAX_HEIGHTS: Readonly<Record<string, number>> = Object.f
   // Природа.
   tree_oak: 2.8, tree_birch: 2.8, tree_pine: 3, tree_spruce: 3, tree_dead: 2.4, tree_stump: .4,
   bush: .8, shrub: .6, grass_tuft: .3, flowers: .35, fern: .4, mushroom_cluster: .35,
-  rock_small: .3, boulder: 1, stalagmite: 1.2, rubble_heap: .5, fallen_log: .5,
+  rock_small: .20, boulder: 1, stalagmite: 1.2, rubble_heap: .5, fallen_log: .5,
 })
 
 /**
@@ -65,7 +65,7 @@ export const PROP_MODEL_MAX_HEIGHTS: Readonly<Record<string, number>> = Object.f
  * в 2D они не занимали клетку целиком, а в 3D рост падал вместе с шириной:
  * стул выходил ниже колена человека (замер `tools/model-scale-audit.mjs`).
  */
-export const PROP_MODEL_MIN_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({ chair: .68, stool: .4 })
+export const PROP_MODEL_MIN_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({ chair: .68, stool: .4, cupboard: 1.30, bottle: .20 })
 
 /**
  * Поднимает вписывание GLB до наименьшей высоты вида, не выпуская модель за
@@ -140,6 +140,11 @@ export const PROP_MODEL_FRONT_TURNS: Readonly<Record<string, { turn: 90 | 180 | 
   'style-kenney-town-banner-red': { turn: 90, baseYaw: 0 },
   'style-kenney-castle-flag-banner-long': { turn: 90, baseYaw: 0 },
   'style-kenney-town-wheel': { turn: 90, baseYaw: 0 },
+  // У этих колёс обод лежит в плоскости Y/Z. До вписывания в площадку 3×1
+  // направляем его вдоль длинной стороны; поворот самой мельницы применяется позже.
+  'style-detail-water-wheel': { turn: 90, baseYaw: 0 },
+  'style-kenney-town-watermill': { turn: 90, baseYaw: 0 },
+  'detail-v1-water_wheel': { turn: 90, baseYaw: 0 },
 })
 
 /** Доворот модели к её лицу в градусах yaw (против часовой сверху); 0 — без поправки. */
@@ -177,7 +182,10 @@ export function propModelFit(
   const size = entry?.size ?? actualSize
   if (!size || !size.every((value) => Number.isFinite(value) && value > 0)) return null
   if (!Number.isFinite(width) || !Number.isFinite(depth) || !Number.isFinite(fill) || width <= 0 || depth <= 0 || fill <= 0) return null
-  const footprintFit = Math.min(width / size[0], depth / size[2]) * fill
+  // Даже у плоской гальки логическая клетка целая. Камню незачем занимать
+  // почти все пять футов клетки в ширину, пока он проходит предел высоты.
+  let footprintFit = Math.min(width / size[0], depth / size[2]) * fill
+  if (assetId === 'rock_small') footprintFit = Math.min(footprintFit, .48 / Math.max(size[0], size[2]))
   const maxHeight = propModelMaxHeight(assetId, entry)
   return maxHeight === null ? footprintFit : Math.min(footprintFit, maxHeight / size[1])
 }
@@ -270,6 +278,13 @@ export function validatePropModelCatalog(value: unknown, revision?: string): Pro
 
 export function propModelFor(catalog: PropModelCatalog | null | undefined, assetId: string, propId: string): PropModelEntry | null {
   const choices = catalog?.models.filter((entry) => entry.assetIds.includes(assetId)) ?? []
+  // Низкий широкий буфет Quaternius после вписывания в клетку доходит герою
+  // лишь до пояса. Для высокого закрытого шкафа берём двустворчатый корпус
+  // из того же выпуска. В старом выпуске без него доска построит шкаф сама.
+  if (assetId === 'cupboard' && choices.length === 1 && choices[0].key === 'q-cabinet') {
+    return catalog?.models.find(entry => entry.key === 'style-sk-wardrobe')
+      ?? catalog?.models.find(entry => entry.key === 'sk-household-wardrobe') ?? null
+  }
   // Вид, которого нет в выпуске окружения, но есть в наборе детализации:
   // его авторская модель лежит в `detail-v1/models`. Выпуск сильнее набора,
   // а прежние виды набором не перекрываются вовсе.

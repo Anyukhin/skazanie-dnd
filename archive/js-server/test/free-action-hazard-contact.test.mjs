@@ -167,7 +167,9 @@ test('дальний или отсутствующий hazard в orchestrator н
     state: initial, campaignId: 'HAZARD-TEST', playerId: 'hero', allowedActorIds: ['hero'],
     message: 'Сажусь жопой в огонь', idempotencyKey: 'fire-contact-unknown',
   })
-  assert.equal(result.free_action_outcome, 'clarification')
+  assert.equal(result.free_action_outcome, 'rejected')
+  assert.equal(result.rejected, true)
+  assert.equal(result.clarification, undefined)
   assert.match(result.narration, /нет доступного источника этой опасности/u)
   assert.equal(result.verification.valid, true)
   assert.equal(result.mechanics.some((event) => event.event_type === 'DamageApplied'), false)

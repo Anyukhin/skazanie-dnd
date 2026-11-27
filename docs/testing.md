@@ -7,17 +7,25 @@
 
 Запускать точечно: `node --test test/<файл>.test.mjs`. Полный корпус гоняет CI.
 
+С 2026-11-27 сервер один — Rust (`skazanie-server`), JS-сервер в
+`archive/js-server/`. Новая механика тестируется в крейтах
+(`cargo test --release -p sk-<крейт>`, `rust/AGENTS.md` §4–5).
+`pnpm test` — модульный корпус без сервера: клиент, замороженная
+JS-библиотека `server/` (`server/README.md`), инструменты. HTTP-тесты —
+контрактные, против бинаря: `pnpm test:contract`.
+
 ## Какой уровень выбрать
 
 | Что проверяем | Уровень | Помощники |
 | --- | --- | --- |
 | правило, событие, reducer, replay | движок, без HTTP | `test/kit/engine.mjs`, `test/kit/dice.mjs` |
-| права, видимость, маршрут, restart процесса | HTTP, настоящий `server/index.mjs` | `test/kit/http.mjs` |
+| права, видимость, маршрут, restart процесса | HTTP, бинарь `skazanie-server` с `test-hooks` | `test/kit/http.mjs` |
 | роль модели (рассказчик, режиссёр, …) | модуль с внедрённым клиентом | `scriptedLlm` из `test/kit/llm.mjs` |
 | весь путь через `llm-client` и учёт расхода | HTTP + локальный провайдер | `startFakeProvider` + `startTestServer` |
 
-Механику сначала закрывают на уровне движка: он быстрее на порядки и
-детерминирован. HTTP-тест добавляют для того, что видно только через сервер:
+Механику сначала закрывают на уровне движка — в Rust это тест крейта
+(`sk-rules` и др.); JS-уровень ниже держит только замороженную библиотеку. Он
+быстрее на порядки и детерминирован. HTTP-тест добавляют для того, что видно только через сервер:
 членство и владелец героя, проекция для игрока, идемпотентность маршрута,
 перезапуск процесса. По AGENTS.md §6 у новой механики проверены успех, отказ,
 права, идемпотентность и replay.
@@ -84,9 +92,8 @@ test('игрок не ходит чужим героем, ход пережив�
   заголовок `X-Idempotency-Key`.
 - `setupAdmin`, `registerUser`, `login`, `createCampaign`, `addPlayer`
   (приглашение → регистрация → вход по ссылке), `sendCommand`, `expectStatus`.
-- Сервер нельзя собрать внутри процесса теста: модуль при импорте слушает порт
-  и запускает фоновые часы. Поэтому это дочерний процесс; каждый запуск
-  стоит ~0,5–1 с, и лишние HTTP-тесты заметно удлиняют корпус.
+- Сервер — дочерний процесс бинаря; каждый запуск стоит ~0,5–1 с, и лишние
+  HTTP-тесты заметно удлиняют корпус.
 
 ### Детерминированные кости и сбои на сервере — данными
 
@@ -102,15 +109,13 @@ const server = await startTestServer(t, {
 })
 ```
 
-Формат — контракт для обоих серверов, его описывает и проверяет
-`test/kit/hooks-format.mjs`; набор кладёт JSON в `DND_TEST_DICE_RULES` и
-`DND_COMMIT_FAULTS`. JS-сервер исполняет его предзагрузкой
-`test/kit/server-hooks.mjs` (подключает набор сам), Rust-сервер будет читать те
-же переменные (`src/test_hooks.rs`, задача С2 `rust/SERVER-PLAN.md`).
+Формат описывает и проверяет `test/kit/hooks-format.mjs`; набор кладёт JSON в
+`DND_TEST_DICE_RULES` и `DND_COMMIT_FAULTS`, сервер читает их в
+`rust/crates/sk-server/src/test_hooks.rs` (только сборка с `--features test-hooks`).
 
 - Кости `skazanie.test-dice/1`: `rules` — по порядку, побеждает первое
-  подходящее. Правило: `actor` и `purpose` — шаблоны (общее подмножество JS
-  `RegExp` и Rust `regex`, без lookaround и обратных ссылок; `''` — бросок без
+  подходящее. Правило: `actor` и `purpose` — шаблоны (подмножество Rust
+  `regex`, совместимое с JS `RegExp`, без lookaround и обратных ссылок; `''` — бросок без
   актора), `sides` — только кости с этим числом граней, `values` — очередь
   значений, `value` — число (прижимается к грани), `"max"` или `"min"`.
   `unmatched: "error"` превращает кость без правила в отказ; по умолчанию она
@@ -127,12 +132,12 @@ const server = await startTestServer(t, {
   и `faults`.
 
 Прежние предзагрузки `test/fixtures/*-deterministic-dice.mjs` через `preload`
-работают только против JS-сервера; новый тест их не заводит.
+работали только у JS-сервера (архив); новый тест их не заводит.
 
 ### Журнал глазами теста
 
 Тест не открывает `<storage>/engine/...` сам: раскладка хранилища — деталь
-сервера, у Rust-переноса журнал в SQLite. Помощники `test/kit/journal.mjs`:
+сервера, журнал лежит в SQLite. Помощники `test/kit/journal.mjs`:
 
 ```js
 const journal = await readJournal(server, 'CODE')          // { state, state_version, current_state_version,
@@ -149,60 +154,56 @@ await server.start()
 `commits[]` — `{ idempotency_key, command_id, state_version_before,
 state_version_after, events }`. `readJournal` повреждённой кампании отказывает
 той же ошибкой `CAMPAIGN_RECOVERY_REQUIRED`, что и сервер. `corruptCampaign`
-требует остановленного сервера. В режиме `rust` помощники зовут подкоманду
+требует остановленного сервера. Помощники зовут подкоманду
 `skazanie-server journal` (контракт описан в шапке `test/kit/journal.mjs`).
 
 ### Комната и аудит хранилища глазами теста
 
-Комната JS — файл `rooms/<КОД>.json`, комната Rust — проекция журнала плюс
-накладка в SQLite. Помощники `test/kit/rooms.mjs` дают одно и то же в обоих
-режимах:
+Комната — проекция журнала плюс накладка в SQLite. Помощники
+`test/kit/rooms.mjs`:
 
 ```js
 const room = await readRoom(server, 'CODE')            // { version, state, updatedAt } или null
 await writeRoom(server, 'CODE', { ...room.state, … })  // дрейф комнаты мимо сервера (журнал не тронут)
 await server.stop()
-const report = await auditStorage(server)              // как pnpm cutover:audit: blockers, warnings, campaigns
+const report = await auditStorage(server)              // blockers, warnings, campaigns
 ```
 
 `writeRoom` нужен тестам сверки проекции (SEC-02): сервер обязан найти и
 исправить расхождение комнаты с журналом. Версия комнаты после записи не
-гарантируется — сравнивается результат `readRoom`. `auditStorage` в режиме
-`rust` — аудит `sk_tactics::cutover_audit` плюс сверка накладки с головой
+гарантируется — сравнивается результат `readRoom`. `auditStorage` — аудит `sk_tactics::cutover_audit` плюс сверка накладки с головой
 журнала (`PROJECTION_DIVERGENCE`, `PROJECTION_VERSION_DIVERGENCE`,
 `ROOM_PROJECTION_MISSING`). Подкоманды бинаря — `skazanie-server room` и
 `skazanie-server audit` (контракт в шапке `test/kit/rooms.mjs`).
 
 ### Сессия глазами теста
 
-Истечение сессии события не присылает, а хранит сессии сервер по-разному
-(`auth.json` у JS, SQLite у Rust). Помощник `test/kit/sessions.mjs`:
+Истечение сессии события не присылает, а сессии лежат в SQLite. Помощник
+`test/kit/sessions.mjs`:
 
 ```js
 await expireSession(server, cookie)   // cookie `skazanie_session=…`: срок этой сессии — миг назад
 ```
 
-В режиме `rust` он зовёт подкоманду `skazanie-server session --expire`
+Он зовёт подкоманду `skazanie-server session --expire`
 (токен — через stdin; контракт в шапке `test/kit/sessions.mjs`).
 
-### Контрактный режим: тот же тест против Rust-сервера
+### Контрактные тесты против Rust-сервера
 
-`SKAZANIE_SERVER_IMPL` выбирает реализацию сервера: `js` (по умолчанию,
-эталон `server/index.mjs`) или `rust` — бинарь из `SKAZANIE_RUST_SERVER_BIN`
-(абсолютный путь или от корня репозитория). Без бинаря набор отказывает
-сообщением «Режим rust не готов», а не откатывается на JS. Бинарь запускает
+Сервер — бинарь из `SKAZANIE_RUST_SERVER_BIN` (абсолютный путь или от корня
+репозитория). Без бинаря набор отказывает сообщением «Режим rust не готов»;
+`SKAZANIE_SERVER_IMPL=js` — отказ со ссылкой на архив. Бинарь запускает
 только `spawnRust` набора с тем же `isolatedServerEnv`; сторож —
 `test/test-network-isolation.test.mjs`.
 
 Контрактный тест: сервер — только `startTestServer`, без своего `spawn`, без
 `preload` и `args`; кости и сбои — `dice`/`faults`; журнал — помощники выше;
 никакого чтения файлов `storage/`. Такие файлы вносятся в
-`test/contract-rust.list`, когда их маршруты перенесены в `sk-server`:
+`test/contract-rust.list`; общий корпус `pnpm test` их не запускает:
 
 ```bash
 (cd rust && cargo build --release -p sk-server --features test-hooks)   # крючки, подкоманды journal и session
-SKAZANIE_RUST_SERVER_BIN=rust/target/release/skazanie-server pnpm test:contract:rust
-pnpm test:contract:js      # тот же список против JS-эталона — обязан оставаться зелёным
+SKAZANIE_RUST_SERVER_BIN=rust/target/release/skazanie-server pnpm test:contract
 ```
 
 Бинарь без фичи `test-hooks` с заданными `dice`/`faults` не стартует, а
@@ -235,18 +236,15 @@ pnpm test:contract:js      # тот же список против JS-этало
 (`addPlayer`). Исключение — трассы ходов `storage/turn-traces/<КОД>/<ход>.json`
 (`command-retry-intent-api`): их раскладку Rust сохранил файловой
 (`FileTraceStore`, `rust/crates/sk-server/src/orchestration.rs`), поэтому
-тест правит один и тот же файл в обоих режимах.
+тест правит этот файл.
 
-Проверки текста `server/index.mjs` (`readFileSync` исходника сервера) в
-юнит-тестах помечены `JS-only (server/index.mjs)` в названии теста и комментарием
-со ссылкой на сторожа того же поведения в обоих режимах или в Rust. После
-переключения на Rust они проверяли бы мёртвый код и удаляются вместе с
-`server/index.mjs`.
+Проверки текста `server/index.mjs` (`JS-only`) ушли в архив вместе с ним.
 
 ## Модель
 
-Модуль получает клиент модели внедрением (`llmClient`), импортировать
-`server/llm-client.mjs` в серверный модуль нельзя (AGENTS.md §4).
+Модуль получает клиент модели внедрением (`llmClient`): в Rust клиент
+собирается в `main.rs` и приходит в `AppState` уже в учёте расхода
+(`rust/AGENTS.md` §2). Для замороженных JS-модулей — `scriptedLlm`:
 
 ```js
 const llm = scriptedLlm([{ narration: 'Дверь поддаётся.' }, new Error('timeout')])
@@ -267,11 +265,10 @@ assert.equal(llm.calls.length, 1)            // лишний вызов моде
 
 | Сторож | Что держит |
 | --- | --- |
-| `test/test-network-isolation.test.mjs` | ни один запуск `server/index.mjs` не уходит в сеть: ключ пуст или есть локальный `ROUTERAI_BASE_URL`; набор — признанная точка запуска, его `isolatedServerEnv` проверяется исполнением; бинарь Rust запускается только набором и с тем же окружением |
+| `test/test-network-isolation.test.mjs` | ни один запуск сервера не уходит в сеть: ключ пуст или есть локальный `ROUTERAI_BASE_URL`; бинарь запускается только набором, его `isolatedServerEnv` проверяется исполнением |
 | `test/test-kit.test.mjs` | помощники набора работают как описано |
-| `test/server-import-graph.test.mjs` | `server/rules/*` не импортируют `rules-engine.mjs` |
-| `test/server-typecheck-coverage.test.mjs` | файлы с `// @ts-check` стоят в `tsconfig.server.json` |
-| `test/security.test.mjs` | привязки промптов и полномочия |
+| `sk-server/tests/crate_layers.rs` | ядро не зависит от слоя агентов |
+| `sk-narration-base` `prompt_descriptors` | привязки промптов |
 | `test/test-suite-runner.test.mjs` | порядок и изоляция запуска корпуса |
 
 Инварианты продукта и их тесты — таблица в AGENTS.md §5.
