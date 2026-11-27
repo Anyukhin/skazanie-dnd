@@ -1,3 +1,5 @@
+import defaultCliches from '../data/narrator-cliches-v1.json' with { type: 'json' }
+
 const WORD_PATTERN = /[a-zа-яё0-9]+/giu
 
 export const NARRATOR_CRAFT_THRESHOLDS = Object.freeze({
@@ -142,7 +144,7 @@ function suggestionMeasurement(samples) {
  * Пять основных метрик ремесла рассказчика. Вход — уже полученные ответы,
  * поэтому тот же расчёт можно воспроизвести без нового платного вызова модели.
  */
-export function measureNarratorCraft(samples, clicheCatalog) {
+export function measureNarratorCraft(samples = [], clicheCatalog = defaultCliches) {
   const safeSamples = (Array.isArray(samples) ? samples : []).map((sample) => ({
     ...sample,
     text: String(sample?.text ?? ''),
