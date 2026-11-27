@@ -178,6 +178,7 @@ test/authored-dialogue-narrate-api.test.mjs # авторская реплика 
 test/stream-live-access-api.test.mjs   # живой поток закрывается после logout, истечения сессии и снятия доступа
 test/stream-backpressure-api.test.mjs  # медленный читатель: комнаты схлопнуты до последней
 test/combat-critical-turn-api.test.mjs # крит врага без модели: конец хода на строке боя (кости данными)
+test/npc-turn-fallback-api.test.mjs    # ход NPC при перекрытой линии, летопись, повтор и restart
 test/combat-journal-order-api.test.mjs # порядок хроники при атаке по возможности, restart, повтор (кости данными)
 test/shillelagh-api.test.mjs           # «Дубинка» друида через API, restart (кости данными)
 test/sneak-attack-http.test.mjs        # Скрытая атака: права, ключ, журнал через readJournal, restart

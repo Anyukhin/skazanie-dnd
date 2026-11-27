@@ -276,6 +276,95 @@ fn scheduler_moves_attacks_and_returns_control_to_a_living_hero() {
     assert_eq!(sk_rules::world_clock::world_time_seconds(&result.state), 6.0);
 }
 
+fn two_targets_on_npc_turn() -> Value {
+    let mut state = fixture();
+    let mut second = state["players"][0].clone();
+    second["id"] = json!("second");
+    second["x"] = json!(4);
+    state["players"][0]["x"] = json!(2);
+    state["players"].as_array_mut().expect("герои").push(second);
+    state["partyMemberIds"] = json!(["hero", "second"]);
+    state["mechanics"]["positions"]["hero"] = json!({ "x": 2, "y": 1 });
+    state["mechanics"]["positions"]["second"] = json!({ "x": 4, "y": 1 });
+    state["mechanics"]["combat"]["active_index"] = json!(1);
+    state["mechanics"]["combat"]["initiative"].as_array_mut().expect("очередь").push(json!({ "actor_id": "second", "total": 5 }));
+    state
+}
+
+struct BlockedAttacks<'a> {
+    inner: RefCell<RulesEngine>,
+    target: Option<String>,
+    changed_head: Option<(&'a EventStore, &'a str)>,
+    attempts: RefCell<Vec<String>>,
+}
+
+impl NpcRulesEngine for BlockedAttacks<'_> {
+    fn resolve_plan(&self, commands: &[Value], state: &Value, context: &Value) -> Result<Value, Halt> {
+        if let Some(attack) = commands.iter().find(|command| command["command_type"] == "MakeAttack") {
+            let target = js::s(attack.get("target_id"));
+            self.attempts.borrow_mut().push(target.clone());
+            if self.target.as_ref().is_none_or(|rejected| rejected == &target) {
+                if let Some((journal, campaign)) = self.changed_head {
+                    journal.commit(CommitRequest {
+                        campaign_id: campaign.into(), expected_state_version: 0, idempotency_key: "concurrent".into(),
+                        events: vec![json!({ "event_type": "ObjectiveUpdated", "payload": { "objective": "Другая команда" } })],
+                        ..Default::default()
+                    }).expect("параллельный коммит");
+                }
+                return Err(Halt::Rule(sk_core::RuleError::new("TRAJECTORY_BLOCKED", "Путь атаки закрыт")));
+            }
+        }
+        self.inner.resolve_plan(commands, state, context)
+    }
+}
+
+#[test]
+fn rejected_attack_tries_the_other_legal_target() {
+    let code = "NPC-TRY-OTHER";
+    let journal = store();
+    let state = two_targets_on_npc_turn();
+    let planned = plan_npc_turn(&state, "wolf").expect("первый план");
+    let first_target = planned.iter().find_map(|command| command.get("target_id")).and_then(Value::as_str).expect("цель").to_string();
+    initialize(&journal, code, state);
+    let rules = BlockedAttacks { inner: bounded(), target: Some(first_target.clone()), changed_head: None, attempts: RefCell::new(Vec::new()) };
+    let outcome = block_on(run_npc_turn_scheduler(run(code, &journal, &rules, None))).expect("план с другой целью");
+    let attempts = rules.attempts.borrow();
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(attempts[0], first_target);
+    assert_ne!(attempts[0], attempts[1]);
+    let attack = outcome.events.iter().find(|event| event["event_type"] == "AttackResolved").expect("атака");
+    assert_eq!(attack["target_ids"][0], attempts[1]);
+}
+
+#[test]
+fn scheduler_exhausts_alternatives_then_ends_the_npc_turn_once() {
+    let code = "NPC-NO-TARGET";
+    let journal = store();
+    initialize(&journal, code, two_targets_on_npc_turn());
+    let rules = BlockedAttacks { inner: bounded(), target: None, changed_head: None, attempts: RefCell::new(Vec::new()) };
+    let outcome = block_on(run_npc_turn_scheduler(run(code, &journal, &rules, None))).expect("конечный ход");
+    assert_eq!(rules.attempts.borrow().len(), 2);
+    assert!(!event_types(&outcome.events).contains(&"AttackResolved".into()));
+    let ended: Vec<_> = outcome.events.iter().filter(|event| event["event_type"] == "TurnEnded").collect();
+    assert_eq!(ended.len(), 1);
+    assert_eq!(ended[0]["payload"]["auto_skip_reason"], "npc-no-target");
+    let repeated = block_on(run_npc_turn_scheduler(run(code, &journal, &rules, None))).expect("повтор");
+    assert!(repeated.events.is_empty());
+    assert_eq!(rules.attempts.borrow().len(), 2);
+}
+
+#[test]
+fn scheduler_leaves_a_newer_turn_version_in_place_after_a_refused_plan() {
+    let code = "NPC-CONFLICT";
+    let journal = store();
+    initialize(&journal, code, two_targets_on_npc_turn());
+    let rules = BlockedAttacks { inner: bounded(), target: Some("hero".into()), changed_head: Some((&journal, code)), attempts: RefCell::new(Vec::new()) };
+    let result = block_on(run_npc_turn_scheduler(run(code, &journal, &rules, None)));
+    assert_eq!(result.expect_err("устаревшие варианты не исполняются").code(), Some("STATE_VERSION_CONFLICT"));
+    let events = journal.get_events(code, 0, None).expect("журнал");
+    assert_eq!(event_types(&events), ["ObjectiveUpdated"]);
+}
+
 #[test]
 fn morale_controller_is_called_once_and_surrender_is_applied() {
     let mut state = fixture();

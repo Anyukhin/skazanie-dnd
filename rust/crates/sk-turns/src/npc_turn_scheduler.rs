@@ -34,8 +34,10 @@ use sk_geometry::Point;
 use sk_rules::areas::shape::spell_targets_at;
 use sk_rules::combat::turn::initiative_group_ids;
 use sk_rules::combat::weapons::attack_profile_for;
+use sk_rules::constants::NPC_NO_TARGET_SKIP;
 use sk_rules::context::Context;
 use sk_rules::core::incapacitating_condition_for;
+use sk_rules::geometry::forced::has_clear_actor_trajectory;
 use sk_rules::geometry::movement::movement_for_actor;
 use sk_rules::geometry::terrain::movement_step_cost_for;
 
@@ -237,6 +239,10 @@ fn end_turn(actor_id: &str) -> Value {
     json!({ "command_type": "EndTurn", "actor_id": actor_id })
 }
 
+fn end_turn_without_target(actor_id: &str) -> Value {
+    json!({ "command_type": "EndTurn", "actor_id": actor_id, "auto_skip_reason": NPC_NO_TARGET_SKIP })
+}
+
 // --- участники боя -------------------------------------------------------------------
 
 fn party_members(state: &Value) -> IndexSet<String> {
@@ -369,11 +375,9 @@ fn cells_of(state: &Value, id: &str, position: Option<Point>) -> Vec<Point> {
     footprint_cells(game::find_actor(state, id), position)
 }
 
-/// `hasClearActorTrajectory(state, attackerId, targetId, from, to)`.
+/// Та же линия между площадями существ, что в Rules Engine для атаки.
 fn clear_between(state: &Value, attacker_id: &str, target_id: &str, from: Option<Point>, to: Option<Point>) -> bool {
-    let starts = cells_of(state, attacker_id, from);
-    let ends = cells_of(state, target_id, to);
-    starts.iter().any(|start| ends.iter().any(|end| has_clear_trajectory(state, *start, *end)))
+    has_clear_actor_trajectory(state, attacker_id, target_id, from, to, game::is_enemy_actor(state, attacker_id))
 }
 
 /// `hasClearActorToPoint(state, actorId, from, to)`.
@@ -502,7 +506,8 @@ fn in_attack_range(state: &Value, attacker_id: &str, target_id: &str, profile: &
     let (Some(from), Some(target)) = (from, target) else { return false };
     let range = number(profile.get("range_feet"));
     let distance = distance_between(state, attacker_id, target_id, Some(from), Some(target));
-    distance >= CELL_FEET && distance <= range && (range <= CELL_FEET || clear_between(state, attacker_id, target_id, Some(from), Some(target)))
+    let legacy_no_map = range <= CELL_FEET && list(path(Some(state), &["scene", "cells"])).is_empty();
+    distance >= CELL_FEET && distance <= range && (legacy_no_map || clear_between(state, attacker_id, target_id, Some(from), Some(target)))
 }
 
 /// `averageDamage(expression, flat)`.
@@ -1070,7 +1075,7 @@ pub fn target_candidates<'a>(state: &'a Value, enemy: &Value) -> Result<Vec<Cand
             let cover_level = if ranged { target_cover_level(state, &enemy_id, &target_id, enemy_at, target_at) } else { "none".to_string() };
             let cover_penalty = cover_target_penalty(&cover_level);
             let high_ground = if ranged { high_ground_bonus(state, enemy_at, target_at, &enemy_id, &target_id) } else { 0.0 };
-            let blocked_shot = ranged && distance >= CELL_FEET && distance <= range && !clear_between(state, &enemy_id, &target_id, enemy_at, target_at);
+            let blocked_shot = ranged && distance >= CELL_FEET && distance <= range && !in_range;
             let finishing_blow = damage >= target_hp && ranged_at_melee_penalty == 0.0;
             let expected_damage = damage * hit_chance_for(profile, target_armor, ranged_at_melee_penalty != 0.0);
             let reachable_melee = !in_range && kind == Some("melee") && melee_reachable_this_turn(state, enemy, route.as_deref(), profile);
@@ -1399,7 +1404,7 @@ fn thrown_flask_command_for(state: &Value, enemy: &Value, usable: &[Value], econ
             let feet = distance_between(state, &enemy_id, &id, Some(from), Some(at));
             (id, feet, at)
         })
-        .filter(|(id, feet, at)| *feet >= CELL_FEET && *feet <= range_feet && clear_between(state, &enemy_id, id, Some(from), Some(*at)))
+        .filter(|(id, feet, at)| *feet >= CELL_FEET && *feet <= range_feet && has_clear_actor_trajectory(state, &enemy_id, id, Some(from), Some(*at), false))
         .map(|(id, feet, _)| (id, feet))
         .collect();
     let order = sorted_indices(heroes.len(), |left, right| or_else(heroes[left].1 - heroes[right].1, || compare_text(&heroes[left].0, &heroes[right].0)));
@@ -1832,6 +1837,10 @@ pub fn plan_npc_turn(raw_state: &Value, enemy_id: &str) -> Result<Vec<Value>, Ha
 /// [`plan_npc_turn`] над нормализованным состоянием: проверки команд-кандидатов
 /// идут без повторной нормализации.
 pub fn plan_npc_turn_normalized(state: &NormalizedState, enemy_id: &str) -> Result<Vec<Value>, Halt> {
+    plan_npc_turn_candidate(state, enemy_id, None)
+}
+
+fn plan_npc_turn_candidate(state: &NormalizedState, enemy_id: &str, preferred: Option<&Candidate<'_>>) -> Result<Vec<Value>, Halt> {
     let state = state.in_ambient_mode()?;
     let state: &NormalizedState = &state;
     let end = || end_turn(enemy_id);
@@ -1873,8 +1882,14 @@ pub fn plan_npc_turn_normalized(state: &NormalizedState, enemy_id: &str) -> Resu
     if js::is_false(get(economy, "action")) && (used_before_plan == 0.0 || used_before_plan >= attacks_allowed) {
         return Ok(vec![end()]);
     }
-    let candidates = target_candidates(state, enemy)?;
-    let candidate = candidates.first();
+    let candidates;
+    let candidate = match preferred {
+        Some(candidate) => Some(candidate),
+        None => {
+            candidates = target_candidates(state, enemy)?;
+            candidates.first()
+        }
+    };
     let usable = npc_usable_items(Some(enemy), &js::s(state.get("ruleset_id")));
     let bloodied_retreat = if should_retreat_bloodied(state, enemy)? { bloodied_retreat_for(state, enemy)? } else { None };
     let healing_sip = healing_potion_command_for(state, enemy, &usable, economy);
@@ -1988,7 +2003,7 @@ pub fn plan_npc_turn_normalized(state: &NormalizedState, enemy_id: &str) -> Resu
             (Some(destination), Some(target_at)) => distance_between(state, enemy_id, &target_id, Some(destination), Some(target_at)),
             _ => MAX_SAFE_INTEGER,
         };
-        if !dashed && distance_after >= CELL_FEET && distance_after <= range && (range <= CELL_FEET || clear_between(state, enemy_id, &target_id, destination, target_at)) {
+        if !dashed && distance_after >= CELL_FEET && distance_after <= range && clear_between(state, enemy_id, &target_id, destination, target_at) {
             commands.extend(attack_commands(state, enemy, &target_id, profile));
         }
     } else if candidate.in_range {
@@ -2025,7 +2040,9 @@ pub fn plan_npc_turn_normalized(state: &NormalizedState, enemy_id: &str) -> Resu
         }
     }
     if !movement_only_phase && (!attack_planned || attacks_allowed <= 1.0) {
-        commands.push(end());
+        let distance = distance_between(state, enemy_id, &target_id, enemy_at, target_at);
+        let blocked = !candidate.in_range && distance >= CELL_FEET && distance <= range;
+        commands.push(if commands.is_empty() && blocked { end_turn_without_target(enemy_id) } else { end() });
     }
     Ok(commands)
 }
@@ -2283,7 +2300,7 @@ pub fn execute_plan(journal: &dyn NpcTurnJournal, rules_engine: &dyn NpcRulesEng
     }
 }
 
-fn execute_at(options: &SchedulerOptions<'_>, commands: &[Value], key: &str, context: &Value) -> Result<Executed, SchedulerError> {
+fn execute_at(options: &SchedulerOptions<'_>, commands: &[Value], key: &str, context: &Value, loaded_version: i64) -> Result<Executed, SchedulerError> {
     let planned: Vec<Value> = commands
         .iter()
         .enumerate()
@@ -2292,6 +2309,11 @@ fn execute_at(options: &SchedulerOptions<'_>, commands: &[Value], key: &str, con
             map.insert("server_authoritative".into(), Value::Bool(true));
             map.insert("campaign_id".into(), single(options.campaign_id));
             map.insert("command_id".into(), Value::String(format!("{key}:{}", index + 1)));
+            // После конфликта исполнитель может перечитать голову. План
+            // неприменим к другой версии, даже когда актор хода тот же.
+            if index == 0 {
+                map.insert("expected_state_version".into(), Value::from(loaded_version));
+            }
             Value::Object(map)
         })
         .collect();
@@ -2303,7 +2325,7 @@ fn execute_at(options: &SchedulerOptions<'_>, commands: &[Value], key: &str, con
 fn commit_plan(options: &SchedulerOptions<'_>, loaded_version: i64, commands: &[Value], key: &str, recovery: Option<&Recovery<'_>>) -> Result<PlanCommit, SchedulerError> {
     let context = json!({ "isAdmin": true, "isNpcScheduler": true, "serverAuthoritativeCombat": true, "actor_ids": [] });
     let mut used_key = key.to_string();
-    let mut committed = execute_at(options, commands, &used_key, &context)?;
+    let mut committed = execute_at(options, commands, &used_key, &context, loaded_version)?;
     if committed.replayed && committed.commit.state_version < loaded_version {
         if let Some(recovery) = recovery.filter(|recovery| !js::truthy(path(Some(recovery.state), &["mechanics", "combat", "combat_instance_id"]))) {
             if let Some(history) = options.journal.events_between(options.campaign_id, committed.commit.state_version, loaded_version) {
@@ -2314,7 +2336,7 @@ fn commit_plan(options: &SchedulerOptions<'_>, loaded_version: i64, commands: &[
                     let recovered = scheduler_key(options.campaign_id, recovery.state, &recovery.actor_id, &recovery.suffix, Some(&instance));
                     if recovered != used_key {
                         used_key = recovered;
-                        committed = execute_at(options, commands, &used_key, &context)?;
+                        committed = execute_at(options, commands, &used_key, &context, loaded_version)?;
                     }
                 }
             }
@@ -2328,6 +2350,48 @@ fn commit_plan(options: &SchedulerOptions<'_>, loaded_version: i64, commands: &[
         return Err(SchedulerError::rule("NPC_TURN_EMPTY", "NPC turn produced no events"));
     }
     Ok(PlanCommit { committed, key: used_key })
+}
+
+fn tactical_refusal(error: &SchedulerError) -> bool {
+    error.is_rules_validation() && matches!(
+        error.code(),
+        Some("TRAJECTORY_BLOCKED" | "TARGET_OUT_OF_RANGE" | "TARGET_NOT_VISIBLE" | "TOTAL_COVER" | "INVALID_DESTINATION" | "PATH_BLOCKED" | "SPEED_EXCEEDED")
+    )
+}
+
+/// Другая цель или профиль остаются частью того же хода и той же версии.
+fn recover_npc_turn(
+    options: &SchedulerOptions<'_>,
+    state: &NormalizedState,
+    loaded_version: i64,
+    enemy: &Value,
+    candidates: &[Candidate<'_>],
+    attempted: &[Value],
+    phase: &str,
+) -> Result<(PlanCommit, Vec<Value>, Option<Value>), SchedulerError> {
+    let actor_id = id_of(enemy);
+    let mut tried = IndexSet::from([js::stringify(&json!(attempted))]);
+    let commit = |commands: &[Value], suffix: String| {
+        let key = scheduler_key(options.campaign_id, state, &actor_id, &suffix, None);
+        commit_plan(options, loaded_version, commands, &key, Some(&Recovery { state, actor_id: actor_id.clone(), suffix }))
+    };
+    for (rank, candidate) in candidates.iter().enumerate().skip(1) {
+        let commands = plan_npc_turn_candidate(state, &actor_id, Some(candidate))?;
+        if !commands.iter().any(|command| !type_is(command.get("command_type"), "EndTurn")) || !tried.insert(js::stringify(&json!(commands))) {
+            continue;
+        }
+        match commit(&commands, format!("{phase}-alternative-{rank}")) {
+            Ok(plan) => {
+                let tactic = public_tactic_for(state, enemy, Some(candidate), &commands);
+                return Ok((plan, commands, tactic));
+            }
+            Err(error) if tactical_refusal(&error) => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    let commands = vec![end_turn_without_target(&actor_id)];
+    let plan = commit(&commands, format!("{phase}-no-target"))?;
+    Ok((plan, commands, Some(json!({ "tactic": "не нашёл цели" }))))
 }
 
 /// `duplicateWithoutProgress(loaded, committed)`.
@@ -2491,12 +2555,8 @@ pub(crate) async fn run_npc_turn_scheduler_marked(options: SchedulerOptions<'_>)
         };
         let ordinary_enemy = capable && enemy_turn;
         let ordinary_commands = if ordinary_enemy { plan_npc_turn_normalized(&state, &current_id)? } else { vec![end_turn(&current_id)] };
-        let ordinary_tactic = if ordinary_enemy {
-            let candidates = target_candidates(&state, current)?;
-            public_tactic_for(&state, current, candidates.first(), &ordinary_commands)
-        } else {
-            None
-        };
+        let candidates = if ordinary_enemy { target_candidates(&state, current)? } else { Vec::new() };
+        let ordinary_tactic = ordinary_enemy.then(|| public_tactic_for(&state, current, candidates.first(), &ordinary_commands)).flatten();
         let decision = match options.npc_controller {
             Some(controller) if is_morale_moment(&state, &current_id) => controller.decide(&state, &current_id).await,
             _ => None,
@@ -2517,20 +2577,34 @@ pub(crate) async fn run_npc_turn_scheduler_marked(options: SchedulerOptions<'_>)
         };
         let mut key = scheduler_key(campaign_id, &state, &current_id, &suffix, None);
         let mut cornered: Option<String> = None;
-        let attempt = commit_plan(&options, loaded.state_version, &commands, &key, Some(&Recovery { state: &state, actor_id: current_id.clone(), suffix: suffix.clone() }));
-        let plan = match attempt {
-            Ok(plan) => plan,
-            Err(error) => {
-                let fights = decision.as_ref().is_some_and(|decision| type_is(decision.get("disposition"), "fight"));
-                if decision.is_none() || !error.is_rules_validation() || fights {
-                    return Err(error);
-                }
+        let commit = |commands: &[Value], key: &str, suffix: &str| {
+            let no_target = matches!(commands, [command] if type_is(command.get("auto_skip_reason"), NPC_NO_TARGET_SKIP));
+            (!no_target).then(|| commit_plan(&options, loaded.state_version, commands, key, Some(&Recovery { state: &state, actor_id: current_id.clone(), suffix: suffix.into() })))
+        };
+        let attempt = commit(&commands, &key, &suffix);
+        let attempt = match attempt {
+            Some(Err(error)) if error.is_rules_validation()
+                && !matches!(error.code(), Some("STATE_VERSION_CONFLICT" | "OUT_OF_TURN" | "COMBAT_REACTION_PENDING"))
+                && decision.as_ref().is_some_and(|decision| !type_is(decision.get("disposition"), "fight")) =>
+            {
                 let code = error.code().unwrap_or("RULES_REJECTED");
                 cornered = Some(code.chars().take(80).collect());
                 commands = commands_for_morale_decision(&state, &current_id, Some(&json!({ "disposition": "fight" })), ordinary_commands.clone());
                 suffix = "morale-cornered".into();
                 key = scheduler_key(campaign_id, &state, &current_id, &suffix, None);
-                commit_plan(&options, loaded.state_version, &commands, &key, Some(&Recovery { state: &state, actor_id: current_id.clone(), suffix: suffix.clone() }))?
+                commit(&commands, &key, &suffix)
+            }
+            other => other,
+        };
+        let mut recovered_tactic = None;
+        let plan = match attempt {
+            Some(Ok(plan)) => plan,
+            Some(Err(error)) if !(ordinary_enemy && tactical_refusal(&error)) => return Err(error),
+            _ => {
+                let (plan, alternative, tactic) = recover_npc_turn(&options, &state, loaded.state_version, current, &candidates, &commands, &suffix)?;
+                commands = alternative;
+                recovered_tactic = tactic;
+                plan
             }
         };
         if duplicate_without_progress(loaded.state_version, &plan.committed) {
@@ -2555,7 +2629,9 @@ pub(crate) async fn run_npc_turn_scheduler_marked(options: SchedulerOptions<'_>)
             Value::Object(creative)
         });
         turn.insert("creative_decision".into(), creative.unwrap_or(Value::Null));
-        let tactic: Option<Value> = if cornered.is_some() {
+        let tactic: Option<Value> = if recovered_tactic.is_some() {
+            recovered_tactic
+        } else if cornered.is_some() {
             let mut tactic = ordinary_tactic.as_ref().and_then(Value::as_object).cloned().unwrap_or_default();
             tactic.insert("tactic".into(), single("загнан в угол"));
             Some(Value::Object(tactic))

@@ -18,7 +18,7 @@ use super::Resolve;
 use crate::checks::saves::{active_aura_of_life_source, fear_source_in_sight, saving_throw_succeeded};
 use crate::command::rules::rule_ids;
 use crate::conditions::auto_failed_save_condition_for;
-use crate::constants::ACTION_ECONOMY_EVENT_VERSION;
+use crate::constants::{ACTION_ECONOMY_EVENT_VERSION, NPC_NO_TARGET_SKIP};
 use crate::core::{ability_modifier, coalesce, command_with, command_with_rules, event_from, spread_value};
 use crate::death::zero_hit_point_damage_consequences;
 use crate::pause::{rule, Fault, Interrupt, Flow};
@@ -127,14 +127,16 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
     let actor_targets = json!([actor_value]);
     let visibility = undef(command.get("visibility"));
     let roll_visibility = r.visibility();
-    let automatic_skip = js::is_true(command.get("server_authoritative")) && r.context.server_authoritative_combat() && js::s(command.get("auto_skip_reason")) == "turn-timeout";
+    let skip_reason = command.get("auto_skip_reason").and_then(Value::as_str).unwrap_or("");
+    let automatic_skip = js::is_true(command.get("server_authoritative")) && r.context.server_authoritative_combat()
+        && (skip_reason == "turn-timeout" || skip_reason == NPC_NO_TARGET_SKIP && r.context.is_npc_scheduler() && sk_core::game::is_enemy_actor(&state, &actor_id));
     let mut turn_end = Map::new();
     if let Some(round) = combat.get("round") {
         turn_end.insert("round".into(), round.clone());
     }
     if automatic_skip {
         turn_end.insert("auto_skipped".into(), Value::Bool(true));
-        turn_end.insert("auto_skip_reason".into(), Value::String("turn-timeout".into()));
+        turn_end.insert("auto_skip_reason".into(), Value::String(skip_reason.into()));
     }
     let ending_actor = sk_core::game::find_actor(&state, &actor_id).cloned();
     let area_end = r.area_turn_consequences(&state, command.get("actor_id"), Some("turn-end"))?;

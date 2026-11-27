@@ -329,6 +329,17 @@ fn scenario_treaty_chronicle_entry(event: &Value) -> Option<Value> {
     Some(json!({ "id": format!("treaty-decision:{}", js::s(event.get("event_id"))), "speaker": "narrator", "author": "Рассказчик", "text": text, "turnConsumed": false }))
 }
 
+fn npc_no_target_chronicle_entry(event: &Value) -> Option<Value> {
+    if event["event_type"] != "TurnEnded" || event["payload"]["auto_skip_reason"] != sk_rules::constants::NPC_NO_TARGET_SKIP {
+        return None;
+    }
+    let event_id = event.get("event_id")?.as_str()?;
+    Some(json!({
+        "id": combat_message_id(&format!("npc-no-target:{event_id}")),
+        "speaker": "system", "author": "Система боя", "text": "Враг не нашёл цели.", "turnConsumed": true,
+    }))
+}
+
 /// `journalCandidatesFor(events, journalMessage)` (3372–3381): карточки из
 /// событий (ход мира, почта, зверь, решение отряда, сюжет, контора) и
 /// переданная маршрутом реплика (одна запись или список — `.flat()`).
@@ -340,6 +351,7 @@ pub fn journal_candidates_for(events: &[Value], journal_message: Option<&Value>)
     candidates.extend(events.iter().filter_map(sk_npc_world::beast_taming::beast_chronicle_entry));
     candidates.extend(events.iter().filter_map(sk_character::quest_decisions::quest_decision_chronicle_entry));
     candidates.extend(events.iter().filter_map(scenario_treaty_chronicle_entry));
+    candidates.extend(events.iter().filter_map(npc_no_target_chronicle_entry));
     candidates.extend(events.iter().filter_map(sk_society::campaign_stories::campaign_story_chronicle_entry));
     candidates.extend(events.iter().filter_map(|event| sk_world_life::world_offices::office_chronicle_entry(event, &empty)));
     match journal_message {
