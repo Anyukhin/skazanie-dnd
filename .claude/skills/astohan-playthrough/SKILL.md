@@ -5,9 +5,10 @@ description: Сквозной прогон кампании «Асстоханс
 
 # Прогон «Асстоханских равнин»
 
-Стенд — `eval/astohan-playthrough.mjs`, серия по сидам — `eval/astohan-seeds.mjs`.
-Оба в тесты не входят: поднимают свой сервер на отдельном порту и временном
-хранилище, `storage/` не трогают.
+Стенд `eval/astohan-playthrough.mjs` и серия `eval/astohan-seeds.mjs`
+поднимают Rust на свободном порту с временным хранилищем и пустым ключом
+модели. Соберите `skazanie-server` с `test-hooks` и укажите абсолютный
+путь к бинарю в `SKAZANIE_RUST_SERVER_BIN`.
 
 ## Команды
 
@@ -16,19 +17,14 @@ node eval/astohan-playthrough.mjs --seed 2            # без модели, 3�
 node eval/astohan-playthrough.mjs --seed 2 --keep     # оставить хранилище для разбора
 node eval/astohan-seeds.mjs --seeds 1-5 --parallel 2  # серия и сводная таблица
 node eval/astohan-playthrough.mjs --party fighter,cleric  # быстрый прогон вдвоём
-node eval/astohan-playthrough.mjs --live --minutes 25 # с моделью из .env — стоит денег
-node eval/astohan-playthrough.mjs --live --judge      # плюс оценка текста моделью-судьёй
-node eval/collect-player-phrases.mjs                  # пополнить корпус реальных фраз из ./storage
-SKAZANIE_RUST_SERVER_BIN=<exe> node eval/astohan-playthrough.mjs --impl rust --seed 2  # бинарь Rust
+node eval/collect-player-phrases.mjs --storage <копия-хранилища>
+node .agent-tasks/table-of-five-smoke.mjs              # после pnpm build, пять браузерных сеансов
 ```
 
-- `--impl rust` (и у `astohan-seeds.mjs`, и у `combat-http-soak.mjs`) поднимает
-  бинарь переноса через `eval/stand-server.mjs`; нужен бинарь с
-  `--features test-hooks` (он читает `PLAYTEST_DICE_SEED` — те же кости, что у
-  JS). Аудит replay в этом режиме — снимки против replay и перекрёстный replay
-  журнала Rust JS-редьюсером (находка `cross-replay`). Механика с одним сидом
-  совпадает с JS до конца бюджета; текст вступлений боя различается и между
-  двумя прогонами JS — вариант выбирается по случайному `event_id`.
+- Сервер и сид костей для `astohan-playthrough`, `astohan-seeds` и
+  `combat-http-soak` настраивает `eval/stand-server.mjs`. Аудит Rust
+  сверяет журнал, состояние replay и снимки. Текст может различаться у
+  событий со случайными ID.
 
 - `--seed N` подменяет кости сервера детерминированными (`eval/playtest-seeded-dice.mjs`):
   офлайн-прогон с тем же сидом повторяется, но сюжет арки (число глав) зависит
@@ -45,8 +41,7 @@ SKAZANIE_RUST_SERVER_BIN=<exe> node eval/astohan-playthrough.mjs --impl rust --s
   настоящие фразы игроков (корпус собирает `eval/collect-player-phrases.mjs`
   из трасс и хроники хранилища). Доля тупиков на них в отчёте отдельно: на
   своих заготовках бот всегда выглядит лучше.
-- **`--live` и `--judge` запускать только по явной просьбе владельца**: это вызовы модели
-  за деньги. Ключ стенд не печатает и в отчёт не пишет — так и оставить.
+- Доступные параметры приведены в шапке `eval/astohan-playthrough.mjs`.
 
 ## Что читать
 
@@ -54,10 +49,9 @@ SKAZANIE_RUST_SERVER_BIN=<exe> node eval/astohan-playthrough.mjs --impl rust --s
 
 - `report.md` — оценка по критериям 1–4, 7–9 цели и тексту рассказчика, находки
   по видам, реальные фразы по видам, механики отряда, путь отряда, расход в ₽;
-- `narration-sample.md` — 14 ответов рассказчика равномерно по прогону для
-  чтения глазами (с оценкой судьи, если был `--judge`). Метрики без модели
-  меряют только повторы, штампы, служебные коды и пустые ответы — плоский
-  текст они не видят, поэтому выборку стоит читать;
+- `narration-sample.md` — 14 ответов рассказчика по прогону для чтения
+  глазами. Автоматические метрики считают повторы, штампы, служебные
+  коды и пустые ответы;
 - раздел «Согласованность» и критерий «С» — `eval/consistency-checks.mjs`
   (сторож `test/eval-consistency-checks.test.mjs`). Каждый ответ рассказчика
   сверяется с тем, что в этот момент в игре: предметы из текста — с картой
@@ -65,9 +59,7 @@ SKAZANIE_RUST_SERVER_BIN=<exe> node eval/astohan-playthrough.mjs --impl rust --s
   смерть героя и реплики NPC — с механикой и местом NPC, ночь и день — с часами
   мира, плюс склонение мест и обрывы. Каждая новая сцена — аудит карты
   `map-quality` по полному виду ведущего, программа сцены, объекты, которые
-  обещает её собственный текст, имя-заглушка. С `--judge` судья получает
-  контекст сцены и отдельно оценивает согласованность — он ловит то, что
-  словарь не видит (противоречие сказанному раньше, выдуманные люди);
+  обещает её собственный текст, имя-заглушка;
 - `transcript.md` — хроника «реплика → ответ → бросок → находка», ходы боя по раундам;
 - `report.json` — то же для сравнения прогонов; `server-errors.log` — stderr сервера.
 
@@ -80,9 +72,9 @@ SKAZANIE_RUST_SERVER_BIN=<exe> node eval/astohan-playthrough.mjs --impl rust --s
 
 ## Что делать с находками
 
-1. **blocker / critical** — сначала воспроизвести тем же сидом с `--keep`, затем
-   разобрать состояние из `<хранилище>/engine` через `FileEventStore`
-   (`campaign_id` — `ASTOHAN-RUN`) и написать тест на сохранённый случай.
+1. **blocker / critical** — воспроизвести тем же сидом с `--keep`.
+   Прочитать журнал `ASTOHAN-RUN` на оставленном хранилище через
+   `rustJournalEvents` из `eval/stand-server.mjs` и написать тест на случай.
 2. **Тупик реплики** (`dead-end`, `clarify-loop`, `empty-answer`) — строкой в
    `eval/playtest-dead-ends.json` с `world_template_id: "astohan-plains"`, затем
    правка детерминированного слоя, пока `test/playtest-dead-ends.test.mjs` не
@@ -90,9 +82,9 @@ SKAZANIE_RUST_SERVER_BIN=<exe> node eval/astohan-playthrough.mjs --impl rust --s
 3. **Отказ законной команде** (`*-refused`) — сверить, кто неправ: бот или
    движок. Отказ, ожидаемый по правилам, добавить в `EXPECTED_REFUSALS` бота,
    а не глушить детектор.
-4. Правка механики — по `AGENTS.md`, раздел 6; финальный gate — `pnpm verify`.
+4. Правка механики и проверки — по `AGENTS.md` и `rust/AGENTS.md`.
 
-## Известное на 2026-10-05
+## Наблюдения прежнего прогона от 2026-10-05
 
 - Длина арки — от 3 до 5 глав и от прогона к прогону разная. Пятиглавая арка
   без модели идёт 10–15 минут в одиночку, вдвое дольше при `--parallel 2`.

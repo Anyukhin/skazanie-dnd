@@ -1,43 +1,19 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 
 import { wait, withBrowser } from './browser.mjs'
+import { freePort, spawnRustStand } from '../eval/stand-server.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const campaignId = 'TABLE-FIVE'
 const setupToken = 'table-five-smoke-setup'
 
-async function freePort() {
-  const probe = createNetServer()
-  await new Promise((resolveListen, reject) => {
-    probe.once('error', reject)
-    probe.listen(0, '127.0.0.1', resolveListen)
-  })
-  const address = probe.address()
-  await new Promise((resolveClose, reject) => probe.close((error) => error ? reject(error) : resolveClose()))
-  return address.port
-}
-
 function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: root,
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: setupToken,
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  })
+  const child = spawnRustStand({ port, storage, setupToken, env: { DND_DATA_DIR: root } })
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
   child.stdout.on('data', (chunk) => appendLog(String(chunk)))
   child.stderr.on('data', (chunk) => appendLog(String(chunk)))
   return child
@@ -191,7 +167,7 @@ async function command(baseUrl, sessionCookie, idempotencyKey, commandBody) {
 async function main() {
   await access(join(root, 'dist', 'index.html'))
   const outputArg = process.argv.indexOf('--output')
-  const outputDir = resolve(outputArg >= 0 ? process.argv[outputArg + 1] : join(root, 'docs', 'evidence', 'table-of-five'))
+  const outputDir = resolve(outputArg >= 0 ? process.argv[outputArg + 1] : join(root, 'tmp', 'table-of-five'))
   await mkdir(outputDir, { recursive: true })
   const storage = await mkdtemp(join(tmpdir(), 'skazanie-five-browser-'))
   const port = await freePort()
@@ -292,7 +268,7 @@ async function main() {
       assert.equal(noSeat.status, 409, noSeat.text)
       protocol.push({ stage: 'all-seats-taken', result: noSeat.body.error })
 
-      const freeInput = 'input[aria-label="Действие своими словами"]'
+      const freeInput = 'textarea[aria-label="Действие своими словами"]'
       await browser.page(1).type(freeInput, 'Формулирую общий план')
       await browser.page(0).waitFor(() => document.body.innerText.includes('Герой 2 формулирует намерение'), {
         timeoutMs: 10_000,
@@ -333,7 +309,7 @@ async function main() {
         { timeoutMs: 10_000, label: `vote visible in browser ${index + 1}` },
       )))
       const voteLayouts = await Promise.all(browser.pages.map((page) => page.evaluate(() => {
-        const panel = document.querySelector('.chat-panel')
+        const panel = document.querySelector('.server-column')
         const slot = document.querySelector('.chat-interaction-slot')
         const card = document.querySelector('.agent-interaction')
         const messages = document.querySelector('.messages')
@@ -471,8 +447,17 @@ async function main() {
       })
       assert.equal(shop.status, 200, shop.text)
       const shopRoom = await room(baseUrl, accountCookies[0])
-      const merchantId = shopRoom.state.merchants.find((merchant) => merchant.available)?.id
-      assert.ok(merchantId)
+      const merchant = shopRoom.state.merchants.find(candidate => candidate.available)
+      assert.ok(merchant)
+      const merchantId = merchant.id
+      const scene = shopRoom.state.scene
+      // Склад не создаёт собеседника. Штатная проекция размещает профиль NPC
+      // в сцене; интерфейс торговли открывается из его окна разговора.
+      const profile = await command(baseUrl, adminCookie, 'smoke-merchant-profile', {
+        command_type: 'UpsertNpcSocialProfile', npc: { id: merchantId, name: merchant.name,
+          role: 'Торговец', location: scene.location, visibility: 'public' },
+      })
+      assert.equal(profile.status, 200, profile.text)
       const merchantView = await pageRequest(browser.page(0), `/api/campaigns/${campaignId}/merchants/${encodeURIComponent(merchantId)}?actor_id=hero-slot-1`)
       assert.equal(merchantView.status, 200, merchantView.text)
       const bargained = await pageRequest(browser.page(0), `/api/campaigns/${campaignId}/merchants/${encodeURIComponent(merchantId)}/commands`, {
@@ -489,8 +474,13 @@ async function main() {
       })
       assert.equal(bargained.status, 200, bargained.text)
       await browser.page(0).navigate(`${baseUrl}/?room=${campaignId}`)
-      await browser.page(0).waitForSelector('.scene-merchant', { timeoutMs: 30_000 })
-      await browser.page(0).click('.scene-merchant')
+      const merchantNpc = (await room(baseUrl, accountCookies[0])).state.scene_npcs?.find(npc => npc.id === merchantId)
+      assert.ok(merchantNpc, 'торговец присутствует на видимой карте')
+      const merchantButton = `.scene-who-row[title=${JSON.stringify(`Заговорить: ${merchantNpc.name}`)}]`
+      await browser.page(0).waitForSelector(merchantButton, { timeoutMs: 30_000 })
+      await browser.page(0).click(merchantButton)
+      await browser.page(0).waitForSelector('.npc-dialog-trade', { timeoutMs: 30_000 })
+      await browser.page(0).click('.npc-dialog-trade')
       await browser.page(0).waitForSelector('.merchant-backdrop', { timeoutMs: 30_000 })
       await browser.page(0).waitFor(
         () => Boolean(document.querySelector('.merchant-item')) && !document.querySelector('.merchant-loading'),

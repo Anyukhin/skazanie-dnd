@@ -288,7 +288,8 @@ async function waitForDevToolsFile(profileDir, chromeProcess, timeoutMs) {
       const [port, browserPath] = (await readFile(activePortPath, 'utf8')).trim().split(/\r?\n/u)
       if (port && browserPath) return `ws://127.0.0.1:${port}${browserPath}`
     } catch (error) {
-      if (error?.code !== 'ENOENT') throw error
+      // На Windows Chromium кратко держит файл открытым, пока пишет порт.
+      if (error?.code !== 'ENOENT' && error?.code !== 'EBUSY') throw error
     }
     await wait(50)
   }
