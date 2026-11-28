@@ -1,6 +1,7 @@
 // Свободные заявки, которые сервер читал не тем путём (план Асстохана, 1.7):
-// просьба к маршалу о страже уходила команде проклятого рыцаря, а вопрос без
-// открытого уточнения подставлял прошлую, не связанную с ним заявку.
+// просьба к маршалу о страже уходила команде проклятого рыцаря, вопрос без
+// открытого уточнения подставлял прошлую, не связанную с ним заявку, а реплика
+// со словом «потом» внутри прямой речи дробилась на два хода.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
@@ -54,4 +55,14 @@ test('вопрос без открытого уточнения не цитир�
   const second = await ask('Могу ли я вылечить раненого своим вторым дыханием?', 'question-2')
   assert.doesNotMatch(second, /Сохраняю исходную заявку/u, second)
   assert.doesNotMatch(second, /занавес/iu, second)
+})
+
+test('«потом» в прямой речи не дробит реплику на два хода', { timeout: runnerTimeout(120_000) }, async (t) => {
+  const code = 'SPEECH-SPLIT'
+  const { player } = await setup(t, code)
+  const action = 'Кладу перед Мирой пять золотых: «Это тебе за память. Кто расспрашивает о проезжающих отрядах и кому потом передаёт?»'
+  const body = expectStatus(await say(player, code, action, 'bribe'))
+  assert.equal(body.plan_turn_ids, undefined, 'заявка — один ход, а не план из шагов')
+  assert.notEqual(body.clarification?.action, 'передаёт?»', JSON.stringify(body.clarification ?? null))
+  assert.doesNotMatch(String(body.narration ?? ''), /хочет добиться: «передаёт/u)
 })
