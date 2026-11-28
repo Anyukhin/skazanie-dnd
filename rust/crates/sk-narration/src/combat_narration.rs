@@ -1582,6 +1582,8 @@ fn tactical_narration_lines(list: &[Value], state: &Value, options: Option<&Valu
                     meaningful.push(book.pick("combat-end", &[format!("Бой завершён в раунде {round}."), format!("Схватка окончена — раунд {round}.")], ev));
                 }
             }
+            // Место героя никем не занято: срок хода короткий, и ждать было некого.
+            "TurnEnded" if is_str(field("auto_skip_reason"), "turn-timeout") && js::is_true(field("seat_unclaimed")) => meaningful.push(format!("{actor}: у героя нет игрока, ход пропущен.")),
             "TurnEnded" if is_str(field("auto_skip_reason"), "turn-timeout") => meaningful.push(format!("{actor}: время хода вышло, ход пропущен.")),
             "TurnEnded" => {
                 if !defeated_enemy(state, actor_id_value)? {

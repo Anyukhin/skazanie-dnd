@@ -47,6 +47,17 @@ fn narrator_follows_the_common_contract_but_stays_unregistered() {
     assert_eq!(CombatNarrator.narrate(&[], &state()), None);
 }
 
+/// Пропуск хода у героя без игрока — не «время вышло»: срок был три секунды,
+/// ждать было некого (план Асстохана, 1.7).
+#[test]
+fn auto_skip_names_the_empty_seat() {
+    let timed_out = narrate(&[event("TurnEnded", json!({ "round": 2, "auto_skipped": true, "auto_skip_reason": "turn-timeout" }), &[])], &state());
+    assert!(timed_out.contains("Лира: время хода вышло, ход пропущен."), "{timed_out}");
+    let empty_seat = narrate(&[event("TurnEnded", json!({ "round": 2, "auto_skipped": true, "auto_skip_reason": "turn-timeout", "seat_unclaimed": true }), &[])], &state());
+    assert!(empty_seat.contains("Лира: у героя нет игрока, ход пропущен."), "{empty_seat}");
+    assert!(!empty_seat.contains("время хода вышло"), "{empty_seat}");
+}
+
 #[test]
 fn monster_hit_condition_and_break_free_outcome() {
     let webbed = narrate(

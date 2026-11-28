@@ -748,6 +748,7 @@ fn an_expired_deadline_commits_one_replay_safe_auto_skip() {
     let skipped: Vec<&Value> = events.iter().filter(|event| event["event_type"] == json!("TurnEnded") && event["payload"]["auto_skipped"] == json!(true)).collect();
     assert_eq!(skipped.len(), 1);
     assert_eq!(skipped[0]["payload"]["auto_skip_reason"], json!("turn-timeout"));
+    assert!(skipped[0]["payload"].get("seat_unclaimed").is_none(), "у героя есть игрок: отметки пустого места нет");
     let key = js::s(skipped[0].get("idempotency_key"));
     let parts: Vec<&str> = key.split(':').collect();
     assert_eq!(&parts[..4], ["turn-timeout", "TIMEOUT-REPLAY", "r1", "i0"], "{key}");
@@ -861,6 +862,27 @@ fn an_unclaimed_hero_seat_gets_the_short_deadline() {
         assert_eq!(host.timers.borrow().last().map(|timer| timer.1), Some(expected), "{campaign}");
         assert_eq!(coordinator.clock_for(campaign).map(|clock| clock["duration_ms"].clone()), Some(json!(expected as i64)));
     }
+}
+
+/// Пропуск хода героя без игрока несёт отметку пустого места: хроника пишет
+/// «у героя нет игрока», а не «время хода вышло».
+#[test]
+fn an_unclaimed_seat_auto_skip_is_marked_in_the_event() {
+    let start = ms("2026-07-30T12:00:00.000Z");
+    let clock = Arc::new(AtomicU64::new(start as u64));
+    let journal = store_at(clock.clone());
+    record_turn_start(&journal, "SEAT-SKIP", clock_fixture("hero", false), "hero");
+    clock.store((start + 5_000) as u64, Ordering::SeqCst);
+    let host = TestHost { now: Cell::new((start + 5_000) as f64), skip_npc: true, unclaimed: true, ..TestHost::default() };
+    let engine = dice(&[]);
+    let coordinator = CombatTurnCoordinator::new(&journal, &engine, None, &host, &settings(120_000));
+    block_on(coordinator.settle_now("SEAT-SKIP"));
+    assert!(host.errors.borrow().is_empty());
+    let events = journal.get_events("SEAT-SKIP", 0, None).expect("события");
+    let skipped: Vec<&Value> = events.iter().filter(|event| event["event_type"] == json!("TurnEnded") && event["payload"]["auto_skipped"] == json!(true)).collect();
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0]["payload"]["auto_skip_reason"], json!("turn-timeout"));
+    assert_eq!(skipped[0]["payload"]["seat_unclaimed"], json!(true));
 }
 
 #[test]
