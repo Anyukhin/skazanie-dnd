@@ -73,6 +73,8 @@ test('свободный и подготовленный ввод очищают
   assert.match(appSource, /const outcome = await confirmSelfCast\(text \|\| undefined\)\s+if \(outcome\?\.ok\) updateFreeText\(''\)/u)
   assert.match(appSource, /if \(outcome\?\.ok\) setCombatMode\('weapon'\)/u)
   assert.doesNotMatch(appSource, /onFreeAction\(text(?:, requestKind)?\)\s+updateFreeText\(''\)/u)
+  // Режим «Вопрос» возвращается к действию тоже только после принятого вопроса.
+  assert.match(appSource, /if \(outcome\.ok && requestKind === 'question'\) setRequestKind\('action'\)/u)
 })
 
 test('при сетевом отказе остаётся прежний бросок, а выбранный маршрут не теряется', () => {

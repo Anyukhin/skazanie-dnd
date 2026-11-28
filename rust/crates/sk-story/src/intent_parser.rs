@@ -23,7 +23,7 @@ use sk_items::item_catalog::catalog_item;
 use sk_scenario::campaign_scenario::{scenario_armory_rules, scenario_informant_rules};
 use sk_scenario::party_exit_intent::announces_movement;
 use sk_social::npc_social_check::{affirmative_action_text, classify_npc_social_check};
-use sk_world_story::scenario_knight::scenario_knight_action_from_text;
+use sk_world_story::scenario_knight::scenario_knight_action_in_scene;
 
 use crate::support::{head_utf16, utf16_len};
 
@@ -302,8 +302,57 @@ fn split(regex: &Regex, text: &str) -> Vec<String> {
     parts
 }
 
+/// Границы прямой речи в тексте заявки: от открывающей кавычки до закрывающей
+/// включительно. Незакрытая кавычка тянется до конца текста.
+fn quoted_spans(text: &str) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    let mut open: Option<(usize, char)> = None;
+    for (index, ch) in text.char_indices() {
+        match open {
+            None => {
+                let close = match ch {
+                    '«' => '»',
+                    '“' => '”',
+                    '„' => '“',
+                    '"' => '"',
+                    _ => continue,
+                };
+                open = Some((index, close));
+            }
+            Some((start, close)) => {
+                if ch == close || (close == '“' && ch == '”') {
+                    spans.push((start, index));
+                    open = None;
+                }
+            }
+        }
+    }
+    if let Some((start, _)) = open {
+        spans.push((start, text.len()));
+    }
+    spans
+}
+
+/// `split`, который не режет прямую речь: «потом» в словах героя — часть
+/// реплики, а не следующий шаг заявки.
+fn split_outside_speech(regex: &Regex, text: &str) -> Vec<String> {
+    let spans = quoted_spans(text);
+    let mut parts = Vec::new();
+    let mut last = 0;
+    for found in regex.find_iter(text).filter_map(Result::ok) {
+        if found.end() == found.start() || spans.iter().any(|(start, end)| found.start() > *start && found.start() < *end) {
+            continue;
+        }
+        parts.push(text[last..found.start()].to_string());
+        last = found.end();
+    }
+    parts.push(text[last..].to_string());
+    parts
+}
+
 /// Явный порядок шагов сохраняется до подтверждения; результат шага нельзя
 /// угадать. Союз перед связкой («, а потом», «и затем») уходит вместе с ней.
+/// Связка внутри прямой речи шагом не считается: это слова героя.
 pub fn action_sequence(value: Option<&Value>) -> Vec<String> {
     let text = normalized_text(value);
     let steps = jre!(r"\s*(?:[;.]\s*|,?\s+)(?:(?:а|и|но)\s+)?(?:затем|потом|после\s+этого)\s+", "iu");
@@ -311,14 +360,14 @@ pub fn action_sequence(value: Option<&Value>) -> Vec<String> {
     let approach = jre!(r"^(?:подхожу|иду|приближаюсь)\s+к\s+", "iu");
     let approach_split = jre!(r"\s+и\s+(?=(?:спрашиваю|прошу|расспрашиваю|открываю|закрываю|передаю|сверяю)\s)", "iu");
     let watch_split = jre!(r"\s+и\s+(?=(?:смотр|наблюда|следи|следим|высматрива|глядим|гляжу|вглядыва|прислушива)\p{L}*\s)", "iu");
-    let parts: Vec<String> = split(steps, &text)
+    let parts: Vec<String> = split_outside_speech(steps, &text)
         .into_iter()
         .map(|part| text::trim(&text::replace_first(first, &part, "")).to_string())
-        .flat_map(|part| if text::test(approach, &part) { split(approach_split, &part) } else { vec![part] })
+        .flat_map(|part| if text::test(approach, &part) { split_outside_speech(approach_split, &part) } else { vec![part] })
         // Ожидание с наблюдением — тоже два шага: время проходит, а что увидели
         // за эти часы, решает судья действий.
         .flat_map(|part| {
-            let mut pieces = split(watch_split, &part);
+            let mut pieces = split_outside_speech(watch_split, &part);
             if pieces.len() == 2 && text::test(wait_pattern(), &pieces[0]) {
                 let watch = pieces.pop().unwrap_or_default();
                 let wait = pieces.pop().unwrap_or_default();
@@ -753,7 +802,7 @@ pub fn parse_intent(message: Option<&Value>, player_id: Option<&Value>, visible_
         raw_pattern_intent
     };
     // Действие с проклятым рыцарем сценария — своя серверная команда, а не реплика.
-    let knight_action = scenario_knight_action_from_text(Some(&operative_value));
+    let knight_action = scenario_knight_action_in_scene(Some(&operative_value), state);
     // Договор с драконом финала — тоже своя команда сценария, а не реплика.
     let treaty_action = if knight_action.is_some() { None } else { scenario_treaty_action_from_text(&operative, state) };
     let purse_action = if knight_action.is_some() || treaty_action.is_some() { None } else { scenario_purse_action_from_text(&operative) };
@@ -1031,6 +1080,11 @@ mod tests {
     #[test]
     fn sequence_and_wait() {
         assert_eq!(action_sequence(Some(&s("Сначала осматриваю дверь, а потом открываю её"))), vec!["осматриваю дверь", "открываю её"]);
+        // «потом» в прямой речи — слова героя, а не второй шаг заявки.
+        let bribe = "Кладу перед Ларсом пять золотых: «Это тебе за память. Кто расспрашивает об отрядах и кому потом передаёт?»";
+        assert!(action_sequence(Some(&s(bribe))).is_empty());
+        assert!(action_sequence(Some(&s("Говорю страже: \"сначала пропустите нас, а затем спрашивайте\""))).is_empty());
+        assert_eq!(action_sequence(Some(&s("Говорю Ларсу: «Жди здесь», затем иду к парому"))), vec!["Говорю Ларсу: «Жди здесь»", "иду к парому"]);
         assert_eq!(wait_target_from_text(Some(&s("ждём до полуночи"))).map(|target| target.id), Some("midnight"));
         assert_eq!(wait_target_from_text(Some(&s("идём к мельнице"))), None);
     }

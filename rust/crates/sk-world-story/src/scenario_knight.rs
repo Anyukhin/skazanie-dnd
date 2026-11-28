@@ -396,6 +396,21 @@ impl KnightAction {
     }
 }
 
+/// Действие с рыцарем в сцене отряда. Слова «страж», «покой» и «клятва»
+/// обычны и вне замка: «убеждаю маршала дать нам стражу» — реплика маршалу,
+/// а не упокоение. Поэтому при известном состоянии намерение узнаётся
+/// только в месте рыцаря; днём там же Rules Engine честно ответит, что он
+/// приходит в полночь.
+pub fn scenario_knight_action_in_scene(value: Option<&Value>, state: Option<&Value>) -> Option<KnightAction> {
+    if let Some(state) = state.filter(|state| js::truthy(Some(state))) {
+        let config = knight_config(state)?;
+        if !is_str(config.get("location_id"), &scenario_location_id(state)) {
+            return None;
+        }
+    }
+    scenario_knight_action_from_text(value)
+}
+
 /// Действие с рыцарем в тексте игрока: «ставлю голову перед рыцарем»,
 /// «молюсь об упокоении Каэлана» (Религия), «убеждаю рыцаря обрести покой»
 /// (Убеждение). Только узнаёт намерение: допустимость проверяет Rules Engine.

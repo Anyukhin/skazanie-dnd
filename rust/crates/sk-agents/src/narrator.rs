@@ -3342,6 +3342,10 @@ pub struct RenderOptions {
     pub on_progress: Option<ProgressCallback>,
     /// Закрытые сведения для внутренней проверки, без передачи модели.
     pub forbidden_hidden_terms: Vec<String>,
+    /// Готовый запасной текст не сообщается как порция потока: читатель
+    /// потока объявляет начало рассказа по первой порции, а шаблон никто не
+    /// генерирует. Текст модели сообщается как обычно.
+    pub model_progress_only: bool,
 }
 
 impl RenderOptions {
@@ -3349,7 +3353,7 @@ impl RenderOptions {
     /// recentNarrations }`); `onProgress` в JSON не помещается.
     pub fn from_json(options: &Value) -> Self {
         let field = |key: &str| prop(Some(options), key).cloned();
-        RenderOptions { known_rule_ids: field("knownRuleIds"), style: field("style"), timeout_ms: field("timeoutMs"), recent_narrations: field("recentNarrations").unwrap_or(Value::Null), on_progress: None, forbidden_hidden_terms: Vec::new() }
+        RenderOptions { known_rule_ids: field("knownRuleIds"), style: field("style"), timeout_ms: field("timeoutMs"), recent_narrations: field("recentNarrations").unwrap_or(Value::Null), on_progress: None, forbidden_hidden_terms: Vec::new(), model_progress_only: false }
     }
 }
 
@@ -3605,6 +3609,7 @@ impl Narrator {
         let examples = select_narrator_few_shot_examples(brief, None, None);
         let after_validation = is_str(prop(Some(&response_plan), "delivery"), "after_validation");
         let on_progress = options.on_progress.clone();
+        let model_progress_only = options.model_progress_only;
         let finish = |narration: String, verification: Value, provider: &str, token_usage: Option<Value>| {
             let result = self.result(ResultInput {
                 narration,
@@ -3620,7 +3625,8 @@ impl Narrator {
                 started_at,
                 token_usage,
             });
-            if after_validation && js::truthy(prop(prop(Some(&result), "verification"), "valid")) {
+            let reported = !(model_progress_only && provider.starts_with("deterministic"));
+            if reported && after_validation && js::truthy(prop(prop(Some(&result), "verification"), "valid")) {
                 if let Some(on_progress) = on_progress.as_ref() {
                     on_progress(&js::s(prop(Some(&result), "narration")));
                 }

@@ -137,6 +137,10 @@ pub fn end_turn(r: &mut Resolve<'_>) -> Flow {
     if automatic_skip {
         turn_end.insert("auto_skipped".into(), Value::Bool(true));
         turn_end.insert("auto_skip_reason".into(), Value::String(skip_reason.into()));
+        // Герой без игрока: срок был коротким, и «время вышло» хронике не подходит.
+        if skip_reason == "turn-timeout" && js::is_true(command.get("seat_unclaimed")) {
+            turn_end.insert("seat_unclaimed".into(), Value::Bool(true));
+        }
     }
     let ending_actor = sk_core::game::find_actor(&state, &actor_id).cloned();
     let area_end = r.area_turn_consequences(&state, command.get("actor_id"), Some("turn-end"))?;

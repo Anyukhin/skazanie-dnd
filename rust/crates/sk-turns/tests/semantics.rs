@@ -365,6 +365,41 @@ fn scheduler_leaves_a_newer_turn_version_in_place_after_a_refused_plan() {
     assert_eq!(event_types(&events), ["ObjectiveUpdated"]);
 }
 
+/// Движок, отвергающий любую атаку кодом, которого нет среди тактических.
+struct RefusedAttacks {
+    inner: RefCell<RulesEngine>,
+    code: &'static str,
+    attempts: Cell<usize>,
+}
+
+impl NpcRulesEngine for RefusedAttacks {
+    fn resolve_plan(&self, commands: &[Value], state: &Value, context: &Value) -> Result<Value, Halt> {
+        if commands.iter().any(|command| command["command_type"] == "MakeAttack") {
+            self.attempts.set(self.attempts.get() + 1);
+            return Err(Halt::Rule(sk_core::RuleError::new(self.code, "План врага отвергнут правилами")));
+        }
+        self.inner.resolve_plan(commands, state, context)
+    }
+}
+
+/// Ход врага конечен при любом отказе правил, а не только при закрытой
+/// траектории: у хода NPC нет таймера, и повтор отвергнутого плана держал бы
+/// бой вечно.
+#[test]
+fn any_rules_refusal_still_ends_the_npc_turn() {
+    for code in ["ACTION_UNAVAILABLE", "INVALID_TARGET", "WEAPON_NOT_EQUIPPED"] {
+        let campaign = format!("NPC-REFUSED-{code}");
+        let journal = store();
+        initialize(&journal, &campaign, two_targets_on_npc_turn());
+        let rules = RefusedAttacks { inner: bounded(), code, attempts: Cell::new(0) };
+        let outcome = block_on(run_npc_turn_scheduler(run(&campaign, &journal, &rules, None))).unwrap_or_else(|error| panic!("{code}: ход не закончился: {:?}", error.code()));
+        assert_eq!(rules.attempts.get(), 2, "{code}: обе цели опробованы");
+        let ended: Vec<_> = outcome.events.iter().filter(|event| event["event_type"] == "TurnEnded").collect();
+        assert_eq!(ended.len(), 1, "{code}");
+        assert_eq!(ended[0]["payload"]["auto_skip_reason"], "npc-no-target", "{code}");
+    }
+}
+
 #[test]
 fn morale_controller_is_called_once_and_surrender_is_applied() {
     let mut state = fixture();
@@ -713,6 +748,7 @@ fn an_expired_deadline_commits_one_replay_safe_auto_skip() {
     let skipped: Vec<&Value> = events.iter().filter(|event| event["event_type"] == json!("TurnEnded") && event["payload"]["auto_skipped"] == json!(true)).collect();
     assert_eq!(skipped.len(), 1);
     assert_eq!(skipped[0]["payload"]["auto_skip_reason"], json!("turn-timeout"));
+    assert!(skipped[0]["payload"].get("seat_unclaimed").is_none(), "у героя есть игрок: отметки пустого места нет");
     let key = js::s(skipped[0].get("idempotency_key"));
     let parts: Vec<&str> = key.split(':').collect();
     assert_eq!(&parts[..4], ["turn-timeout", "TIMEOUT-REPLAY", "r1", "i0"], "{key}");
@@ -826,6 +862,27 @@ fn an_unclaimed_hero_seat_gets_the_short_deadline() {
         assert_eq!(host.timers.borrow().last().map(|timer| timer.1), Some(expected), "{campaign}");
         assert_eq!(coordinator.clock_for(campaign).map(|clock| clock["duration_ms"].clone()), Some(json!(expected as i64)));
     }
+}
+
+/// Пропуск хода героя без игрока несёт отметку пустого места: хроника пишет
+/// «у героя нет игрока», а не «время хода вышло».
+#[test]
+fn an_unclaimed_seat_auto_skip_is_marked_in_the_event() {
+    let start = ms("2026-07-30T12:00:00.000Z");
+    let clock = Arc::new(AtomicU64::new(start as u64));
+    let journal = store_at(clock.clone());
+    record_turn_start(&journal, "SEAT-SKIP", clock_fixture("hero", false), "hero");
+    clock.store((start + 5_000) as u64, Ordering::SeqCst);
+    let host = TestHost { now: Cell::new((start + 5_000) as f64), skip_npc: true, unclaimed: true, ..TestHost::default() };
+    let engine = dice(&[]);
+    let coordinator = CombatTurnCoordinator::new(&journal, &engine, None, &host, &settings(120_000));
+    block_on(coordinator.settle_now("SEAT-SKIP"));
+    assert!(host.errors.borrow().is_empty());
+    let events = journal.get_events("SEAT-SKIP", 0, None).expect("события");
+    let skipped: Vec<&Value> = events.iter().filter(|event| event["event_type"] == json!("TurnEnded") && event["payload"]["auto_skipped"] == json!(true)).collect();
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0]["payload"]["auto_skip_reason"], json!("turn-timeout"));
+    assert_eq!(skipped[0]["payload"]["seat_unclaimed"], json!(true));
 }
 
 #[test]

@@ -368,7 +368,9 @@ fn short_sha(text: &str) -> String {
 }
 
 /// `commitTimedOutTurn({ campaignId, eventStore, rulesEngine, loaded, clock })`.
-pub fn commit_timed_out_turn(journal: &dyn NpcTurnJournal, rules_engine: &dyn NpcRulesEngine, campaign_id: &str, loaded: &Loaded, clock: Option<&Value>) -> Result<TimedOut, SchedulerError> {
+/// `seat_unclaimed` — герой без игрока: его ход пропущен по короткому сроку, и
+/// событие несёт отметку, чтобы хроника не писала «время хода вышло».
+pub fn commit_timed_out_turn(journal: &dyn NpcTurnJournal, rules_engine: &dyn NpcRulesEngine, campaign_id: &str, loaded: &Loaded, clock: Option<&Value>, seat_unclaimed: bool) -> Result<TimedOut, SchedulerError> {
     let combat = combat_of(&loaded.state);
     let eligible: IndexSet<String> = active_turn_actor_ids(&loaded.state)?.into_iter().collect();
     let actor_ids: Vec<String> = list(get(clock, "actor_ids")).iter().map(|id| js::string(Some(id))).filter(|id| eligible.contains(id)).collect();
@@ -404,6 +406,9 @@ pub fn commit_timed_out_turn(journal: &dyn NpcTurnJournal, rules_engine: &dyn Np
             }
             command.insert("server_authoritative".into(), Value::Bool(true));
             command.insert("auto_skip_reason".into(), Value::from("turn-timeout"));
+            if seat_unclaimed && window_id.is_empty() {
+                command.insert("seat_unclaimed".into(), Value::Bool(true));
+            }
             Value::Object(command)
         })
         .collect();
@@ -786,7 +791,7 @@ impl<'a> CombatTurnCoordinator<'a> {
                 self.existing(id, |entry| entry.timer = Some(timer));
                 continue;
             }
-            let committed = commit_timed_out_turn(self.journal, self.rules_engine, id, &loaded, Some(&clock))?;
+            let committed = commit_timed_out_turn(self.journal, self.rules_engine, id, &loaded, Some(&clock), unclaimed)?;
             loaded = self.journal.load(id)?;
             if !committed.events().is_empty() {
                 self.host.on_committed(id, &loaded.state, committed.events(), None);

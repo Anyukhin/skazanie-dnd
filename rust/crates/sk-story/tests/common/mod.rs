@@ -127,6 +127,7 @@ fn head(text: &str) -> String {
 /// Прогнать все случаи; паника с первыми расхождениями.
 pub fn run(fixture: &Fixture, mut call: impl FnMut(&str, &Args) -> Option<Outcome>) {
     let mut failures = Vec::new();
+    let mut dump: Vec<String> = Vec::new();
     let mut checked = 0;
     let mut by_fn: std::collections::BTreeMap<String, usize> = Default::default();
     for (index, case) in fixture.cases.iter().enumerate() {
@@ -139,8 +140,16 @@ pub fn run(fixture: &Fixture, mut call: impl FnMut(&str, &Args) -> Option<Outcom
         checked += 1;
         *by_fn.entry(name.to_string()).or_default() += 1;
         if let Some(problem) = compare(case, &outcome) {
+            // Намеренная правка поведения: `SK_FIXTURE_DUMP=<файл>` сохраняет
+            // новые ответы расходящихся случаев, чтобы поправить эталон данными.
+            if let Ok(Some(value)) = &outcome {
+                dump.push(format!("{index}\t{}", js::stringify(value)));
+            }
             failures.push(format!("#{index} {name}({}): {problem}", head(&js::stringify(&Value::Array(args.0.iter().map(|arg| arg.clone().unwrap_or(Value::Null)).collect())))));
         }
+    }
+    if let Ok(path) = std::env::var("SK_FIXTURE_DUMP") {
+        let _ = std::fs::write(path, dump.join("\n"));
     }
     eprintln!("сверено {checked} случаев: {by_fn:?}");
     assert!(failures.is_empty(), "расхождений {} из {}:\n{}", failures.len(), fixture.cases.len(), failures.iter().take(12).cloned().collect::<Vec<_>>().join("\n"));
