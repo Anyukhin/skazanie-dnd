@@ -179,7 +179,8 @@ test/authored-dialogue-narrate-api.test.mjs # авторская реплика 
 test/stream-live-access-api.test.mjs   # живой поток закрывается после logout, истечения сессии и снятия доступа
 test/stream-backpressure-api.test.mjs  # медленный читатель: комнаты схлопнуты до последней
 test/combat-critical-turn-api.test.mjs # крит врага без модели: конец хода на строке боя (кости данными)
-test/free-request-misroutes-api.test.mjs # просьба о страже не уходит рыцарю; вопрос без уточнения не цитирует прошлую заявку
+test/free-request-misroutes-api.test.mjs # просьба о страже не уходит рыцарю; вопрос без уточнения не цитирует прошлую заявку; «потом» в прямой речи не дробит реплику
+test/wizard-prepared-spells-api.test.mjs # подготовка волшебника переживает импорт, чтение, restart и повышение уровня
 test/npc-turn-fallback-api.test.mjs    # ход NPC при перекрытой линии, летопись, повтор и restart
 test/combat-journal-order-api.test.mjs # порядок хроники при атаке по возможности, restart, повтор (кости данными)
 test/shillelagh-api.test.mjs           # «Дубинка» друида через API, restart (кости данными)

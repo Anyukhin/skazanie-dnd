@@ -4478,6 +4478,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           if (!text) return
           const outcome = await onFreeAction(text, requestKind)
           if (outcome.ok) updateFreeText('')
+          // Вопрос задан — следующая реплика снова действие: иначе заявка
+          // «иду к воротам» уходила ведущему как ещё один вопрос. Обсуждение
+          // с отрядом остаётся включённым: там пишут несколько реплик подряд.
+          if (outcome.ok && requestKind === 'question') setRequestKind('action')
         }}
       >
 
